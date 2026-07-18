@@ -9,11 +9,6 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * 为类型化订阅提供线程安全的存储与分发.
- *
- * @param <T> 更新类型
- */
 public final class ObservableDispatcher<T> implements Observable<T> {
 
     private final CopyOnWriteArrayList<Entry<T>> entries = new CopyOnWriteArrayList<>();

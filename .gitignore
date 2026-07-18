@@ -43,3 +43,4 @@ bin/
 .DS_Store
 /buildSrc/settings.gradle.kts
 /.agent/
+/docs/

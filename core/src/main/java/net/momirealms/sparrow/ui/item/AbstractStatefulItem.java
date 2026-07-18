@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.window.Window;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * 为有状态 Item 提供类型化失效传播的基础实现.
@@ -19,8 +20,12 @@ public abstract class AbstractStatefulItem implements ObservableItem {
     }
 
     @Override
-    public final Subscription subscribe(Observer<? super Item> observer) {
+    public Subscription subscribe(@NotNull Observer<? super Item> observer) {
         return invalidations.subscribe(observer);
+    }
+
+    protected final int subscriptionCount() {
+        return invalidations.subscriptionCount();
     }
 
     /**
