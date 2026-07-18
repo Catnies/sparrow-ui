@@ -22,5 +22,5 @@ public interface Window {
      *
      * @param windowSlot 最终窗口槽位
      */
-    void invalidateSlot(int windowSlot);
+    void dirty(int windowSlot);
 }

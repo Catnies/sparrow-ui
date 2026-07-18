@@ -1,9 +1,10 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
-import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.SlotElement;
-import net.momirealms.sparrow.ui.item.ObservableItem;
+import net.momirealms.sparrow.ui.item.ItemAttachment;
+import net.momirealms.sparrow.ui.item.RefreshPlan;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -11,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 将一个 {@link SlotElement} 绑定到 Window 的最终槽位.
  *
- * <p>绑定拥有由它创建的 Item 订阅. 替换元素或关闭绑定时会取消旧订阅,
+ * <p>绑定拥有由它创建的 Item 挂载. 替换元素或关闭绑定时会关闭旧挂载,
  * 迟到的旧通知会通过版本检查被忽略.</p>
  */
 public final class SlotElementBinding implements AutoCloseable {
@@ -19,9 +20,9 @@ public final class SlotElementBinding implements AutoCloseable {
     private final int windowSlot;
 
     private volatile SlotElement element;
+    private volatile ItemAttachment attachment;
     private volatile long revision;
     private volatile boolean closed;
-    private Subscription subscription;
 
     /**
      * 创建并立即订阅一个最终窗口槽位绑定.
@@ -37,17 +38,18 @@ public final class SlotElementBinding implements AutoCloseable {
         this.window = window;
         this.windowSlot = windowSlot;
         this.element = element;
-        this.subscription = this.subscribe(element, this.revision);
-        window.invalidateSlot(windowSlot);
+        this.attachment = this.attach(element, this.revision);
+        window.dirty(windowSlot);
     }
 
     /**
-     * 获取当前元素需要由 Window tick 触发的重新渲染周期.
+     * 获取当前元素需要由 Window tick 执行的刷新计划.
      *
-     * @return 正数 tick 周期；不需要周期更新时返回负数
+     * @return 当前挂载的不可变刷新计划
      */
-    public int updatePeriodTicks() {
-        return this.requireOpenElement().updatePeriodTicks();
+    public RefreshPlan refreshPlan() {
+        this.requireOpenElement();
+        return this.attachment.refreshPlan();
     }
 
     /**
@@ -58,8 +60,9 @@ public final class SlotElementBinding implements AutoCloseable {
      */
     public ItemStack render() {
         return switch (this.requireOpenElement()) {
-            case SlotElement.Item itemElement -> itemElement.item().getItemProvider().provide(
-                    new RenderContext(this.window.viewer(), this.window, this.windowSlot)
+            case SlotElement.Item itemElement -> itemElement.item()
+                    .getItemProvider()
+                    .provide(new RenderContext(this.window.viewer(), this.window, this.windowSlot)
             );
         };
     }
@@ -82,7 +85,8 @@ public final class SlotElementBinding implements AutoCloseable {
     }
 
     /**
-     * 替换槽位内容并原子地切换由此绑定拥有的订阅.
+     * 替换槽位内容并原子地切换由此绑定拥有的挂载.
+     * 新挂载创建失败时，旧元素和旧挂载保持有效.
      *
      * @param replacement 新元素
      */
@@ -91,11 +95,15 @@ public final class SlotElementBinding implements AutoCloseable {
             throw new IllegalStateException("binding is closed");
         if (this.element.equals(replacement)) return;
 
-        this.revision++;
-        this.closeSubscription();
+        long nextRevision = this.revision + 1;
+        ItemAttachment nextAttachment = attach(replacement, nextRevision);
+        ItemAttachment previousAttachment = this.attachment;
+
         this.element = replacement;
-        this.subscription = subscribe(replacement, this.revision);
-        this.window.invalidateSlot(this.windowSlot);
+        this.attachment = nextAttachment;
+        this.revision = nextRevision;
+        previousAttachment.close();
+        this.window.dirty(this.windowSlot);
     }
 
     public boolean isClosed() {
@@ -108,7 +116,7 @@ public final class SlotElementBinding implements AutoCloseable {
 
         this.closed = true;
         this.revision++;
-        this.closeSubscription();
+        this.attachment.close();
     }
 
     public Window window() {
@@ -130,24 +138,33 @@ public final class SlotElementBinding implements AutoCloseable {
         return this.element;
     }
 
-    private Subscription subscribe(SlotElement element, long expectedRevision) {
+    private ItemAttachment attach(SlotElement element, long expectedRevision) {
         return switch (element) {
-            case SlotElement.Item(var item) when item instanceof ObservableItem observable ->
-                    observable.subscribe(ignored -> invalidateIfCurrent(expectedRevision));
-            case SlotElement.Item ignored -> null;
+            case SlotElement.Item(var item) ->
+                    item.attach(ignored -> invalidateIfCurrent(expectedRevision));
         };
+    }
+
+    /**
+     * 将 Bundle 槽位选择交给当前槽位实际持有的 Item.
+     *
+     * @param select Bundle 选择上下文
+     * @throws IllegalArgumentException 如果选择事件不属于此 Window 的 viewer
+     * @throws IllegalStateException 如果绑定已经关闭
+     */
+    public void handleBundleSelect(@NotNull BundleSelect select) {
+        if (!select.player().getUniqueId().equals(this.window.viewer().getUniqueId())) {
+            throw new IllegalArgumentException("bundle selection must belong to this window viewer");
+        }
+
+        switch (this.requireOpenElement()) {
+            case SlotElement.Item itemElement -> itemElement.item().handleBundleSelect(select);
+        }
     }
 
     private void invalidateIfCurrent(long expectedRevision) {
         if (!this.closed && this.revision == expectedRevision) {
-            this.window.invalidateSlot(this.windowSlot);
-        }
-    }
-
-    private void closeSubscription() {
-        if (this.subscription != null) {
-            this.subscription.close();
-            this.subscription = null;
+            this.window.dirty(this.windowSlot);
         }
     }
 }
