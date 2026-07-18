@@ -2,14 +2,19 @@ import org.gradle.accessors.dm.LibrariesForLibs
 
 plugins {
     `java-library`
-    `maven-publish`
     id("io.papermc.paperweight.userdev")
 }
 
 val libs = the<LibrariesForLibs>()
-
 group = "net.momirealms"
 version = "1.0.0"
+
+java {
+    withSourcesJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
 
 repositories {
     mavenCentral()
@@ -24,6 +29,8 @@ dependencies {
     paperweight.paperDevBundle(libs.versions.paper.api.get())
     implementation(libs.jetbrains.annotations)
     implementation(libs.jspecify)
+    implementation(libs.gson)
+    compileOnly(libs.nyana.reflection)
     
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -33,13 +40,6 @@ dependencies {
 //    testImplementation(libs.logback.classic)
 }
 
-java {
-    withSourcesJar()
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
-    }
-}
-
 paperweight {
     addServerDependencyTo.add(configurations.named(JavaPlugin.COMPILE_ONLY_CONFIGURATION_NAME))
 }
@@ -47,17 +47,5 @@ paperweight {
 tasks {
     test {
         useJUnitPlatform()
-    }
-}
-
-publishing {
-    repositories {
-        maven {
-            credentials {
-                name = "xenondevs"
-                url = uri { "https://repo.xenondevs.xyz/releases/" }
-                credentials(PasswordCredentials::class)
-            }
-        }
     }
 }

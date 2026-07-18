@@ -1,7 +1,10 @@
 package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
+import net.momirealms.sparrow.ui.scheduler.BukkitSchedulerAdapter;
+import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
@@ -17,9 +20,10 @@ public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
+    private SchedulerAdapter<World> scheduler;
     private boolean fireBukkitInventoryEvents = true;
-    private final List<Runnable> disableHandlers = new ArrayList<>();
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
+    private final List<Runnable> disableHandlers = new ArrayList<>();
 
     private SparrowUI() {}
 
@@ -75,16 +79,19 @@ public class SparrowUI implements Listener {
 
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
+        this.scheduler = new BukkitSchedulerAdapter(plugin);
     }
 
     /**
-     * 设置用于处理用户代码抛出但被 SparrowUI 抑制的异常的处理器,
-     * 例如处理物品栏事件时发生的异常.
+     * 获取此 SparrowUI 实例拥有的调度器. 如果尚未初始化, 会先尝试发现插件并完成初始化.
      *
-     * @param exceptionHandler 新的异常处理器
+     * @return SparrowUI 调度器
      */
-    public void setExceptionHandler(BiConsumer<? super String, ? super Throwable> exceptionHandler) {
-        this.exceptionHandler = exceptionHandler;
+    public SchedulerAdapter<World> scheduler() {
+        if (this.scheduler == null) {
+            getPlugin();
+        }
+        return this.scheduler;
     }
 
     /**
@@ -119,6 +126,29 @@ public class SparrowUI implements Listener {
     }
 
     /**
+     * 设置用于处理用户代码抛出但被 SparrowUI 抑制的异常的处理器,
+     * 例如处理物品栏事件时发生的异常.
+     *
+     * @param exceptionHandler 新的异常处理器
+     */
+    public void setExceptionHandler(BiConsumer<? super String, ? super Throwable> exceptionHandler) {
+        this.exceptionHandler = Objects.requireNonNull(exceptionHandler, "exceptionHandler");
+    }
+
+    /**
+     * 将 SparrowUI 已隔离的异常交给当前异常处理器.
+     *
+     * @param message 异常发生位置
+     * @param throwable 原始异常
+     */
+    public void handleException(String message, Throwable throwable) {
+        exceptionHandler.accept(
+                Objects.requireNonNull(message, "message"),
+                Objects.requireNonNull(throwable, "throwable")
+        );
+    }
+
+    /**
      * 添加一个在插件禁用时执行的 {@link Runnable}.
      *
      * @param runnable 当插件禁用时执行的 {@link Runnable} 任务
@@ -130,7 +160,13 @@ public class SparrowUI implements Listener {
     @EventHandler
     private void handlePluginDisable(PluginDisableEvent event) {
         if (event.getPlugin().equals(this.plugin)) {
-            this.disableHandlers.forEach(Runnable::run);
+            try {
+                this.disableHandlers.forEach(Runnable::run);
+            } finally {
+                if (this.scheduler != null) {
+                    this.scheduler.shutdown();
+                }
+            }
         }
     }
 }
