@@ -5,7 +5,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 final class ItemWrapper implements ItemProvider {
-
     private final ItemStack template;
 
     ItemWrapper(@NotNull ItemStack template) {

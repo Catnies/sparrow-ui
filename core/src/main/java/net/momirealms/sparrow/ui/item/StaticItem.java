@@ -2,8 +2,9 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
@@ -18,8 +19,8 @@ public final class StaticItem implements Item {
         this(itemProvider, null);
     }
 
-    public StaticItem(ItemProvider itemProvider, BiConsumer<? super Item, ? super ItemClick> clickHandler) {
-        this.itemProvider = Objects.requireNonNull(itemProvider, "itemProvider");
+    public StaticItem(@NotNull ItemProvider itemProvider, @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler) {
+        this.itemProvider = itemProvider;
         this.clickHandler = clickHandler;
     }
 
