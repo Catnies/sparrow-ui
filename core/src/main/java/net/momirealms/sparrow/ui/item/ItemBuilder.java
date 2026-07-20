@@ -35,6 +35,8 @@ public final class ItemBuilder {
     private BiConsumer<Item, BundleSelect> bundleHandler = (_, _) -> { };
     private Consumer<ObservableItem> modifier = _ -> { };
     private RefreshPlan explicitRefreshPlan = RefreshPlan.none();
+    private long throttleIntervalMillis; // <= 0 表示未启用节流
+    private ThrottleHandler throttleHandler; // null 表示未添加节流处理器
     private boolean updateOnClick;
     private BiConsumer<? super String, ? super Throwable> asyncExceptionHandler = SparrowUI.getInstance()::handleException;
 
@@ -161,6 +163,39 @@ public final class ItemBuilder {
     }
 
     /**
+     * 限制同一玩家点击此 Item 的频率. 重复调用会替换之前的间隔.
+     *
+     * <p>同一玩家对同一 Item 的点击共享计时, 无论点击的是哪个显示槽位;
+     * 不同玩家互不影响. 首次点击立即执行, 限制期内被拦截的点击不会延长间隔.
+     * 只节流点击, Bundle 选择不受影响.</p>
+     *
+     * @param intervalMillis 两次有效点击之间至少间隔的毫秒数
+     * @return 此构建器
+     * @throws IllegalArgumentException 间隔不是正数
+     */
+    public ItemBuilder throttle(long intervalMillis) {
+        if (intervalMillis <= 0) {
+            throw new IllegalArgumentException("intervalMillis must be positive");
+        }
+        this.throttleIntervalMillis = intervalMillis;
+        return this;
+    }
+
+    /**
+     * 添加一个节流处理器. 处理器按添加顺序执行.
+     *
+     * @param handler 节流处理器
+     * @return 此构建器
+     */
+    public ItemBuilder addThrottleHandler(@NotNull ThrottleHandler handler) {
+        Objects.requireNonNull(handler, "handler");
+        this.throttleHandler = this.throttleHandler == null
+                ? handler
+                : this.throttleHandler.andThen(handler);
+        return this;
+    }
+
+    /**
      * 添加点击处理器. 处理器按添加顺序执行.
      *
      * @param clickHandler 点击处理器
@@ -219,14 +254,23 @@ public final class ItemBuilder {
      * 构建具备主动通知能力的 Item，并依次执行所有修改器.
      *
      * @return 构建完成的 ObservableItem
+     * @throws IllegalStateException 添加了节流处理器但没有启用节流
      */
     public ObservableItem build() {
+        if (this.throttleHandler != null && this.throttleIntervalMillis <= 0) {
+            throw new IllegalStateException("throttle handlers require throttle to be enabled");
+        }
+
+        ConfiguredItem.ThrottleConfig throttleConfig = this.throttleIntervalMillis > 0
+                ? new ConfiguredItem.ThrottleConfig(this.throttleIntervalMillis, this.throttleHandler)
+                : null;
         ObservableItem item = new ConfiguredItem(
                 source.displayFactory(asyncExceptionHandler),
                 explicitRefreshPlan,
                 clickHandler,
                 bundleHandler,
-                updateOnClick
+                updateOnClick,
+                throttleConfig
         );
         this.modifier.accept(item);
         return item;

@@ -2,7 +2,6 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
-import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -15,14 +14,13 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 记录 Window 中一个槽位当前显示的内容.
  *
  * <p>它从根 GUI 的指定槽位出发, 跟随 {@link SlotElement.GuiLink} 进入子 GUI,
- * 直到找到 Item 或空槽位. 路径上任何 GUI 或最终 Item 变化时,
- * 都会把对应的 Window 槽位标记为需要刷新.</p>
+ * 直到找到 Item 或空槽位. GUI 变化会要求重新解析路径, 最终 Item 变化只会要求重新渲染当前路径.</p>
  *
  * <p>路径解析, 显示, 交互和关闭由玩家实体线程执行.
  * 观察通知可以来自其他线程, 但只会标记 Window 槽位, 不会直接修改路径.</p>
@@ -189,7 +187,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 throw new IllegalStateException("GUI link cycle detected at depth " + candidate.depth + " for local slot " + guiSlot);
             }
 
-            GuiSlotAttachment attachment = gui.attach(guiSlot, candidate);
+            GuiSlotAttachment attachment = gui.attach(guiSlot, _ -> candidate.notifyWindows(true));
             candidate.add(gui, attachment);
             if (attachment.background() != null) {
                 candidate.background = attachment.background();
@@ -203,7 +201,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 }
                 case SlotElement.Item(var item) -> {
                     candidate.item = item;
-                    candidate.itemAttachment = item.attach(candidate);
+                    candidate.itemAttachment = item.attach(_ -> candidate.notifyWindows(false));
                     return;
                 }
                 case SlotElement.Empty _ -> {
@@ -214,18 +212,22 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回当前已解析路径, 关闭或未解析时拒绝访问.
+     * 返回当前已解析路径.
+     * GUI 变化后会先重建路径,
+     * Item 变化则继续使用原有挂载状态.
      *
      * @return 当前路径状态
      */
     @NotNull
     private PathState currentState() {
         this.requireOpen();
-        PathState state = this.current;
-        if (state == null) {
+        if (this.current == null) {
             throw new IllegalStateException("displayed path has not been resolved");
         }
-        return state;
+        if (this.current.requiresResolve()) {
+            this.resolve();
+        }
+        return this.current;
     }
 
     private void requireOpen() {
@@ -236,19 +238,26 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 保存一次已解析路径的状态和全部订阅.
-     * <p>PathState 自己作为沿途 GUI 和 Item 的 Observer.
-     * 因此旧路径延迟到达的通知不会被误当成新路径的通知.
+     * <p>沿途 GUI 和最终 Item 通过各自的失效回调通知此路径:
+     * GUI 更新要求重建路径, Item 更新只要求重新渲染, 不会重建挂载.
+     * 回调绑定在路径实例上, 因此旧路径退役后延迟到达的通知会被忽略.
      */
-    private static final class PathState implements Observer<Object>, AutoCloseable {
-        private static final int PHASE_MASK = 0b11; // 低两位保存路径阶段
-        private static final int PREPARING = 0; // 正在建立订阅, 尚未成为当前路径
-        private static final int ACTIVE = 1; // 当前正在显示的路径
-        private static final int RETIRED = 2; // 已被替换, 延迟通知应当忽略
-        private static final int PENDING = 0b100; // 准备期间收到过更新
+    private static final class PathState implements AutoCloseable {
+        /**
+         * 保存路径的生命周期, 以及尚未处理的刷新要求.
+         */
+        private enum GateState {
+            PREPARING, // 正在建立订阅, 尚未成为当前路径
+            PREPARING_RENDER_PENDING, // 准备期间收到渲染通知, 启用后标记脏槽位
+            PREPARING_RESOLVE_PENDING, // 准备期间收到结构通知, 启用后需要重建路径
+            ACTIVE, // 当前正在显示的路径
+            ACTIVE_RESOLVE_REQUIRED, // 当前路径收到结构通知, 下次读取前重建
+            RETIRED // 已被替换, 忽略迟到的通知
+        }
 
         private final Window window;
         private final int windowSlot;
-        private final AtomicInteger gate = new AtomicInteger(PREPARING); // 跨线程的阶段和待刷新标记
+        private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING);
 
         private Gui[] guis = new Gui[4]; // 从根 GUI 到最深层 GUI
         private GuiSlotAttachment[] guiAttachments = new GuiSlotAttachment[4]; // 与 guis 使用相同下标
@@ -266,29 +275,47 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 处理 GUI 或 Item 更新. 准备期间先记录, 启用后直接标记 Window 槽位,
-         * 路径退役后忽略.
+         * 处理一次失效通知. 可能由任意线程调用, 只更新标志位和脏标记,
+         * 实际的重建由实体线程在下一次读取路径时执行.
          *
-         * @param ignored 发出更新的对象, 路径刷新不需要区分来源
+         * @param resolveRequired 通知是否来自 GUI, 要求重建整条路径;
+         *                        false 表示只来自最终 Item, 重新渲染即可
          */
-        @Override
-        public void onUpdate(Object ignored) {
+        private void notifyWindows(boolean resolveRequired) {
             while (true) {
-                int state = this.gate.get();
-                switch (state & PHASE_MASK) {
+                GateState state = this.gate.get();
+                switch (state) {
                     case PREPARING -> {
-                        if ((state & PENDING) != 0 || this.gate.compareAndSet(state, state | PENDING)) {
+                        GateState updated = resolveRequired
+                                ? GateState.PREPARING_RESOLVE_PENDING
+                                : GateState.PREPARING_RENDER_PENDING;
+                        if (this.gate.compareAndSet(state, updated)) {
                             return;
                         }
                     }
+                    case PREPARING_RENDER_PENDING -> {
+                        if (!resolveRequired) {
+                            return;
+                        }
+                        if (this.gate.compareAndSet(state, GateState.PREPARING_RESOLVE_PENDING)) {
+                            return;
+                        }
+                    }
+                    case PREPARING_RESOLVE_PENDING, RETIRED -> {
+                        return;
+                    }
                     case ACTIVE -> {
+                        if (resolveRequired
+                                && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
+                            continue;
+                        }
                         this.window.dirty(this.windowSlot);
                         return;
                     }
-                    case RETIRED -> {
+                    case ACTIVE_RESOLVE_REQUIRED -> {
+                        this.window.dirty(this.windowSlot);
                         return;
                     }
-                    default -> throw new IllegalStateException("unknown path phase");
                 }
             }
         }
@@ -332,21 +359,44 @@ final class DisplayedSlotPath implements AutoCloseable {
          */
         private boolean activate() {
             while (true) {
-                int state = this.gate.get();
-                if ((state & PHASE_MASK) != PREPARING) {
-                    throw new IllegalStateException("only a preparing path can be activated");
+                GateState state = this.gate.get();
+                GateState activated;
+                boolean pending;
+                switch (state) {
+                    case PREPARING -> {
+                        activated = GateState.ACTIVE;
+                        pending = false;
+                    }
+                    case PREPARING_RENDER_PENDING -> {
+                        activated = GateState.ACTIVE;
+                        pending = true;
+                    }
+                    case PREPARING_RESOLVE_PENDING -> {
+                        activated = GateState.ACTIVE_RESOLVE_REQUIRED;
+                        pending = true;
+                    }
+                    default -> throw new IllegalStateException("only a preparing path can be activated");
                 }
-                if (this.gate.compareAndSet(state, ACTIVE)) {
-                    return (state & PENDING) != 0;
+                if (this.gate.compareAndSet(state, activated)) {
+                    return pending;
                 }
             }
+        }
+
+        /**
+         * 返回 GUI 更新是否要求当前路径重新解析.
+         *
+         * @return 需要重新解析时为 true
+         */
+        private boolean requiresResolve() {
+            return this.gate.get() == GateState.ACTIVE_RESOLVE_REQUIRED;
         }
 
         /**
          * 把路径标记为已退役, 以后到达的通知将被忽略.
          */
         private void retire() {
-            this.gate.getAndSet(RETIRED);
+            this.gate.getAndSet(GateState.RETIRED);
         }
 
         /**
