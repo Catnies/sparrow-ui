@@ -170,12 +170,6 @@ public final class ItemBuilder {
         return addClickHandler((_, click) -> clickHandler.accept(click));
     }
 
-    /**
-     * 添加可以访问 Item 自身的点击处理器. 处理器按添加顺序执行.
-     *
-     * @param clickHandler 点击处理器
-     * @return 此构建器
-     */
     public ItemBuilder addClickHandler(@NotNull BiConsumer<? super Item, ? super ItemClick> clickHandler) {
         this.clickHandler = this.clickHandler.andThen(clickHandler);
         return this;

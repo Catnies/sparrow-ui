@@ -4,27 +4,35 @@ import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
-
 /**
  * 单次物品渲染操作的只读上下文.
- *
- * @param player 接收渲染物品的玩家
- * @param window 正在渲染的窗口
- * @param windowSlot 该窗口中的最终槽位
  */
-public record RenderContext(@NotNull Player player, @NotNull Window window, int windowSlot) {
+public final class RenderContext {
+    private final Player player;
+    private final Window window;
+    private final int windowSlot;
 
     /**
-     * 校验玩家、窗口及最终槽位构成有效的渲染目标.
+     * 从 Window 的唯一 viewer 创建最终槽位的稳定渲染上下文.
      */
-    public RenderContext {
+    public RenderContext(@NotNull Window window, int windowSlot) {
+        this.window = window;
         if (windowSlot < 0) {
             throw new IllegalArgumentException("windowSlot must be non-negative");
         }
-        Player viewer = Objects.requireNonNull(window.viewer(), "window.viewer()");
-        if (!player.getUniqueId().equals(viewer.getUniqueId())) {
-            throw new IllegalArgumentException("player must be the window viewer");
-        }
+        this.windowSlot = windowSlot;
+        this.player = window.viewer();
+    }
+
+    public @NotNull Player player() {
+        return this.player;
+    }
+
+    public @NotNull Window window() {
+        return this.window;
+    }
+
+    public int windowSlot() {
+        return this.windowSlot;
     }
 }

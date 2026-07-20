@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * 由一名玩家查看的 GUI 会话, 这是物品渲染所需的最小接口.
@@ -12,7 +13,7 @@ public interface Window {
      *
      * @return 查看此 Window 的玩家
      */
-    Player viewer();
+    @NotNull Player viewer();
 
     /**
      * 将最终窗口槽位标记为需要重新解析和渲染.
