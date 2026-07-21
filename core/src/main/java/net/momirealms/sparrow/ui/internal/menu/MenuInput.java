@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
+import org.bukkit.event.inventory.ClickType;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -10,37 +11,71 @@ import org.jetbrains.annotations.NotNull;
  * 更新自身的权威渲染结果.</p>
  */
 @ApiStatus.Internal
-public sealed interface MenuInput permits MenuInput.Click, MenuInput.Close, MenuInput.BundleSelection, MenuInput.Pong {
+public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close, MenuInput.BundleSelection, MenuInput.Pong {
 
     /**
-     * Minecraft 容器点击动作的稳定分类.
+     * QUICK_CRAFT 手势中的一个阶段.
      */
-    enum Action {
-        PICKUP,
-        QUICK_MOVE,
-        SWAP,
-        CLONE,
-        THROW,
-        QUICK_CRAFT,
-        PICKUP_ALL
+    enum DragPhase {
+        START,
+        ADD,
+        END
     }
 
     /**
-     * 客户端对一个原始槽位的点击意图.
+     * 携带容器状态编号的玩家交互.
+     */
+    sealed interface Interaction extends MenuInput permits Click, DragStep {
+
+        /**
+         * 返回目标容器编号.
+         *
+         * @return 目标容器编号
+         */
+        int containerId();
+
+        /**
+         * 返回客户端声称的容器状态编号.
+         *
+         * @return 容器状态编号
+         */
+        int stateId();
+    }
+
+    /**
+     * 客户端对一个原始槽位的单次点击意图.
      *
      * @param containerId 目标容器编号
      * @param stateId 客户端声称的容器状态编号
      * @param slot 原始槽位编号
-     * @param button 鼠标按钮或热键编号
-     * @param action 协议点击动作
+     * @param clickType Bukkit 点击类型
+     * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
      */
     record Click(
             int containerId,
             int stateId,
             int slot,
-            int button,
-            @NotNull Action action
-    ) implements MenuInput {
+            @NotNull ClickType clickType,
+            int hotbarButton
+    ) implements Interaction {
+    }
+
+    /**
+     * 客户端 QUICK_CRAFT 手势中的一个输入步骤.
+     *
+     * @param containerId 目标容器编号
+     * @param stateId 客户端声称的容器状态编号
+     * @param slot 当前步骤携带的原始槽位编号
+     * @param clickType 拖拽使用的 Bukkit 点击类型
+     * @param phase 手势阶段
+     */
+    record DragStep(
+            int containerId,
+            int stateId,
+            int slot,
+            @NotNull ClickType clickType,
+            @NotNull DragPhase phase
+    ) implements Interaction {
     }
 
     /**

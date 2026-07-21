@@ -570,7 +570,7 @@ abstract class AbstractWindow implements Window {
             return;
         }
 
-        // todo ? 有必要做这个检查吗
+        // 我们的PacketHandler在Paper Limiter之前, 所以还是限制一下包速率, 防止恶意攻击.
         if (this.incoming.hasOverflowed()) {
             this.manager.report(
                     "Closing Window because its incoming packet queue overflowed",
@@ -650,7 +650,7 @@ abstract class AbstractWindow implements Window {
      */
     private void handleInput(MenuInput input) {
         switch (input) {
-            case MenuInput.Click click -> this.handleClick(click);
+            case MenuInput.Interaction interaction -> this.handleInteraction(interaction);
             case MenuInput.Close close -> this.handleClose(close);
             case MenuInput.BundleSelection selection -> this.handleBundleSelection(selection);
             case MenuInput.Pong pong -> this.handlePong(pong);
@@ -658,19 +658,18 @@ abstract class AbstractWindow implements Window {
     }
 
     /**
-     * 校验容器状态、解释协议点击并分派给 GUI 或容器外处理器.
+     * 校验容器状态、解释点击或拖拽步骤并分派给 GUI 或容器外处理器.
      * 任一不可信或被取消的交互都会请求全量同步, 以重新建立客户端与服务端一致性.
      */
-    private void handleClick(MenuInput.Click packet) {
-        if (this.containerState == null || !this.containerState.accepts(packet.containerId(), packet.stateId(), this.generation)) {
+    private void handleInteraction(MenuInput.Interaction interaction) {
+        if (this.containerState == null || !this.containerState.accepts(interaction.containerId(), interaction.stateId(), this.generation)) {
             this.clickInterpreter.reset();
             this.forceFull = true;
             return;
         }
-        ClickInterpreter.Result result = this.clickInterpreter.interpret(packet, this.layout, this.generation);
+        ClickInterpreter.Result result = this.clickInterpreter.interpret(interaction, this.layout, this.generation);
         switch (result) {
-            case ClickInterpreter.Pending _ -> {
-            }
+            case ClickInterpreter.Pending _ -> {}
             case ClickInterpreter.Rejected _ -> this.forceFull = true;
             case ClickInterpreter.SingleClick click -> this.handleSingleClick(click, this.containerState);
             case ClickInterpreter.Drag drag -> this.handleDrag(drag, this.containerState);

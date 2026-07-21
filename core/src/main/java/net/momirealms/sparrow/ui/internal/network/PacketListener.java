@@ -18,6 +18,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
@@ -288,13 +289,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             MenuInput input;
             boolean consume = true;
             switch (packet) {
-                case ServerboundContainerClickPacket click -> input = new MenuInput.Click(
-                        click.containerId(),
-                        click.stateId(),
-                        click.slotNum(),
-                        click.buttonNum(),
-                        action(click)
-                );
+                case ServerboundContainerClickPacket click -> input = interaction(click);
                 case ServerboundContainerClosePacket close -> input = new MenuInput.Close(close.getContainerId());
                 case ServerboundSelectBundleItemPacket selection -> input = new MenuInput.BundleSelection(
                         this.containerId,
@@ -314,16 +309,106 @@ public final class PacketListener implements Listener, AutoCloseable {
             return consume;
         }
 
-        private static MenuInput.Action action(ServerboundContainerClickPacket click) {
+        /**
+         * 将 NMS 容器输入完整解码为稳定的 Bukkit 点击类型或拖拽步骤.
+         * 非法 button 组合保留为 {@link ClickType#UNKNOWN}, 交给实体线程触发权威状态纠正.
+         */
+        private static MenuInput.Interaction interaction(ServerboundContainerClickPacket click) {
             return switch (click.containerInput()) {
-                case PICKUP -> MenuInput.Action.PICKUP;
-                case QUICK_MOVE -> MenuInput.Action.QUICK_MOVE;
-                case SWAP -> MenuInput.Action.SWAP;
-                case CLONE -> MenuInput.Action.CLONE;
-                case THROW -> MenuInput.Action.THROW;
-                case QUICK_CRAFT -> MenuInput.Action.QUICK_CRAFT;
-                case PICKUP_ALL -> MenuInput.Action.PICKUP_ALL;
+                case PICKUP -> switch (click.buttonNum()) {
+                    case 0 -> singleClick(
+                            click,
+                            click.slotNum() == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT
+                    );
+                    case 1 -> singleClick(
+                            click,
+                            click.slotNum() == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT
+                    );
+                    default -> singleClick(click, ClickType.UNKNOWN);
+                };
+                case QUICK_MOVE -> switch (click.buttonNum()) {
+                    case 0 -> singleClick(click, ClickType.SHIFT_LEFT);
+                    case 1 -> singleClick(click, ClickType.SHIFT_RIGHT);
+                    default -> singleClick(click, ClickType.UNKNOWN);
+                };
+                case SWAP -> {
+                    if (click.buttonNum() >= 0 && click.buttonNum() <= 8) {
+                        yield singleClick(click, ClickType.NUMBER_KEY, click.buttonNum());
+                    }
+                    if (click.buttonNum() == 40) {
+                        yield singleClick(click, ClickType.SWAP_OFFHAND);
+                    }
+                    yield singleClick(click, ClickType.UNKNOWN);
+                }
+                case CLONE -> singleClick(
+                        click,
+                        click.buttonNum() == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN
+                );
+                case THROW -> switch (click.buttonNum()) {
+                    case 0 -> singleClick(click, ClickType.DROP);
+                    case 1 -> singleClick(click, ClickType.CONTROL_DROP);
+                    default -> singleClick(click, ClickType.UNKNOWN);
+                };
+                case QUICK_CRAFT -> dragStep(click);
+                case PICKUP_ALL -> singleClick(
+                        click,
+                        click.buttonNum() == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN
+                );
             };
+        }
+
+        private static MenuInput.Click singleClick(
+                ServerboundContainerClickPacket packet,
+                ClickType clickType
+        ) {
+            return singleClick(packet, clickType, -1);
+        }
+
+        private static MenuInput.Click singleClick(
+                ServerboundContainerClickPacket packet,
+                ClickType clickType,
+                int hotbarButton
+        ) {
+            return new MenuInput.Click(
+                    packet.containerId(),
+                    packet.stateId(),
+                    packet.slotNum(),
+                    clickType,
+                    hotbarButton
+            );
+        }
+
+        /**
+         * 解码 QUICK_CRAFT 的非连续 button 编码.
+         * 无效编码转为 UNKNOWN 单次点击, 使解释器同时重置未完成手势并请求状态纠正.
+         */
+        private static MenuInput.Interaction dragStep(ServerboundContainerClickPacket packet) {
+            return switch (packet.buttonNum()) {
+                case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.START);
+                case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.ADD);
+                case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.END);
+                case 4 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.START);
+                case 5 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.ADD);
+                case 6 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.END);
+                case 8 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.START);
+                case 9 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.ADD);
+                case 10 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.END);
+                default -> singleClick(packet, ClickType.UNKNOWN);
+            };
+        }
+
+        private static MenuInput.DragStep dragStep(
+                ServerboundContainerClickPacket packet,
+                ClickType clickType,
+                MenuInput.DragPhase phase
+        ) {
+            return new MenuInput.DragStep(
+                    packet.containerId(),
+                    packet.stateId(),
+                    packet.slotNum(),
+                    clickType,
+                    phase
+            );
         }
     }
 
