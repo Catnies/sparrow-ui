@@ -52,7 +52,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
         try {
             this.resolve();
-            this.window.dirty(windowSlot);
+            this.window.notifyUpdate(windowSlot);
         } catch (RuntimeException | Error throwable) {
             try {
                 this.close();
@@ -91,7 +91,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         } finally {
             this.current = candidate;
             if (candidate.activate()) { // 如果在准备阶段有更新请求过来, 则标记脏位.
-                this.window.dirty(this.windowSlot);
+                this.window.notifyUpdate(this.windowSlot);
             }
         }
     }
@@ -309,11 +309,11 @@ final class DisplayedSlotPath implements AutoCloseable {
                                 && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
                             continue;
                         }
-                        this.window.dirty(this.windowSlot);
+                        this.window.notifyUpdate(this.windowSlot);
                         return;
                     }
                     case ACTIVE_RESOLVE_REQUIRED -> {
-                        this.window.dirty(this.windowSlot);
+                        this.window.notifyUpdate(this.windowSlot);
                         return;
                     }
                 }

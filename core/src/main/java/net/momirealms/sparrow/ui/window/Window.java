@@ -1,28 +1,533 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.ClickEvent;
+import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
+
+import java.util.List;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
- * 由一名玩家查看的 GUI 会话, 这是物品渲染所需的最小接口.
+ * 由一名玩家查看的 GUI 会话.
+ * <p>所有变更方法都可以从任意线程调用. SparrowUI 会按玩家串行化命令, 并只在玩家实体线程修改
+ * GUI、菜单和协议状态. 查询方法返回最近一次已提交状态的线程安全快照.
  */
 public interface Window {
 
     /**
-     * 获取查看此 Window 的玩家.
+     * 创建普通窗口的 Builder.
+     * 普通窗口由 {@code gui} 作为上半部分, 下半部分映射玩家原生物品栏.
      *
-     * @return 查看此 Window 的玩家
+     * @param gui 上半部分 GUI
+     * @return 可重复使用的 Builder
      */
-    @NotNull Player viewer();
+    static @NotNull Builder builder(@NotNull Gui gui) {
+        return WindowBuilder.normal(gui);
+    }
 
     /**
-     * 将最终窗口槽位标记为需要刷新.
+     * 创建上下分离窗口的 Builder.
+     * 上下两个 GUI 分别控制容器和玩家物品栏区域.
      *
-     * <p>此方法可能由异步失效通知调用. 实现只能以线程安全的方式合并槽位,
-     * 不得在调用线程中解析 GUI 或向客户端发包.
-     * 是否需要重新解析路径由显示路径自己判断.</p>
-     *
-     * @param windowSlot 最终窗口槽位
+     * @param upperGui 上半部分 GUI
+     * @param lowerGui 下半部分 9x4 GUI
+     * @return 可重复使用的 Builder
      */
-    void dirty(int windowSlot);
+    static @NotNull Builder splitBuilder(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
+        return WindowBuilder.split(upperGui, lowerGui);
+    }
+
+    /**
+     * 创建合并窗口的 Builder.
+     * 单个 GUI 同时覆盖容器和玩家物品栏区域.
+     *
+     * @param gui 合并后的 GUI
+     * @return 可重复使用的 Builder
+     */
+    static @NotNull Builder mergedBuilder(@NotNull Gui gui) {
+        return WindowBuilder.merged(gui);
+    }
+
+    /**
+     * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
+     */
+    @Unmodifiable
+    @NotNull List<Gui> guis();
+
+    /**
+     * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
+     */
+    SlotElement.@Nullable GuiLink guiAt(int windowSlot);
+
+    /**
+     * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
+     */
+    SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot);
+
+    /**
+     * 通知 Window 指定槽位的显示内容需要更新.
+     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
+     */
+    void notifyUpdate(int windowSlot);
+
+    @NotNull Player viewer();
+
+    @NotNull Component title();
+
+    boolean isOpen();
+
+    /**
+     * 返回是否接受客户端主动发送的关闭请求.
+     */
+    boolean isCloseable();
+
+    /**
+     * 请求打开 Window, Stage 完成表示服务端生命周期已经提交, 不表示客户端已经显示.
+     */
+    @NotNull CompletionStage<OpenResult> open();
+
+    /**
+     * 设置动态标题来源并请求刷新.
+     * Supplier 会在玩家实体线程读取, 且不得返回 null.
+     *
+     * @param titleSupplier 标题来源
+     */
+    void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier);
+
+    /**
+     * 设置固定标题并请求刷新.
+     *
+     * @param title 新标题
+     */
+    void setTitle(@NotNull Component title);
+
+    /**
+     * 使用纯文本组件设置固定标题.
+     *
+     * @param title 新标题
+     */
+    default void setTitle(@NotNull String title) {
+        //todo 接入 minimessage
+        this.setTitle(Component.text(title));
+    }
+
+    /**
+     * 请求重新读取当前标题 Supplier.
+     * 多次请求会在玩家实体 tick 中合并.
+     */
+    void updateTitle();
+
+    /**
+     * 设置是否接受客户端主动关闭.
+     * 此设置不阻止插件、断线或 Bukkit 外部关闭.
+     *
+     * @param closeable 是否可由客户端主动关闭
+     */
+    void setCloseable(boolean closeable);
+
+    /**
+     * 请求关闭 Window.
+     * closeable 只限制玩家主动关闭, 不限制插件命令.
+     */
+    @NotNull CompletionStage<CloseResult> close();
+
+    /**
+     * 替换打开后依次执行的处理器列表.
+     *
+     * @param openHandlers 新处理器列表
+     */
+    void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
+
+    @Unmodifiable
+    @NotNull List<Runnable> getOpenHandlers();
+
+    /**
+     * 在现有打开处理器末尾追加一个处理器.
+     *
+     * @param openHandler 打开处理器
+     */
+    void addOpenHandler(@NotNull Runnable openHandler);
+
+    /**
+     * 移除一个与给定对象相等的打开处理器.
+     *
+     * @param openHandler 要移除的打开处理器
+     */
+    void removeOpenHandler(@NotNull Runnable openHandler);
+
+    /**
+     * 替换关闭后依次执行的处理器列表.
+     *
+     * @param closeHandlers 新处理器列表
+     */
+    void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers);
+
+    @Unmodifiable
+    @NotNull List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers();
+
+    /**
+     * 在现有关闭处理器末尾追加一个处理器.
+     *
+     * @param closeHandler 关闭处理器, 参数为关闭原因
+     */
+    void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+
+    /**
+     * 移除一个与给定对象相等的关闭处理器.
+     *
+     * @param closeHandler 要移除的关闭处理器
+     */
+    void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+
+    /**
+     * 替换容器外点击处理器列表.
+     * 处理器可以取消 {@link ClickEvent} 以阻止该次点击.
+     *
+     * @param outsideClickHandlers 新处理器列表
+     */
+    void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers);
+
+    @Unmodifiable
+    @NotNull List<Consumer<ClickEvent>> getOutsideClickHandlers();
+
+    /**
+     * 在现有容器外点击处理器末尾追加一个处理器.
+     *
+     * @param outsideClickHandler 容器外点击处理器
+     */
+    void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+
+    /**
+     * 移除一个与给定对象相等的容器外点击处理器.
+     *
+     * @param outsideClickHandler 要移除的容器外点击处理器
+     */
+    void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+
+    /**
+     * 设置玩家主动关闭时要打开的固定后备 Window.
+     * 传入 null 可清除后备 Window.
+     *
+     * @param fallbackWindow 后备 Window
+     */
+    default void setFallbackWindow(@Nullable Window fallbackWindow) {
+        this.setFallbackWindow(() -> fallbackWindow);
+    }
+
+    /**
+     * 设置玩家主动关闭时要解析并打开的后备 Window.
+     * Supplier 仅在玩家主动关闭后读取.
+     *
+     * @param fallbackWindow 后备 Window 来源
+     */
+    void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
+
+    /**
+     * 设置服务器窗口状态, 并在已打开时发送 Ping 等待客户端确认.
+     *
+     * @param windowState 新服务器窗口状态
+     */
+    void setWindowState(int windowState);
+
+    /**
+     * 将服务器窗口状态加一, 并在已打开时等待客户端确认.
+     */
+    void incrementWindowState();
+
+    /**
+     * 返回最近一次设置的服务器窗口状态.
+     */
+    int getServerWindowState();
+
+    /**
+     * 返回最近一次收到 Pong 确认的客户端窗口状态.
+     */
+    int getClientWindowState();
+
+    /**
+     * 替换客户端确认窗口状态时依次执行的处理器列表.
+     *
+     * @param handlers 新处理器列表
+     */
+    void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers);
+
+    @Unmodifiable
+    @NotNull List<Consumer<Integer>> getWindowStateChangeHandlers();
+
+    /**
+     * 在现有窗口状态确认处理器末尾追加一个处理器.
+     *
+     * @param handler 状态确认处理器
+     */
+    void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
+
+    /**
+     * 移除一个与给定对象相等的窗口状态确认处理器.
+     *
+     * @param handler 要移除的状态确认处理器
+     */
+    void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
+
+    /**
+     * 设置光标显示转换器.
+     * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
+     *
+     * @param cursorVisualizer 光标显示转换器
+     */
+    void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer);
+
+    @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer();
+
+    /**
+     * 在 Window 已打开时请求一次强制全量同步.
+     */
+    void sendAllDataToViewer();
+
+    /**
+     * 打开请求的提交结果.
+     */
+    enum OpenResult {
+        /** Window 已成功打开. */
+        OPENED,
+        /** Window 已处于打开状态. */
+        ALREADY_OPEN,
+        /** 玩家实体不可用, 无法提交打开操作. */
+        VIEWER_UNAVAILABLE
+    }
+
+    /**
+     * 关闭请求的提交结果.
+     */
+    enum CloseResult {
+        /** Window 已成功关闭. */
+        CLOSED,
+        /** Window 已经关闭. */
+        ALREADY_CLOSED
+    }
+
+    /**
+     * 固定布局的可重复 Window Builder.
+     */
+    interface Builder extends Cloneable {
+
+        /**
+         * 设置 {@link #build()} 使用的玩家.
+         *
+         * @param viewer 查看者
+         * @return 此 Builder
+         */
+        @NotNull Builder setViewer(@NotNull Player viewer);
+
+        /**
+         * 设置动态标题来源.
+         *
+         * @param titleSupplier 标题来源
+         * @return 此 Builder
+         */
+        @NotNull Builder setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier);
+
+        /**
+         * 设置固定标题.
+         *
+         * @param title 标题
+         * @return 此 Builder
+         */
+        @NotNull Builder setTitle(@NotNull Component title);
+
+        /**
+         * 使用纯文本组件设置固定标题.
+         *
+         * @param title 标题
+         * @return 此 Builder
+         */
+        default @NotNull Builder setTitle(@NotNull String title) {
+            return this.setTitle(Component.text(title));
+        }
+
+        /**
+         * 设置是否接受客户端主动关闭.
+         *
+         * @param closeable 是否可由客户端主动关闭
+         * @return 此 Builder
+         */
+        @NotNull Builder setCloseable(boolean closeable);
+
+        /**
+         * 替换打开后依次执行的处理器列表.
+         *
+         * @param openHandlers 打开处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
+
+        /**
+         * 追加一个打开处理器.
+         *
+         * @param openHandler 打开处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder addOpenHandler(@NotNull Runnable openHandler);
+
+        /**
+         * 替换关闭后依次执行的处理器列表.
+         *
+         * @param closeHandlers 关闭处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder setCloseHandlers(
+                @NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers
+        );
+
+        /**
+         * 追加一个关闭处理器.
+         *
+         * @param closeHandler 关闭处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+
+        /**
+         * 替换容器外点击处理器列表.
+         *
+         * @param outsideClickHandlers 容器外点击处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder setOutsideClickHandlers(
+                @NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers
+        );
+
+        /**
+         * 追加一个容器外点击处理器.
+         *
+         * @param outsideClickHandler 容器外点击处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+
+        /**
+         * 设置玩家主动关闭时要解析的后备 Window.
+         *
+         * @param fallbackWindow 后备 Window 来源
+         * @return 此 Builder
+         */
+        @NotNull Builder setFallbackWindow(
+                @NotNull Supplier<? extends @Nullable Window> fallbackWindow
+        );
+
+        /**
+         * 设置玩家主动关闭时要打开的固定后备 Window.
+         *
+         * @param fallbackWindow 后备 Window, null 表示不打开后备 Window
+         * @return 此 Builder
+         */
+        default @NotNull Builder setFallbackWindow(@Nullable Window fallbackWindow) {
+            return this.setFallbackWindow(() -> fallbackWindow);
+        }
+
+        /**
+         * 设置初始服务器窗口状态.
+         *
+         * @param windowState 初始状态
+         * @return 此 Builder
+         */
+        @NotNull Builder setWindowState(int windowState);
+
+        /**
+         * 替换客户端状态确认处理器列表.
+         *
+         * @param handlers 状态确认处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder setWindowStateChangeHandlers(
+                @NotNull List<? extends Consumer<? super Integer>> handlers
+        );
+
+        /**
+         * 追加一个客户端状态确认处理器.
+         *
+         * @param handler 状态确认处理器
+         * @return 此 Builder
+         */
+        @NotNull Builder addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
+
+        /**
+         * 设置光标显示转换器.
+         *
+         * @param cursorVisualizer 光标显示转换器
+         * @return 此 Builder
+         */
+        @NotNull Builder setCursorVisualizer(
+                @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
+        );
+
+        /**
+         * 替换创建完成后依次执行的 Window 修改器列表.
+         *
+         * @param modifiers Window 修改器
+         * @return 此 Builder
+         */
+        @NotNull Builder setModifiers(@NotNull List<? extends Consumer<? super Window>> modifiers);
+
+        /**
+         * 追加一个创建完成后执行的 Window 修改器.
+         *
+         * @param modifier Window 修改器
+         * @return 此 Builder
+         */
+        @NotNull Builder addModifier(@NotNull Consumer<? super Window> modifier);
+
+        /**
+         * 创建独立的 Builder 副本.
+         * 可变处理器列表会被复制, 已引用的 GUI 与函数对象保持复用.
+         *
+         * @return Builder 副本
+         */
+        @NotNull Builder clone();
+
+        /**
+         * {@link #clone()} 的语义化别名.
+         *
+         * @return Builder 副本
+         */
+        default @NotNull Builder copy() {
+            return this.clone();
+        }
+
+        /**
+         * 使用已设置的查看者创建 Window.
+         *
+         * @return 新的未打开 Window
+         * @throws IllegalStateException 未设置查看者时抛出
+         */
+        @NotNull Window build();
+
+        /**
+         * 为指定查看者创建 Window.
+         *
+         * @param viewer 查看者
+         * @return 新的未打开 Window
+         */
+        @NotNull Window build(@NotNull Player viewer);
+
+        /**
+         * 为指定查看者创建并请求打开 Window.
+         *
+         * @param viewer 查看者
+         * @return 打开请求的提交结果
+         */
+        default @NotNull CompletionStage<OpenResult> open(@NotNull Player viewer) {
+            return this.build(viewer).open();
+        }
+    }
 }

@@ -2,9 +2,8 @@ package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.momirealms.sparrow.ui.scheduler.BukkitSchedulerAdapter;
-import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
-import org.bukkit.World;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
@@ -20,7 +19,8 @@ public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
-    private SchedulerAdapter<World> scheduler;
+    private BukkitSchedulerAdapter scheduler;
+    private WindowManager windowManager;
     private boolean fireBukkitInventoryEvents = true;
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
     private final List<Runnable> disableHandlers = new ArrayList<>();
@@ -55,7 +55,7 @@ public class SparrowUI implements Listener {
 
         try {
             if (classLoader instanceof ConfiguredPluginClassLoader pluginClassLoader) {
-                return Optional.of(pluginClassLoader.getPlugin());
+                return Optional.ofNullable(pluginClassLoader.getPlugin());
             }
         } catch (Throwable t) {
             t.printStackTrace();
@@ -80,6 +80,8 @@ public class SparrowUI implements Listener {
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
         this.scheduler = new BukkitSchedulerAdapter(plugin);
+        this.windowManager = WindowManager.create();
+        this.addDisableHandler(this.windowManager::shutdown);
     }
 
     /**
@@ -87,7 +89,7 @@ public class SparrowUI implements Listener {
      *
      * @return SparrowUI 调度器
      */
-    public SchedulerAdapter<World> scheduler() {
+    public BukkitSchedulerAdapter scheduler() {
         if (this.scheduler == null) {
             getPlugin();
         }
@@ -168,5 +170,17 @@ public class SparrowUI implements Listener {
                 }
             }
         }
+    }
+
+    /**
+     * 获取当前插件类加载器拥有的 Window 管理器.
+     *
+     * @return Window 管理器
+     */
+    public WindowManager windowManager() {
+        if (this.windowManager == null) {
+            this.getPlugin();
+        }
+        return this.windowManager;
     }
 }
