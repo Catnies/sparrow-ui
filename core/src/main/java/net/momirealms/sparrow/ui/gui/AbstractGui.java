@@ -65,6 +65,11 @@ abstract non-sealed class AbstractGui implements Gui {
         this.publish(observers);
     }
 
+    /**
+     * 在锁外完成元素生成, 再在一次短锁中提交变更并发布订阅快照.
+     *
+     * <p>这样既不让用户提供的 Supplier 占用 GUI 锁, 也保证生成失败时不会留下部分更新.</p>
+     */
     @Override
     public final void setElements(
             @NotNull SlotSequence slots,
