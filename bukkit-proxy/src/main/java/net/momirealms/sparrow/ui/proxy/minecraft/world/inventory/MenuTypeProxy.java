@@ -1,0 +1,31 @@
+package net.momirealms.sparrow.ui.proxy.minecraft.world.inventory;
+
+import net.nyana.reflection.proxy.ASMProxyFactory;
+import net.nyana.reflection.proxy.annotation.FieldGetter;
+import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+
+/**
+ * 原版通用箱子菜单类型常量的访问代理.
+ */
+@ReflectionProxy(name = "net.minecraft.world.inventory.MenuType")
+public interface MenuTypeProxy {
+    MenuTypeProxy INSTANCE = ASMProxyFactory.create(MenuTypeProxy.class);
+
+    @FieldGetter(name = "GENERIC_9x1", isStatic = true)
+    Object generic9x1();
+
+    @FieldGetter(name = "GENERIC_9x2", isStatic = true)
+    Object generic9x2();
+
+    @FieldGetter(name = "GENERIC_9x3", isStatic = true)
+    Object generic9x3();
+
+    @FieldGetter(name = "GENERIC_9x4", isStatic = true)
+    Object generic9x4();
+
+    @FieldGetter(name = "GENERIC_9x5", isStatic = true)
+    Object generic9x5();
+
+    @FieldGetter(name = "GENERIC_9x6", isStatic = true)
+    Object generic9x6();
+}

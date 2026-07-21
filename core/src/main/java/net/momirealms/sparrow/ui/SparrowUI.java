@@ -77,6 +77,7 @@ public class SparrowUI implements Listener {
             throw new IllegalStateException("Plugin is already set");
         }
 
+        BukkitProxyInstaller.setUp();
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
         this.scheduler = new BukkitSchedulerAdapter(plugin);

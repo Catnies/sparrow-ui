@@ -1,11 +1,12 @@
 package net.momirealms.sparrow.ui.util;
 
 import com.google.gson.JsonObject;
-import net.nyana.reflection.clazz.NyanaClass;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class VersionHelper {
     private VersionHelper() {}
@@ -25,7 +26,7 @@ public final class VersionHelper {
     private static final boolean v26_1_2;
     private static final boolean v26_2;
 
-    private static final Class<?> UNOBFUSCATED_CLAZZ = NyanaClass.find(
+    private static final Class<?> UNOBFUSCATED_CLAZZ = ReflectionUtils.getClazz(
             "net.minecraft.obfuscate.DontObfuscate", // 因为无混淆版本没有这个类所以说多写几个防止找不到了
             "net.minecraft.data.Main",
             "net.minecraft.server.Main",
@@ -124,36 +125,25 @@ public final class VersionHelper {
         return version;
     }
 
-    private static boolean exists(String... classNames) {
-        for (String className : classNames) {
-            try {
-                Class.forName(className.replace("{}", "."), false, VersionHelper.class.getClassLoader());
-                return true;
-            } catch (ClassNotFoundException ignored) {
-            }
-        }
-        return false;
-    }
-
     private static boolean checkMojMap() {
         // Check if the server is Mojmap
-        return exists("net.neoforged.art.internal.RenamerImpl");
+        return ReflectionUtils.classExists("net.neoforged.art.internal.RenamerImpl");
     }
 
     private static boolean checkFolia() {
-        return exists("io.papermc.paper.threadedregions.RegionizedServer");
+        return ReflectionUtils.classExists("io.papermc.paper.threadedregions.RegionizedServer");
     }
 
     private static boolean checkPaper() {
-        return exists("io.papermc.paper.adventure.PaperAdventure");
+        return ReflectionUtils.classExists("io.papermc.paper.adventure.PaperAdventure");
     }
 
     private static boolean checkLeaves() {
-        return exists("org.leavesmc.leaves.bot.BotList");
+        return ReflectionUtils.classExists("org.leavesmc.leaves.bot.BotList");
     }
 
     private static boolean checkCanvas() {
-        return exists("io.canvasmc.canvas.Config");
+        return ReflectionUtils.classExists("io.canvasmc.canvas.Config");
     }
 
     public static boolean isFolia() {
@@ -190,5 +180,28 @@ public final class VersionHelper {
 
     public static boolean isOrAbove26_2() {
         return v26_2;
+    }
+
+    /**
+     * 收集当前服务端所具备的补丁标识.
+     * 该列表会用于初始化代理层, 以便根据具体发行版差异加载不同兼容逻辑.
+     *
+     * @return 当前服务端命中的补丁名称列表, 如 `paper`, `folia` 等
+     */
+    public static List<String> getPatches() {
+        List<String> patches = new ArrayList<>();
+        if (isPaper()) {
+            patches.add("paper");
+        }
+        if (isFolia()) {
+            patches.add("folia");
+        }
+        if (isLeaves()) {
+            patches.add("leaves");
+        }
+        if (isCanvas()) {
+            patches.add("canvas");
+        }
+        return patches;
     }
 }
