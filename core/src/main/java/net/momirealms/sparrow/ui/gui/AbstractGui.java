@@ -7,6 +7,8 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
+
 /**
  * 保存 GUI 的槽位元素, 背景, 冻结状态和逐槽订阅.
  *
@@ -50,6 +52,7 @@ abstract non-sealed class AbstractGui implements Gui {
 
     @Override
     public final void setElement(int slot, @NotNull SlotElement element) {
+        Objects.requireNonNull(element, "element");
         SlotObserver[] observers;
         synchronized (this) {
             SlotElement previous = this.elements[slot];
@@ -203,6 +206,7 @@ abstract non-sealed class AbstractGui implements Gui {
 
     @Override
     public final synchronized @NotNull GuiSlotAttachment attach(int slot, @NotNull Observer<? super Gui> observer) {
+        Objects.requireNonNull(observer, "observer");
         SlotObserver head = this.observers[slot];
         SlotObserver subscription = new SlotObserver(this, slot, observer, head);
         if (head != null) {
