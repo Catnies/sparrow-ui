@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.internal.network;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import net.momirealms.sparrow.ui.internal.menu.ClientMenuPrediction;
 import net.momirealms.sparrow.ui.internal.menu.IncomingPacketQueue;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.minecraft.network.protocol.Packet;
@@ -374,7 +375,8 @@ public final class PacketListener implements Listener, AutoCloseable {
                     packet.stateId(),
                     packet.slotNum(),
                     clickType,
-                    hotbarButton
+                    hotbarButton,
+                    ClientMenuPrediction.from(packet)
             );
         }
 
@@ -407,7 +409,8 @@ public final class PacketListener implements Listener, AutoCloseable {
                     packet.stateId(),
                     packet.slotNum(),
                     clickType,
-                    phase
+                    phase,
+                    ClientMenuPrediction.from(packet)
             );
         }
     }

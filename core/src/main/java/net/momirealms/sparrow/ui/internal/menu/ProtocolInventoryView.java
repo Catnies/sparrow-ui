@@ -15,6 +15,8 @@ import org.jetbrains.annotations.Nullable;
 
 import net.minecraft.world.SimpleContainer;
 
+import java.util.BitSet;
+
 /**
  * 为 Bukkit 事件提供当前协议快照, 但不把事件对视图的写入直接应用到玩家物品栏.
  *
@@ -28,8 +30,10 @@ final class ProtocolInventoryView implements InventoryView {
     private final Player player;
     private final Inventory top;
     private final ItemStack[] items;
+    private final BitSet touchedSlots = new BitSet();
     private Component title = Component.empty();
     private ItemStack cursor = ItemStack.empty();
+    private boolean cursorTouched;
 
     /**
      * 创建一个初始为空的协议视图.
@@ -47,38 +51,82 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 用完整同步计划替换事件可见的槽位、光标和标题.
+     * 用完整权威状态替换事件可见的槽位、光标和标题.
      *
-     * @param full 完整权威状态
+     * @param slots 完整权威槽位
+     * @param cursor 权威光标
      * @param title 当前标题
      */
-    void apply(@NotNull SyncPlan.Full full, @NotNull Component title) {
+    void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
         this.title = title;
         for (int index = 0; index < this.items.length; index++) {
-            this.items[index] = ItemSnapshots.copyOrEmpty(full.slots().get(index));
+            this.items[index] = ItemSnapshots.copyOrEmpty(slots[index]);
         }
-        this.cursor = ItemSnapshots.copyOrEmpty(full.carried());
+        this.cursor = ItemSnapshots.copyOrEmpty(cursor);
+        this.touchedSlots.clear();
+        this.cursorTouched = false;
         this.refreshTop();
     }
 
     /**
-     * 将增量或完整计划映射到事件可见的协议镜像.
+     * 将权威增量重新投影到事件可见的协议镜像.
      *
-     * @param plan 已发送给客户端的同步计划
+     * @param slots 当前权威槽位数组
+     * @param changedSlots 已发送变化或被 Bukkit 事件触碰的槽位
+     * @param cursor 当前权威光标
+     * @param cursorChanged 是否需要恢复权威光标投影
      */
-    void apply(@NotNull SyncPlan plan) {
-        switch (plan) {
-            case SyncPlan.None _ -> {
+    void apply(
+            ItemStack @NotNull [] slots,
+            @NotNull BitSet changedSlots,
+            @NotNull ItemStack cursor,
+            boolean cursorChanged
+    ) {
+        for (
+                int slot = changedSlots.nextSetBit(0);
+                slot >= 0;
+                slot = changedSlots.nextSetBit(slot + 1)
+        ) {
+            this.items[slot] = ItemSnapshots.copyOrEmpty(slots[slot]);
+            if (slot < this.top.getSize()) {
+                this.top.setItem(slot, this.items[slot]);
             }
-            case SyncPlan.Delta delta -> {
-                for (var entry : delta.slots().entrySet()) {
-                    this.items[entry.getKey()] = ItemSnapshots.copyOrEmpty(entry.getValue());
-                }
-                delta.carried().ifPresent(item -> this.cursor = ItemSnapshots.copyOrEmpty(item));
-                this.refreshTop();
-            }
-            case SyncPlan.Full full -> this.apply(full, this.title);
         }
+        if (cursorChanged) {
+            this.cursor = ItemSnapshots.copyOrEmpty(cursor);
+        }
+    }
+
+    /**
+     * 返回事件视图当前展示的 Adventure 标题.
+     *
+     * @return 当前标题
+     */
+    @Override
+    public @NotNull Component title() {
+        return this.title;
+    }
+
+    /**
+     * 取出并清空 Bukkit 事件写入过的槽位.
+     *
+     * @return 需要恢复权威投影的槽位
+     */
+    @NotNull BitSet takeTouchedSlots() {
+        BitSet touched = (BitSet) this.touchedSlots.clone();
+        this.touchedSlots.clear();
+        return touched;
+    }
+
+    /**
+     * 取出并清空 Bukkit 事件是否写入过光标的标记.
+     *
+     * @return 需要恢复权威光标投影时返回 {@code true}
+     */
+    boolean takeCursorTouched() {
+        boolean touched = this.cursorTouched;
+        this.cursorTouched = false;
+        return touched;
     }
 
     @Override
@@ -108,6 +156,7 @@ final class ProtocolInventoryView implements InventoryView {
     public void setItem(int rawSlot, @Nullable ItemStack item) {
         if (rawSlot >= 0 && rawSlot < this.items.length) {
             this.items[rawSlot] = ItemSnapshots.copyOrEmpty(item);
+            this.touchedSlots.set(rawSlot);
             if (rawSlot < this.top.getSize()) {
                 this.top.setItem(rawSlot, this.items[rawSlot]);
             }
@@ -128,6 +177,7 @@ final class ProtocolInventoryView implements InventoryView {
     @Override
     public void setCursor(@Nullable ItemStack item) {
         this.cursor = ItemSnapshots.copyOrEmpty(item);
+        this.cursorTouched = true;
     }
 
     @Override

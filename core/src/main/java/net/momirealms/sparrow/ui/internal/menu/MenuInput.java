@@ -7,8 +7,8 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 从 NMS 包转换出的稳定入站消息.
  *
- * <p>客户端预测的槽位和光标不进入领域消息, 也绝不作为权威状态. Window 只根据这些操作意图
- * 更新自身的权威渲染结果.</p>
+ * <p>客户端预测以不透明的 {@link MenuPrediction} 随交互传递, 但不作为权威状态. Window
+ * 只根据操作意图更新自身的权威渲染结果, Paper 菜单 Adapter 只用预测缩小远端复核范围.</p>
  */
 @ApiStatus.Internal
 public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close, MenuInput.BundleSelection, MenuInput.Pong {
@@ -40,6 +40,13 @@ public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close
          * @return 容器状态编号
          */
         int stateId();
+
+        /**
+         * 返回客户端声称已经改变的远端容器预测.
+         *
+         * @return 非权威客户端预测
+         */
+        @NotNull MenuPrediction prediction();
     }
 
     /**
@@ -50,14 +57,20 @@ public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close
      * @param slot 原始槽位编号
      * @param clickType Bukkit 点击类型
      * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
+     * @param prediction 客户端声称的非权威远端状态
      */
     record Click(
             int containerId,
             int stateId,
             int slot,
             @NotNull ClickType clickType,
-            int hotbarButton
+            int hotbarButton,
+            @NotNull MenuPrediction prediction
     ) implements Interaction {
+
+        public Click(int containerId, int stateId, int slot, @NotNull ClickType clickType, int hotbarButton) {
+            this(containerId, stateId, slot, clickType, hotbarButton, MenuPrediction.empty());
+        }
     }
 
     /**
@@ -68,14 +81,26 @@ public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close
      * @param slot 当前步骤携带的原始槽位编号
      * @param clickType 拖拽使用的 Bukkit 点击类型
      * @param phase 手势阶段
+     * @param prediction 客户端声称的非权威远端状态
      */
     record DragStep(
             int containerId,
             int stateId,
             int slot,
             @NotNull ClickType clickType,
-            @NotNull DragPhase phase
+            @NotNull DragPhase phase,
+            @NotNull MenuPrediction prediction
     ) implements Interaction {
+
+        public DragStep(
+                int containerId,
+                int stateId,
+                int slot,
+                @NotNull ClickType clickType,
+                @NotNull DragPhase phase
+        ) {
+            this(containerId, stateId, slot, clickType, phase, MenuPrediction.empty());
+        }
     }
 
     /**

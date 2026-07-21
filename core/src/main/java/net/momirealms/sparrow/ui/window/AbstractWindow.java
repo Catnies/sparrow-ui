@@ -7,11 +7,9 @@ import net.momirealms.sparrow.ui.ClickEvent;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
-import net.momirealms.sparrow.ui.internal.menu.ContainerStateTracker;
 import net.momirealms.sparrow.ui.internal.menu.IncomingPacketQueue;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
-import net.momirealms.sparrow.ui.internal.menu.SyncPlan;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
@@ -24,7 +22,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
@@ -44,12 +41,14 @@ import java.util.function.Supplier;
 abstract class AbstractWindow implements Window {
     private static final int INCOMING_CAPACITY = 256;
     private static final int INCOMING_PER_TICK = 128;
+    private static final int PLAYER_INVENTORY_AUDIT_INTERVAL = 20;
     private static final long PING_TIMEOUT_MILLIS = 30_000;
+    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet();
 
     private final WindowManager manager;
     private final Player viewer;
     private final WindowLayout layout;
-    private final BitSet dirtySlots;
+    private final Object dirtyLock = new Object();
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();
     private final RenderContext cursorRenderContext;
     private final Map<Integer, PendingWindowState> pendingWindowStates = new HashMap<>();
@@ -70,12 +69,15 @@ abstract class AbstractWindow implements Window {
 
     private @Nullable IncomingPacketQueue<MenuInput> incoming;
     private @Nullable MenuHandle menu;
-    private @Nullable ContainerStateTracker containerState;
     private @Nullable DisplayedSlotPath[] paths;
     private @Nullable ItemStack[] localSlots;
     private @Nullable SchedulerTask tickTask;
     private @Nullable Component pendingReopenTitle;
+    private BitSet dirtySlots;
+    private BitSet spareDirtySlots;
     private long windowTick;
+    private int playerInventoryVersion;
+    private boolean cursorDirty;
     private boolean forceFull;
 
     AbstractWindow(
@@ -106,6 +108,7 @@ abstract class AbstractWindow implements Window {
         this.windowStateChangeHandlers = windowStateChangeHandlers;
         this.cursorVisualizer = cursorVisualizer;
         this.dirtySlots = new BitSet(layout.size());
+        this.spareDirtySlots = new BitSet(layout.size());
         this.cursorRenderContext = RenderContext.cursor(this);
     }
 
@@ -348,7 +351,10 @@ abstract class AbstractWindow implements Window {
     public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
         Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
         this.manager.mutate(this,
-                () -> {this.cursorVisualizer = cursorVisualizer;this.forceFull = true;},
+                () -> {
+                    this.cursorVisualizer = cursorVisualizer;
+                    this.cursorDirty = true;
+                },
                 "Failed to update Window cursor visualizer"
         );
     }
@@ -374,14 +380,14 @@ abstract class AbstractWindow implements Window {
         if (windowSlot < 0 || windowSlot >= this.layout.size()) {
             return;
         }
-        synchronized (this.dirtySlots) {
+        synchronized (this.dirtyLock) {
             this.dirtySlots.set(windowSlot);
         }
     }
 
     /**
-     * 在查看者实体线程创建菜单、显示路径和初始协议快照.
-     * 所有资源在成功发送初始全量同步后才发布到字段, 失败时按相反方向回滚.
+     * 在查看者实体线程创建菜单、显示路径和初始协议状态.
+     * 所有资源在初始完整包成功排入 Netty event loop 后才发布到字段, 失败时按相反方向回滚.
      */
     void openOnEntity(long generation) {
         if (this.open) {
@@ -391,10 +397,15 @@ abstract class AbstractWindow implements Window {
         // 初始化本次打开的 generation 相关状态
         this.generation = generation;
         this.windowTick = 0;
+        this.cursorDirty = true;
         this.forceFull = true;
         this.pendingReopenTitle = null;
         this.clickInterpreter.reset();
         this.pendingWindowStates.clear();
+        synchronized (this.dirtyLock) {
+            this.dirtySlots.clear();
+            this.spareDirtySlots.clear();
+        }
         this.refreshTitleValueOnEntity();
 
         // 先在局部变量中构建资源, 避免半初始化状态对 tick 可见
@@ -405,7 +416,6 @@ abstract class AbstractWindow implements Window {
                 generation,
                 incoming
         );
-        ContainerStateTracker containerState = new ContainerStateTracker(menu.containerId(), generation);
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
         SchedulerTask tickTask = null;
@@ -429,27 +439,25 @@ abstract class AbstractWindow implements Window {
                 }
             }
 
-            // 先安排周期 tick, 再发送初始全量快照, 两者都成功才发布打开状态
-            ContainerStateTracker.PreparedSync initial = containerState.prepare(copySlots(localSlots), this.renderCursor(), true);
-            SyncPlan.Full full = (SyncPlan.Full) initial.plan();
+            // 构造路径会标记初始 dirty; 在 Full 前统一重渲染, 后续到达的通知留给首个 tick
+            this.renderDirtySlots(this.takeDirtySlots(), paths, localSlots);
+
+            // 先安排周期 tick, 再发送初始完整状态, 两者都成功才发布打开状态
             tickTask = this.manager.startTick(this);
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
             }
-            menu.open(this.title, full);
-            initial.commit();
+            menu.open(this.title, localSlots, this.renderCursor());
 
             this.incoming = incoming;
             this.menu = menu;
-            this.containerState = containerState;
             this.paths = paths;
             this.localSlots = localSlots;
             this.tickTask = tickTask;
+            this.playerInventoryVersion = menu.playerInventoryVersion();
             this.open = true;
+            this.cursorDirty = false;
             this.forceFull = false;
-            synchronized (this.dirtySlots) {
-                this.dirtySlots.clear();
-            }
         } catch (RuntimeException | Error throwable) {
             // 仅清理局部资源, 因为对象字段尚未发布这次打开状态
             if (tickTask != null) {
@@ -487,7 +495,6 @@ abstract class AbstractWindow implements Window {
         this.tickTask = null;
         this.incoming = null;
         this.menu = null;
-        this.containerState = null;
         this.paths = null;
         this.localSlots = null;
         this.pendingReopenTitle = null;
@@ -535,7 +542,6 @@ abstract class AbstractWindow implements Window {
         this.tickTask = null;
         this.incoming = null;
         this.menu = null;
-        this.containerState = null;
         this.paths = null;
         this.localSlots = null;
         this.pendingReopenTitle = null;
@@ -591,6 +597,7 @@ abstract class AbstractWindow implements Window {
                 this.handleInput(entry.packet());
             } catch (Throwable throwable) {
                 this.clickInterpreter.reset();
+                this.cursorDirty = true;
                 this.forceFull = true;
                 this.manager.report("Failed to process a Window interaction", throwable);
             }
@@ -602,7 +609,7 @@ abstract class AbstractWindow implements Window {
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
         this.invalidatePeriodicSlots();
-        this.refreshPlayerSlots();
+        this.refreshPlayerState();
         this.flush(false, null);
     }
 
@@ -659,34 +666,35 @@ abstract class AbstractWindow implements Window {
 
     /**
      * 校验容器状态、解释点击或拖拽步骤并分派给 GUI 或容器外处理器.
-     * 任一不可信或被取消的交互都会请求全量同步, 以重新建立客户端与服务端一致性.
+     * 不可信输入请求完整恢复, 合法或被 Bukkit 取消的输入只复核客户端预测涉及的槽位.
      */
     private void handleInteraction(MenuInput.Interaction interaction) {
-        if (this.containerState == null || !this.containerState.accepts(interaction.containerId(), interaction.stateId(), this.generation)) {
+        MenuHandle menu = this.menu;
+        if (menu == null || !menu.accepts(interaction)) {
             this.clickInterpreter.reset();
             this.forceFull = true;
             return;
         }
+        this.cursorDirty = true;
         ClickInterpreter.Result result = this.clickInterpreter.interpret(interaction, this.layout, this.generation);
         switch (result) {
             case ClickInterpreter.Pending _ -> {}
             case ClickInterpreter.Rejected _ -> this.forceFull = true;
-            case ClickInterpreter.SingleClick click -> this.handleSingleClick(click, this.containerState);
-            case ClickInterpreter.Drag drag -> this.handleDrag(drag, this.containerState);
+            case ClickInterpreter.SingleClick click -> this.handleSingleClick(click, menu);
+            case ClickInterpreter.Drag drag -> this.handleDrag(drag, menu);
         }
     }
 
     /**
      * 对已解释的单次点击执行 Bukkit 桥接、重入复验和 Item 分派.
      */
-    private void handleSingleClick(ClickInterpreter.SingleClick click, ContainerStateTracker state) {
+    private void handleSingleClick(ClickInterpreter.SingleClick click, MenuHandle menu) {
         long interactionGeneration = this.generation;
-        int interactionStateId = state.stateId();
+        int interactionStateId = menu.stateId();
         if (!this.manager.allowClick(this, click)) {
-            this.forceFull = true;
             return;
         }
-        if (!this.isInteractionCurrent(interactionGeneration, state, interactionStateId)) {
+        if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
         if (click.target() instanceof ClickInterpreter.GuiTarget(var windowSlot)) {
@@ -702,23 +710,20 @@ abstract class AbstractWindow implements Window {
                 click.target() == ClickInterpreter.OutsideTarget.INSTANCE
                         && !this.fireOutsideClick(click)
         ) {
-            this.forceFull = true;
             return;
         }
-        this.forceFull = true;
     }
 
     /**
      * 对已完成的 QUICK_CRAFT 执行 Bukkit 桥接、重入复验和逐槽 Item 分派.
      */
-    private void handleDrag(ClickInterpreter.Drag drag, ContainerStateTracker state) {
+    private void handleDrag(ClickInterpreter.Drag drag, MenuHandle menu) {
         long interactionGeneration = this.generation;
-        int interactionStateId = state.stateId();
+        int interactionStateId = menu.stateId();
         if (!this.manager.allowDrag(this, drag.clickType(), drag.slots())) {
-            this.forceFull = true;
             return;
         }
-        if (!this.isInteractionCurrent(interactionGeneration, state, interactionStateId)) {
+        if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
         for (int index = 0; index < drag.slots().size(); index++) {
@@ -729,7 +734,6 @@ abstract class AbstractWindow implements Window {
                 );
             }
         }
-        this.forceFull = true;
     }
 
     /**
@@ -801,68 +805,71 @@ abstract class AbstractWindow implements Window {
         }
     }
 
-    private void refreshPlayerSlots() {
+    /**
+     * 用 NMS 版本门控玩家物品栏扫描, 并低频审计可能绕过版本信号的槽位与光标变化.
+     */
+    private void refreshPlayerState() {
+        MenuHandle menu = this.menu;
         ItemStack[] localSlots = this.localSlots;
-        if (localSlots == null) {
+        if (menu == null || localSlots == null) {
             return;
         }
+
+        int currentVersion = menu.playerInventoryVersion();
+        boolean auditDue = this.windowTick % AbstractWindow.PLAYER_INVENTORY_AUDIT_INTERVAL == 0;
+        if (currentVersion == this.playerInventoryVersion && !auditDue) {
+            return;
+        }
+        this.playerInventoryVersion = currentVersion;
+        if (auditDue) {
+            this.cursorDirty = true;
+        }
+
         for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
             if (this.layout.route(windowSlot) instanceof WindowLayout.PlayerRoute(var inventorySlot)) {
                 ItemStack playerItem = this.viewer.getInventory().getItem(inventorySlot);
-                localSlots[windowSlot] = ItemSnapshots.copyOrEmpty(playerItem);
+                if (!AbstractWindow.sameItem(localSlots[windowSlot], playerItem)) {
+                    localSlots[windowSlot] = ItemSnapshots.copyOrEmpty(playerItem);
+                    this.notifyUpdate(windowSlot);
+                }
             }
         }
     }
 
     /**
-     * 汇总脏槽位、光标和标题变化并生成最小同步计划.
-     * 标题变化必须走重开窗口和全量内容同步, 发送失败时保留状态以便下一 tick 重试.
+     * 汇总 dirty 槽位、光标和标题变化并交给菜单 Adapter 收敛远端状态.
+     * 标题变化必须走重开窗口和完整内容同步, 发送失败时保留状态以便下一 tick 重试.
      */
     private void flush(boolean forceFull, @Nullable Component reopenTitle) {
         MenuHandle menu = this.menu;
-        ContainerStateTracker state = this.containerState;
         ItemStack[] localSlots = this.localSlots;
         DisplayedSlotPath[] paths = this.paths;
-        if (!this.open || menu == null || state == null || localSlots == null || paths == null) {
+        if (!this.open || menu == null || localSlots == null || paths == null) {
             return;
         }
 
         // 先消费跨线程写入的失效集合, 再在实体线程渲染最终槽位快照
         BitSet dirty = this.takeDirtySlots();
-        for (
-                int windowSlot = dirty.nextSetBit(0);
-                windowSlot >= 0;
-                windowSlot = dirty.nextSetBit(windowSlot + 1)
-        ) {
-            DisplayedSlotPath path = paths[windowSlot];
-            if (path != null) {
-                localSlots[windowSlot] = this.render(path, windowSlot, localSlots[windowSlot]);
-            }
-        }
+        this.renderDirtySlots(dirty, paths, localSlots);
 
         Component effectiveReopenTitle = reopenTitle == null ? this.pendingReopenTitle : reopenTitle;
         boolean full = forceFull || this.forceFull || effectiveReopenTitle != null;
+        if (dirty.isEmpty() && !this.cursorDirty && !full) {
+            return;
+        }
+
         try {
-            // 先准备计划, 发送成功后才提交客户端容器状态
-            ContainerStateTracker.PreparedSync prepared = state.prepare(
-                    copySlots(localSlots),
-                    this.renderCursor(),
-                    full
-            );
-            SyncPlan plan = prepared.plan();
-            if (plan instanceof SyncPlan.None) {
-                this.forceFull = false;
-                return;
-            }
+            ItemStack cursor = this.renderCursor();
             if (effectiveReopenTitle != null) {
-                menu.updateTitle(effectiveReopenTitle, (SyncPlan.Full) plan);
+                menu.updateTitle(effectiveReopenTitle, localSlots, cursor);
             } else {
-                menu.send(plan);
+                menu.synchronize(localSlots, dirty, cursor, this.cursorDirty, full);
             }
-            prepared.commit();
+            this.cursorDirty = false;
             this.forceFull = false;
             this.pendingReopenTitle = null;
         } catch (RuntimeException | Error throwable) {
+            this.cursorDirty = true;
             this.forceFull = true;
             if (effectiveReopenTitle != null) {
                 this.pendingReopenTitle = effectiveReopenTitle;
@@ -877,6 +884,19 @@ abstract class AbstractWindow implements Window {
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window slot " + windowSlot, throwable);
             return ItemSnapshots.copyOrEmpty(fallback);
+        }
+    }
+
+    private void renderDirtySlots(BitSet dirty, DisplayedSlotPath[] paths, ItemStack[] localSlots) {
+        for (
+                int windowSlot = dirty.nextSetBit(0);
+                windowSlot >= 0;
+                windowSlot = dirty.nextSetBit(windowSlot + 1)
+        ) {
+            DisplayedSlotPath path = paths[windowSlot];
+            if (path != null) {
+                localSlots[windowSlot] = this.render(path, windowSlot, localSlots[windowSlot]);
+            }
         }
     }
 
@@ -975,21 +995,24 @@ abstract class AbstractWindow implements Window {
         return paths[windowSlot];
     }
 
-    private boolean isInteractionCurrent(
-            long interactionGeneration,
-            ContainerStateTracker interactionState,
-            int interactionStateId
-    ) {
+    private boolean isInteractionCurrent(long interactionGeneration, MenuHandle interactionMenu, int interactionStateId) {
         return this.open
                 && this.generation == interactionGeneration
-                && this.containerState == interactionState
-                && interactionState.stateId() == interactionStateId;
+                && this.menu == interactionMenu
+                && interactionMenu.stateId() == interactionStateId;
     }
 
     private BitSet takeDirtySlots() {
-        synchronized (this.dirtySlots) {
-            BitSet dirty = (BitSet) this.dirtySlots.clone();
+        synchronized (this.dirtyLock) {
+            if (this.dirtySlots.isEmpty()) {
+                return AbstractWindow.EMPTY_DIRTY_SLOTS;
+            }
+
+            // 交换活动与备用缓冲, 使通知线程可以立即继续写入下一批 dirty 槽位
+            BitSet dirty = this.dirtySlots;
+            this.dirtySlots = this.spareDirtySlots;
             this.dirtySlots.clear();
+            this.spareDirtySlots = dirty;
             return dirty;
         }
     }
@@ -1004,12 +1027,11 @@ abstract class AbstractWindow implements Window {
         }
     }
 
-    private static List<ItemStack> copySlots(ItemStack[] slots) {
-        ArrayList<ItemStack> copies = new ArrayList<>(slots.length);
-        for (int index = 0; index < slots.length; index++) {
-            copies.add(ItemSnapshots.copyOrEmpty(slots[index]));
+    private static boolean sameItem(@NotNull ItemStack left, @Nullable ItemStack right) {
+        if (right == null || right.isEmpty()) {
+            return left.isEmpty();
         }
-        return List.copyOf(copies);
+        return !left.isEmpty() && left.getAmount() == right.getAmount() && left.isSimilar(right);
     }
 
     /**

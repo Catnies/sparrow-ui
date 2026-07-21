@@ -15,6 +15,7 @@ import net.minecraft.network.protocol.game.ClientboundSetCursorItemPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.RemoteSlot;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
@@ -25,6 +26,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 
 /**
@@ -70,8 +72,8 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
     /**
      * 一个会话专属的 NMS 菜单代理.
      *
-     * <p>代理只向 Bukkit 暴露 {@link ProtocolInventoryView}, 并禁用 NMS 的自动同步.
-     * Window 通过 {@link SyncPlan} 成为唯一的客户端状态发送者.</p>
+     * <p>代理只向 Bukkit 暴露 {@link ProtocolInventoryView}, 并禁用 NMS 的自动同步. 此 Adapter
+     * 使用 Paper {@link RemoteSlot} 维护远端镜像, Window 只提交权威状态和 dirty 候选.</p>
      */
     private static final class PaperMenuHandle implements MenuHandle {
         private final PacketListener packets;
@@ -84,9 +86,13 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         private final AbstractContainerMenu replacedMenu;
         private final ProtocolInventoryView view;
         private final MenuProxy proxy;
+        private final RemoteSlot[] remoteSlots;
+        private final RemoteSlot remoteCursor;
+        private final BitSet predictedSlots = new BitSet();
 
         private @Nullable PacketListener.Session session;
         private net.minecraft.world.item.ItemStack carried = net.minecraft.world.item.ItemStack.EMPTY;
+        private boolean predictedCarried;
         private boolean committed;
         private boolean closed;
 
@@ -100,13 +106,18 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             this.packets = packets;
             this.player = player;
             this.serverPlayer = ((CraftPlayer) player).getHandle();
-            this.menuType = menuType(topSlots);
+            this.menuType = PaperMenuFactory.menuType(topSlots);
             this.containerId = this.serverPlayer.nextContainerCounter();
             this.generation = generation;
             this.incoming = incoming;
             this.replacedMenu = this.serverPlayer.containerMenu;
             this.view = new ProtocolInventoryView(player, topSlots);
             this.proxy = new MenuProxy();
+            this.remoteSlots = new RemoteSlot[topSlots + 36];
+            for (int slot = 0; slot < this.remoteSlots.length; slot++) {
+                this.remoteSlots[slot] = this.createRemoteSlot();
+            }
+            this.remoteCursor = this.createRemoteSlot();
         }
 
         @Override
@@ -119,18 +130,51 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             return this.view;
         }
 
+        @Override
+        public int playerInventoryVersion() {
+            return this.serverPlayer.getInventory().getTimesChanged();
+        }
+
+        @Override
+        public int stateId() {
+            return this.proxy.getStateId();
+        }
+
         /**
-         * 在安装入站捕获会话后替换服务端菜单, 再原子地发送打开与完整状态数据包.
+         * 校验客户端操作基于当前 state id 后, 再吸收其非权威预测.
+         */
+        @Override
+        public boolean accepts(@NotNull MenuInput.Interaction interaction) {
+            this.checkCommitted();
+            if (interaction.containerId() != this.containerId) {
+                return false;
+            }
+            if (interaction.stateId() != this.proxy.getStateId()) {
+                return false;
+            }
+            if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
+                this.predictedCarried |= prediction.apply(
+                        this.remoteSlots,
+                        this.remoteCursor,
+                        this.predictedSlots
+                );
+            }
+            return true;
+        }
+
+        /**
+         * 在安装入站捕获会话后替换服务端菜单, 再把打开与完整状态作为同一网络批次排队.
          *
          * <p>若写包失败, 必须恢复被替换的菜单并回滚捕获会话, 以免后续包落到失效 Window.</p>
          */
         @Override
-        public void open(@NotNull Component title, @NotNull SyncPlan.Full initialState) {
+        public void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
             this.checkUsable();
+            this.checkSlotCount(slots);
 
-            // 先建立 Bukkit 事件可见的协议镜像和待发送的数据包.
-            this.view.apply(initialState, title);
-            List<Packet<? super ClientGamePacketListener>> outgoing = this.openPackets(title, initialState);
+            // 先冻结完整内容, 使包、远端镜像与 Bukkit 事件视图共享同一份权威输入
+            FullContents full = this.prepareFull(slots, cursor);
+            List<Packet<? super ClientGamePacketListener>> outgoing = this.openPackets(title, full);
 
             // 先开始捕获入站容器包, 再把服务端活动菜单切换到代理.
             PacketListener.Session openedSession = this.packets.open(
@@ -142,10 +186,12 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             this.session = openedSession;
             this.serverPlayer.containerMenu = this.proxy;
 
-            // 发送成功后提交会话; 失败则完整恢复打开前状态.
+            // 网络批次成功排入 event loop 后提交会话; 同步失败则完整恢复打开前状态
             try {
                 this.packets.send(this.player, outgoing);
                 openedSession.commit();
+                this.commitFull(full);
+                this.view.initialize(slots, cursor, title);
                 this.committed = true;
             } catch (RuntimeException | Error throwable) {
                 openedSession.rollback();
@@ -159,21 +205,41 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
          * {@inheritDoc}
          */
         @Override
-        public void send(@NotNull SyncPlan plan) {
+        public void synchronize(
+                ItemStack @NotNull [] slots,
+                @NotNull BitSet dirtySlots,
+                @NotNull ItemStack cursor,
+                boolean cursorDirty,
+                boolean forceFull
+        ) {
             this.checkCommitted();
-            this.view.apply(plan);
-            this.packets.send(this.player, this.packetsFor(plan));
+            this.checkSlotCount(slots);
+            if (forceFull) {
+                FullContents full = this.prepareFull(slots, cursor);
+                this.packets.send(this.player, List.of(full.packet()));
+                this.commitFull(full);
+                this.view.initialize(slots, cursor, this.view.title());
+                return;
+            }
+            this.synchronizeChanges(slots, dirtySlots, cursor, cursorDirty);
         }
 
         /**
          * 重发 OpenScreen 和完整内容, 因为客户端没有独立的标题更新包.
          */
         @Override
-        public void updateTitle(@NotNull Component title, @NotNull SyncPlan.Full fullState) {
+        public void updateTitle(
+                @NotNull Component title,
+                ItemStack @NotNull [] slots,
+                @NotNull ItemStack cursor
+        ) {
             this.checkCommitted();
-            this.view.apply(fullState, title);
+            this.checkSlotCount(slots);
+            FullContents full = this.prepareFull(slots, cursor);
             this.serverPlayer.containerMenu = this.proxy;
-            this.packets.send(this.player, this.openPackets(title, fullState));
+            this.packets.send(this.player, this.openPackets(title, full));
+            this.commitFull(full);
+            this.view.initialize(slots, cursor, title);
         }
 
         /**
@@ -260,62 +326,133 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         /**
          * 构造一次打开或标题刷新所需的完整协议序列.
          */
-        private List<Packet<? super ClientGamePacketListener>> openPackets(
-                Component title,
-                SyncPlan.Full fullState
-        ) {
+        private List<Packet<? super ClientGamePacketListener>> openPackets(Component title, FullContents full) {
             ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(2);
             outgoing.add(new ClientboundOpenScreenPacket(
                     this.containerId,
                     this.menuType,
                     PaperAdventure.asVanilla(title)
             ));
-            outgoing.add(this.fullPacket(fullState));
+            outgoing.add(full.packet());
             return List.copyOf(outgoing);
-        }
-
-        private List<Packet<? super ClientGamePacketListener>> packetsFor(SyncPlan plan) {
-            return switch (plan) {
-                case SyncPlan.None _ -> List.of();
-                case SyncPlan.Full full -> List.of(this.fullPacket(full));
-                case SyncPlan.Delta delta -> this.deltaPackets(delta);
-            };
-        }
-
-        private ClientboundContainerSetContentPacket fullPacket(SyncPlan.Full full) {
-            ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(full.slots().size());
-            for (int index = 0; index < full.slots().size(); index++) {
-                items.add(toNms(full.slots().get(index)));
-            }
-            this.carried = toNms(full.carried());
-            return new ClientboundContainerSetContentPacket(
-                    this.containerId,
-                    full.revision().stateId(),
-                    List.copyOf(items),
-                    this.carried.copy()
-            );
         }
 
         /**
-         * 将槽位增量与可选光标增量保持在同一次网络批次中.
+         * 冻结一次完整状态并推进 NMS 菜单 state id.
          */
-        private List<Packet<? super ClientGamePacketListener>> deltaPackets(SyncPlan.Delta delta) {
-            ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(
-                    delta.slots().size() + (delta.carried().isPresent() ? 1 : 0)
-            );
-            for (var entry : delta.slots().entrySet()) {
-                outgoing.add(new ClientboundContainerSetSlotPacket(
-                        this.containerId,
-                        delta.revision().stateId(),
-                        entry.getKey(),
-                        toNms(entry.getValue())
-                ));
+        private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
+            ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(slots.length);
+            for (int index = 0; index < slots.length; index++) {
+                items.add(PaperMenuFactory.toNms(slots[index]));
             }
-            delta.carried().ifPresent(item -> {
-                this.carried = toNms(item);
-                outgoing.add(new ClientboundSetCursorItemPacket(this.carried.copy()));
-            });
-            return List.copyOf(outgoing);
+            List<net.minecraft.world.item.ItemStack> frozenItems = List.copyOf(items);
+            net.minecraft.world.item.ItemStack frozenCursor = PaperMenuFactory.toNms(cursor);
+            ClientboundContainerSetContentPacket packet = new ClientboundContainerSetContentPacket(
+                    this.containerId,
+                    this.proxy.incrementStateId(),
+                    frozenItems,
+                    frozenCursor
+            );
+            return new FullContents(frozenItems, frozenCursor, packet);
+        }
+
+        /**
+         * 仅比较 dirty 槽位、客户端预测槽位和可选光标, 并在一个网络批次中提交差异.
+         */
+        private void synchronizeChanges(
+                ItemStack[] slots,
+                BitSet dirtySlots,
+                ItemStack cursor,
+                boolean cursorDirty
+        ) {
+            BitSet candidates = (BitSet) dirtySlots.clone();
+            candidates.or(this.predictedSlots);
+            BitSet viewTouchedSlots = this.view.takeTouchedSlots();
+            candidates.or(viewTouchedSlots);
+            boolean viewCursorTouched = this.view.takeCursorTouched();
+
+            int candidateCount = candidates.cardinality();
+            ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(candidateCount + 1);
+            BitSet changedSlots = new BitSet();
+            int[] sentSlots = new int[candidateCount];
+            net.minecraft.world.item.ItemStack[] sentItems = new net.minecraft.world.item.ItemStack[candidateCount];
+            int sentCount = 0;
+            for (
+                    int slot = candidates.nextSetBit(0);
+                    slot >= 0 && slot < slots.length;
+                    slot = candidates.nextSetBit(slot + 1)
+            ) {
+                net.minecraft.world.item.ItemStack item = PaperMenuFactory.toNms(slots[slot]);
+                if (this.remoteSlots[slot].matches(item)) {
+                    continue;
+                }
+                ClientboundContainerSetSlotPacket packet = new ClientboundContainerSetSlotPacket(
+                        this.containerId,
+                        this.proxy.incrementStateId(),
+                        slot,
+                        item
+                );
+                outgoing.add(packet);
+                changedSlots.set(slot);
+                sentSlots[sentCount] = slot;
+                sentItems[sentCount] = packet.getItem();
+                sentCount++;
+            }
+
+            boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
+            boolean cursorChanged = false;
+            net.minecraft.world.item.ItemStack sentCursor = this.carried;
+            if (checkCursor) {
+                sentCursor = PaperMenuFactory.toNms(cursor);
+                if (!this.remoteCursor.matches(sentCursor)) {
+                    outgoing.add(new ClientboundSetCursorItemPacket(sentCursor));
+                    cursorChanged = true;
+                }
+            }
+
+            if (!outgoing.isEmpty()) {
+                this.packets.send(this.player, List.copyOf(outgoing));
+            }
+
+            // 只有网络批次成功排入 event loop 后才提交远端镜像
+            for (int update = 0; update < sentCount; update++) {
+                this.remoteSlots[sentSlots[update]].force(sentItems[update]);
+            }
+            if (checkCursor) {
+                this.carried = sentCursor;
+            }
+            if (cursorChanged) {
+                this.remoteCursor.force(sentCursor);
+            }
+            changedSlots.or(viewTouchedSlots);
+            this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
+            this.predictedSlots.clear();
+            this.predictedCarried = false;
+        }
+
+        /**
+         * 将一次完整发送提交为新的远端镜像.
+         */
+        private void commitFull(FullContents full) {
+            for (int slot = 0; slot < this.remoteSlots.length; slot++) {
+                this.remoteSlots[slot].force(full.slots().get(slot));
+            }
+            this.remoteCursor.force(full.cursor());
+            this.carried = full.cursor();
+            this.predictedSlots.clear();
+            this.predictedCarried = false;
+        }
+
+        private RemoteSlot createRemoteSlot() {
+            RemoteSlot slot = this.serverPlayer.containerSynchronizer.createSlot();
+            slot.force(net.minecraft.world.item.ItemStack.EMPTY);
+            return slot;
+        }
+
+        private void checkSlotCount(ItemStack[] slots) {
+            if (slots.length != this.remoteSlots.length) {
+                throw new IllegalArgumentException("menu requires " + this.remoteSlots.length + " slots, got " + slots.length);
+            }
         }
 
         private void checkUsable() {
@@ -351,7 +488,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
 
             @Override
             public void broadcastCarriedItem() {
-                // Window 通过 SyncPlan 明确发送光标状态.
+                // PaperMenuHandle 明确发送光标状态
             }
 
             @Override
@@ -381,6 +518,20 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             public boolean stillValid(net.minecraft.world.entity.player.Player player) {
                 return true;
             }
+        }
+
+        /**
+         * 一次完整包与提交远端镜像所共享的冻结 NMS 状态.
+         *
+         * @param slots 冻结槽位
+         * @param cursor 冻结光标
+         * @param packet 完整内容包
+         */
+        private record FullContents(
+                List<net.minecraft.world.item.ItemStack> slots,
+                net.minecraft.world.item.ItemStack cursor,
+                ClientboundContainerSetContentPacket packet
+        ) {
         }
     }
 
