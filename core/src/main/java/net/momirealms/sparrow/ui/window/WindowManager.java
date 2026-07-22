@@ -1,12 +1,10 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.ClickEvent;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.PaperMenuFactory;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -28,9 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * 保存每名玩家当前已提交的 Window, 并串行化该玩家的生命周期命令.
@@ -38,7 +33,7 @@ import java.util.function.Supplier;
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;
     private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
-    private final Map<UUID, AbstractWindow> active = new ConcurrentHashMap<>();
+    private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();
     private final AtomicLong generations = new AtomicLong();
     private final AtomicBoolean shutdown = new AtomicBoolean();
@@ -90,36 +85,7 @@ public final class WindowManager implements Listener {
         return Set.copyOf(this.active.values());
     }
 
-    AbstractWindow create(
-            Player viewer,
-            WindowLayout layout,
-            Supplier<? extends Component> titleSupplier,
-            boolean closeable,
-            List<Runnable> openHandlers,
-            List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
-            List<Consumer<ClickEvent>> outsideClickHandlers,
-            Supplier<? extends @Nullable Window> fallbackWindow,
-            int windowState,
-            List<Consumer<Integer>> windowStateChangeHandlers,
-            Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
-    ) {
-        return new NormalWindow(
-                this,
-                viewer,
-                layout,
-                titleSupplier,
-                closeable,
-                openHandlers,
-                closeHandlers,
-                outsideClickHandlers,
-                fallbackWindow,
-                windowState,
-                windowStateChangeHandlers,
-                cursorVisualizer
-        );
-    }
-
-    @NotNull CompletionStage<Window.OpenResult> open(AbstractWindow window) {
+    @NotNull CompletionStage<Window.OpenResult> open(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             window.retire();
             this.active.remove(window.viewer().getUniqueId(), window);
@@ -135,7 +101,7 @@ public final class WindowManager implements Listener {
         );
     }
 
-    @NotNull CompletionStage<Window.CloseResult> close(AbstractWindow window) {
+    @NotNull CompletionStage<Window.CloseResult> close(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             boolean wasOpen = window.retire();
             this.active.remove(window.viewer().getUniqueId(), window);
@@ -156,7 +122,7 @@ public final class WindowManager implements Listener {
     /**
      * 将 Window 状态修改送入其玩家命令通道, 使公开 setter 可从任意线程调用.
      */
-    void mutate(AbstractWindow window, Runnable mutation, String failureMessage) {
+    void mutate(AbstractWindow<?> window, Runnable mutation, String failureMessage) {
         if (this.shutdown.get()) {
             return;
         }
@@ -167,7 +133,7 @@ public final class WindowManager implements Listener {
     }
 
     @Nullable
-    SchedulerTask startTick(AbstractWindow window) {
+    SchedulerTask startTick(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             return null;
         }
@@ -179,11 +145,11 @@ public final class WindowManager implements Listener {
         return this.menuFactory;
     }
 
-    void closeFromClient(AbstractWindow window, InventoryCloseEvent.Reason reason) {
+    void closeFromClient(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         this.closeNow(window, reason, MenuHandle.CloseMode.CLIENT);
     }
 
-    void closeAfterProtocolFailure(AbstractWindow window) {
+    void closeAfterProtocolFailure(AbstractWindow<?> window) {
         try {
             this.closeNow(window, InventoryCloseEvent.Reason.UNKNOWN, MenuHandle.CloseMode.PLUGIN);
         } catch (RuntimeException | Error throwable) {
@@ -195,7 +161,7 @@ public final class WindowManager implements Listener {
      * 延后处理 Bukkit 观测到的外部关闭.
      * 不在 InventoryCloseEvent 调用栈中递归操作菜单, 以避免与原生关闭流程冲突.
      */
-    void externalClose(AbstractWindow window, InventoryCloseEvent.Reason reason) {
+    void externalClose(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         this.observe(this.lane(window.viewer()).submitDeferred(() -> {
             if (!window.isOpen()) {
                 return null;
@@ -212,7 +178,7 @@ public final class WindowManager implements Listener {
      * 在启用桥接时把已映射的协议点击发布为 Bukkit InventoryClickEvent.
      * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      */
-    boolean allowClick(AbstractWindow window, ClickInterpreter.SingleClick click) {
+    boolean allowClick(AbstractWindow<?> window, ClickInterpreter.SingleClick click) {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
             return true;
         }
@@ -245,7 +211,7 @@ public final class WindowManager implements Listener {
     /**
      * 在启用桥接时把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
      */
-    boolean allowDrag(AbstractWindow window, ClickType clickType, List<Integer> slots) {
+    boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
             return true;
         }
@@ -284,7 +250,7 @@ public final class WindowManager implements Listener {
         if (!this.shutdown.compareAndSet(false, true)) {
             return;
         }
-        for (AbstractWindow window : Set.copyOf(this.active.values())) {
+        for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
             window.retire();
         }
         this.active.clear();
@@ -306,7 +272,7 @@ public final class WindowManager implements Listener {
         if (!(event.getPlayer() instanceof Player player)) {
             return;
         }
-        AbstractWindow window = this.active.get(player.getUniqueId());
+        AbstractWindow<?> window = this.active.get(player.getUniqueId());
         if (window != null && window.owns(event.getView())) {
             window.externalClose(event.getReason());
         }
@@ -314,7 +280,7 @@ public final class WindowManager implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     private void handleQuit(PlayerQuitEvent event) {
-        AbstractWindow window = this.active.get(event.getPlayer().getUniqueId());
+        AbstractWindow<?> window = this.active.get(event.getPlayer().getUniqueId());
         if (window == null) {
             return;
         }
@@ -331,7 +297,7 @@ public final class WindowManager implements Listener {
      * 在玩家实体线程提交打开状态.
      * 先完成新窗口初始化再发布 active 映射, 随后才关闭被替换的旧窗口.
      */
-    private Window.OpenResult openNow(AbstractWindow window) {
+    private Window.OpenResult openNow(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -343,10 +309,10 @@ public final class WindowManager implements Listener {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
-        AbstractWindow previous = this.active.get(viewer.getUniqueId());
+        AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         try {
             window.openOnEntity(this.generations.getAndIncrement());
-        } catch (AbstractWindow.ViewerUnavailableException ignored) {
+        } catch (ViewerUnavailableException ignored) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
@@ -372,7 +338,7 @@ public final class WindowManager implements Listener {
      * 在玩家实体线程关闭 Window 并先移除 active 映射.
      * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
      */
-    private Window.CloseResult closeNow(AbstractWindow window, InventoryCloseEvent.Reason reason, MenuHandle.CloseMode mode) {
+    private Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason, MenuHandle.CloseMode mode) {
         if (!window.isOpen()) {
             return Window.CloseResult.ALREADY_CLOSED;
         }
@@ -392,7 +358,7 @@ public final class WindowManager implements Listener {
 
     private void retire(UUID playerId) {
         this.lanes.remove(playerId);
-        AbstractWindow window = this.active.remove(playerId);
+        AbstractWindow<?> window = this.active.remove(playerId);
         if (window != null) {
             window.retire();
         }

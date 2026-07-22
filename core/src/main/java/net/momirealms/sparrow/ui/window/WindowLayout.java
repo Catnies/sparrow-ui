@@ -46,11 +46,10 @@ final class WindowLayout {
     }
 
     /**
-     * 编译普通窗口布局.
+     * 编译上部 GUI 与下方玩家真实物品栏组成的布局.
      * GUI 占据上半部分, 下半部分映射玩家原生物品栏.
      */
-    static @NotNull WindowLayout normal(@NotNull Gui gui) {
-        checkUpper(gui);
+    static @NotNull WindowLayout playerInventoryBelow(@NotNull Gui gui) {
         int topSlots = gui.area();
         Route[] routes = new Route[topSlots + LOWER_SIZE.area()];
         fillGui(routes, 0, gui);
@@ -63,7 +62,6 @@ final class WindowLayout {
      * 两个 GUI 分别占据容器和 9x4 玩家物品栏区域.
      */
     static @NotNull WindowLayout split(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
-        checkUpper(upperGui);
         if (!lowerGui.size().equals(LOWER_SIZE)) {
             throw new IllegalArgumentException("lower GUI must be 9x4");
         }
@@ -79,8 +77,8 @@ final class WindowLayout {
      * 单个 GUI 的底部 4 行对应客户端玩家物品栏区域.
      */
     static @NotNull WindowLayout merged(@NotNull Gui gui) {
-        if (gui.width() != 9 || gui.height() < 5 || gui.height() > 10) {
-            throw new IllegalArgumentException("merged GUI must have width 9 and height between 5 and 10");
+        if (gui.area() <= LOWER_SIZE.area()) {
+            throw new IllegalArgumentException("merged GUI must contain more than 36 slots");
         }
         int topSlots = gui.area() - LOWER_SIZE.area();
         Route[] routes = new Route[gui.area()];
@@ -118,12 +116,6 @@ final class WindowLayout {
             throw new IndexOutOfBoundsException("window slot out of bounds: " + windowSlot);
         }
         return this.routes[windowSlot];
-    }
-
-    private static void checkUpper(Gui gui) {
-        if (gui.width() != 9 || gui.height() < 1 || gui.height() > 6) {
-            throw new IllegalArgumentException("upper GUI must have width 9 and height between 1 and 6");
-        }
     }
 
     private static void fillGui(Route[] routes, int offset, Gui gui) {

@@ -4,13 +4,13 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import net.momirealms.sparrow.ui.internal.menu.ClientMenuPrediction;
-import net.momirealms.sparrow.ui.internal.menu.IncomingPacketQueue;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ServerboundRenameItemPacket;
 import net.minecraft.network.protocol.common.ServerboundPongPacket;
 import net.minecraft.network.protocol.game.ServerboundSelectBundleItemPacket;
 import org.bukkit.Bukkit;
@@ -35,12 +35,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * 每条玩家连接只安装一个窄 Netty handler, 活动 Window 通过可替换 {@link Session} 接收入站容器包.
  *
  * <p>Window 在玩家实体线程创建或替换 Session. handler 始终在连接的 Netty event loop 中执行,
- * 因此会话引用使用原子操作交接, 而实际领域消息进入 {@link IncomingPacketQueue} 后才由实体线程消费.</p>
+ * 因此会话引用使用原子操作交接, 实际领域消息则交给菜单会话提供的缓冲接收端.</p>
  */
 public final class PacketListener implements Listener, AutoCloseable {
     private static final String MINECRAFT_HANDLER = "packet_handler";
@@ -76,22 +77,20 @@ public final class PacketListener implements Listener, AutoCloseable {
      *
      * @param player 连接所属玩家
      * @param containerId 要捕获的容器编号
-     * @param generation Window 代际
-     * @param incoming 接收领域化入站消息的队列
+     * @param inputSink 接收领域化入站消息的缓冲入口
      * @return 可提交、回滚或关闭的会话
      * @throws IllegalStateException gateway 已关闭
      */
     public @NotNull Session open(
             @NotNull Player player,
             int containerId,
-            long generation,
-            @NotNull IncomingPacketQueue<MenuInput> incoming
+            @NotNull Consumer<? super MenuInput> inputSink
     ) {
         this.requireOpen();
         ConnectionHandler handler = this.handlers.computeIfAbsent(player.getUniqueId(), ignored -> this.inject(player));
         while (true) {
             Session previous = handler.active.get();
-            Session session = new Session(handler, previous, containerId, generation, incoming);
+            Session session = new Session(handler, previous, containerId, inputSink);
             if (handler.active.compareAndSet(previous, session)) {
                 return session;
             }
@@ -239,21 +238,18 @@ public final class PacketListener implements Listener, AutoCloseable {
         private final ConnectionHandler owner;
         private final AtomicReference<Session> replaced;
         private final int containerId;
-        private final long generation;
-        private final IncomingPacketQueue<MenuInput> incoming;
+        private final Consumer<? super MenuInput> inputSink;
 
         private Session(
                 ConnectionHandler owner,
                 Session replaced,
                 int containerId,
-                long generation,
-                IncomingPacketQueue<MenuInput> incoming
+                Consumer<? super MenuInput> inputSink
         ) {
             this.owner = owner;
             this.replaced = new AtomicReference<>(replaced);
             this.containerId = containerId;
-            this.generation = generation;
-            this.incoming = incoming;
+            this.inputSink = inputSink;
         }
 
         /**
@@ -292,6 +288,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             switch (packet) {
                 case ServerboundContainerClickPacket click -> input = interaction(click);
                 case ServerboundContainerClosePacket close -> input = new MenuInput.Close(close.getContainerId());
+                case ServerboundRenameItemPacket rename -> input = new MenuInput.Rename(rename.getName());
                 case ServerboundSelectBundleItemPacket selection -> input = new MenuInput.BundleSelection(
                         this.containerId,
                         selection.slotId(),
@@ -306,7 +303,7 @@ public final class PacketListener implements Listener, AutoCloseable {
                 }
             }
             // Pong 只监听而不拦截; 其他 Window 包由领域层作为权威处理.
-            this.incoming.offer(this.generation, input);
+            this.inputSink.accept(input);
             return consume;
         }
 

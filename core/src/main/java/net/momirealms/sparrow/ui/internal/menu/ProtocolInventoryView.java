@@ -29,6 +29,8 @@ final class ProtocolInventoryView implements InventoryView {
 
     private final Player player;
     private final Inventory top;
+    private final InventoryType inventoryType;
+    private final MenuType menuType;
     private final ItemStack[] items;
     private final BitSet touchedSlots = new BitSet();
     private Component title = Component.empty();
@@ -39,11 +41,15 @@ final class ProtocolInventoryView implements InventoryView {
      * 创建一个初始为空的协议视图.
      *
      * @param player 视图所属玩家
-     * @param topSlots 顶部箱子槽位数量
+     * @param topSlots 顶部槽位数量
+     * @param inventoryType Bukkit 库存类型
+     * @param menuType Bukkit 菜单类型
      */
-    ProtocolInventoryView(Player player, int topSlots) {
+    ProtocolInventoryView(Player player, int topSlots, InventoryType inventoryType, MenuType menuType) {
         this.player = player;
         this.top = new CraftInventory(new SimpleContainer(topSlots));
+        this.inventoryType = inventoryType;
+        this.menuType = menuType;
         this.items = new ItemStack[topSlots + PLAYER_INVENTORY_SLOTS];
         for (int index = 0; index < this.items.length; index++) {
             this.items[index] = ItemStack.empty();
@@ -146,7 +152,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public @NotNull InventoryType getType() {
-        return InventoryType.CHEST;
+        return this.inventoryType;
     }
 
     /**
@@ -187,7 +193,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public @Nullable Inventory getInventory(int rawSlot) {
-        if (rawSlot == InventoryView.OUTSIDE || rawSlot < 0 || rawSlot >= this.items.length) {
+        if (rawSlot < 0 || rawSlot >= this.items.length) {
             return null;
         }
         return rawSlot < this.top.getSize() ? this.top : this.player.getInventory();
@@ -246,15 +252,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public @Nullable MenuType getMenuType() {
-        return switch (this.top.getSize()) {
-            case 9 -> MenuType.GENERIC_9X1;
-            case 18 -> MenuType.GENERIC_9X2;
-            case 27 -> MenuType.GENERIC_9X3;
-            case 36 -> MenuType.GENERIC_9X4;
-            case 45 -> MenuType.GENERIC_9X5;
-            case 54 -> MenuType.GENERIC_9X6;
-            default -> null;
-        };
+        return this.menuType;
     }
 
     private void refreshTop() {

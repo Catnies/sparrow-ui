@@ -5,9 +5,10 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ClickEvent;
 import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
-import net.momirealms.sparrow.ui.internal.menu.IncomingPacketQueue;
+import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -34,12 +35,39 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Normal、Split 与 Merged 布局共用的 Window 生命周期和协议引擎.
+ * 各类 Window 共用的生命周期、槽位路由和协议同步引擎.
  * <p>公开状态通过 volatile 快照提供跨线程读取, 菜单、路径和容器状态只在查看者实体线程访问.
  * 每次打开都会取得新的 generation, 以隔离迟到的协议输入和异步失效通知.
  */
-abstract class AbstractWindow implements Window {
-    private static final int INCOMING_CAPACITY = 256;
+abstract class AbstractWindow<M extends MenuHandle> implements Window {
+    /**
+     * Builder 交给共享生命周期构造器的不可变设置快照.
+     *
+     * <p>此类型只保存所有 Window 都具备的行为设置, 不描述菜单协议或槽位布局.</p>
+     *
+     * @param titleSupplier 动态标题来源
+     * @param closeable 是否接受客户端主动关闭
+     * @param openHandlers 打开处理器
+     * @param closeHandlers 关闭处理器
+     * @param outsideClickHandlers 容器外点击处理器
+     * @param fallbackWindow 玩家关闭后的后备 Window 来源
+     * @param windowState 初始服务器 Window 状态
+     * @param windowStateChangeHandlers 客户端状态确认处理器
+     * @param cursorVisualizer 光标显示转换器
+     */
+    record Settings(
+            @NotNull Supplier<? extends Component> titleSupplier,
+            boolean closeable,
+            @NotNull List<Runnable> openHandlers,
+            @NotNull List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
+            @NotNull List<Consumer<ClickEvent>> outsideClickHandlers,
+            @NotNull Supplier<? extends @Nullable Window> fallbackWindow,
+            int windowState,
+            @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
+            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
+    ) {
+    }
+
     private static final int INCOMING_PER_TICK = 128;
     private static final int PLAYER_INVENTORY_AUDIT_INTERVAL = 20;
     private static final long PING_TIMEOUT_MILLIS = 30_000;
@@ -67,8 +95,7 @@ abstract class AbstractWindow implements Window {
     private volatile List<Consumer<Integer>> windowStateChangeHandlers;
     private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer;
 
-    private @Nullable IncomingPacketQueue<MenuInput> incoming;
-    private @Nullable MenuHandle menu;
+    private @Nullable M menuHandle;
     private @Nullable DisplayedSlotPath[] paths;
     private @Nullable ItemStack[] localSlots;
     private @Nullable SchedulerTask tickTask;
@@ -79,37 +106,92 @@ abstract class AbstractWindow implements Window {
     private int playerInventoryVersion;
     private boolean cursorDirty;
     private boolean forceFull;
+    private boolean menuDirty;
 
     AbstractWindow(
-            WindowManager manager,
-            Player viewer,
-            WindowLayout layout,
-            Supplier<? extends Component> titleSupplier,
-            boolean closeable,
-            List<Runnable> openHandlers,
-            List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
-            List<Consumer<ClickEvent>> outsideClickHandlers,
-            Supplier<? extends @Nullable Window> fallbackWindow,
-            int windowState,
-            List<Consumer<Integer>> windowStateChangeHandlers,
-            Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
+            @NotNull WindowManager manager,
+            @NotNull Player viewer,
+            @NotNull WindowLayout layout,
+            @NotNull Settings settings
     ) {
         this.manager = manager;
         this.viewer = viewer;
         this.layout = layout;
         this.title = Component.empty();
-        this.titleSupplier = titleSupplier;
-        this.closeable = closeable;
-        this.openHandlers = openHandlers;
-        this.closeHandlers = closeHandlers;
-        this.outsideClickHandlers = outsideClickHandlers;
-        this.fallbackWindow = fallbackWindow;
-        this.serverWindowState = windowState;
-        this.windowStateChangeHandlers = windowStateChangeHandlers;
-        this.cursorVisualizer = cursorVisualizer;
+        this.titleSupplier = settings.titleSupplier();
+        this.closeable = settings.closeable();
+        this.openHandlers = settings.openHandlers();
+        this.closeHandlers = settings.closeHandlers();
+        this.outsideClickHandlers = settings.outsideClickHandlers();
+        this.fallbackWindow = settings.fallbackWindow();
+        this.serverWindowState = settings.windowState();
+        this.windowStateChangeHandlers = settings.windowStateChangeHandlers();
+        this.cursorVisualizer = settings.cursorVisualizer();
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
         this.cursorRenderContext = RenderContext.cursor(this);
+    }
+
+    /**
+     * 为一次打开创建与具体 Window 类型匹配的协议菜单.
+     *
+     * @param factory 菜单工厂
+     * @param generation 本次打开代际
+     * @return 尚未打开的菜单句柄
+     */
+    protected abstract @NotNull M createMenuHandle(@NotNull MenuFactory factory, long generation);
+
+    /**
+     * 返回窗口顶部协议槽位数量.
+     *
+     * @return 顶部槽位数量
+     */
+    protected final int topSlots() {
+        return this.layout.topSlots();
+    }
+
+    /**
+     * 返回当前已打开的类型化菜单; Window 关闭时返回 null.
+     *
+     * @return 当前菜单
+     */
+    protected final @Nullable M menuHandle() {
+        return this.menuHandle;
+    }
+
+    /**
+     * 将具体 Window 的公开变更串行化到查看者实体线程.
+     *
+     * @param mutation 变更
+     * @param failureMessage 失败报告文本
+     */
+    protected final void mutate(@NotNull Runnable mutation, @NotNull String failureMessage) {
+        this.manager.mutate(this, mutation, failureMessage);
+    }
+
+    /**
+     * 标记类型化菜单存在不依赖物品槽位的待同步状态.
+     */
+    protected final void requestMenuSynchronization() {
+        this.menuDirty = true;
+    }
+
+    /**
+     * 报告具体 Window 处理器中的异常.
+     *
+     * @param message 错误说明
+     * @param throwable 异常
+     */
+    protected final void report(@NotNull String message, @NotNull Throwable throwable) {
+        this.manager.report(message, throwable);
+    }
+
+    /**
+     * 处理具体 Window 类型关心的客户端重命名文本.
+     *
+     * @param text 客户端提交的文本
+     */
+    protected void handleRename(@NotNull String text) {
     }
 
     @Override
@@ -399,6 +481,7 @@ abstract class AbstractWindow implements Window {
         this.windowTick = 0;
         this.cursorDirty = true;
         this.forceFull = true;
+        this.menuDirty = true;
         this.pendingReopenTitle = null;
         this.clickInterpreter.reset();
         this.pendingWindowStates.clear();
@@ -409,13 +492,7 @@ abstract class AbstractWindow implements Window {
         this.refreshTitleValueOnEntity();
 
         // 先在局部变量中构建资源, 避免半初始化状态对 tick 可见
-        IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY);
-        MenuHandle menu = this.manager.menuFactory().create(
-                this.viewer,
-                this.layout.topSlots(),
-                generation,
-                incoming
-        );
+        M menuHandle = this.createMenuHandle(this.manager.menuFactory(), generation);
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
         SchedulerTask tickTask = null;
@@ -447,25 +524,24 @@ abstract class AbstractWindow implements Window {
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
             }
-            menu.open(this.title, localSlots, this.renderCursor());
+            menuHandle.open(this.title, localSlots, this.renderCursor());
 
-            this.incoming = incoming;
-            this.menu = menu;
+            this.menuHandle = menuHandle;
             this.paths = paths;
             this.localSlots = localSlots;
             this.tickTask = tickTask;
-            this.playerInventoryVersion = menu.playerInventoryVersion();
+            this.playerInventoryVersion = menuHandle.playerInventoryVersion();
             this.open = true;
             this.cursorDirty = false;
             this.forceFull = false;
+            this.menuDirty = false;
         } catch (RuntimeException | Error throwable) {
             // 仅清理局部资源, 因为对象字段尚未发布这次打开状态
             if (tickTask != null) {
                 tickTask.cancel();
             }
-            incoming.close();
             try {
-                menu.close(MenuHandle.CloseMode.PLUGIN);
+                menuHandle.close(MenuHandle.CloseMode.PLUGIN);
             } catch (RuntimeException | Error closeFailure) {
                 throwable.addSuppressed(closeFailure);
             }
@@ -489,24 +565,20 @@ abstract class AbstractWindow implements Window {
         this.clickInterpreter.reset();
 
         SchedulerTask previousTickTask = this.tickTask;
-        IncomingPacketQueue<MenuInput> previousIncoming = this.incoming;
-        MenuHandle previousMenu = this.menu;
+        M previousMenu = this.menuHandle;
         DisplayedSlotPath[] previousPaths = this.paths;
         this.tickTask = null;
-        this.incoming = null;
-        this.menu = null;
+        this.menuHandle = null;
         this.paths = null;
         this.localSlots = null;
         this.pendingReopenTitle = null;
+        this.menuDirty = false;
         this.pendingWindowStates.clear();
 
         // 资源关闭应尽量完整执行, 最后才重新抛出第一个失败
         Throwable failure = null;
         if (previousTickTask != null) {
             previousTickTask.cancel();
-        }
-        if (previousIncoming != null) {
-            previousIncoming.close();
         }
         if (previousMenu != null) {
             try {
@@ -536,22 +608,18 @@ abstract class AbstractWindow implements Window {
         this.clickInterpreter.reset();
 
         SchedulerTask previousTickTask = this.tickTask;
-        IncomingPacketQueue<MenuInput> previousIncoming = this.incoming;
-        MenuHandle previousMenu = this.menu;
+        M previousMenu = this.menuHandle;
         DisplayedSlotPath[] previousPaths = this.paths;
         this.tickTask = null;
-        this.incoming = null;
-        this.menu = null;
+        this.menuHandle = null;
         this.paths = null;
         this.localSlots = null;
         this.pendingReopenTitle = null;
+        this.menuDirty = false;
         this.pendingWindowStates.clear();
 
         if (previousTickTask != null) {
             previousTickTask.cancel();
-        }
-        if (previousIncoming != null) {
-            previousIncoming.close();
         }
         if (previousMenu != null) {
             try {
@@ -572,12 +640,13 @@ abstract class AbstractWindow implements Window {
      * 先有界处理协议输入, 再推进周期刷新、玩家物品栏镜像与批量协议同步.
      */
     void tick(ScheduledTask task) {
-        if (!this.open || this.incoming == null) {
+        M menuHandle = this.menuHandle;
+        if (!this.open || menuHandle == null) {
             return;
         }
 
         // 我们的PacketHandler在Paper Limiter之前, 所以还是限制一下包速率, 防止恶意攻击.
-        if (this.incoming.hasOverflowed()) {
+        if (menuHandle.hasInputOverflowed()) {
             this.manager.report(
                     "Closing Window because its incoming packet queue overflowed",
                     new IllegalStateException("incoming packet queue capacity exceeded")
@@ -587,14 +656,10 @@ abstract class AbstractWindow implements Window {
         }
 
         // 限制每 tick 的输入量, 防止单个玩家耗尽实体线程预算
-        List<IncomingPacketQueue.Entry<MenuInput>> packets = this.incoming.drain(INCOMING_PER_TICK);
-        for (int index = 0; index < packets.size(); index++) {
-            IncomingPacketQueue.Entry<MenuInput> entry = packets.get(index);
-            if (entry.generation() != this.generation) {
-                continue;
-            }
+        List<MenuInput> inputs = menuHandle.drainInputs(INCOMING_PER_TICK);
+        for (int index = 0; index < inputs.size(); index++) {
             try {
-                this.handleInput(entry.packet());
+                this.handleInput(inputs.get(index));
             } catch (Throwable throwable) {
                 this.clickInterpreter.reset();
                 this.cursorDirty = true;
@@ -638,14 +703,14 @@ abstract class AbstractWindow implements Window {
     }
 
     boolean owns(InventoryView view) {
-        return this.menu != null && this.menu.view() == view;
+        return this.menuHandle != null && this.menuHandle.view() == view;
     }
 
     InventoryView menuView() {
-        if (this.menu == null) {
+        if (this.menuHandle == null) {
             throw new IllegalStateException("Window menu is not open");
         }
-        return this.menu.view();
+        return this.menuHandle.view();
     }
 
     void externalClose(InventoryCloseEvent.Reason reason) {
@@ -661,6 +726,7 @@ abstract class AbstractWindow implements Window {
             case MenuInput.Close close -> this.handleClose(close);
             case MenuInput.BundleSelection selection -> this.handleBundleSelection(selection);
             case MenuInput.Pong pong -> this.handlePong(pong);
+            case MenuInput.Rename rename -> this.handleRename(rename.text());
         }
     }
 
@@ -669,7 +735,7 @@ abstract class AbstractWindow implements Window {
      * 不可信输入请求完整恢复, 合法或被 Bukkit 取消的输入只复核客户端预测涉及的槽位.
      */
     private void handleInteraction(MenuInput.Interaction interaction) {
-        MenuHandle menu = this.menu;
+        M menu = this.menuHandle;
         if (menu == null || !menu.accepts(interaction)) {
             this.clickInterpreter.reset();
             this.forceFull = true;
@@ -741,7 +807,7 @@ abstract class AbstractWindow implements Window {
      * 不可关闭的 Window 立即以当前标题和全量内容重新打开, 而非让 Bukkit 外部关闭处理器 veto.
      */
     private void handleClose(MenuInput.Close packet) {
-        if (this.menu == null || packet.containerId() != this.menu.containerId()) {
+        if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
         this.clickInterpreter.reset();
@@ -754,7 +820,7 @@ abstract class AbstractWindow implements Window {
 
     private void handleBundleSelection(MenuInput.BundleSelection packet) {
         this.clickInterpreter.reset();
-        if (this.menu == null || packet.containerId() != this.menu.containerId()) {
+        if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
         if (packet.slot() < 0 || packet.slot() >= this.layout.size() || packet.selectedIndex() < -1) {
@@ -809,7 +875,7 @@ abstract class AbstractWindow implements Window {
      * 用 NMS 版本门控玩家物品栏扫描, 并低频审计可能绕过版本信号的槽位与光标变化.
      */
     private void refreshPlayerState() {
-        MenuHandle menu = this.menu;
+        MenuHandle menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
         if (menu == null || localSlots == null) {
             return;
@@ -841,7 +907,7 @@ abstract class AbstractWindow implements Window {
      * 标题变化必须走重开窗口和完整内容同步, 发送失败时保留状态以便下一 tick 重试.
      */
     private void flush(boolean forceFull, @Nullable Component reopenTitle) {
-        MenuHandle menu = this.menu;
+        MenuHandle menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
         DisplayedSlotPath[] paths = this.paths;
         if (!this.open || menu == null || localSlots == null || paths == null) {
@@ -854,7 +920,7 @@ abstract class AbstractWindow implements Window {
 
         Component effectiveReopenTitle = reopenTitle == null ? this.pendingReopenTitle : reopenTitle;
         boolean full = forceFull || this.forceFull || effectiveReopenTitle != null;
-        if (dirty.isEmpty() && !this.cursorDirty && !full) {
+        if (dirty.isEmpty() && !this.cursorDirty && !full && !this.menuDirty) {
             return;
         }
 
@@ -867,10 +933,12 @@ abstract class AbstractWindow implements Window {
             }
             this.cursorDirty = false;
             this.forceFull = false;
+            this.menuDirty = false;
             this.pendingReopenTitle = null;
         } catch (RuntimeException | Error throwable) {
             this.cursorDirty = true;
             this.forceFull = true;
+            this.menuDirty = true;
             if (effectiveReopenTitle != null) {
                 this.pendingReopenTitle = effectiveReopenTitle;
             }
@@ -947,7 +1015,7 @@ abstract class AbstractWindow implements Window {
      */
     private void updateWindowStateOnEntity(int windowState) {
         this.serverWindowState = windowState;
-        MenuHandle menu = this.menu;
+        MenuHandle menu = this.menuHandle;
         if (!this.open || menu == null) {
             return;
         }
@@ -998,7 +1066,7 @@ abstract class AbstractWindow implements Window {
     private boolean isInteractionCurrent(long interactionGeneration, MenuHandle interactionMenu, int interactionStateId) {
         return this.open
                 && this.generation == interactionGeneration
-                && this.menu == interactionMenu
+                && this.menuHandle == interactionMenu
                 && interactionMenu.stateId() == interactionStateId;
     }
 
@@ -1065,13 +1133,6 @@ abstract class AbstractWindow implements Window {
         }
         if (throwable instanceof Error error) {
             throw error;
-        }
-    }
-
-    static final class ViewerUnavailableException extends IllegalStateException {
-
-        private ViewerUnavailableException() {
-            super("viewer entity scheduler retired while opening Window");
         }
     }
 

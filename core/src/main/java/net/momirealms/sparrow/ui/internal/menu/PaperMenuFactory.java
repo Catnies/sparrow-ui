@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
@@ -16,11 +17,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.RemoteSlot;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -32,8 +37,8 @@ import java.util.List;
 /**
  * Paper/NMS 容器适配器.
  *
- * <p>调用方必须保证 {@link #create(Player, int, long, IncomingPacketQueue)} 与生成的
- * {@link MenuHandle} 方法运行在玩家实体线程. 此类只负责构造协议菜单, 实际网络写入由
+ * <p>调用方必须保证菜单创建方法与生成的 {@link MenuHandle} 方法运行在玩家实体线程.
+ * 此类只负责构造协议菜单, 实际网络写入由
  * {@link PacketListener} 切换到 Netty event loop.</p>
  */
 public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
@@ -52,13 +57,40 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
      * {@inheritDoc}
      */
     @Override
-    public @NotNull MenuHandle create(
-            @NotNull Player viewer,
-            int topSlots,
-            long generation,
-            @NotNull IncomingPacketQueue<MenuInput> incoming
-    ) {
-        return new PaperMenuHandle(this.packets, viewer, topSlots, generation, incoming);
+    public @NotNull MenuHandle createNormal(@NotNull Player viewer, int rows, long generation) {
+        return new PaperMenuHandle(
+                this.packets,
+                viewer,
+                PaperMenuFactory.normalMenuType(rows),
+                InventoryType.CHEST,
+                PaperMenuFactory.normalBukkitMenuType(rows),
+                rows * 9,
+                generation
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public @NotNull MenuHandle createHopper(@NotNull Player viewer, long generation) {
+        return new PaperMenuHandle(
+                this.packets,
+                viewer,
+                MenuType.HOPPER,
+                InventoryType.HOPPER,
+                org.bukkit.inventory.MenuType.HOPPER,
+                5,
+                generation
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public @NotNull AnvilMenuHandle createAnvil(@NotNull Player viewer, long generation) {
+        return new PaperAnvilMenuHandle(this.packets, viewer, generation);
     }
 
     /**
@@ -75,20 +107,23 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
      * <p>代理只向 Bukkit 暴露 {@link ProtocolInventoryView}, 并禁用 NMS 的自动同步. 此 Adapter
      * 使用 Paper {@link RemoteSlot} 维护远端镜像, Window 只提交权威状态和 dirty 候选.</p>
      */
-    private static final class PaperMenuHandle implements MenuHandle {
+    private static class PaperMenuHandle implements MenuHandle {
+        private static final int INCOMING_CAPACITY = 256;
+
         private final PacketListener packets;
         private final Player player;
         private final ServerPlayer serverPlayer;
         private final MenuType<?> menuType;
         private final int containerId;
         private final long generation;
-        private final IncomingPacketQueue<MenuInput> incoming;
+        private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY);
         private final AbstractContainerMenu replacedMenu;
         private final ProtocolInventoryView view;
         private final MenuProxy proxy;
         private final RemoteSlot[] remoteSlots;
         private final RemoteSlot remoteCursor;
         private final BitSet predictedSlots = new BitSet();
+        private final BitSet forcedSlots = new BitSet();
 
         private @Nullable PacketListener.Session session;
         private net.minecraft.world.item.ItemStack carried = net.minecraft.world.item.ItemStack.EMPTY;
@@ -99,19 +134,20 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         private PaperMenuHandle(
                 PacketListener packets,
                 Player player,
+                MenuType<?> menuType,
+                InventoryType inventoryType,
+                org.bukkit.inventory.MenuType bukkitMenuType,
                 int topSlots,
-                long generation,
-                IncomingPacketQueue<MenuInput> incoming
+                long generation
         ) {
             this.packets = packets;
             this.player = player;
             this.serverPlayer = ((CraftPlayer) player).getHandle();
-            this.menuType = PaperMenuFactory.menuType(topSlots);
+            this.menuType = menuType;
             this.containerId = this.serverPlayer.nextContainerCounter();
             this.generation = generation;
-            this.incoming = incoming;
             this.replacedMenu = this.serverPlayer.containerMenu;
-            this.view = new ProtocolInventoryView(player, topSlots);
+            this.view = new ProtocolInventoryView(player, topSlots, inventoryType, bukkitMenuType);
             this.proxy = new MenuProxy();
             this.remoteSlots = new RemoteSlot[topSlots + 36];
             for (int slot = 0; slot < this.remoteSlots.length; slot++) {
@@ -163,6 +199,22 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         }
 
         /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean hasInputOverflowed() {
+            return this.incoming.hasOverflowed();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public @NotNull List<MenuInput> drainInputs(int limit) {
+            return this.incoming.drain(this.generation, limit);
+        }
+
+        /**
          * 在安装入站捕获会话后替换服务端菜单, 再把打开与完整状态作为同一网络批次排队.
          *
          * <p>若写包失败, 必须恢复被替换的菜单并回滚捕获会话, 以免后续包落到失效 Window.</p>
@@ -180,8 +232,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             PacketListener.Session openedSession = this.packets.open(
                     this.player,
                     this.containerId,
-                    this.generation,
-                    this.incoming
+                    input -> this.incoming.offer(this.generation, input)
             );
             this.session = openedSession;
             this.serverPlayer.containerMenu = this.proxy;
@@ -191,6 +242,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
                 this.packets.send(this.player, outgoing);
                 openedSession.commit();
                 this.commitFull(full);
+                this.commitMenuDataPackets();
                 this.view.initialize(slots, cursor, title);
                 this.committed = true;
             } catch (RuntimeException | Error throwable) {
@@ -214,10 +266,15 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         ) {
             this.checkCommitted();
             this.checkSlotCount(slots);
+            this.prepareMenuSynchronization(dirtySlots, forceFull);
             if (forceFull) {
                 FullContents full = this.prepareFull(slots, cursor);
-                this.packets.send(this.player, List.of(full.packet()));
+                ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(2);
+                outgoing.add(full.packet());
+                this.appendMenuDataPackets(outgoing, true);
+                this.packets.send(this.player, List.copyOf(outgoing));
                 this.commitFull(full);
+                this.commitMenuDataPackets();
                 this.view.initialize(slots, cursor, this.view.title());
                 return;
             }
@@ -237,8 +294,10 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             this.checkSlotCount(slots);
             FullContents full = this.prepareFull(slots, cursor);
             this.serverPlayer.containerMenu = this.proxy;
-            this.packets.send(this.player, this.openPackets(title, full));
+            List<Packet<? super ClientGamePacketListener>> outgoing = this.openPackets(title, full);
+            this.packets.send(this.player, outgoing);
             this.commitFull(full);
+            this.commitMenuDataPackets();
             this.view.initialize(slots, cursor, title);
         }
 
@@ -264,6 +323,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             }
             this.closed = true;
             // 无论后续关闭路径如何, 都先停止捕获本 Window 的入站包.
+            this.incoming.close();
             PacketListener.Session previousSession = this.session;
             this.session = null;
             if (previousSession != null) {
@@ -316,6 +376,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
                 return;
             }
             this.closed = true;
+            this.incoming.close();
             PacketListener.Session previousSession = this.session;
             this.session = null;
             if (previousSession != null) {
@@ -327,13 +388,14 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
          * 构造一次打开或标题刷新所需的完整协议序列.
          */
         private List<Packet<? super ClientGamePacketListener>> openPackets(Component title, FullContents full) {
-            ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(2);
+            ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(3);
             outgoing.add(new ClientboundOpenScreenPacket(
                     this.containerId,
                     this.menuType,
                     PaperAdventure.asVanilla(title)
             ));
             outgoing.add(full.packet());
+            this.appendMenuDataPackets(outgoing, true);
             return List.copyOf(outgoing);
         }
 
@@ -343,7 +405,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
             ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(slots.length);
             for (int index = 0; index < slots.length; index++) {
-                items.add(PaperMenuFactory.toNms(slots[index]));
+                items.add(this.toClientItem(index, slots[index]));
             }
             List<net.minecraft.world.item.ItemStack> frozenItems = List.copyOf(items);
             net.minecraft.world.item.ItemStack frozenCursor = PaperMenuFactory.toNms(cursor);
@@ -367,6 +429,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         ) {
             BitSet candidates = (BitSet) dirtySlots.clone();
             candidates.or(this.predictedSlots);
+            candidates.or(this.forcedSlots);
             BitSet viewTouchedSlots = this.view.takeTouchedSlots();
             candidates.or(viewTouchedSlots);
             boolean viewCursorTouched = this.view.takeCursorTouched();
@@ -382,8 +445,8 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
                     slot >= 0 && slot < slots.length;
                     slot = candidates.nextSetBit(slot + 1)
             ) {
-                net.minecraft.world.item.ItemStack item = PaperMenuFactory.toNms(slots[slot]);
-                if (this.remoteSlots[slot].matches(item)) {
+                net.minecraft.world.item.ItemStack item = this.toClientItem(slot, slots[slot]);
+                if (!this.forcedSlots.get(slot) && this.remoteSlots[slot].matches(item)) {
                     continue;
                 }
                 ClientboundContainerSetSlotPacket packet = new ClientboundContainerSetSlotPacket(
@@ -410,6 +473,8 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
                 }
             }
 
+            this.appendMenuDataPackets(outgoing, false);
+
             if (!outgoing.isEmpty()) {
                 this.packets.send(this.player, List.copyOf(outgoing));
             }
@@ -428,6 +493,8 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
             this.predictedSlots.clear();
             this.predictedCarried = false;
+            this.forcedSlots.andNot(changedSlots);
+            this.commitMenuDataPackets();
         }
 
         /**
@@ -441,6 +508,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             this.carried = full.cursor();
             this.predictedSlots.clear();
             this.predictedCarried = false;
+            this.forcedSlots.clear();
         }
 
         private RemoteSlot createRemoteSlot() {
@@ -465,6 +533,54 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
             if (this.closed || !this.committed) {
                 throw new IllegalStateException("menu is not open");
             }
+        }
+
+        /**
+         * 把权威 Bukkit 物品转换为指定原始槽位的客户端显示物品.
+         * 具体菜单可在不改变领域槽位状态的情况下提供协议占位物.
+         *
+         * @param rawSlot 原始窗口槽位
+         * @param item 权威物品
+         * @return 客户端显示物品
+         */
+        protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
+            return PaperMenuFactory.toNms(item);
+        }
+
+        /**
+         * 强制下一次增量同步重发指定槽位, 即使服务端远端镜像仍与权威物品相同.
+         *
+         * @param rawSlot 原始窗口槽位
+         */
+        protected final void forceRemoteSlot(int rawSlot) {
+            this.forcedSlots.set(rawSlot);
+        }
+
+        /**
+         * 在同步候选冻结前准备菜单专属状态.
+         *
+         * @param dirtySlots 本轮 dirty 槽位
+         * @param forceFull 是否强制完整同步
+         */
+        protected void prepareMenuSynchronization(@NotNull BitSet dirtySlots, boolean forceFull) {
+        }
+
+        /**
+         * 把菜单专属数据包追加到本轮统一网络批次.
+         *
+         * @param outgoing 本轮可变数据包列表
+         * @param forceFull 是否强制完整同步
+         */
+        protected void appendMenuDataPackets(
+                @NotNull List<Packet<? super ClientGamePacketListener>> outgoing,
+                boolean forceFull
+        ) {
+        }
+
+        /**
+         * 在统一网络批次成功排入 Netty event loop 后提交菜单专属远端镜像.
+         */
+        protected void commitMenuDataPackets() {
         }
 
         /**
@@ -535,15 +651,133 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         }
     }
 
-    private static MenuType<?> menuType(int topSlots) {
-        return switch (topSlots) {
-            case 9 -> MenuType.GENERIC_9x1;
-            case 18 -> MenuType.GENERIC_9x2;
-            case 27 -> MenuType.GENERIC_9x3;
-            case 36 -> MenuType.GENERIC_9x4;
-            case 45 -> MenuType.GENERIC_9x5;
-            case 54 -> MenuType.GENERIC_9x6;
-            default -> throw new IllegalArgumentException("top inventory must contain between one and six rows");
+    /**
+     * 支持铁砧属性与不可见占位物的 Paper 菜单句柄.
+     */
+    private static final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHandle {
+        private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
+
+        private final net.minecraft.world.item.ItemStack placeholder;
+        private int enchantmentCost;
+        private boolean textFieldAlwaysEnabled;
+        private boolean resultAlwaysValid;
+        private boolean dataDirty = true;
+        private boolean dataQueued;
+
+        private PaperAnvilMenuHandle(
+                PacketListener packets,
+                Player player,
+                long generation
+        ) {
+            super(
+                    packets,
+                    player,
+                    MenuType.ANVIL,
+                    InventoryType.ANVIL,
+                    org.bukkit.inventory.MenuType.ANVIL,
+                    3,
+                    generation
+            );
+            this.placeholder = createPlaceholder();
+        }
+
+        @Override
+        public void handleRename(@NotNull String text) {
+            this.forceRemoteSlot(2);
+            this.dataDirty = true;
+        }
+
+        @Override
+        public void setEnchantmentCost(int enchantmentCost) {
+            if (this.enchantmentCost != enchantmentCost) {
+                this.enchantmentCost = enchantmentCost;
+                this.dataDirty = true;
+            }
+        }
+
+        @Override
+        public void setTextFieldAlwaysEnabled(boolean textFieldAlwaysEnabled) {
+            this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
+        }
+
+        @Override
+        public void setResultAlwaysValid(boolean resultAlwaysValid) {
+            this.resultAlwaysValid = resultAlwaysValid;
+        }
+
+        @Override
+        protected void prepareMenuSynchronization(@NotNull BitSet dirtySlots, boolean forceFull) {
+            if (forceFull || dirtySlots.get(1)) {
+                this.dataDirty = true;
+            }
+        }
+
+        @Override
+        protected void appendMenuDataPackets(
+                @NotNull List<Packet<? super ClientGamePacketListener>> outgoing,
+                boolean forceFull
+        ) {
+            this.dataQueued = forceFull || this.dataDirty;
+            if (this.dataQueued) {
+                outgoing.add(new ClientboundContainerSetDataPacket(
+                        this.containerId(),
+                        ENCHANTMENT_COST_DATA_SLOT,
+                        this.enchantmentCost
+                ));
+            }
+        }
+
+        @Override
+        protected void commitMenuDataPackets() {
+            if (this.dataQueued) {
+                this.dataDirty = false;
+                this.dataQueued = false;
+            }
+        }
+
+        @Override
+        protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
+            if (item.isEmpty() && rawSlot == 0 && this.textFieldAlwaysEnabled) {
+                return this.placeholder.copy();
+            }
+            if (item.isEmpty() && rawSlot == 2 && this.resultAlwaysValid) {
+                return this.placeholder.copy();
+            }
+            return super.toClientItem(rawSlot, item);
+        }
+
+        private static net.minecraft.world.item.ItemStack createPlaceholder() {
+            ItemStack placeholder = new ItemStack(Material.BARRIER);
+            ItemMeta meta = placeholder.getItemMeta();
+            meta.customName(Component.empty());
+            meta.setHideTooltip(true);
+            meta.setItemModel(NamespacedKey.minecraft("air"));
+            placeholder.setItemMeta(meta);
+            return PaperMenuFactory.toNms(placeholder);
+        }
+    }
+
+    private static MenuType<?> normalMenuType(int rows) {
+        return switch (rows) {
+            case 1 -> MenuType.GENERIC_9x1;
+            case 2 -> MenuType.GENERIC_9x2;
+            case 3 -> MenuType.GENERIC_9x3;
+            case 4 -> MenuType.GENERIC_9x4;
+            case 5 -> MenuType.GENERIC_9x5;
+            case 6 -> MenuType.GENERIC_9x6;
+            default -> throw new IllegalArgumentException("normal inventory must contain between one and six rows");
+        };
+    }
+
+    private static org.bukkit.inventory.MenuType normalBukkitMenuType(int rows) {
+        return switch (rows) {
+            case 1 -> org.bukkit.inventory.MenuType.GENERIC_9X1;
+            case 2 -> org.bukkit.inventory.MenuType.GENERIC_9X2;
+            case 3 -> org.bukkit.inventory.MenuType.GENERIC_9X3;
+            case 4 -> org.bukkit.inventory.MenuType.GENERIC_9X4;
+            case 5 -> org.bukkit.inventory.MenuType.GENERIC_9X5;
+            case 6 -> org.bukkit.inventory.MenuType.GENERIC_9X6;
+            default -> throw new IllegalArgumentException("normal inventory must contain between one and six rows");
         };
     }
 

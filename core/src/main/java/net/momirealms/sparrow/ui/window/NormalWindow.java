@@ -1,51 +1,57 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.ClickEvent;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.inventory.ItemStack;
+import net.momirealms.sparrow.ui.gui.Gui;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.Supplier;
-
 /**
- * 普通箱子协议 Window. Normal、Split 与 Merged 只由 WindowLayout 路由区别.
- * 协议生命周期、点击分发和状态同步均继承自 {@link AbstractWindow}.
+ * 使用普通 9 列箱子协议的 Window.
+ *
+ * <p>窗口类型由此接口明确选择, 不会根据 GUI 面积自动推断为其他客户端界面.</p>
  */
-final class NormalWindow extends AbstractWindow {
+public interface NormalWindow extends Window {
 
-    NormalWindow(
-            WindowManager manager,
-            Player viewer,
-            WindowLayout layout,
-            Supplier<? extends Component> titleSupplier,
-            boolean closeable,
-            List<Runnable> openHandlers,
-            List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
-            List<Consumer<ClickEvent>> outsideClickHandlers,
-            Supplier<? extends @Nullable Window> fallbackWindow,
-            int windowState,
-            List<Consumer<Integer>> windowStateChangeHandlers,
-            Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
-    ) {
-        super(
-                manager,
-                viewer,
-                layout,
-                titleSupplier,
-                closeable,
-                openHandlers,
-                closeHandlers,
-                outsideClickHandlers,
-                fallbackWindow,
-                windowState,
-                windowStateChangeHandlers,
-                cursorVisualizer
-        );
+    /**
+     * 创建默认使用 9x6 上部 GUI 的 Builder.
+     *
+     * @return 普通窗口 Builder
+     */
+    static @NotNull Builder builder() {
+        return new NormalWindowImpl.BuilderImpl();
+    }
+
+    /**
+     * 创建单个 GUI 同时覆盖容器与玩家物品栏区域的 Builder.
+     *
+     * @param gui 宽 9、高 5 至 10 的合并 GUI
+     * @return 普通窗口 Builder
+     */
+    static @NotNull Builder mergedBuilder(@NotNull Gui gui) {
+        return new NormalWindowImpl.BuilderImpl(gui);
+    }
+
+    /**
+     * 普通箱子 Window 的可重复 Builder.
+     */
+    interface Builder extends Window.Builder<NormalWindow, Builder> {
+
+        /**
+         * 设置 9 列、1 至 6 行的上部 GUI.
+         *
+         * @param upperGui 上部 GUI
+         * @return 此 Builder
+         */
+        @NotNull Builder setUpperGui(@NotNull Gui upperGui);
+
+        /**
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         *
+         * @param lowerGui 下部 GUI
+         * @return 此 Builder
+         */
+        @NotNull Builder setLowerGui(@Nullable Gui lowerGui);
+
+        @Override
+        @NotNull Builder clone();
     }
 }

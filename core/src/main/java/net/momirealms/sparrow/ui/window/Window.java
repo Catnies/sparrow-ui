@@ -32,8 +32,8 @@ public interface Window {
      * @param gui 上半部分 GUI
      * @return 可重复使用的 Builder
      */
-    static @NotNull Builder builder(@NotNull Gui gui) {
-        return WindowBuilder.normal(gui);
+    static @NotNull NormalWindow.Builder builder(@NotNull Gui gui) {
+        return NormalWindow.builder().setUpperGui(gui);
     }
 
     /**
@@ -44,8 +44,8 @@ public interface Window {
      * @param lowerGui 下半部分 9x4 GUI
      * @return 可重复使用的 Builder
      */
-    static @NotNull Builder splitBuilder(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
-        return WindowBuilder.split(upperGui, lowerGui);
+    static @NotNull NormalWindow.Builder splitBuilder(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
+        return NormalWindow.builder().setUpperGui(upperGui).setLowerGui(lowerGui);
     }
 
     /**
@@ -55,29 +55,39 @@ public interface Window {
      * @param gui 合并后的 GUI
      * @return 可重复使用的 Builder
      */
-    static @NotNull Builder mergedBuilder(@NotNull Gui gui) {
-        return WindowBuilder.merged(gui);
+    static @NotNull NormalWindow.Builder mergedBuilder(@NotNull Gui gui) {
+        return NormalWindow.mergedBuilder(gui);
     }
 
     /**
      * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
+     *
+     * @return 根 GUI 列表
      */
     @Unmodifiable
     @NotNull List<Gui> guis();
 
     /**
      * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
+     *
+     * @param windowSlot 原始窗口槽位
+     * @return 根 GUI 链接
      */
     SlotElement.@Nullable GuiLink guiAt(int windowSlot);
 
     /**
      * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
+     *
+     * @param hotbarSlot 快捷栏索引
+     * @return 根 GUI 链接
      */
     SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot);
 
     /**
      * 通知 Window 指定槽位的显示内容需要更新.
      * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
+     *
+     * @param windowSlot 原始窗口槽位
      */
     void notifyUpdate(int windowSlot);
 
@@ -89,11 +99,15 @@ public interface Window {
 
     /**
      * 返回是否接受客户端主动发送的关闭请求.
+     *
+     * @return 是否接受客户端主动关闭
      */
     boolean isCloseable();
 
     /**
      * 请求打开 Window, Stage 完成表示服务端生命周期已经提交, 不表示客户端已经显示.
+     *
+     * @return 打开请求的提交结果
      */
     @NotNull CompletionStage<OpenResult> open();
 
@@ -139,6 +153,8 @@ public interface Window {
     /**
      * 请求关闭 Window.
      * closeable 只限制玩家主动关闭, 不限制插件命令.
+     *
+     * @return 关闭请求的提交结果
      */
     @NotNull CompletionStage<CloseResult> close();
 
@@ -247,11 +263,15 @@ public interface Window {
 
     /**
      * 返回最近一次设置的服务器窗口状态.
+     *
+     * @return 服务器窗口状态
      */
     int getServerWindowState();
 
     /**
      * 返回最近一次收到 Pong 确认的客户端窗口状态.
+     *
+     * @return 客户端已确认窗口状态
      */
     int getClientWindowState();
 
@@ -317,9 +337,12 @@ public interface Window {
     }
 
     /**
-     * 固定布局的可重复 Window Builder.
+     * 可重复使用的类型化 Window Builder.
+     *
+     * @param <W> 创建的 Window 类型
+     * @param <B> 具体 Builder 类型
      */
-    interface Builder extends Cloneable {
+    interface Builder<W extends Window, B extends Builder<W, B>> extends Cloneable {
 
         /**
          * 设置 {@link #build()} 使用的玩家.
@@ -327,7 +350,7 @@ public interface Window {
          * @param viewer 查看者
          * @return 此 Builder
          */
-        @NotNull Builder setViewer(@NotNull Player viewer);
+        @NotNull B setViewer(@NotNull Player viewer);
 
         /**
          * 设置动态标题来源.
@@ -335,7 +358,7 @@ public interface Window {
          * @param titleSupplier 标题来源
          * @return 此 Builder
          */
-        @NotNull Builder setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier);
+        @NotNull B setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier);
 
         /**
          * 设置固定标题.
@@ -343,7 +366,7 @@ public interface Window {
          * @param title 标题
          * @return 此 Builder
          */
-        @NotNull Builder setTitle(@NotNull Component title);
+        @NotNull B setTitle(@NotNull Component title);
 
         /**
          * 使用纯文本组件设置固定标题.
@@ -351,7 +374,7 @@ public interface Window {
          * @param title 标题
          * @return 此 Builder
          */
-        default @NotNull Builder setTitle(@NotNull String title) {
+        default @NotNull B setTitle(@NotNull String title) {
             return this.setTitle(Component.text(title));
         }
 
@@ -361,7 +384,7 @@ public interface Window {
          * @param closeable 是否可由客户端主动关闭
          * @return 此 Builder
          */
-        @NotNull Builder setCloseable(boolean closeable);
+        @NotNull B setCloseable(boolean closeable);
 
         /**
          * 替换打开后依次执行的处理器列表.
@@ -369,7 +392,7 @@ public interface Window {
          * @param openHandlers 打开处理器
          * @return 此 Builder
          */
-        @NotNull Builder setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
+        @NotNull B setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
 
         /**
          * 追加一个打开处理器.
@@ -377,7 +400,7 @@ public interface Window {
          * @param openHandler 打开处理器
          * @return 此 Builder
          */
-        @NotNull Builder addOpenHandler(@NotNull Runnable openHandler);
+        @NotNull B addOpenHandler(@NotNull Runnable openHandler);
 
         /**
          * 替换关闭后依次执行的处理器列表.
@@ -385,7 +408,7 @@ public interface Window {
          * @param closeHandlers 关闭处理器
          * @return 此 Builder
          */
-        @NotNull Builder setCloseHandlers(
+        @NotNull B setCloseHandlers(
                 @NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers
         );
 
@@ -395,7 +418,7 @@ public interface Window {
          * @param closeHandler 关闭处理器
          * @return 此 Builder
          */
-        @NotNull Builder addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+        @NotNull B addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
 
         /**
          * 替换容器外点击处理器列表.
@@ -403,7 +426,7 @@ public interface Window {
          * @param outsideClickHandlers 容器外点击处理器
          * @return 此 Builder
          */
-        @NotNull Builder setOutsideClickHandlers(
+        @NotNull B setOutsideClickHandlers(
                 @NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers
         );
 
@@ -413,7 +436,7 @@ public interface Window {
          * @param outsideClickHandler 容器外点击处理器
          * @return 此 Builder
          */
-        @NotNull Builder addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+        @NotNull B addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
 
         /**
          * 设置玩家主动关闭时要解析的后备 Window.
@@ -421,7 +444,7 @@ public interface Window {
          * @param fallbackWindow 后备 Window 来源
          * @return 此 Builder
          */
-        @NotNull Builder setFallbackWindow(
+        @NotNull B setFallbackWindow(
                 @NotNull Supplier<? extends @Nullable Window> fallbackWindow
         );
 
@@ -431,7 +454,7 @@ public interface Window {
          * @param fallbackWindow 后备 Window, null 表示不打开后备 Window
          * @return 此 Builder
          */
-        default @NotNull Builder setFallbackWindow(@Nullable Window fallbackWindow) {
+        default @NotNull B setFallbackWindow(@Nullable Window fallbackWindow) {
             return this.setFallbackWindow(() -> fallbackWindow);
         }
 
@@ -441,7 +464,7 @@ public interface Window {
          * @param windowState 初始状态
          * @return 此 Builder
          */
-        @NotNull Builder setWindowState(int windowState);
+        @NotNull B setWindowState(int windowState);
 
         /**
          * 替换客户端状态确认处理器列表.
@@ -449,7 +472,7 @@ public interface Window {
          * @param handlers 状态确认处理器
          * @return 此 Builder
          */
-        @NotNull Builder setWindowStateChangeHandlers(
+        @NotNull B setWindowStateChangeHandlers(
                 @NotNull List<? extends Consumer<? super Integer>> handlers
         );
 
@@ -459,7 +482,7 @@ public interface Window {
          * @param handler 状态确认处理器
          * @return 此 Builder
          */
-        @NotNull Builder addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
+        @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
         /**
          * 设置光标显示转换器.
@@ -467,7 +490,7 @@ public interface Window {
          * @param cursorVisualizer 光标显示转换器
          * @return 此 Builder
          */
-        @NotNull Builder setCursorVisualizer(
+        @NotNull B setCursorVisualizer(
                 @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
         );
 
@@ -477,7 +500,7 @@ public interface Window {
          * @param modifiers Window 修改器
          * @return 此 Builder
          */
-        @NotNull Builder setModifiers(@NotNull List<? extends Consumer<? super Window>> modifiers);
+        @NotNull B setModifiers(@NotNull List<? extends Consumer<? super W>> modifiers);
 
         /**
          * 追加一个创建完成后执行的 Window 修改器.
@@ -485,7 +508,7 @@ public interface Window {
          * @param modifier Window 修改器
          * @return 此 Builder
          */
-        @NotNull Builder addModifier(@NotNull Consumer<? super Window> modifier);
+        @NotNull B addModifier(@NotNull Consumer<? super W> modifier);
 
         /**
          * 创建独立的 Builder 副本.
@@ -493,14 +516,14 @@ public interface Window {
          *
          * @return Builder 副本
          */
-        @NotNull Builder clone();
+        @NotNull B clone();
 
         /**
          * {@link #clone()} 的语义化别名.
          *
          * @return Builder 副本
          */
-        default @NotNull Builder copy() {
+        default @NotNull B copy() {
             return this.clone();
         }
 
@@ -510,7 +533,7 @@ public interface Window {
          * @return 新的未打开 Window
          * @throws IllegalStateException 未设置查看者时抛出
          */
-        @NotNull Window build();
+        @NotNull W build();
 
         /**
          * 为指定查看者创建 Window.
@@ -518,7 +541,7 @@ public interface Window {
          * @param viewer 查看者
          * @return 新的未打开 Window
          */
-        @NotNull Window build(@NotNull Player viewer);
+        @NotNull W build(@NotNull Player viewer);
 
         /**
          * 为指定查看者创建并请求打开 Window.

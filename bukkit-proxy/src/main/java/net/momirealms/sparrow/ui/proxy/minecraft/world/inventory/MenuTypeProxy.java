@@ -12,20 +12,20 @@ public interface MenuTypeProxy {
     MenuTypeProxy INSTANCE = ASMProxyFactory.create(MenuTypeProxy.class);
 
     @FieldGetter(name = "GENERIC_9x1", isStatic = true)
-    Object generic9x1();
+    Object GENERIC_9x1();
 
     @FieldGetter(name = "GENERIC_9x2", isStatic = true)
-    Object generic9x2();
+    Object GENERIC_9x2();
 
     @FieldGetter(name = "GENERIC_9x3", isStatic = true)
-    Object generic9x3();
+    Object GENERIC_9x3();
 
     @FieldGetter(name = "GENERIC_9x4", isStatic = true)
-    Object generic9x4();
+    Object GENERIC_9x4();
 
     @FieldGetter(name = "GENERIC_9x5", isStatic = true)
-    Object generic9x5();
+    Object GENERIC_9x5();
 
     @FieldGetter(name = "GENERIC_9x6", isStatic = true)
-    Object generic9x6();
+    Object GENERIC_9x6();
 }

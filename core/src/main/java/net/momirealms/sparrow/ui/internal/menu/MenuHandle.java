@@ -7,6 +7,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.BitSet;
+import java.util.List;
 
 /**
  * Window 引擎与 Paper/NMS 菜单实现之间的窄边界.
@@ -61,6 +62,23 @@ public interface MenuHandle extends AutoCloseable {
      * @return 交互属于当前协议状态时返回 {@code true}
      */
     boolean accepts(@NotNull MenuInput.Interaction interaction);
+
+    /**
+     * 返回入站消息缓冲区是否已经溢出.
+     *
+     * <p>缓冲、代际筛选和 Netty 线程交接均由菜单 Adapter 管理, Window 只消费当前会话的领域输入.</p>
+     *
+     * @return 入站消息是否曾超过 Adapter 容量
+     */
+    boolean hasInputOverflowed();
+
+    /**
+     * 按接收顺序移除至多指定数量的当前会话输入.
+     *
+     * @param limit 本次最多移除的输入数量
+     * @return 不可变的领域输入列表
+     */
+    @NotNull List<MenuInput> drainInputs(int limit);
 
     /**
      * 打开菜单并发送初始完整状态.

@@ -11,7 +11,8 @@ import org.jetbrains.annotations.NotNull;
  * 只根据操作意图更新自身的权威渲染结果, Paper 菜单 Adapter 只用预测缩小远端复核范围.</p>
  */
 @ApiStatus.Internal
-public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close, MenuInput.BundleSelection, MenuInput.Pong {
+public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close, MenuInput.BundleSelection,
+        MenuInput.Pong, MenuInput.Rename {
 
     /**
      * QUICK_CRAFT 手势中的一个阶段.
@@ -127,5 +128,13 @@ public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close
      * @param id Ping 标识
      */
     record Pong(int id) implements MenuInput {
+    }
+
+    /**
+     * 客户端在铁砧文本框中提交了新的重命名文本.
+     *
+     * @param text 新文本
+     */
+    record Rename(@NotNull String text) implements MenuInput {
     }
 }

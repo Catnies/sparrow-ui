@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayDeque;
@@ -14,8 +13,7 @@ import java.util.List;
  *
  * @param <T> 入站消息类型
  */
-@ApiStatus.Internal
-public final class IncomingPacketQueue<T> implements AutoCloseable {
+final class IncomingPacketQueue<T> implements AutoCloseable {
 
     /**
      * 一次入队尝试的结果.
@@ -93,6 +91,31 @@ public final class IncomingPacketQueue<T> implements AutoCloseable {
         ArrayList<Entry<T>> drained = new ArrayList<>(count);
         for (int index = 0; index < count; index++) {
             drained.add(this.queue.removeFirst());
+        }
+        return List.copyOf(drained);
+    }
+
+    /**
+     * 按 FIFO 顺序移除至多指定数量的消息, 并只返回属于指定代际的负载.
+     *
+     * <p>不匹配的旧代际消息也会从队列中移除, 但不会暴露给当前菜单会话.</p>
+     *
+     * @param generation 当前菜单会话代际
+     * @param limit 本次最多移除的消息数量
+     * @return 不可变的当前代际负载列表
+     * @throws IllegalArgumentException 上限不为正数
+     */
+    public synchronized @NotNull List<T> drain(long generation, int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        int count = Math.min(limit, this.queue.size());
+        ArrayList<T> drained = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            Entry<T> entry = this.queue.removeFirst();
+            if (entry.generation() == generation) {
+                drained.add(entry.packet());
+            }
         }
         return List.copyOf(drained);
     }
