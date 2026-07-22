@@ -31,6 +31,9 @@ public interface MenuHandle extends AutoCloseable {
 
     /**
      * 返回供 Bukkit 事件读取的协议视图.
+     *
+     * <p>视图的 {@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 必须返回可由
+     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.</p>
      */
     @NotNull
     InventoryView view();
@@ -81,7 +84,9 @@ public interface MenuHandle extends AutoCloseable {
     /**
      * 打开菜单并发送初始完整状态.
      *
-     * <p>实现必须在方法返回前读取槽位数组, 不得保留调用方的可变数组引用.</p>
+     * <p>槽位数组只在调用期间有效, 实现不得修改或保留数组引用. 每个物品已经是 Window 独占的
+     * 稳定快照, 实现可以在同步比较期间直接读取或解包；任何需要跨越本次调用继续存活的状态
+     * （包括异步编码的数据包）都必须在返回前取得独立快照.</p>
      *
      * @param title 初始标题
      * @param slots 按原始槽位编号排列的权威物品
@@ -93,7 +98,8 @@ public interface MenuHandle extends AutoCloseable {
      * 将远端容器镜像同步到当前服务端权威状态.
      *
      * <p>实现检查 dirty 槽位和此前收到的客户端预测. {@code forceFull} 为真时忽略增量候选并
-     * 发送完整状态. 参数只在调用期间有效, 实现不得修改或保留数组、位图引用.</p>
+     * 发送完整状态. 数组和位图只在调用期间有效, 实现不得修改或保留其引用. 槽位与光标物品
+     * 已经是 Window 独占的稳定快照, 可以直接用于同步比较；异步数据包必须持有自己的快照.</p>
      *
      * @param slots 按原始槽位编号排列的权威物品
      * @param dirtySlots 本轮可能变化的槽位
@@ -111,6 +117,8 @@ public interface MenuHandle extends AutoCloseable {
 
     /**
      * 用重新打开界面和完整状态更新客户端标题.
+     *
+     * <p>参数所有权与 {@link #open(Component, ItemStack[], ItemStack)} 相同.</p>
      *
      * @param title 新标题
      * @param slots 按原始槽位编号排列的权威物品

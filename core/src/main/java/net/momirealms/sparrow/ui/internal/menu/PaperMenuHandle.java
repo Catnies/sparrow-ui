@@ -321,17 +321,18 @@ class PaperMenuHandle implements MenuHandle {
     private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
         ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(slots.length);
         for (int index = 0; index < slots.length; index++) {
-            items.add(this.toClientItem(index, slots[index]));
+            items.add(PaperMenuHandle.copyForPacket(this.toClientItem(index, slots[index])));
         }
         List<net.minecraft.world.item.ItemStack> frozenItems = List.copyOf(items);
-        net.minecraft.world.item.ItemStack frozenCursor = PaperMenuHandle.toNms(cursor);
+        net.minecraft.world.item.ItemStack menuCursor = PaperMenuHandle.toNms(cursor);
+        net.minecraft.world.item.ItemStack packetCursor = PaperMenuHandle.copyForPacket(menuCursor);
         ClientboundContainerSetContentPacket packet = new ClientboundContainerSetContentPacket(
                 this.containerId,
                 this.proxy.incrementStateId(),
                 frozenItems,
-                frozenCursor
+                packetCursor
         );
-        return new FullContents(frozenItems, frozenCursor, packet);
+        return new FullContents(frozenItems, menuCursor, packet);
     }
 
     /**
@@ -365,12 +366,9 @@ class PaperMenuHandle implements MenuHandle {
             if (!this.forcedSlots.get(slot) && this.remoteSlots[slot].matches(item)) {
                 continue;
             }
-            ClientboundContainerSetSlotPacket packet = new ClientboundContainerSetSlotPacket(
-                    this.containerId,
-                    this.proxy.incrementStateId(),
-                    slot,
-                    item
-            );
+            // 当前目标版本的单槽包构造器会取得自己的物品副本, 这里不在比较前重复复制.
+            ClientboundContainerSetSlotPacket packet =
+                    new ClientboundContainerSetSlotPacket(this.containerId, this.proxy.incrementStateId(), slot, item);
             outgoing.add(packet);
             changedSlots.set(slot);
             sentSlots[sentCount] = slot;
@@ -384,7 +382,7 @@ class PaperMenuHandle implements MenuHandle {
         if (checkCursor) {
             sentCursor = PaperMenuHandle.toNms(cursor);
             if (!this.remoteCursor.matches(sentCursor)) {
-                outgoing.add(new ClientboundSetCursorItemPacket(sentCursor));
+                outgoing.add(new ClientboundSetCursorItemPacket(PaperMenuHandle.copyForPacket(sentCursor)));
                 cursorChanged = true;
             }
         }
@@ -553,10 +551,10 @@ class PaperMenuHandle implements MenuHandle {
     }
 
     /**
-     * 一次完整包与提交远端镜像所共享的冻结 NMS 状态.
+     * 一次完整同步所需的数据包快照和实体线程菜单状态.
      *
      * @param slots 冻结槽位
-     * @param cursor 冻结光标
+     * @param cursor 菜单在实体线程持有的光标状态.
      * @param packet 完整内容包
      */
     private record FullContents(
@@ -566,11 +564,25 @@ class PaperMenuHandle implements MenuHandle {
     ) {
     }
 
+    /**
+     * 返回 Bukkit 快照的只读 NMS 表示, 不为同步比较预先复制物品.
+     * 调用方需要让结果跨越当前调用或进入异步数据包时, 必须先创建独立快照.
+     *
+     * @param item Window 独占的 Bukkit 物品快照
+     * @return 只用于当前同步阶段读取的 NMS 表示
+     */
     static net.minecraft.world.item.ItemStack toNms(ItemStack item) {
         if (item.isEmpty()) {
             return net.minecraft.world.item.ItemStack.EMPTY;
         }
-        return CraftItemStack.unwrap(item).copy();
+        return CraftItemStack.unwrap(item);
+    }
+
+    /**
+     * 为可能在 Netty 线程延迟编码的数据包创建独立 NMS 快照.
+     */
+    private static net.minecraft.world.item.ItemStack copyForPacket(net.minecraft.world.item.ItemStack item) {
+        return item.isEmpty() ? net.minecraft.world.item.ItemStack.EMPTY : item.copy();
     }
 
     private static void rethrow(@Nullable Throwable throwable) {

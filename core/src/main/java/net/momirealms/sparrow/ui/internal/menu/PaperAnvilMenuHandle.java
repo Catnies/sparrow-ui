@@ -21,6 +21,7 @@ import java.util.List;
 final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
 
+    /** 只读占位物品, 仅在真正进入异步数据包时由菜单基类复制. */
     private final net.minecraft.world.item.ItemStack placeholder;
     private int enchantmentCost;
     private boolean textFieldAlwaysEnabled;
@@ -102,10 +103,10 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
     @Override
     protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
         if (item.isEmpty() && rawSlot == 0 && this.textFieldAlwaysEnabled) {
-            return this.placeholder.copy();
+            return this.placeholder;
         }
         if (item.isEmpty() && rawSlot == 2 && this.resultAlwaysValid) {
-            return this.placeholder.copy();
+            return this.placeholder;
         }
         return super.toClientItem(rawSlot, item);
     }

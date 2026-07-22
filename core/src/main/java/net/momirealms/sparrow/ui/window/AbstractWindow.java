@@ -510,7 +510,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                                 route.guiSlot()
                         );
                         paths[windowSlot] = path;
-                        localSlots[windowSlot] = this.render(path, windowSlot, null);
                     }
                     case WindowLayout.PlayerRoute route -> localSlots[windowSlot] = ItemSnapshots.copyOrEmpty(
                             this.viewer.getInventory().getItem(route.inventorySlot())
@@ -518,7 +517,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 }
             }
 
-            // 构造路径会标记初始 dirty; 在 Full 前统一重渲染, 后续到达的通知留给首个 tick
+            // 构造路径会标记初始 dirty; 全部路径就绪后统一渲染一次, 后续到达的通知留给首个 tick
             this.renderDirtySlots(this.takeDirtySlots(), paths, localSlots);
 
             // 先安排周期 tick, 再发送初始完整状态, 两者都成功才发布打开状态
@@ -959,10 +958,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     private ItemStack render(DisplayedSlotPath path, int windowSlot, @Nullable ItemStack fallback) {
         try {
-            return ItemSnapshots.copyOrEmpty(path.render());
+            return path.render();
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window slot " + windowSlot, throwable);
-            return ItemSnapshots.copyOrEmpty(fallback);
+            return fallback == null ? ItemStack.empty() : fallback;
         }
     }
 
@@ -990,7 +989,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (visualizer == null) {
                 return actual;
             }
-            return ItemSnapshots.copyOrEmpty(visualizer.provide(this.cursorRenderContext));
+            return visualizer.provide(this.cursorRenderContext);
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);
             return actual;

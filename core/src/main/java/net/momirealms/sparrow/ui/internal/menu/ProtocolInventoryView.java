@@ -20,18 +20,18 @@ import java.util.BitSet;
 /**
  * 为 Bukkit 事件提供当前协议快照, 但不把事件对视图的写入直接应用到玩家物品栏.
  *
- * <p>顶部库存是本地镜像, 底部库存只读自玩家真实物品栏. 这使事件能观察与协议包一致的状态,
- * 同时 Window 仍是唯一的物品变更权威.</p>
+ * <p>顶部库存本身就是事件状态的唯一镜像, 底部槽位使用独立快照数组. 事件可以观察与协议包
+ * 一致的状态, 但任何写入都只触碰本地投影, Window 仍是唯一的物品变更权威.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
 final class ProtocolInventoryView implements InventoryView {
     private static final int PLAYER_INVENTORY_SLOTS = 36;
 
     private final Player player;
-    private final Inventory top;
+    private final Inventory upper;
     private final InventoryType inventoryType;
     private final MenuType menuType;
-    private final ItemStack[] items;
+    private final ItemStack[] lowerItems;
     private final BitSet touchedSlots = new BitSet();
     private Component title = Component.empty();
     private ItemStack cursor = ItemStack.empty();
@@ -47,12 +47,12 @@ final class ProtocolInventoryView implements InventoryView {
      */
     ProtocolInventoryView(Player player, int topSlots, InventoryType inventoryType, MenuType menuType) {
         this.player = player;
-        this.top = new CraftInventory(new SimpleContainer(topSlots));
+        this.upper = new CraftInventory(new SimpleContainer(topSlots));
         this.inventoryType = inventoryType;
         this.menuType = menuType;
-        this.items = new ItemStack[topSlots + PLAYER_INVENTORY_SLOTS];
-        for (int index = 0; index < this.items.length; index++) {
-            this.items[index] = ItemStack.empty();
+        this.lowerItems = new ItemStack[PLAYER_INVENTORY_SLOTS];
+        for (int index = 0; index < this.lowerItems.length; index++) {
+            this.lowerItems[index] = ItemStack.empty();
         }
     }
 
@@ -65,13 +65,16 @@ final class ProtocolInventoryView implements InventoryView {
      */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
         this.title = title;
-        for (int index = 0; index < this.items.length; index++) {
-            this.items[index] = ItemSnapshots.copyOrEmpty(slots[index]);
+        int upperSlots = this.upper.getSize();
+        for (int index = 0; index < upperSlots; index++) {
+            this.upper.setItem(index, slots[index]);
+        }
+        for (int index = 0; index < this.lowerItems.length; index++) {
+            this.lowerItems[index] = ItemSnapshots.copyOrEmpty(slots[upperSlots + index]);
         }
         this.cursor = ItemSnapshots.copyOrEmpty(cursor);
         this.touchedSlots.clear();
         this.cursorTouched = false;
-        this.refreshTop();
     }
 
     /**
@@ -88,14 +91,16 @@ final class ProtocolInventoryView implements InventoryView {
             @NotNull ItemStack cursor,
             boolean cursorChanged
     ) {
+        int upperSlots = this.upper.getSize();
         for (
                 int slot = changedSlots.nextSetBit(0);
                 slot >= 0;
                 slot = changedSlots.nextSetBit(slot + 1)
         ) {
-            this.items[slot] = ItemSnapshots.copyOrEmpty(slots[slot]);
-            if (slot < this.top.getSize()) {
-                this.top.setItem(slot, this.items[slot]);
+            if (slot < upperSlots) {
+                this.upper.setItem(slot, slots[slot]);
+            } else {
+                this.lowerItems[slot - upperSlots] = ItemSnapshots.copyOrEmpty(slots[slot]);
             }
         }
         if (cursorChanged) {
@@ -137,7 +142,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public @NotNull Inventory getTopInventory() {
-        return this.top;
+        return this.upper;
     }
 
     @Override
@@ -160,21 +165,29 @@ final class ProtocolInventoryView implements InventoryView {
      */
     @Override
     public void setItem(int rawSlot, @Nullable ItemStack item) {
-        if (rawSlot >= 0 && rawSlot < this.items.length) {
-            this.items[rawSlot] = ItemSnapshots.copyOrEmpty(item);
-            this.touchedSlots.set(rawSlot);
-            if (rawSlot < this.top.getSize()) {
-                this.top.setItem(rawSlot, this.items[rawSlot]);
-            }
+        int topSlots = this.upper.getSize();
+        if (rawSlot < 0 || rawSlot >= topSlots + this.lowerItems.length) {
+            return;
         }
+        if (rawSlot < topSlots) {
+            this.upper.setItem(rawSlot, item);
+        } else {
+            this.lowerItems[rawSlot - topSlots] = ItemSnapshots.copyOrEmpty(item);
+        }
+        this.touchedSlots.set(rawSlot);
     }
 
+    @Nullable
     @Override
-    public @Nullable ItemStack getItem(int rawSlot) {
-        if (rawSlot < 0 || rawSlot >= this.items.length) {
+    public ItemStack getItem(int rawSlot) {
+        int topSlots = this.upper.getSize();
+        if (rawSlot < 0 || rawSlot >= topSlots + this.lowerItems.length) {
             return null;
         }
-        return ItemSnapshots.copyOrEmpty(this.items[rawSlot]);
+        ItemStack item = rawSlot < topSlots
+                ? this.upper.getItem(rawSlot)
+                : this.lowerItems[rawSlot - topSlots];
+        return ItemSnapshots.copyOrEmpty(item);
     }
 
     /**
@@ -191,20 +204,21 @@ final class ProtocolInventoryView implements InventoryView {
         return ItemSnapshots.copyOrEmpty(this.cursor);
     }
 
+    @Nullable
     @Override
-    public @Nullable Inventory getInventory(int rawSlot) {
-        if (rawSlot < 0 || rawSlot >= this.items.length) {
+    public Inventory getInventory(int rawSlot) {
+        if (rawSlot < 0 || rawSlot >= this.countSlots()) {
             return null;
         }
-        return rawSlot < this.top.getSize() ? this.top : this.player.getInventory();
+        return rawSlot < this.upper.getSize() ? this.upper : this.player.getInventory();
     }
 
     @Override
     public int convertSlot(int rawSlot) {
-        if (rawSlot < this.top.getSize()) {
+        if (rawSlot < this.upper.getSize()) {
             return rawSlot;
         }
-        int lowerSlot = rawSlot - this.top.getSize();
+        int lowerSlot = rawSlot - this.upper.getSize();
         return lowerSlot >= 27 ? lowerSlot - 27 : lowerSlot + 9;
     }
 
@@ -213,7 +227,7 @@ final class ProtocolInventoryView implements InventoryView {
         if (rawSlot == InventoryView.OUTSIDE) {
             return InventoryType.SlotType.OUTSIDE;
         }
-        int lowerSlot = rawSlot - this.top.getSize();
+        int lowerSlot = rawSlot - this.upper.getSize();
         return lowerSlot >= 27 ? InventoryType.SlotType.QUICKBAR : InventoryType.SlotType.CONTAINER;
     }
 
@@ -227,7 +241,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public int countSlots() {
-        return this.items.length;
+        return this.upper.getSize() + this.lowerItems.length;
     }
 
     @SuppressWarnings("removal")
@@ -256,9 +270,4 @@ final class ProtocolInventoryView implements InventoryView {
         return this.menuType;
     }
 
-    private void refreshTop() {
-        for (int index = 0; index < this.top.getSize(); index++) {
-            this.top.setItem(index, this.items[index]);
-        }
-    }
 }

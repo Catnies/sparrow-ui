@@ -216,12 +216,12 @@ public final class WindowManager implements Listener {
             return true;
         }
         InventoryView view = window.menuView();
-        ItemStack oldCursor = view.getCursor().clone();
+        ItemStack oldCursor = view.getCursor();
         LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
         for (int index = 0; index < slots.size(); index++) {
             int rawSlot = slots.get(index);
             ItemStack current = view.getItem(rawSlot);
-            results.put(rawSlot, current == null ? ItemStack.empty() : current.clone());
+            results.put(rawSlot, current == null ? ItemStack.empty() : current);
         }
         InventoryDragEvent event = new InventoryDragEvent(
                 view,
