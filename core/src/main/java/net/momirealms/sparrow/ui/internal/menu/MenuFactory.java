@@ -18,7 +18,7 @@ public interface MenuFactory {
      * @param generation 此 Window 会话的代际
      * @return 可由 Window 生命周期驱动的菜单句柄
      */
-    @NotNull MenuHandle createNormal(@NotNull Player viewer, int rows, long generation);
+    @NotNull MenuHandle normal(@NotNull Player viewer, int rows, long generation);
 
     /**
      * 为指定玩家创建尚未打开的漏斗菜单.
@@ -27,7 +27,7 @@ public interface MenuFactory {
      * @param generation 此 Window 会话的代际
      * @return 漏斗菜单句柄
      */
-    @NotNull MenuHandle createHopper(@NotNull Player viewer, long generation);
+    @NotNull MenuHandle hopper(@NotNull Player viewer, long generation);
 
     /**
      * 为指定玩家创建尚未打开的铁砧菜单.
@@ -36,5 +36,5 @@ public interface MenuFactory {
      * @param generation 此 Window 会话的代际
      * @return 铁砧菜单句柄
      */
-    @NotNull AnvilMenuHandle createAnvil(@NotNull Player viewer, long generation);
+    @NotNull AnvilMenuHandle anvil(@NotNull Player viewer, long generation);
 }

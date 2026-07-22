@@ -187,11 +187,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理具体 Window 类型关心的客户端重命名文本.
+     * 处理只属于具体 Window 类型的协议输入.
      *
-     * @param text 客户端提交的文本
+     * <p>共享生命周期只保证输入顺序和实体线程所有权, 具体语义由对应 Window 实现解释.</p>
+     *
+     * @param input Window 专属输入
      */
-    protected void handleRename(@NotNull String text) {
+    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
     }
 
     @Override
@@ -722,11 +724,20 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     private void handleInput(MenuInput input) {
         switch (input) {
-            case MenuInput.Interaction interaction -> this.handleInteraction(interaction);
-            case MenuInput.Close close -> this.handleClose(close);
-            case MenuInput.BundleSelection selection -> this.handleBundleSelection(selection);
-            case MenuInput.Pong pong -> this.handlePong(pong);
-            case MenuInput.Rename rename -> this.handleRename(rename.text());
+            case MenuInput.Common common -> this.handleCommonInput(common);
+            case MenuInput.WindowSpecific windowSpecific -> this.handleWindowInput(windowSpecific);
+        }
+    }
+
+    /**
+     * 分派所有 Window 都理解的公共协议输入.
+     */
+    private void handleCommonInput(MenuInput.Common input) {
+        switch (input) {
+            case MenuInput.Common.Interaction interaction -> this.handleInteraction(interaction);
+            case MenuInput.Common.Close close -> this.handleClose(close);
+            case MenuInput.Common.BundleSelection selection -> this.handleBundleSelection(selection);
+            case MenuInput.Common.Pong pong -> this.handlePong(pong);
         }
     }
 
@@ -734,7 +745,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 校验容器状态、解释点击或拖拽步骤并分派给 GUI 或容器外处理器.
      * 不可信输入请求完整恢复, 合法或被 Bukkit 取消的输入只复核客户端预测涉及的槽位.
      */
-    private void handleInteraction(MenuInput.Interaction interaction) {
+    private void handleInteraction(MenuInput.Common.Interaction interaction) {
         M menu = this.menuHandle;
         if (menu == null || !menu.accepts(interaction)) {
             this.clickInterpreter.reset();
@@ -806,7 +817,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 处理客户端关闭包.
      * 不可关闭的 Window 立即以当前标题和全量内容重新打开, 而非让 Bukkit 外部关闭处理器 veto.
      */
-    private void handleClose(MenuInput.Close packet) {
+    private void handleClose(MenuInput.Common.Close packet) {
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
@@ -818,7 +829,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    private void handleBundleSelection(MenuInput.BundleSelection packet) {
+    private void handleBundleSelection(MenuInput.Common.BundleSelection packet) {
         this.clickInterpreter.reset();
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
@@ -839,7 +850,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * 将客户端 Pong 与待确认的服务器窗口状态关联, 并通知状态确认处理器.
      */
-    private void handlePong(MenuInput.Pong packet) {
+    private void handlePong(MenuInput.Common.Pong packet) {
         PendingWindowState pending = this.pendingWindowStates.remove(packet.id());
         if (pending == null) {
             return;

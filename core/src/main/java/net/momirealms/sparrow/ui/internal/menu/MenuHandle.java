@@ -25,18 +25,15 @@ public interface MenuHandle extends AutoCloseable {
     }
 
     /**
-     * 返回此会话的 Minecraft 容器编号.
-     *
-     * @return 容器编号
+     * 此会话的 Minecraft 容器编号.
      */
     int containerId();
 
     /**
      * 返回供 Bukkit 事件读取的协议视图.
-     *
-     * @return 当前菜单视图
      */
-    @NotNull InventoryView view();
+    @NotNull
+    InventoryView view();
 
     /**
      * 返回 Paper 玩家物品栏的变更版本.
@@ -49,7 +46,7 @@ public interface MenuHandle extends AutoCloseable {
     int playerInventoryVersion();
 
     /**
-     * 返回客户端当前应回传的容器 state id.
+     * 客户端当前应回传的容器 state id.
      *
      * @return 当前协议状态编号
      */
@@ -61,7 +58,7 @@ public interface MenuHandle extends AutoCloseable {
      * @param interaction 待校验的交互
      * @return 交互属于当前协议状态时返回 {@code true}
      */
-    boolean accepts(@NotNull MenuInput.Interaction interaction);
+    boolean accepts(@NotNull MenuInput.Common.Interaction interaction);
 
     /**
      * 返回入站消息缓冲区是否已经溢出.
@@ -73,12 +70,13 @@ public interface MenuHandle extends AutoCloseable {
     boolean hasInputOverflowed();
 
     /**
-     * 按接收顺序移除至多指定数量的当前会话输入.
+     * 按接收顺序处理至多指定数量的当前会话输入.
      *
      * @param limit 本次最多移除的输入数量
      * @return 不可变的领域输入列表
      */
-    @NotNull List<MenuInput> drainInputs(int limit);
+    @NotNull
+    List<MenuInput> drainInputs(int limit);
 
     /**
      * 打开菜单并发送初始完整状态.
@@ -92,9 +90,9 @@ public interface MenuHandle extends AutoCloseable {
     void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull ItemStack cursor);
 
     /**
-     * 将远端容器镜像收敛到当前权威状态.
+     * 将远端容器镜像同步到当前服务端权威状态.
      *
-     * <p>实现只需检查 dirty 槽位和此前收到的客户端预测. {@code forceFull} 为真时忽略增量候选并
+     * <p>实现检查 dirty 槽位和此前收到的客户端预测. {@code forceFull} 为真时忽略增量候选并
      * 发送完整状态. 参数只在调用期间有效, 实现不得修改或保留数组、位图引用.</p>
      *
      * @param slots 按原始槽位编号排列的权威物品

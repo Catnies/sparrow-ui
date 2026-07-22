@@ -24,7 +24,7 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
 
     @Override
     protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        return factory.createHopper(this.viewer(), generation);
+        return factory.hopper(this.viewer(), generation);
     }
 
     /**

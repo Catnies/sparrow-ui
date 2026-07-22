@@ -100,13 +100,13 @@ final class ClickInterpreter {
      * @return 等待、单次点击、完整拖拽或拒绝结果
      */
     @NotNull
-    Result interpret(@NotNull MenuInput.Interaction interaction, @NotNull WindowLayout layout, long generation) {
+    Result interpret(@NotNull MenuInput.Common.Interaction interaction, @NotNull WindowLayout layout, long generation) {
         return switch (interaction) {
-            case MenuInput.Click click -> {
+            case MenuInput.Common.Click click -> {
                 this.reset();
                 yield ClickInterpreter.interpretSingleClick(click, layout);
             }
-            case MenuInput.DragStep step -> this.interpretDrag(step, layout, generation);
+            case MenuInput.Common.DragStep step -> this.interpretDrag(step, layout, generation);
         };
     }
 
@@ -120,7 +120,7 @@ final class ClickInterpreter {
     /**
      * 推进已经由网络适配层解码的 QUICK_CRAFT 状态机.
      */
-    private Result interpretDrag(MenuInput.DragStep step, WindowLayout layout, long generation) {
+    private Result interpretDrag(MenuInput.Common.DragStep step, WindowLayout layout, long generation) {
         if (!ClickInterpreter.isDragClick(step.clickType())) {
             this.reset();
             return new Rejected(Rejection.INVALID_BUTTON);
@@ -170,7 +170,7 @@ final class ClickInterpreter {
         return completed;
     }
 
-    private static Result interpretSingleClick(MenuInput.Click packet, WindowLayout layout) {
+    private static Result interpretSingleClick(MenuInput.Common.Click packet, WindowLayout layout) {
         ClickType clickType = packet.clickType();
         if (!ClickInterpreter.isSingleClick(clickType)) {
             return new Rejected(Rejection.INVALID_BUTTON);

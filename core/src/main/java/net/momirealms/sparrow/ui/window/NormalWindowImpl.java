@@ -24,7 +24,7 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
 
     @Override
     protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        return factory.createNormal(this.viewer(), this.topSlots() / 9, generation);
+        return factory.normal(this.viewer(), this.topSlots() / 9, generation);
     }
 
     /**

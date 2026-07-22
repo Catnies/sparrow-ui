@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.AnvilMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
+import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -128,7 +129,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
     @Override
     protected @NotNull AnvilMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        AnvilMenuHandle menuHandle = factory.createAnvil(this.viewer(), generation);
+        AnvilMenuHandle menuHandle = factory.anvil(this.viewer(), generation);
         menuHandle.setEnchantmentCost(this.enchantmentCost);
         menuHandle.setTextFieldAlwaysEnabled(this.textFieldAlwaysEnabled);
         menuHandle.setResultAlwaysValid(this.resultAlwaysValid);
@@ -137,7 +138,13 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     }
 
     @Override
-    protected void handleRename(@NotNull String text) {
+    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
+        if (input instanceof MenuInput.WindowSpecific.Rename(String text)) {
+            this.handleRename(text);
+        }
+    }
+
+    private void handleRename(@NotNull String text) {
         this.renameText = text;
         AnvilMenuHandle menu = this.menuHandle();
         if (menu != null) {

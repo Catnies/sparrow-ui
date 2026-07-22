@@ -11,130 +11,147 @@ import org.jetbrains.annotations.NotNull;
  * 只根据操作意图更新自身的权威渲染结果, Paper 菜单 Adapter 只用预测缩小远端复核范围.</p>
  */
 @ApiStatus.Internal
-public sealed interface MenuInput permits MenuInput.Interaction, MenuInput.Close, MenuInput.BundleSelection,
-        MenuInput.Pong, MenuInput.Rename {
+public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpecific {
 
     /**
-     * QUICK_CRAFT 手势中的一个阶段.
+     * 所有 Window 都能解释的公共输入.
      */
-    enum DragPhase {
-        START,
-        ADD,
-        END
-    }
-
-    /**
-     * 携带容器状态编号的玩家交互.
-     */
-    sealed interface Interaction extends MenuInput permits Click, DragStep {
+    sealed interface Common extends MenuInput permits Common.Interaction, Common.Close, Common.BundleSelection, Common.Pong {
 
         /**
-         * 返回目标容器编号.
-         *
-         * @return 目标容器编号
+         * QUICK_CRAFT 手势中的一个阶段.
          */
-        int containerId();
-
-        /**
-         * 返回客户端声称的容器状态编号.
-         *
-         * @return 容器状态编号
-         */
-        int stateId();
-
-        /**
-         * 返回客户端声称已经改变的远端容器预测.
-         *
-         * @return 非权威客户端预测
-         */
-        @NotNull MenuPrediction prediction();
-    }
-
-    /**
-     * 客户端对一个原始槽位的单次点击意图.
-     *
-     * @param containerId 目标容器编号
-     * @param stateId 客户端声称的容器状态编号
-     * @param slot 原始槽位编号
-     * @param clickType Bukkit 点击类型
-     * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
-     * @param prediction 客户端声称的非权威远端状态
-     */
-    record Click(
-            int containerId,
-            int stateId,
-            int slot,
-            @NotNull ClickType clickType,
-            int hotbarButton,
-            @NotNull MenuPrediction prediction
-    ) implements Interaction {
-
-        public Click(int containerId, int stateId, int slot, @NotNull ClickType clickType, int hotbarButton) {
-            this(containerId, stateId, slot, clickType, hotbarButton, MenuPrediction.empty());
+        enum DragPhase {
+            START,
+            ADD,
+            END
         }
-    }
 
-    /**
-     * 客户端 QUICK_CRAFT 手势中的一个输入步骤.
-     *
-     * @param containerId 目标容器编号
-     * @param stateId 客户端声称的容器状态编号
-     * @param slot 当前步骤携带的原始槽位编号
-     * @param clickType 拖拽使用的 Bukkit 点击类型
-     * @param phase 手势阶段
-     * @param prediction 客户端声称的非权威远端状态
-     */
-    record DragStep(
-            int containerId,
-            int stateId,
-            int slot,
-            @NotNull ClickType clickType,
-            @NotNull DragPhase phase,
-            @NotNull MenuPrediction prediction
-    ) implements Interaction {
+        /**
+         * 携带容器状态编号的玩家交互.
+         */
+        sealed interface Interaction extends Common permits Click, DragStep {
 
-        public DragStep(
+            /**
+             * 返回目标容器编号.
+             *
+             * @return 目标容器编号
+             */
+            int containerId();
+
+            /**
+             * 返回客户端声称的容器状态编号.
+             *
+             * @return 容器状态编号
+             */
+            int stateId();
+
+            /**
+             * 返回客户端声称已经改变的远端容器预测.
+             *
+             * @return 非权威客户端预测
+             */
+            @NotNull MenuPrediction prediction();
+        }
+
+        /**
+         * 客户端对一个原始槽位的单次点击意图.
+         *
+         * @param containerId 目标容器编号
+         * @param stateId 客户端声称的容器状态编号
+         * @param slot 原始槽位编号
+         * @param clickType Bukkit 点击类型
+         * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
+         * @param prediction 客户端声称的非权威远端状态
+         */
+        record Click(
                 int containerId,
                 int stateId,
                 int slot,
                 @NotNull ClickType clickType,
-                @NotNull DragPhase phase
-        ) {
-            this(containerId, stateId, slot, clickType, phase, MenuPrediction.empty());
+                int hotbarButton,
+                @NotNull MenuPrediction prediction
+        ) implements Interaction {
+
+            public Click(
+                    int containerId,
+                    int stateId,
+                    int slot,
+                    @NotNull ClickType clickType,
+                    int hotbarButton
+            ) {
+                this(containerId, stateId, slot, clickType, hotbarButton, MenuPrediction.empty());
+            }
+        }
+
+        /**
+         * 客户端 QUICK_CRAFT 手势中的一个输入步骤.
+         *
+         * @param containerId 目标容器编号
+         * @param stateId 客户端声称的容器状态编号
+         * @param slot 当前步骤携带的原始槽位编号
+         * @param clickType 拖拽使用的 Bukkit 点击类型
+         * @param phase 手势阶段
+         * @param prediction 客户端声称的非权威远端状态
+         */
+        record DragStep(
+                int containerId,
+                int stateId,
+                int slot,
+                @NotNull ClickType clickType,
+                @NotNull DragPhase phase,
+                @NotNull MenuPrediction prediction
+        ) implements Interaction {
+
+            public DragStep(
+                    int containerId,
+                    int stateId,
+                    int slot,
+                    @NotNull ClickType clickType,
+                    @NotNull DragPhase phase
+            ) {
+                this(containerId, stateId, slot, clickType, phase, MenuPrediction.empty());
+            }
+        }
+
+        /**
+         * 客户端请求关闭容器.
+         *
+         * @param containerId 目标容器编号
+         */
+        record Close(int containerId) implements Common {
+        }
+
+        /**
+         * 客户端在 bundle 物品中选择了一个内部条目.
+         *
+         * @param containerId 接收包时所属的容器编号
+         * @param slot bundle 所在的原始槽位
+         * @param selectedIndex 被选中的 bundle 内部索引
+         */
+        record BundleSelection(int containerId, int slot, int selectedIndex) implements Common {
+        }
+
+        /**
+         * 客户端对 Window 状态 Ping 的确认.
+         *
+         * @param id Ping 标识
+         */
+        record Pong(int id) implements Common {
         }
     }
 
     /**
-     * 客户端请求关闭容器.
-     *
-     * @param containerId 目标容器编号
+     * 只由特定 Window 类型解释的输入.
      */
-    record Close(int containerId) implements MenuInput {
-    }
+    non-sealed interface WindowSpecific extends MenuInput {
 
-    /**
-     * 客户端在 bundle 物品中选择了一个内部条目.
-     *
-     * @param containerId 接收包时所属的容器编号
-     * @param slot bundle 所在的原始槽位
-     * @param selectedIndex 被选中的 bundle 内部索引
-     */
-    record BundleSelection(int containerId, int slot, int selectedIndex) implements MenuInput {
-    }
-
-    /**
-     * 客户端对 Window 状态 Ping 的确认.
-     *
-     * @param id Ping 标识
-     */
-    record Pong(int id) implements MenuInput {
-    }
-
-    /**
-     * 客户端在铁砧文本框中提交了新的重命名文本.
-     *
-     * @param text 新文本
-     */
-    record Rename(@NotNull String text) implements MenuInput {
+        /**
+         * 客户端在铁砧文本框中提交了新的重命名文本.
+         *
+         * @param text 新文本
+         */
+        record Rename(@NotNull String text) implements WindowSpecific {
+        }
     }
 }

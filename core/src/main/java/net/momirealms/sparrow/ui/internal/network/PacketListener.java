@@ -37,6 +37,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+
+// TODO 最后再来重新设计这个包, 暂时先聚合在一起吧.
 /**
  * 每条玩家连接只安装一个窄 Netty handler, 活动 Window 通过可替换 {@link Session} 接收入站容器包.
  *
@@ -287,15 +289,15 @@ public final class PacketListener implements Listener, AutoCloseable {
             boolean consume = true;
             switch (packet) {
                 case ServerboundContainerClickPacket click -> input = interaction(click);
-                case ServerboundContainerClosePacket close -> input = new MenuInput.Close(close.getContainerId());
-                case ServerboundRenameItemPacket rename -> input = new MenuInput.Rename(rename.getName());
-                case ServerboundSelectBundleItemPacket selection -> input = new MenuInput.BundleSelection(
+                case ServerboundContainerClosePacket close -> input = new MenuInput.Common.Close(close.getContainerId());
+                case ServerboundRenameItemPacket rename -> input = new MenuInput.WindowSpecific.Rename(rename.getName());
+                case ServerboundSelectBundleItemPacket selection -> input = new MenuInput.Common.BundleSelection(
                         this.containerId,
                         selection.slotId(),
                         selection.selectedItemIndex()
                 );
                 case ServerboundPongPacket pong -> {
-                    input = new MenuInput.Pong(pong.getId());
+                    input = new MenuInput.Common.Pong(pong.getId());
                     consume = false;
                 }
                 default -> {
@@ -311,7 +313,7 @@ public final class PacketListener implements Listener, AutoCloseable {
          * 将 NMS 容器输入完整解码为稳定的 Bukkit 点击类型或拖拽步骤.
          * 非法 button 组合保留为 {@link ClickType#UNKNOWN}, 交给实体线程触发权威状态纠正.
          */
-        private static MenuInput.Interaction interaction(ServerboundContainerClickPacket click) {
+        private static MenuInput.Common.Interaction interaction(ServerboundContainerClickPacket click) {
             return switch (click.containerInput()) {
                 case PICKUP -> switch (click.buttonNum()) {
                     case 0 -> singleClick(
@@ -355,19 +357,19 @@ public final class PacketListener implements Listener, AutoCloseable {
             };
         }
 
-        private static MenuInput.Click singleClick(
+        private static MenuInput.Common.Click singleClick(
                 ServerboundContainerClickPacket packet,
                 ClickType clickType
         ) {
             return singleClick(packet, clickType, -1);
         }
 
-        private static MenuInput.Click singleClick(
+        private static MenuInput.Common.Click singleClick(
                 ServerboundContainerClickPacket packet,
                 ClickType clickType,
                 int hotbarButton
         ) {
-            return new MenuInput.Click(
+            return new MenuInput.Common.Click(
                     packet.containerId(),
                     packet.stateId(),
                     packet.slotNum(),
@@ -381,27 +383,27 @@ public final class PacketListener implements Listener, AutoCloseable {
          * 解码 QUICK_CRAFT 的非连续 button 编码.
          * 无效编码转为 UNKNOWN 单次点击, 使解释器同时重置未完成手势并请求状态纠正.
          */
-        private static MenuInput.Interaction dragStep(ServerboundContainerClickPacket packet) {
+        private static MenuInput.Common.Interaction dragStep(ServerboundContainerClickPacket packet) {
             return switch (packet.buttonNum()) {
-                case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.START);
-                case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.ADD);
-                case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.DragPhase.END);
-                case 4 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.START);
-                case 5 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.ADD);
-                case 6 -> dragStep(packet, ClickType.RIGHT, MenuInput.DragPhase.END);
-                case 8 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.START);
-                case 9 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.ADD);
-                case 10 -> dragStep(packet, ClickType.MIDDLE, MenuInput.DragPhase.END);
+                case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.START);
+                case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.ADD);
+                case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.END);
+                case 4 -> dragStep(packet, ClickType.RIGHT, MenuInput.Common.DragPhase.START);
+                case 5 -> dragStep(packet, ClickType.RIGHT, MenuInput.Common.DragPhase.ADD);
+                case 6 -> dragStep(packet, ClickType.RIGHT, MenuInput.Common.DragPhase.END);
+                case 8 -> dragStep(packet, ClickType.MIDDLE, MenuInput.Common.DragPhase.START);
+                case 9 -> dragStep(packet, ClickType.MIDDLE, MenuInput.Common.DragPhase.ADD);
+                case 10 -> dragStep(packet, ClickType.MIDDLE, MenuInput.Common.DragPhase.END);
                 default -> singleClick(packet, ClickType.UNKNOWN);
             };
         }
 
-        private static MenuInput.DragStep dragStep(
+        private static MenuInput.Common.DragStep dragStep(
                 ServerboundContainerClickPacket packet,
                 ClickType clickType,
-                MenuInput.DragPhase phase
+                MenuInput.Common.DragPhase phase
         ) {
-            return new MenuInput.DragStep(
+            return new MenuInput.Common.DragStep(
                     packet.containerId(),
                     packet.stateId(),
                     packet.slotNum(),
