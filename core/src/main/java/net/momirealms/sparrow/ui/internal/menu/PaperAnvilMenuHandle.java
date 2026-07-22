@@ -2,6 +2,8 @@ package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
@@ -17,12 +19,14 @@ import org.jetbrains.annotations.NotNull;
 import java.util.BitSet;
 import java.util.List;
 
+/**
+ * Paper 铁砧菜单句柄, 负责文本框可用性、结果槽有效性与经验消耗数据同步.
+ */
 @SuppressWarnings("UnstableApiUsage")
 final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
+    private static final net.minecraft.world.item.ItemStack PLACEHOLDER = PaperAnvilMenuHandle.createPlaceholder();
 
-    /** 只读占位物品, 仅在真正进入异步数据包时由菜单基类复制. */
-    private final net.minecraft.world.item.ItemStack placeholder;
     private int enchantmentCost;
     private boolean textFieldAlwaysEnabled;
     private boolean resultAlwaysValid;
@@ -43,7 +47,6 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
                 3,
                 generation
         );
-        this.placeholder = PaperAnvilMenuHandle.createPlaceholder();
     }
 
     @Override
@@ -103,10 +106,10 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
     @Override
     protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
         if (item.isEmpty() && rawSlot == 0 && this.textFieldAlwaysEnabled) {
-            return this.placeholder;
+            return PLACEHOLDER;
         }
         if (item.isEmpty() && rawSlot == 2 && this.resultAlwaysValid) {
-            return this.placeholder;
+            return PLACEHOLDER;
         }
         return super.toClientItem(rawSlot, item);
     }
@@ -118,6 +121,7 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
         meta.setHideTooltip(true);
         meta.setItemModel(NamespacedKey.minecraft("air"));
         placeholder.setItemMeta(meta);
-        return PaperMenuHandle.toNms(placeholder);
+        Object handle = ItemUtils.getItemStackNMSHandle(placeholder);
+        return (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(handle);
     }
 }

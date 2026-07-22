@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.util.ItemSnapshots;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.craftbukkit.inventory.CraftInventory;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
@@ -70,9 +70,9 @@ final class ProtocolInventoryView implements InventoryView {
             this.upper.setItem(index, slots[index]);
         }
         for (int index = 0; index < this.lowerItems.length; index++) {
-            this.lowerItems[index] = ItemSnapshots.copyOrEmpty(slots[upperSlots + index]);
+            this.lowerItems[index] = ItemUtils.copyOrEmpty(slots[upperSlots + index]);
         }
-        this.cursor = ItemSnapshots.copyOrEmpty(cursor);
+        this.cursor = ItemUtils.copyOrEmpty(cursor);
         this.touchedSlots.clear();
         this.cursorTouched = false;
     }
@@ -100,11 +100,11 @@ final class ProtocolInventoryView implements InventoryView {
             if (slot < upperSlots) {
                 this.upper.setItem(slot, slots[slot]);
             } else {
-                this.lowerItems[slot - upperSlots] = ItemSnapshots.copyOrEmpty(slots[slot]);
+                this.lowerItems[slot - upperSlots] = ItemUtils.copyOrEmpty(slots[slot]);
             }
         }
         if (cursorChanged) {
-            this.cursor = ItemSnapshots.copyOrEmpty(cursor);
+            this.cursor = ItemUtils.copyOrEmpty(cursor);
         }
     }
 
@@ -119,14 +119,14 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 取出并清空 Bukkit 事件写入过的槽位.
+     * 把 Bukkit 事件写入过的槽位转移到调用方复用的位图, 并清空本地记录.
      *
-     * @return 需要恢复权威投影的槽位
+     * @param destination 接收待恢复槽位的可变位图
      */
-    @NotNull BitSet takeTouchedSlots() {
-        BitSet touched = (BitSet) this.touchedSlots.clone();
+    void drainTouchedSlots(@NotNull BitSet destination) {
+        destination.clear();
+        destination.or(this.touchedSlots);
         this.touchedSlots.clear();
-        return touched;
     }
 
     /**
@@ -172,7 +172,7 @@ final class ProtocolInventoryView implements InventoryView {
         if (rawSlot < topSlots) {
             this.upper.setItem(rawSlot, item);
         } else {
-            this.lowerItems[rawSlot - topSlots] = ItemSnapshots.copyOrEmpty(item);
+            this.lowerItems[rawSlot - topSlots] = ItemUtils.copyOrEmpty(item);
         }
         this.touchedSlots.set(rawSlot);
     }
@@ -187,7 +187,7 @@ final class ProtocolInventoryView implements InventoryView {
         ItemStack item = rawSlot < topSlots
                 ? this.upper.getItem(rawSlot)
                 : this.lowerItems[rawSlot - topSlots];
-        return ItemSnapshots.copyOrEmpty(item);
+        return ItemUtils.copyOrEmpty(item);
     }
 
     /**
@@ -195,13 +195,13 @@ final class ProtocolInventoryView implements InventoryView {
      */
     @Override
     public void setCursor(@Nullable ItemStack item) {
-        this.cursor = ItemSnapshots.copyOrEmpty(item);
+        this.cursor = ItemUtils.copyOrEmpty(item);
         this.cursorTouched = true;
     }
 
     @Override
     public @NotNull ItemStack getCursor() {
-        return ItemSnapshots.copyOrEmpty(this.cursor);
+        return ItemUtils.copyOrEmpty(this.cursor);
     }
 
     @Nullable

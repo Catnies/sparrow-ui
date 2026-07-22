@@ -1,10 +1,27 @@
 package net.momirealms.sparrow.ui.util;
 
+import org.jetbrains.annotations.Nullable;
+
 /**
- * 异常处理工具类, 提供绕过编译器受检异常检查的功能.
+ * 提供非受检异常传播与受检异常穿透功能.
  */
 public final class ThrowableUtils {
     private ThrowableUtils() {}
+
+    /**
+     * 当异常属于 {@link RuntimeException} 或 {@link Error} 时原样重新抛出.
+     * {@code null} 和受检异常不会产生任何操作.
+     *
+     * @param throwable 待检查的异常, 或 {@code null}
+     */
+    public static void throwIfUnchecked(@Nullable Throwable throwable) {
+        if (throwable instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        if (throwable instanceof Error error) {
+            throw error;
+        }
+    }
 
     /**
      * 执行一个可能抛出异常的提供者, 并通过 sneakyThrow 将任何捕获的异常作为非受检异常抛出.

@@ -14,8 +14,9 @@ import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
-import net.momirealms.sparrow.ui.util.ItemSnapshots;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.MiscUtils;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryView;
@@ -98,6 +99,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable M menuHandle;
     private @Nullable DisplayedSlotPath[] paths;
     private @Nullable ItemStack[] localSlots;
+    private @Nullable ItemStack localCursor;
     private @Nullable SchedulerTask tickTask;
     private @Nullable Component pendingReopenTitle;
     private BitSet dirtySlots;
@@ -452,6 +454,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     public void sendAllDataToViewer() {
         this.manager.mutate(this,
                 () -> {
+                    this.cursorDirty = true;
                     this.forceFull = true;
                     this.flush(false, null);
                 },
@@ -511,7 +514,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                         );
                         paths[windowSlot] = path;
                     }
-                    case WindowLayout.PlayerRoute route -> localSlots[windowSlot] = ItemSnapshots.copyOrEmpty(
+                    case WindowLayout.PlayerRoute route -> localSlots[windowSlot] = ItemUtils.copyOrEmpty(
                             this.viewer.getInventory().getItem(route.inventorySlot())
                     );
                 }
@@ -525,11 +528,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
             }
-            menuHandle.open(this.title, localSlots, this.renderCursor());
+            ItemStack localCursor = this.renderCursor();
+            menuHandle.open(this.title, localSlots, localCursor);
 
             this.menuHandle = menuHandle;
             this.paths = paths;
             this.localSlots = localSlots;
+            this.localCursor = localCursor;
             this.tickTask = tickTask;
             this.playerInventoryVersion = menuHandle.playerInventoryVersion();
             this.open = true;
@@ -572,6 +577,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.menuHandle = null;
         this.paths = null;
         this.localSlots = null;
+        this.localCursor = null;
         this.pendingReopenTitle = null;
         this.menuDirty = false;
         this.pendingWindowStates.clear();
@@ -593,7 +599,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 只有玩家主动关闭才进入 fallback, 然后通知关闭处理器
         this.openFallback(reason);
         this.fireCloseHandlers(reason);
-        rethrow(failure);
+        ThrowableUtils.throwIfUnchecked(failure);
     }
 
     /**
@@ -615,6 +621,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.menuHandle = null;
         this.paths = null;
         this.localSlots = null;
+        this.localCursor = null;
         this.pendingReopenTitle = null;
         this.menuDirty = false;
         this.pendingWindowStates.clear();
@@ -905,7 +912,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (this.layout.route(windowSlot) instanceof WindowLayout.PlayerRoute(var inventorySlot)) {
                 ItemStack playerItem = this.viewer.getInventory().getItem(inventorySlot);
                 if (!AbstractWindow.sameItem(localSlots[windowSlot], playerItem)) {
-                    localSlots[windowSlot] = ItemSnapshots.copyOrEmpty(playerItem);
+                    localSlots[windowSlot] = ItemUtils.copyOrEmpty(playerItem);
                     this.notifyUpdate(windowSlot);
                 }
             }
@@ -935,12 +942,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         try {
-            ItemStack cursor = this.renderCursor();
+            ItemStack cursor = this.localCursor;
+            if (cursor == null || this.cursorDirty) {
+                cursor = this.renderCursor();
+            }
             if (effectiveReopenTitle != null) {
                 menu.updateTitle(effectiveReopenTitle, localSlots, cursor);
             } else {
                 menu.synchronize(localSlots, dirty, cursor, this.cursorDirty, full);
             }
+            this.localCursor = cursor;
             this.cursorDirty = false;
             this.forceFull = false;
             this.menuDirty = false;
@@ -983,7 +994,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 可视化器失败时回退到真实光标, 因而显示扩展不会破坏容器同步.
      */
     private ItemStack renderCursor() {
-        ItemStack actual = ItemSnapshots.copyOrEmpty(this.viewer.getItemOnCursor());
+        ItemStack actual = ItemUtils.copyOrEmpty(this.viewer.getItemOnCursor());
         try {
             ItemProvider visualizer = this.cursorVisualizer.apply(actual.isEmpty() ? null : actual.clone());
             if (visualizer == null) {
@@ -1135,15 +1146,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
         }
         return failure;
-    }
-
-    private static void rethrow(@Nullable Throwable throwable) {
-        if (throwable instanceof RuntimeException runtimeException) {
-            throw runtimeException;
-        }
-        if (throwable instanceof Error error) {
-            throw error;
-        }
     }
 
     private record PendingWindowState(int state, long createdAtMillis) {

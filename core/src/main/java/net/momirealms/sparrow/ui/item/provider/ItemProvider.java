@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item.provider;
 
-import net.momirealms.sparrow.ui.util.ItemSnapshots;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,7 +13,7 @@ import java.util.function.Function;
  */
 @FunctionalInterface
 public interface ItemProvider {
-    ItemProvider EMPTY = _ -> ItemSnapshots.copyOrEmpty(null);
+    ItemProvider EMPTY = _ -> ItemUtils.copyOrEmpty(null);
 
     /**
      * 基于模板的防御性副本创建固定提供器.
@@ -32,7 +32,7 @@ public interface ItemProvider {
      * @return 持有其返回快照的提供器
      */
     static ItemProvider contextual(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
-        return context -> ItemSnapshots.copyOrEmpty(renderer.apply(context));
+        return context -> ItemUtils.copyOrEmpty(renderer.apply(context));
     }
 
     /**

@@ -3,6 +3,9 @@ package net.momirealms.sparrow.ui.internal.menu;
 import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
@@ -16,18 +19,24 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.RemoteSlot;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
+/**
+ * 基于 Paper 容器协议实现的菜单句柄.
+ *
+ * <p>此实现只在玩家实体线程维护权威远端镜像, 并把需要跨越当前调用的数据包物品冻结为
+ * 独立快照. Netty 入站消息由句柄自己的有界队列保序后交回实体线程消费.</p>
+ */
 @SuppressWarnings("UnstableApiUsage")
 class PaperMenuHandle implements MenuHandle {
     private static final int INCOMING_CAPACITY = 256;
@@ -46,6 +55,10 @@ class PaperMenuHandle implements MenuHandle {
     private final RemoteSlot remoteCursor;
     private final BitSet predictedSlots = new BitSet();
     private final BitSet forcedSlots = new BitSet();
+    private final BitSet candidateSlots = new BitSet();
+    private final BitSet viewTouchedSlots = new BitSet();
+    private final BitSet changedSlots = new BitSet();
+    private final net.minecraft.world.item.ItemStack[] pendingRemoteItems;
 
     private @Nullable PacketListener.Session session;
     private net.minecraft.world.item.ItemStack cursor = net.minecraft.world.item.ItemStack.EMPTY;
@@ -75,6 +88,7 @@ class PaperMenuHandle implements MenuHandle {
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             this.remoteSlots[slot] = this.createRemoteSlot();
         }
+        this.pendingRemoteItems = new net.minecraft.world.item.ItemStack[this.remoteSlots.length];
         this.remoteCursor = this.createRemoteSlot();
     }
 
@@ -190,7 +204,7 @@ class PaperMenuHandle implements MenuHandle {
             ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(2);
             outgoing.add(full.packet());
             this.appendMenuDataPackets(outgoing, true);
-            this.packets.send(this.player, List.copyOf(outgoing));
+            this.packets.send(this.player, outgoing);
             this.commitFull(full);
             this.commitMenuDataPackets();
             this.view.initialize(slots, cursor, this.view.title());
@@ -280,7 +294,7 @@ class PaperMenuHandle implements MenuHandle {
                 failure.addSuppressed(throwable);
             }
         }
-        PaperMenuHandle.rethrow(failure);
+        ThrowableUtils.throwIfUnchecked(failure);
     }
 
     /**
@@ -312,7 +326,7 @@ class PaperMenuHandle implements MenuHandle {
         ));
         outgoing.add(full.packet());
         this.appendMenuDataPackets(outgoing, true);
-        return List.copyOf(outgoing);
+        return outgoing;
     }
 
     /**
@@ -321,18 +335,17 @@ class PaperMenuHandle implements MenuHandle {
     private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
         ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(slots.length);
         for (int index = 0; index < slots.length; index++) {
-            items.add(PaperMenuHandle.copyForPacket(this.toClientItem(index, slots[index])));
+            items.add((net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
         }
-        List<net.minecraft.world.item.ItemStack> frozenItems = List.copyOf(items);
-        net.minecraft.world.item.ItemStack menuCursor = PaperMenuHandle.toNms(cursor);
-        net.minecraft.world.item.ItemStack packetCursor = PaperMenuHandle.copyForPacket(menuCursor);
+        net.minecraft.world.item.ItemStack menuCursor = (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(cursor);
+        net.minecraft.world.item.ItemStack packetCursor = (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(menuCursor);
         ClientboundContainerSetContentPacket packet = new ClientboundContainerSetContentPacket(
                 this.containerId,
                 this.proxy.incrementStateId(),
-                frozenItems,
+                items,
                 packetCursor
         );
-        return new FullContents(frozenItems, menuCursor, packet);
+        return new FullContents(items, menuCursor, packet);
     }
 
     /**
@@ -344,71 +357,88 @@ class PaperMenuHandle implements MenuHandle {
             ItemStack cursor,
             boolean cursorDirty
     ) {
-        BitSet candidates = (BitSet) dirtySlots.clone();
+        BitSet candidates = this.candidateSlots;
+        candidates.clear();
+        candidates.or(dirtySlots);
         candidates.or(this.predictedSlots);
         candidates.or(this.forcedSlots);
-        BitSet viewTouchedSlots = this.view.takeTouchedSlots();
-        candidates.or(viewTouchedSlots);
+        this.view.drainTouchedSlots(this.viewTouchedSlots);
+        candidates.or(this.viewTouchedSlots);
         boolean viewCursorTouched = this.view.takeCursorTouched();
 
         int candidateCount = candidates.cardinality();
-        ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(candidateCount + 1);
-        BitSet changedSlots = new BitSet();
-        int[] sentSlots = new int[candidateCount];
-        net.minecraft.world.item.ItemStack[] sentItems = new net.minecraft.world.item.ItemStack[candidateCount];
-        int sentCount = 0;
-        for (
-                int slot = candidates.nextSetBit(0);
-                slot >= 0 && slot < slots.length;
-                slot = candidates.nextSetBit(slot + 1)
-        ) {
-            net.minecraft.world.item.ItemStack item = this.toClientItem(slot, slots[slot]);
-            if (!this.forcedSlots.get(slot) && this.remoteSlots[slot].matches(item)) {
-                continue;
+        ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(candidateCount + 2);
+        BitSet changedSlots = this.changedSlots;
+        changedSlots.clear();
+        try {
+            for (
+                    int slot = candidates.nextSetBit(0);
+                    slot >= 0 && slot < slots.length;
+                    slot = candidates.nextSetBit(slot + 1)
+            ) {
+                net.minecraft.world.item.ItemStack item = this.toClientItem(slot, slots[slot]);
+                if (!this.forcedSlots.get(slot) && this.remoteSlots[slot].matches(item)) {
+                    continue;
+                }
+                // 当前目标版本的单槽包构造器会取得自己的物品副本, 这里不在比较前重复复制.
+                ClientboundContainerSetSlotPacket packet =
+                        new ClientboundContainerSetSlotPacket(this.containerId, this.proxy.incrementStateId(), slot, item);
+                outgoing.add(packet);
+                changedSlots.set(slot);
+                this.pendingRemoteItems[slot] = packet.getItem();
             }
-            // 当前目标版本的单槽包构造器会取得自己的物品副本, 这里不在比较前重复复制.
-            ClientboundContainerSetSlotPacket packet =
-                    new ClientboundContainerSetSlotPacket(this.containerId, this.proxy.incrementStateId(), slot, item);
-            outgoing.add(packet);
-            changedSlots.set(slot);
-            sentSlots[sentCount] = slot;
-            sentItems[sentCount] = packet.getItem();
-            sentCount++;
-        }
 
-        boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
-        boolean cursorChanged = false;
-        net.minecraft.world.item.ItemStack sentCursor = this.cursor;
-        if (checkCursor) {
-            sentCursor = PaperMenuHandle.toNms(cursor);
-            if (!this.remoteCursor.matches(sentCursor)) {
-                outgoing.add(new ClientboundSetCursorItemPacket(PaperMenuHandle.copyForPacket(sentCursor)));
-                cursorChanged = true;
+            boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
+            boolean cursorChanged = false;
+            net.minecraft.world.item.ItemStack sentCursor = this.cursor;
+            if (checkCursor) {
+                sentCursor = (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(cursor);
+                if (!this.remoteCursor.matches(sentCursor)) {
+                    outgoing.add(new ClientboundSetCursorItemPacket(
+                            (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(sentCursor)
+                    ));
+                    cursorChanged = true;
+                }
             }
-        }
 
-        this.appendMenuDataPackets(outgoing, false);
+            this.appendMenuDataPackets(outgoing, false);
 
-        if (!outgoing.isEmpty()) {
-            this.packets.send(this.player, List.copyOf(outgoing));
-        }
+            if (!outgoing.isEmpty()) {
+                this.packets.send(this.player, outgoing);
+            }
 
-        // 只有网络批次成功排入 event loop 后才提交远端镜像
-        for (int update = 0; update < sentCount; update++) {
-            this.remoteSlots[sentSlots[update]].force(sentItems[update]);
+            // 只有网络批次成功排入 event loop 后才提交远端镜像
+            for (
+                    int slot = changedSlots.nextSetBit(0);
+                    slot >= 0;
+                    slot = changedSlots.nextSetBit(slot + 1)
+            ) {
+                this.remoteSlots[slot].force(this.pendingRemoteItems[slot]);
+            }
+            if (checkCursor) {
+                this.cursor = sentCursor;
+            }
+            if (cursorChanged) {
+                this.remoteCursor.force(sentCursor);
+            }
+            changedSlots.or(this.viewTouchedSlots);
+            this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
+            this.predictedSlots.clear();
+            this.predictedCarried = false;
+            this.forcedSlots.andNot(changedSlots);
+            this.commitMenuDataPackets();
+        } finally {
+            for (
+                    int slot = changedSlots.nextSetBit(0);
+                    slot >= 0;
+                    slot = changedSlots.nextSetBit(slot + 1)
+            ) {
+                this.pendingRemoteItems[slot] = null;
+            }
+            candidates.clear();
+            this.viewTouchedSlots.clear();
+            changedSlots.clear();
         }
-        if (checkCursor) {
-            this.cursor = sentCursor;
-        }
-        if (cursorChanged) {
-            this.remoteCursor.force(sentCursor);
-        }
-        changedSlots.or(viewTouchedSlots);
-        this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
-        this.predictedSlots.clear();
-        this.predictedCarried = false;
-        this.forcedSlots.andNot(changedSlots);
-        this.commitMenuDataPackets();
     }
 
     /**
@@ -458,7 +488,7 @@ class PaperMenuHandle implements MenuHandle {
      * @return 客户端显示物品
      */
     protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
-        return PaperMenuHandle.toNms(item);
+        return (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(item);
     }
 
     /**
@@ -531,14 +561,15 @@ class PaperMenuHandle implements MenuHandle {
             // Window 是唯一的完整状态同步权威.
         }
 
+        @NonNull
         @Override
         public InventoryView getBukkitView() {
             return PaperMenuHandle.this.view;
         }
 
         @Override
-        public net.minecraft.world.item.ItemStack quickMoveStack(
-                net.minecraft.world.entity.player.Player player,
+        public net.minecraft.world.item.@NonNull ItemStack quickMoveStack(
+                net.minecraft.world.entity.player.@NonNull Player player,
                 int slot
         ) {
             return net.minecraft.world.item.ItemStack.EMPTY;
@@ -564,33 +595,4 @@ class PaperMenuHandle implements MenuHandle {
     ) {
     }
 
-    /**
-     * 返回 Bukkit 快照的只读 NMS 表示, 不为同步比较预先复制物品.
-     * 调用方需要让结果跨越当前调用或进入异步数据包时, 必须先创建独立快照.
-     *
-     * @param item Window 独占的 Bukkit 物品快照
-     * @return 只用于当前同步阶段读取的 NMS 表示
-     */
-    static net.minecraft.world.item.ItemStack toNms(ItemStack item) {
-        if (item.isEmpty()) {
-            return net.minecraft.world.item.ItemStack.EMPTY;
-        }
-        return CraftItemStack.unwrap(item);
-    }
-
-    /**
-     * 为可能在 Netty 线程延迟编码的数据包创建独立 NMS 快照.
-     */
-    private static net.minecraft.world.item.ItemStack copyForPacket(net.minecraft.world.item.ItemStack item) {
-        return item.isEmpty() ? net.minecraft.world.item.ItemStack.EMPTY : item.copy();
-    }
-
-    private static void rethrow(@Nullable Throwable throwable) {
-        if (throwable instanceof RuntimeException runtimeException) {
-            throw runtimeException;
-        }
-        if (throwable instanceof Error error) {
-            throw error;
-        }
-    }
 }

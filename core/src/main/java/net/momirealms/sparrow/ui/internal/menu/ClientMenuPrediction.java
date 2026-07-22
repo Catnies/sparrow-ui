@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import net.minecraft.network.HashedStack;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.world.inventory.RemoteSlot;
@@ -19,28 +19,50 @@ import java.util.BitSet;
  */
 @ApiStatus.Internal
 public final class ClientMenuPrediction implements MenuPrediction {
-    private final Int2ObjectMap<HashedStack> changedSlots;
+    private static final int[] EMPTY_SLOTS = new int[0];
+    private static final HashedStack[] EMPTY_HASHES = new HashedStack[0];
+
+    private final int[] changedSlots;
+    private final HashedStack[] changedHashes;
     private final HashedStack cursor;
 
     private ClientMenuPrediction(
-            @NotNull Int2ObjectMap<HashedStack> changedSlots,
+            int @NotNull [] changedSlots,
+            HashedStack @NotNull [] changedHashes,
             @NotNull HashedStack cursor
     ) {
-        this.changedSlots = Int2ObjectMaps.unmodifiable(new Int2ObjectOpenHashMap<>(changedSlots));
+        this.changedSlots = changedSlots;
+        this.changedHashes = changedHashes;
         this.cursor = cursor;
     }
 
     /**
      * 从不再向下游转发的点击包接管预测数据.
      *
-     * <p>点击包在 Netty 线程解码, 预测会在玩家实体线程消费. 这里复制可变 fastutil map, 避免
-     * 依赖 NMS 包在跨线程排队期间保持只读.</p>
+     * <p>点击包在 Netty 线程解码, 预测会在玩家实体线程消费. 这里把可变 fastutil map 压缩为
+     * 两个顺序数组, 在保持跨线程快照稳定的同时避免为一次性遍历复制哈希表和包装器.</p>
      *
      * @param packet 已被 Sparrow 捕获的点击包
      * @return 该包的非权威预测
      */
-    public static @NotNull ClientMenuPrediction from(@NotNull ServerboundContainerClickPacket packet) {
-        return new ClientMenuPrediction(packet.changedSlots(), packet.carriedItem());
+    @NotNull
+    public static ClientMenuPrediction from(@NotNull ServerboundContainerClickPacket packet) {
+        Int2ObjectMap<HashedStack> changedSlots = packet.changedSlots();
+        int size = changedSlots.size();
+        if (size == 0) {
+            return new ClientMenuPrediction(EMPTY_SLOTS, EMPTY_HASHES, packet.carriedItem());
+        }
+        int[] slots = new int[size];
+        HashedStack[] hashes = new HashedStack[size];
+        int index = 0;
+        ObjectIterator<Int2ObjectMap.Entry<HashedStack>> iterator = Int2ObjectMaps.fastIterator(changedSlots);
+        while (iterator.hasNext()) {
+            Int2ObjectMap.Entry<HashedStack> entry = iterator.next();
+            slots[index] = entry.getIntKey();
+            hashes[index] = entry.getValue();
+            index++;
+        }
+        return new ClientMenuPrediction(slots, hashes, packet.carriedItem());
     }
 
     /**
@@ -56,12 +78,12 @@ public final class ClientMenuPrediction implements MenuPrediction {
             @NotNull RemoteSlot remoteCursor,
             @NotNull BitSet candidates
     ) {
-        for (Int2ObjectMap.Entry<HashedStack> entry : this.changedSlots.int2ObjectEntrySet()) {
-            int slot = entry.getIntKey();
+        for (int index = 0; index < this.changedSlots.length; index++) {
+            int slot = this.changedSlots[index];
             if (slot < 0 || slot >= remoteSlots.length) {
                 continue;
             }
-            remoteSlots[slot].receive(entry.getValue());
+            remoteSlots[slot].receive(this.changedHashes[index]);
             candidates.set(slot);
         }
         remoteCursor.receive(this.cursor);

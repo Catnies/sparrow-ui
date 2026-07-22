@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import net.momirealms.sparrow.ui.internal.menu.ClientMenuPrediction;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
@@ -148,9 +149,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             }
         }
         this.handlers.clear();
-        if (failure != null) {
-            rethrow(failure);
-        }
+        ThrowableUtils.throwIfUnchecked(failure);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -218,15 +217,6 @@ public final class PacketListener implements Listener, AutoCloseable {
             removal.run();
         } else {
             handler.channel.eventLoop().execute(removal);
-        }
-    }
-
-    private static void rethrow(Throwable throwable) {
-        if (throwable instanceof RuntimeException runtimeException) {
-            throw runtimeException;
-        }
-        if (throwable instanceof Error error) {
-            throw error;
         }
     }
 
