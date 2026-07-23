@@ -1,8 +1,10 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.world.inventory;
 
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.nyana.reflection.proxy.ASMProxyFactory;
 import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+import net.nyana.reflection.proxy.annotation.Type;
 
 /**
  * 容器 state id 与完整远端同步操作的访问代理.
@@ -12,11 +14,17 @@ public interface AbstractContainerMenuProxy {
     AbstractContainerMenuProxy INSTANCE = ASMProxyFactory.create(AbstractContainerMenuProxy.class);
 
     @MethodInvoker(name = "getStateId")
-    int stateId(Object target);
+    int getStateId(Object target);
 
     @MethodInvoker(name = "incrementStateId")
     int incrementStateId(Object target);
 
     @MethodInvoker(name = "sendAllDataToRemote")
     void sendAllDataToRemote(Object target);
+
+    @MethodInvoker(name = "getCarried")
+    Object getCarried(Object target);
+
+    @MethodInvoker(name = "setCarried")
+    void setCarried(Object target, @Type(clazz = ItemStackProxy.class) Object item);
 }
