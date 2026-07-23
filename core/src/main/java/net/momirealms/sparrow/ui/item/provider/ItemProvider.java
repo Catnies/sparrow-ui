@@ -13,7 +13,7 @@ import java.util.function.Function;
  */
 @FunctionalInterface
 public interface ItemProvider {
-    ItemProvider EMPTY = _ -> ItemUtils.copyOrEmpty(null);
+    ItemProvider EMPTY = ignoredContext -> ItemUtils.copyOrEmpty(null);
 
     /**
      * 基于模板的防御性副本创建固定提供器.

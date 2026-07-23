@@ -104,7 +104,7 @@ final class WindowLayout {
     SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
         return switch (this.route(windowSlot)) {
             case GuiRoute route -> new SlotElement.GuiLink(route.gui(), route.guiSlot());
-            case PlayerRoute _ -> null;
+            case PlayerRoute ignoredRoute -> null;
         };
     }
 
@@ -137,7 +137,7 @@ final class WindowLayout {
     private static List<Gui> collectGuis(Route[] routes) {
         ArrayList<Gui> guis = new ArrayList<>(2);
         for (int index = 0; index < routes.length; index++) {
-            if (routes[index] instanceof GuiRoute(var gui, _) && !guis.contains(gui)) {
+            if (routes[index] instanceof GuiRoute(var gui, var ignoredGuiSlot) && !guis.contains(gui)) {
                 guis.add(gui);
             }
         }

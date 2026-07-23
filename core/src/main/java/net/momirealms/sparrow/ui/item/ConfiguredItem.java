@@ -118,7 +118,7 @@ final class ConfiguredItem implements ObservableItem {
     record ThrottleConfig(long intervalMillis, @Nullable ThrottleHandler handler) {
         ThrottleConfig {
             if (handler == null) {
-                handler = (_, _, _) -> { };
+                handler = (ignoredItem, ignoredClick, ignoredRemainingMillis) -> { };
             }
         }
     }

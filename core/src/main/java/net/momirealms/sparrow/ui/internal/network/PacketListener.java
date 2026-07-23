@@ -17,6 +17,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Serverbou
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -309,47 +310,42 @@ public final class PacketListener implements Listener, AutoCloseable {
          */
         private static MenuInput.Common.Interaction interaction(Object click) {
             ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
-            return switch (proxy.containerInput(click)) {
-                case PICKUP -> switch (proxy.button(click)) {
+            Enum<?> containerInput = VersionHelper.isOrAbove26_1() ? proxy.containerInput(click) : proxy.clickType(click);
+            return switch (containerInput.name()) {
+                case "PICKUP" -> switch (proxy.buttonNum(click)) {
                     case 0 -> singleClick(
                             click,
-                            proxy.slot(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT
+                            proxy.slotNum(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT
                     );
                     case 1 -> singleClick(
                             click,
-                            proxy.slot(click) == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT
+                            proxy.slotNum(click) == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT
                     );
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
-                case QUICK_MOVE -> switch (proxy.button(click)) {
+                case "QUICK_MOVE" -> switch (proxy.buttonNum(click)) {
                     case 0 -> singleClick(click, ClickType.SHIFT_LEFT);
                     case 1 -> singleClick(click, ClickType.SHIFT_RIGHT);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
-                case SWAP -> {
-                    if (proxy.button(click) >= 0 && proxy.button(click) <= 8) {
-                        yield singleClick(click, ClickType.NUMBER_KEY, proxy.button(click));
+                case "SWAP" -> {
+                    if (proxy.buttonNum(click) >= 0 && proxy.buttonNum(click) <= 8) {
+                        yield singleClick(click, ClickType.NUMBER_KEY, proxy.buttonNum(click));
                     }
-                    if (proxy.button(click) == 40) {
+                    if (proxy.buttonNum(click) == 40) {
                         yield singleClick(click, ClickType.SWAP_OFFHAND);
                     }
                     yield singleClick(click, ClickType.UNKNOWN);
                 }
-                case CLONE -> singleClick(
-                        click,
-                        proxy.button(click) == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN
-                );
-                case THROW -> switch (proxy.button(click)) {
+                case "CLONE" -> singleClick(click, proxy.buttonNum(click) == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN);
+                case "THROW" -> switch (proxy.buttonNum(click)) {
                     case 0 -> singleClick(click, ClickType.DROP);
                     case 1 -> singleClick(click, ClickType.CONTROL_DROP);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
-                case QUICK_CRAFT -> dragStep(click);
-                case PICKUP_ALL -> singleClick(
-                        click,
-                        proxy.button(click) == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN
-                );
-                case UNKNOWN -> singleClick(click, ClickType.UNKNOWN);
+                case "QUICK_CRAFT" -> dragStep(click);
+                case "PICKUP_ALL" -> singleClick(click, proxy.buttonNum(click) == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN);
+                default -> singleClick(click, ClickType.UNKNOWN);
             };
         }
 
@@ -369,7 +365,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             return new MenuInput.Common.Click(
                     proxy.containerId(packet),
                     proxy.stateId(packet),
-                    proxy.slot(packet),
+                    proxy.slotNum(packet),
                     clickType,
                     hotbarButton,
                     ClientMenuPrediction.from(packet)
@@ -381,7 +377,7 @@ public final class PacketListener implements Listener, AutoCloseable {
          * 无效编码转为 UNKNOWN 单次点击, 使解释器同时重置未完成手势并请求状态纠正.
          */
         private static MenuInput.Common.Interaction dragStep(Object packet) {
-            return switch (ServerboundContainerClickPacketProxy.INSTANCE.button(packet)) {
+            return switch (ServerboundContainerClickPacketProxy.INSTANCE.buttonNum(packet)) {
                 case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.START);
                 case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.ADD);
                 case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.END);
@@ -403,7 +399,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             return new MenuInput.Common.DragStep(
                     ServerboundContainerClickPacketProxy.INSTANCE.containerId(packet),
                     ServerboundContainerClickPacketProxy.INSTANCE.stateId(packet),
-                    ServerboundContainerClickPacketProxy.INSTANCE.slot(packet),
+                    ServerboundContainerClickPacketProxy.INSTANCE.slotNum(packet),
                     clickType,
                     phase,
                     ClientMenuPrediction.from(packet)

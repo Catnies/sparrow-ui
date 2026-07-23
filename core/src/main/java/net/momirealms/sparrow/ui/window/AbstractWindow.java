@@ -761,8 +761,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorDirty = true;
         ClickInterpreter.Result result = this.clickInterpreter.interpret(interaction, this.layout, this.generation);
         switch (result) {
-            case ClickInterpreter.Pending _ -> {}
-            case ClickInterpreter.Rejected _ -> this.forceFull = true;
+            case ClickInterpreter.Pending ignoredPending -> {}
+            case ClickInterpreter.Rejected ignoredRejection -> this.forceFull = true;
             case ClickInterpreter.SingleClick click -> this.handleSingleClick(click, menu);
             case ClickInterpreter.Drag drag -> this.handleDrag(drag, menu);
         }

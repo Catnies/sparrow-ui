@@ -79,7 +79,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
 
     @Override
     public final @NotNull B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder) {
-        return this.bindIngredient(identifier, (_, _) -> new SlotElement.Item(itemBuilder.build()));
+        return this.bindIngredient(identifier, (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(itemBuilder.build()));
     }
 
     @Override

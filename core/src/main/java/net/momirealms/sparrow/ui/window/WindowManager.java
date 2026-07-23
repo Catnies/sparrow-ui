@@ -186,7 +186,7 @@ public final class WindowManager implements Listener {
         int rawSlot = switch (click.target()) {
             case ClickInterpreter.GuiTarget target -> target.windowSlot();
             case ClickInterpreter.PlayerTarget target -> target.windowSlot();
-            case ClickInterpreter.OutsideTarget _ -> InventoryView.OUTSIDE;
+            case ClickInterpreter.OutsideTarget ignoredTarget -> InventoryView.OUTSIDE;
         };
         InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
                 ? InventoryType.SlotType.OUTSIDE
@@ -349,7 +349,7 @@ public final class WindowManager implements Listener {
 
     private PlayerCommandLane lane(Player player) {
         UUID playerId = player.getUniqueId();
-        PlayerCommandLane lane = this.lanes.computeIfAbsent(playerId, _ -> new PlayerCommandLane(player, () -> this.retire(playerId)));
+        PlayerCommandLane lane = this.lanes.computeIfAbsent(playerId, ignoredPlayerId -> new PlayerCommandLane(player, () -> this.retire(playerId)));
         if (this.shutdown.get() && this.lanes.remove(playerId, lane)) {
             lane.retire();
         }

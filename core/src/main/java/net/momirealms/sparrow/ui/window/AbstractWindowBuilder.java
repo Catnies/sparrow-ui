@@ -34,7 +34,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private Supplier<? extends @Nullable Window> fallbackWindow = () -> null;
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
-    private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer = _ -> null;
+    private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer = ignoredCursor -> null;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {

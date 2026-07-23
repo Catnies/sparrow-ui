@@ -5,6 +5,7 @@ import java.util.Map;
 
 public final class MinecraftVersion implements Comparable<MinecraftVersion> {
     private static final Map<String, MinecraftVersion> BY_NAME = new LinkedHashMap<>();
+    public static final MinecraftVersion V1_21_8 = new MinecraftVersion("1.21.8");
     public static final MinecraftVersion V26_1 = new MinecraftVersion("26.1");
     public static final MinecraftVersion V26_1_1 = new MinecraftVersion("26.1.1");
     public static final MinecraftVersion V26_1_2 = new MinecraftVersion("26.1.2");

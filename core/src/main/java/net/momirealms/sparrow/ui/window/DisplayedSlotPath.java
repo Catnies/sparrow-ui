@@ -187,7 +187,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 throw new IllegalStateException("GUI link cycle detected at depth " + candidate.depth + " for local slot " + guiSlot);
             }
 
-            GuiSlotAttachment attachment = gui.attach(guiSlot, _ -> candidate.notifyWindows(true));
+            GuiSlotAttachment attachment = gui.attach(guiSlot, ignoredInvalidation -> candidate.notifyWindows(true));
             candidate.add(gui, attachment);
             if (attachment.background() != null) {
                 candidate.background = attachment.background();
@@ -201,10 +201,10 @@ final class DisplayedSlotPath implements AutoCloseable {
                 }
                 case SlotElement.Item(var item) -> {
                     candidate.item = item;
-                    candidate.itemAttachment = item.attach(_ -> candidate.notifyWindows(false));
+                    candidate.itemAttachment = item.attach(ignoredInvalidation -> candidate.notifyWindows(false));
                     return;
                 }
-                case SlotElement.Empty _ -> {
+                case SlotElement.Empty ignoredEmpty -> {
                     return;
                 }
             }

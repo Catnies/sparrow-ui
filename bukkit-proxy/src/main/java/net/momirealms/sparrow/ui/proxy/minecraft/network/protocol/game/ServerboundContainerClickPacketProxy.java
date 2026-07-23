@@ -19,50 +19,20 @@ public interface ServerboundContainerClickPacketProxy extends PacketProxy {
     int stateId(Object target);
 
     @MethodInvoker(name = "slotNum")
-    short slot(Object target);
+    short slotNum(Object target);
 
     @MethodInvoker(name = "buttonNum")
-    byte button(Object target);
+    byte buttonNum(Object target);
 
-    /**
-     * 把版本相关的 NMS 点击动作收敛为 Proxy 自己的稳定枚举.
-     *
-     * @param target NMS ServerboundContainerClickPacket
-     * @return 稳定容器输入动作
-     */
-    default ContainerInput containerInput(Object target) {
-        return switch (this.rawContainerInput(target).name()) {
-            case "PICKUP" -> ContainerInput.PICKUP;
-            case "QUICK_MOVE" -> ContainerInput.QUICK_MOVE;
-            case "SWAP" -> ContainerInput.SWAP;
-            case "CLONE" -> ContainerInput.CLONE;
-            case "THROW" -> ContainerInput.THROW;
-            case "QUICK_CRAFT" -> ContainerInput.QUICK_CRAFT;
-            case "PICKUP_ALL" -> ContainerInput.PICKUP_ALL;
-            default -> ContainerInput.UNKNOWN;
-        };
-    }
+    @MethodInvoker(name = "containerInput", activeIf = "min_version=26.1")
+    Enum<?> containerInput(Object target);
 
-    @MethodInvoker(name = "containerInput")
-    Enum<?> rawContainerInput(Object target);
+    @MethodInvoker(name = "clickType", activeIf = "!min_version=26.1")
+    Enum<?> clickType(Object target);
 
     @MethodInvoker(name = "changedSlots")
     Int2ObjectMap<Object> changedSlots(Object target);
 
     @MethodInvoker(name = "carriedItem")
-    Object carried(Object target);
-
-    /**
-     * 客户端容器操作的稳定分类.
-     */
-    enum ContainerInput {
-        PICKUP,
-        QUICK_MOVE,
-        SWAP,
-        CLONE,
-        THROW,
-        QUICK_CRAFT,
-        PICKUP_ALL,
-        UNKNOWN
-    }
+    Object carriedItem(Object target);
 }

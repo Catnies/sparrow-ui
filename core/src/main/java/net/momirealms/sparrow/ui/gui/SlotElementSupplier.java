@@ -29,7 +29,7 @@ public interface SlotElementSupplier {
      * @return 固定元素生成器
      */
     static @NotNull SlotElementSupplier fixed(@NotNull SlotElement element) {
-        return (_, _) -> element;
+        return (ignoredSize, ignoredOccurrence) -> element;
     }
 
     /**
@@ -39,7 +39,7 @@ public interface SlotElementSupplier {
      * @return 槽位元素生成器
      */
     static @NotNull SlotElementSupplier fromSupplier(@NotNull Supplier<? extends SlotElement> supplier) {
-        return (_, _) -> supplier.get();
+        return (ignoredSize, ignoredOccurrence) -> supplier.get();
     }
 
     /**
@@ -49,7 +49,7 @@ public interface SlotElementSupplier {
      * @return Item 元素生成器
      */
     static @NotNull SlotElementSupplier items(@NotNull Supplier<? extends Item> supplier) {
-        return (_, _) -> new SlotElement.Item(supplier.get());
+        return (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(supplier.get());
     }
 
     /**

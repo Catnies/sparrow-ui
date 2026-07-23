@@ -3,6 +3,12 @@ plugins {
     alias(libs.plugins.shadow)
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 repositories {
     mavenCentral()
     maven("https://jitpack.io/")

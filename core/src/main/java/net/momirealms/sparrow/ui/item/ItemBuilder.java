@@ -31,9 +31,9 @@ public final class ItemBuilder {
     private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY);
     private boolean sourceConfigured;
 
-    private BiConsumer<Item, ItemClick> clickHandler = (_, _) -> { };
-    private BiConsumer<Item, BundleSelect> bundleHandler = (_, _) -> { };
-    private Consumer<ObservableItem> modifier = _ -> { };
+    private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };
+    private BiConsumer<Item, BundleSelect> bundleHandler = (ignoredItem, ignoredSelect) -> { };
+    private Consumer<ObservableItem> modifier = ignoredItem -> { };
     private RefreshPlan explicitRefreshPlan = RefreshPlan.none();
     private long throttleIntervalMillis; // <= 0 表示未启用节流
     private ThrottleHandler throttleHandler; // null 表示未添加节流处理器
@@ -202,7 +202,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addClickHandler(@NotNull Consumer<? super ItemClick> clickHandler) {
-        return addClickHandler((_, click) -> clickHandler.accept(click));
+        return addClickHandler((ignoredItem, click) -> clickHandler.accept(click));
     }
 
     public ItemBuilder addClickHandler(@NotNull BiConsumer<? super Item, ? super ItemClick> clickHandler) {
@@ -217,7 +217,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addBundleSelectHandler(@NotNull Consumer<? super BundleSelect> selectHandler) {
-        return addBundleSelectHandler((_, select) -> selectHandler.accept(select));
+        return addBundleSelectHandler((ignoredItem, select) -> selectHandler.accept(select));
     }
 
     /**
@@ -298,11 +298,11 @@ public final class ItemBuilder {
         DisplaySource create(Runnable invalidator);
 
         static DisplayFactory fixed(@NotNull ItemProvider provider) {
-            return _ -> new DisplaySource.FixedDisplaySource(provider);
+            return ignoredItem -> new DisplaySource.FixedDisplaySource(provider);
         }
 
         static DisplayFactory cycling(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) {
-            return _ -> new DisplaySource.CyclingDisplaySource(periodTicks, frames, tickSource);
+            return ignoredItem -> new DisplaySource.CyclingDisplaySource(periodTicks, frames, tickSource);
         }
 
         static DisplayFactory asyncOnce(

@@ -245,7 +245,7 @@ public final class Structure {
         private ParsedRow parseBuffered(String row, int rowIndex) {
             IntAccumulator identifiers = new IntAccumulator();
             IntAccumulator sourceColumns = new IntAccumulator();
-            this.parse(row, rowIndex, (identifier, sourceColumn, _) -> {
+            this.parse(row, rowIndex, (identifier, sourceColumn, ignoredSlot) -> {
                 identifiers.add(identifier);
                 sourceColumns.add(sourceColumn);
             });

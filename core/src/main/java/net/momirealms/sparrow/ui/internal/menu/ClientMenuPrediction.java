@@ -46,7 +46,7 @@ public final class ClientMenuPrediction implements MenuPrediction {
         Int2ObjectMap<Object> changedSlots = proxy.changedSlots(packet);
         int size = changedSlots.size();
         if (size == 0) {
-            return new ClientMenuPrediction(EMPTY_SLOTS, EMPTY_HASHES, proxy.carried(packet));
+            return new ClientMenuPrediction(EMPTY_SLOTS, EMPTY_HASHES, proxy.carriedItem(packet));
         }
         int[] slots = new int[size];
         Object[] hashes = new Object[size]; // NMS HashedStack[]
@@ -58,7 +58,7 @@ public final class ClientMenuPrediction implements MenuPrediction {
             hashes[index] = entry.getValue();
             index++;
         }
-        return new ClientMenuPrediction(slots, hashes, proxy.carried(packet));
+        return new ClientMenuPrediction(slots, hashes, proxy.carriedItem(packet));
     }
 
     /**

@@ -225,7 +225,7 @@ final class ClickInterpreter {
             return null;
         }
         return switch (layout.route(windowSlot)) {
-            case WindowLayout.GuiRoute _ -> new GuiTarget(windowSlot);
+            case WindowLayout.GuiRoute ignoredRoute -> new GuiTarget(windowSlot);
             case WindowLayout.PlayerRoute route -> new PlayerTarget(windowSlot, route.inventorySlot());
         };
     }
