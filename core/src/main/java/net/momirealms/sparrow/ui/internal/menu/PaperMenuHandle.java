@@ -11,6 +11,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundSetCursorItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.InventoryProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.PlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.ContainerSynchronizerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuSubclassFactory;
@@ -81,7 +82,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.menuType = menuType;
         this.containerId = ServerPlayerProxy.INSTANCE.nextContainerCounter(this.serverPlayer);
         this.generation = generation;
-        this.replacedMenu = ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
+        this.replacedMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
         this.view = new ProtocolInventoryView(player, topSlots, inventoryType, bukkitMenuType);
         this.proxy = MenuSubclassFactory.create(this.menuType, this.containerId, this);
         this.remoteSlots = new Object[topSlots + 36]; // NMS RemoteSlot[]
@@ -129,7 +130,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     @Override
     public int playerInventoryVersion() {
-        Object inventory = ServerPlayerProxy.INSTANCE.inventory(this.serverPlayer); // NMS Inventory
+        Object inventory = PlayerProxy.INSTANCE.inventory(this.serverPlayer); // NMS Inventory
         return InventoryProxy.INSTANCE.timesChanged(inventory);
     }
 
@@ -194,7 +195,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 input -> this.incoming.offer(this.generation, input)
         );
         this.session = openedSession;
-        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
+        PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
 
         // 网络批次成功排入 event loop 后提交会话; 同步失败则完整恢复打开前状态
         try {
@@ -207,7 +208,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         } catch (RuntimeException | Error throwable) {
             openedSession.rollback();
             this.session = null;
-            ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
+            PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             throw throwable;
         }
     }
@@ -252,7 +253,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.checkCommitted();
         this.checkSlotCount(slots);
         FullContents full = this.prepareFull(slots, cursor);
-        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
+        PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
         this.packets.send(this.player, outgoing);
         this.commitFull(full);
@@ -289,8 +290,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
         // 打开尚未提交时, 只需要恢复被替换的原菜单.
         if (!this.committed) {
-            if (ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
-                ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
+            if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+                PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             }
             return;
         }
@@ -298,12 +299,12 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         if (mode == CloseMode.REPLACED) {
             return;
         }
-        if (ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
+        if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
             return;
         }
         // 仅当前代理仍处于活动状态时才恢复库存菜单并发送最终快照.
-        Object inventoryMenu = ServerPlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
-        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, inventoryMenu);
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, inventoryMenu);
 
         Throwable failure = null;
         if (mode == CloseMode.PLUGIN) {

@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.server.level;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.PlayerProxy;
+import net.nyana.reflection.clazz.NyanaClass;
 import net.nyana.reflection.proxy.ASMProxyFactory;
 import net.nyana.reflection.proxy.annotation.FieldGetter;
 import net.nyana.reflection.proxy.annotation.MethodInvoker;
@@ -12,6 +13,10 @@ import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 @ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer")
 public interface ServerPlayerProxy extends PlayerProxy {
     ServerPlayerProxy INSTANCE = ASMProxyFactory.create(ServerPlayerProxy.class);
+    Class<?> CLASS = NyanaClass.find("net.minecraft.server.level.ServerPlayer");
+
+    @FieldGetter(name = "chunkLoader", activeIf = "has_patch=paper")
+    Object getChunkLoader(Object target);
 
     @FieldGetter(name = "connection")
     Object connection(Object target);
