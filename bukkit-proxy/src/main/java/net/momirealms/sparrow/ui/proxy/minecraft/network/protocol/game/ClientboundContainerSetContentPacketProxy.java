@@ -14,9 +14,7 @@ import java.util.List;
  */
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket")
 public interface ClientboundContainerSetContentPacketProxy extends PacketProxy {
-    ClientboundContainerSetContentPacketProxy INSTANCE = ASMProxyFactory.create(
-            ClientboundContainerSetContentPacketProxy.class
-    );
+    ClientboundContainerSetContentPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerSetContentPacketProxy.class);
 
     @ConstructorInvoker
     Object newInstance(

@@ -1,31 +1,30 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
-import net.minecraft.world.inventory.MenuType;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.BitSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
  * Paper 铁砧菜单句柄, 负责文本框可用性、结果槽有效性与经验消耗数据同步.
  */
 @SuppressWarnings("UnstableApiUsage")
-final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHandle {
+final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
-    private static final net.minecraft.world.item.ItemStack PLACEHOLDER = PaperAnvilMenuHandle.createPlaceholder();
+    private static final Object PLACEHOLDER = AnvilMenuHandleImpl.createPlaceholder(); // NMS ItemStack 不可见占位快照
 
     private int enchantmentCost;
     private boolean textFieldAlwaysEnabled;
@@ -33,15 +32,11 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
     private boolean dataDirty = true;
     private boolean dataQueued;
 
-    PaperAnvilMenuHandle(
-            PacketListener packets,
-            Player player,
-            long generation
-    ) {
+    AnvilMenuHandleImpl(PacketListener packets, Player player, long generation) {
         super(
                 packets,
                 player,
-                MenuType.ANVIL,
+                MenuTypeProxy.INSTANCE.ANVIL(),
                 InventoryType.ANVIL,
                 org.bukkit.inventory.MenuType.ANVIL,
                 3,
@@ -81,13 +76,10 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
     }
 
     @Override
-    protected void appendMenuDataPackets(
-            @NotNull List<Packet<? super ClientGamePacketListener>> outgoing,
-            boolean forceFull
-    ) {
+    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         this.dataQueued = forceFull || this.dataDirty;
         if (this.dataQueued) {
-            outgoing.add(new ClientboundContainerSetDataPacket(
+            outgoing.add(ClientboundContainerSetDataPacketProxy.INSTANCE.newInstance(
                     this.containerId(),
                     ENCHANTMENT_COST_DATA_SLOT,
                     this.enchantmentCost
@@ -104,7 +96,7 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
     }
 
     @Override
-    protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
+    protected Object toClientItem(int rawSlot, ItemStack item) {
         if (item.isEmpty() && rawSlot == 0 && this.textFieldAlwaysEnabled) {
             return PLACEHOLDER;
         }
@@ -114,14 +106,23 @@ final class PaperAnvilMenuHandle extends PaperMenuHandle implements AnvilMenuHan
         return super.toClientItem(rawSlot, item);
     }
 
-    private static net.minecraft.world.item.ItemStack createPlaceholder() {
-        ItemStack placeholder = new ItemStack(Material.BARRIER);
-        ItemMeta meta = placeholder.getItemMeta();
-        meta.customName(Component.empty());
-        meta.setHideTooltip(true);
-        meta.setItemModel(NamespacedKey.minecraft("air"));
-        placeholder.setItemMeta(meta);
-        Object handle = ItemUtils.getItemStackNMSHandle(placeholder);
-        return (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(handle);
+    private static Object createPlaceholder() {
+        Object placeholder = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.INSTANCE.barrier()); // NMS ItemStack
+        ItemStackProxy.INSTANCE.set(
+                placeholder,
+                DataComponentsProxy.INSTANCE.customName(),
+                ComponentProxy.INSTANCE.empty()
+        );
+        ItemStackProxy.INSTANCE.set(
+                placeholder,
+                DataComponentsProxy.INSTANCE.tooltipDisplay(),
+                TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>())
+        );
+        ItemStackProxy.INSTANCE.set(
+                placeholder,
+                DataComponentsProxy.INSTANCE.itemModel(),
+                IdentifierProxy.INSTANCE.withDefaultNamespace("air")
+        );
+        return placeholder;
     }
 }

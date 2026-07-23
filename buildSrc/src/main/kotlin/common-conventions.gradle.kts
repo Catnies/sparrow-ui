@@ -2,7 +2,6 @@ import org.gradle.accessors.dm.LibrariesForLibs
 
 plugins {
     `java-library`
-    id("io.papermc.paperweight.userdev")
 }
 
 val libs = the<LibrariesForLibs>()
@@ -26,11 +25,11 @@ repositories {
 }
 
 dependencies {
-    paperweight.paperDevBundle(libs.versions.paper.api.get())
+    compileOnly(libs.paper.api)
+    compileOnly(libs.netty.transport)
     implementation(libs.jetbrains.annotations)
     implementation(libs.jspecify)
     implementation(libs.gson)
-    compileOnly(libs.nyana.reflection)
     
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
@@ -38,10 +37,6 @@ dependencies {
     testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)
 //    testImplementation(libs.logback.classic)
-}
-
-paperweight {
-    addServerDependencyTo.add(configurations.named(JavaPlugin.COMPILE_ONLY_CONFIGURATION_NAME))
 }
 
 tasks {

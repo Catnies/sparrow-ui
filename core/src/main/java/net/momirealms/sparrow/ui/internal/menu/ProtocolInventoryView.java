@@ -1,8 +1,9 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.SimpleContainerProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import org.bukkit.craftbukkit.inventory.CraftInventory;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -12,8 +13,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MenuType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import net.minecraft.world.SimpleContainer;
 
 import java.util.BitSet;
 
@@ -47,7 +46,8 @@ final class ProtocolInventoryView implements InventoryView {
      */
     ProtocolInventoryView(Player player, int topSlots, InventoryType inventoryType, MenuType menuType) {
         this.player = player;
-        this.upper = new CraftInventory(new SimpleContainer(topSlots));
+        Object upperContainer = SimpleContainerProxy.INSTANCE.newInstance(topSlots); // NMS SimpleContainer
+        this.upper = CraftInventoryProxy.INSTANCE.newInstance(upperContainer);
         this.inventoryType = inventoryType;
         this.menuType = menuType;
         this.lowerItems = new ItemStack[PLAYER_INVENTORY_SLOTS];

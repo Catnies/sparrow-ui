@@ -1,31 +1,30 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.common.ClientboundPingPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerClosePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetContentPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetSlotPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundOpenScreenPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundSetCursorItemPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.InventoryProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.ContainerSynchronizerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuSubclassFactory;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.RemoteSlotProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
-import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
-import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
-import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
-import net.minecraft.network.protocol.common.ClientboundPingPacket;
-import net.minecraft.network.protocol.game.ClientboundSetCursorItemPacket;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.MenuType;
-import net.minecraft.world.inventory.RemoteSlot;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -38,38 +37,39 @@ import java.util.List;
  * 独立快照. Netty 入站消息由句柄自己的有界队列保序后交回实体线程消费.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
-class PaperMenuHandle implements MenuHandle {
-    private static final int INCOMING_CAPACITY = 256;
+class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
+    private static final int INCOMING_CAPACITY = 256; // 单个菜单会话最多暂存的入站消息数
+    private static final Object EMPTY_ITEM = ItemStackProxy.INSTANCE.empty(); // NMS ItemStack.EMPTY
 
-    private final PacketListener packets;
-    private final Player player;
-    private final ServerPlayer serverPlayer;
-    private final MenuType<?> menuType;
-    private final int containerId;
-    private final long generation;
-    private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY);
-    private final AbstractContainerMenu replacedMenu;
-    private final ProtocolInventoryView view;
-    private final MenuProxy proxy;
-    private final RemoteSlot[] remoteSlots;
-    private final RemoteSlot remoteCursor;
-    private final BitSet predictedSlots = new BitSet();
-    private final BitSet forcedSlots = new BitSet();
-    private final BitSet candidateSlots = new BitSet();
-    private final BitSet viewTouchedSlots = new BitSet();
-    private final BitSet changedSlots = new BitSet();
-    private final net.minecraft.world.item.ItemStack[] pendingRemoteItems;
+    private final PacketListener packets; // 安装入站捕获会话并发送出站协议包
+    private final Player player; // Bukkit 玩家对象, 用于事件视图和网络入口
+    private final Object serverPlayer; // NMS ServerPlayer, 提供菜单与库存协议状态
+    private final Object menuType; // NMS MenuType<?>, 决定客户端打开的原版菜单类型
+    private final int containerId; // 此次菜单会话独占的容器编号
+    private final long generation; // 当前 Window 代际, 用于丢弃迟到的旧会话输入
+    private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY); // Netty 到实体线程的有界 FIFO
+    private final Object replacedMenu; // NMS AbstractContainerMenu, 打开前的活动菜单
+    private final ProtocolInventoryView view; // 提供给 Bukkit 事件读取和临时写入的协议投影
+    private final Object proxy; // NMS AbstractContainerMenu, 安装到玩家并禁用原版自动同步的生成菜单
+    private final Object[] remoteSlots; // NMS RemoteSlot[], Paper 维护的客户端已知槽位哈希镜像
+    private final Object remoteCursor; // NMS RemoteSlot, Paper 维护的客户端已知光标哈希镜像
+    private final BitSet predictedSlots = new BitSet(); // 客户端预测声称发生变化的槽位
+    private final BitSet forcedSlots = new BitSet(); // 即使内容相同也必须重发的槽位
+    private final BitSet candidateSlots = new BitSet(); // 复用的本轮增量同步候选集合
+    private final BitSet viewTouchedSlots = new BitSet(); // 复用的 Bukkit 事件视图写入集合
+    private final BitSet changedSlots = new BitSet(); // 复用的本轮已发送或需恢复投影的槽位集合
+    private final Object[] pendingRemoteItems; // NMS ItemStack[], 发送成功前暂存单槽包持有的物品快照
 
-    private @Nullable PacketListener.Session session;
-    private net.minecraft.world.item.ItemStack cursor = net.minecraft.world.item.ItemStack.EMPTY;
-    private boolean predictedCarried;
-    private boolean committed;
-    private boolean closed;
+    private @Nullable PacketListener.Session session; // 当前入站捕获会话, 打开前和关闭后为空
+    private Object cursor = EMPTY_ITEM; // NMS ItemStack, 实体线程已提交的菜单光标状态
+    private boolean predictedCarried; // 客户端预测是否要求重新核对光标
+    private boolean committed; // 初始打开批次是否已成功提交
+    private boolean closed; // 菜单是否已进入不可逆的终止状态
 
     PaperMenuHandle(
             PacketListener packets,
             Player player,
-            MenuType<?> menuType,
+            Object menuType,
             InventoryType inventoryType,
             org.bukkit.inventory.MenuType bukkitMenuType,
             int topSlots,
@@ -77,18 +77,18 @@ class PaperMenuHandle implements MenuHandle {
     ) {
         this.packets = packets;
         this.player = player;
-        this.serverPlayer = ((CraftPlayer) player).getHandle();
+        this.serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
         this.menuType = menuType;
-        this.containerId = this.serverPlayer.nextContainerCounter();
+        this.containerId = ServerPlayerProxy.INSTANCE.nextContainerCounter(this.serverPlayer);
         this.generation = generation;
-        this.replacedMenu = this.serverPlayer.containerMenu;
+        this.replacedMenu = ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
         this.view = new ProtocolInventoryView(player, topSlots, inventoryType, bukkitMenuType);
-        this.proxy = new MenuProxy();
-        this.remoteSlots = new RemoteSlot[topSlots + 36];
+        this.proxy = MenuSubclassFactory.create(this.menuType, this.containerId, this);
+        this.remoteSlots = new Object[topSlots + 36]; // NMS RemoteSlot[]
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             this.remoteSlots[slot] = this.createRemoteSlot();
         }
-        this.pendingRemoteItems = new net.minecraft.world.item.ItemStack[this.remoteSlots.length];
+        this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
         this.remoteCursor = this.createRemoteSlot();
     }
 
@@ -98,18 +98,44 @@ class PaperMenuHandle implements MenuHandle {
     }
 
     @Override
-    public @NotNull InventoryView view() {
+    @NotNull
+    public InventoryView view() {
         return this.view;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Object carried() {
+        return this.cursor;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void carried(Object item) {
+        this.cursor = item;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Object emptyItem() {
+        return EMPTY_ITEM;
     }
 
     @Override
     public int playerInventoryVersion() {
-        return this.serverPlayer.getInventory().getTimesChanged();
+        Object inventory = ServerPlayerProxy.INSTANCE.inventory(this.serverPlayer); // NMS Inventory
+        return InventoryProxy.INSTANCE.timesChanged(inventory);
     }
 
     @Override
     public int stateId() {
-        return this.proxy.getStateId();
+        return AbstractContainerMenuProxy.INSTANCE.stateId(this.proxy);
     }
 
     /**
@@ -121,7 +147,7 @@ class PaperMenuHandle implements MenuHandle {
         if (interaction.containerId() != this.containerId) {
             return false;
         }
-        if (interaction.stateId() != this.proxy.getStateId()) {
+        if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.stateId(this.proxy)) {
             return false;
         }
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
@@ -142,7 +168,8 @@ class PaperMenuHandle implements MenuHandle {
      * {@inheritDoc}
      */
     @Override
-    public @NotNull List<MenuInput> drainInputs(int limit) {
+    @NotNull
+    public List<MenuInput> drainInputs(int limit) {
         return this.incoming.drain(this.generation, limit);
     }
 
@@ -158,7 +185,7 @@ class PaperMenuHandle implements MenuHandle {
 
         // 先冻结完整内容, 使包、远端镜像与 Bukkit 事件视图共享同一份权威输入
         FullContents full = this.prepareFull(slots, cursor);
-        List<Packet<? super ClientGamePacketListener>> outgoing = this.openPackets(title, full);
+        List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
 
         // 先开始捕获入站容器包, 再把服务端活动菜单切换到代理.
         PacketListener.Session openedSession = this.packets.open(
@@ -167,7 +194,7 @@ class PaperMenuHandle implements MenuHandle {
                 input -> this.incoming.offer(this.generation, input)
         );
         this.session = openedSession;
-        this.serverPlayer.containerMenu = this.proxy;
+        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
 
         // 网络批次成功排入 event loop 后提交会话; 同步失败则完整恢复打开前状态
         try {
@@ -180,7 +207,7 @@ class PaperMenuHandle implements MenuHandle {
         } catch (RuntimeException | Error throwable) {
             openedSession.rollback();
             this.session = null;
-            this.serverPlayer.containerMenu = this.replacedMenu;
+            ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             throw throwable;
         }
     }
@@ -201,7 +228,7 @@ class PaperMenuHandle implements MenuHandle {
         this.prepareMenuSynchronization(dirtySlots, forceFull);
         if (forceFull) {
             FullContents full = this.prepareFull(slots, cursor);
-            ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(2);
+            ArrayList<Object> outgoing = new ArrayList<>(2); // NMS 客户端数据包列表
             outgoing.add(full.packet());
             this.appendMenuDataPackets(outgoing, true);
             this.packets.send(this.player, outgoing);
@@ -225,8 +252,8 @@ class PaperMenuHandle implements MenuHandle {
         this.checkCommitted();
         this.checkSlotCount(slots);
         FullContents full = this.prepareFull(slots, cursor);
-        this.serverPlayer.containerMenu = this.proxy;
-        List<Packet<? super ClientGamePacketListener>> outgoing = this.openPackets(title, full);
+        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
+        List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
         this.packets.send(this.player, outgoing);
         this.commitFull(full);
         this.commitMenuDataPackets();
@@ -239,7 +266,7 @@ class PaperMenuHandle implements MenuHandle {
     @Override
     public void sendPing(int id) {
         this.checkCommitted();
-        this.packets.send(this.player, List.of(new ClientboundPingPacket(id)));
+        this.packets.send(this.player, List.of(ClientboundPingPacketProxy.INSTANCE.newInstance(id)));
     }
 
     /**
@@ -262,8 +289,8 @@ class PaperMenuHandle implements MenuHandle {
 
         // 打开尚未提交时, 只需要恢复被替换的原菜单.
         if (!this.committed) {
-            if (this.serverPlayer.containerMenu == this.proxy) {
-                this.serverPlayer.containerMenu = this.replacedMenu;
+            if (ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+                ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             }
             return;
         }
@@ -271,22 +298,24 @@ class PaperMenuHandle implements MenuHandle {
         if (mode == CloseMode.REPLACED) {
             return;
         }
-        if (this.serverPlayer.containerMenu != this.proxy) {
+        if (ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
             return;
         }
         // 仅当前代理仍处于活动状态时才恢复库存菜单并发送最终快照.
-        this.serverPlayer.containerMenu = this.serverPlayer.inventoryMenu;
+        Object inventoryMenu = ServerPlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        ServerPlayerProxy.INSTANCE.containerMenu(this.serverPlayer, inventoryMenu);
 
         Throwable failure = null;
         if (mode == CloseMode.PLUGIN) {
             try {
-                this.packets.send(this.player, List.of(new ClientboundContainerClosePacket(this.containerId)));
+                Object closePacket = ClientboundContainerClosePacketProxy.INSTANCE.newInstance(this.containerId);
+                this.packets.send(this.player, List.of(closePacket));
             } catch (RuntimeException | Error throwable) {
                 failure = throwable;
             }
         }
         try {
-            this.serverPlayer.inventoryMenu.sendAllDataToRemote();
+            AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
         } catch (RuntimeException | Error throwable) {
             if (failure == null) {
                 failure = throwable;
@@ -317,12 +346,12 @@ class PaperMenuHandle implements MenuHandle {
     /**
      * 构造一次打开或标题刷新所需的完整协议序列.
      */
-    private List<Packet<? super ClientGamePacketListener>> openPackets(Component title, FullContents full) {
-        ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(3);
-        outgoing.add(new ClientboundOpenScreenPacket(
+    private List<Object> openPackets(Component title, FullContents full) {
+        ArrayList<Object> outgoing = new ArrayList<>(3); // NMS 客户端数据包列表
+        outgoing.add(ClientboundOpenScreenPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 this.menuType,
-                PaperAdventure.asVanilla(title)
+                PaperAdventureProxy.INSTANCE.asVanilla(title)
         ));
         outgoing.add(full.packet());
         this.appendMenuDataPackets(outgoing, true);
@@ -333,15 +362,15 @@ class PaperMenuHandle implements MenuHandle {
      * 冻结一次完整状态并推进 NMS 菜单 state id.
      */
     private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
-        ArrayList<net.minecraft.world.item.ItemStack> items = new ArrayList<>(slots.length);
+        ArrayList<Object> items = new ArrayList<>(slots.length); // NMS ItemStack 包快照
         for (int index = 0; index < slots.length; index++) {
-            items.add((net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
+            items.add(ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
         }
-        net.minecraft.world.item.ItemStack menuCursor = (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(cursor);
-        net.minecraft.world.item.ItemStack packetCursor = (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(menuCursor);
-        ClientboundContainerSetContentPacket packet = new ClientboundContainerSetContentPacket(
+        Object menuCursor = ItemUtils.getItemStackNMSHandle(cursor); // 借用的 NMS ItemStack
+        Object packetCursor = ItemStackProxy.INSTANCE.copy(menuCursor); // 包独占的 NMS ItemStack
+        Object packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance(
                 this.containerId,
-                this.proxy.incrementStateId(),
+                AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
                 items,
                 packetCursor
         );
@@ -367,7 +396,7 @@ class PaperMenuHandle implements MenuHandle {
         boolean viewCursorTouched = this.view.takeCursorTouched();
 
         int candidateCount = candidates.cardinality();
-        ArrayList<Packet<? super ClientGamePacketListener>> outgoing = new ArrayList<>(candidateCount + 2);
+        ArrayList<Object> outgoing = new ArrayList<>(candidateCount + 2); // NMS 客户端数据包列表
         BitSet changedSlots = this.changedSlots;
         changedSlots.clear();
         try {
@@ -376,26 +405,30 @@ class PaperMenuHandle implements MenuHandle {
                     slot >= 0 && slot < slots.length;
                     slot = candidates.nextSetBit(slot + 1)
             ) {
-                net.minecraft.world.item.ItemStack item = this.toClientItem(slot, slots[slot]);
-                if (!this.forcedSlots.get(slot) && this.remoteSlots[slot].matches(item)) {
+                Object item = this.toClientItem(slot, slots[slot]); // 借用的 NMS ItemStack
+                if (!this.forcedSlots.get(slot) && RemoteSlotProxy.INSTANCE.matches(this.remoteSlots[slot], item)) {
                     continue;
                 }
                 // 当前目标版本的单槽包构造器会取得自己的物品副本, 这里不在比较前重复复制.
-                ClientboundContainerSetSlotPacket packet =
-                        new ClientboundContainerSetSlotPacket(this.containerId, this.proxy.incrementStateId(), slot, item);
+                Object packet = ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
+                        this.containerId,
+                        AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
+                        slot,
+                        item
+                );
                 outgoing.add(packet);
                 changedSlots.set(slot);
-                this.pendingRemoteItems[slot] = packet.getItem();
+                this.pendingRemoteItems[slot] = ClientboundContainerSetSlotPacketProxy.INSTANCE.item(packet);
             }
 
             boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
             boolean cursorChanged = false;
-            net.minecraft.world.item.ItemStack sentCursor = this.cursor;
+            Object sentCursor = this.cursor; // NMS ItemStack
             if (checkCursor) {
-                sentCursor = (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(cursor);
-                if (!this.remoteCursor.matches(sentCursor)) {
-                    outgoing.add(new ClientboundSetCursorItemPacket(
-                            (net.minecraft.world.item.ItemStack) ItemStackProxy.INSTANCE.copy(sentCursor)
+                sentCursor = ItemUtils.getItemStackNMSHandle(cursor);
+                if (!RemoteSlotProxy.INSTANCE.matches(this.remoteCursor, sentCursor)) {
+                    outgoing.add(ClientboundSetCursorItemPacketProxy.INSTANCE.newInstance(
+                            ItemStackProxy.INSTANCE.copy(sentCursor)
                     ));
                     cursorChanged = true;
                 }
@@ -413,13 +446,13 @@ class PaperMenuHandle implements MenuHandle {
                     slot >= 0;
                     slot = changedSlots.nextSetBit(slot + 1)
             ) {
-                this.remoteSlots[slot].force(this.pendingRemoteItems[slot]);
+                RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], this.pendingRemoteItems[slot]);
             }
             if (checkCursor) {
                 this.cursor = sentCursor;
             }
             if (cursorChanged) {
-                this.remoteCursor.force(sentCursor);
+                RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentCursor);
             }
             changedSlots.or(this.viewTouchedSlots);
             this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
@@ -446,18 +479,19 @@ class PaperMenuHandle implements MenuHandle {
      */
     private void commitFull(FullContents full) {
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
-            this.remoteSlots[slot].force(full.slots().get(slot));
+            RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
         }
-        this.remoteCursor.force(full.cursor());
+        RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.cursor());
         this.cursor = full.cursor();
         this.predictedSlots.clear();
         this.predictedCarried = false;
         this.forcedSlots.clear();
     }
 
-    private RemoteSlot createRemoteSlot() {
-        RemoteSlot slot = this.serverPlayer.containerSynchronizer.createSlot();
-        slot.force(net.minecraft.world.item.ItemStack.EMPTY);
+    private Object createRemoteSlot() {
+        Object synchronizer = ServerPlayerProxy.INSTANCE.containerSynchronizer(this.serverPlayer); // NMS ContainerSynchronizer
+        Object slot = ContainerSynchronizerProxy.INSTANCE.createSlot(synchronizer); // NMS RemoteSlot
+        RemoteSlotProxy.INSTANCE.force(slot, EMPTY_ITEM);
         return slot;
     }
 
@@ -487,8 +521,8 @@ class PaperMenuHandle implements MenuHandle {
      * @param item 权威物品
      * @return 客户端显示物品
      */
-    protected net.minecraft.world.item.ItemStack toClientItem(int rawSlot, ItemStack item) {
-        return (net.minecraft.world.item.ItemStack) ItemUtils.getItemStackNMSHandle(item);
+    protected Object toClientItem(int rawSlot, ItemStack item) {
+        return ItemUtils.getItemStackNMSHandle(item);
     }
 
     /**
@@ -515,70 +549,13 @@ class PaperMenuHandle implements MenuHandle {
      * @param outgoing 本轮可变数据包列表
      * @param forceFull 是否强制完整同步
      */
-    protected void appendMenuDataPackets(
-            @NotNull List<Packet<? super ClientGamePacketListener>> outgoing,
-            boolean forceFull
-    ) {
+    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
     }
 
     /**
      * 在统一网络批次成功排入 Netty event loop 后提交菜单专属远端镜像.
      */
     protected void commitMenuDataPackets() {
-    }
-
-    /**
-     * 防止 NMS 根据客户端预测自行广播物品状态的空菜单代理.
-     */
-    private final class MenuProxy extends AbstractContainerMenu {
-
-        private MenuProxy() {
-            super(PaperMenuHandle.this.menuType, PaperMenuHandle.this.containerId);
-        }
-
-        @Override
-        public net.minecraft.world.item.ItemStack getCarried() {
-            return PaperMenuHandle.this.cursor;
-        }
-
-        @Override
-        public void setCarried(net.minecraft.world.item.ItemStack item) {
-            PaperMenuHandle.this.cursor = item;
-        }
-
-        @Override
-        public void broadcastCarriedItem() {
-            // PaperMenuHandle 明确发送光标状态
-        }
-
-        @Override
-        public void broadcastChanges() {
-            // Window 是唯一的槽位同步权威.
-        }
-
-        @Override
-        public void broadcastFullState() {
-            // Window 是唯一的完整状态同步权威.
-        }
-
-        @NonNull
-        @Override
-        public InventoryView getBukkitView() {
-            return PaperMenuHandle.this.view;
-        }
-
-        @Override
-        public net.minecraft.world.item.@NonNull ItemStack quickMoveStack(
-                net.minecraft.world.entity.player.@NonNull Player player,
-                int slot
-        ) {
-            return net.minecraft.world.item.ItemStack.EMPTY;
-        }
-
-        @Override
-        public boolean stillValid(net.minecraft.world.entity.player.Player player) {
-            return true;
-        }
     }
 
     /**
@@ -589,9 +566,9 @@ class PaperMenuHandle implements MenuHandle {
      * @param packet 完整内容包
      */
     private record FullContents(
-            List<net.minecraft.world.item.ItemStack> slots,
-            net.minecraft.world.item.ItemStack cursor,
-            ClientboundContainerSetContentPacket packet
+            List<Object> slots, // NMS ItemStack 包快照
+            Object cursor, // NMS ItemStack 实体线程菜单状态
+            Object packet // NMS ClientboundContainerSetContentPacket
     ) {
     }
 

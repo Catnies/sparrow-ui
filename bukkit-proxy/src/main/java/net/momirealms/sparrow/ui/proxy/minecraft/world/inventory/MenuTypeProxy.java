@@ -4,9 +4,6 @@ import net.nyana.reflection.proxy.ASMProxyFactory;
 import net.nyana.reflection.proxy.annotation.FieldGetter;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 
-/**
- * 原版通用箱子菜单类型常量的访问代理.
- */
 @ReflectionProxy(name = "net.minecraft.world.inventory.MenuType")
 public interface MenuTypeProxy {
     MenuTypeProxy INSTANCE = ASMProxyFactory.create(MenuTypeProxy.class);
@@ -28,4 +25,10 @@ public interface MenuTypeProxy {
 
     @FieldGetter(name = "GENERIC_9x6", isStatic = true)
     Object GENERIC_9x6();
+
+    @FieldGetter(name = "HOPPER", isStatic = true)
+    Object HOPPER();
+
+    @FieldGetter(name = "ANVIL", isStatic = true)
+    Object ANVIL();
 }

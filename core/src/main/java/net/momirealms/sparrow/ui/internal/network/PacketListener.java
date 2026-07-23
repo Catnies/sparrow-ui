@@ -5,17 +5,19 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import net.momirealms.sparrow.ui.internal.menu.ClientMenuPrediction;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.common.ServerboundPongPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClosePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundRenameItemPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundSelectBundleItemPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundBundlePacket;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
-import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
-import net.minecraft.network.protocol.game.ServerboundRenameItemPacket;
-import net.minecraft.network.protocol.common.ServerboundPongPacket;
-import net.minecraft.network.protocol.game.ServerboundSelectBundleItemPacket;
 import org.bukkit.Bukkit;
-import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -84,11 +86,8 @@ public final class PacketListener implements Listener, AutoCloseable {
      * @return 可提交、回滚或关闭的会话
      * @throws IllegalStateException gateway 已关闭
      */
-    public @NotNull Session open(
-            @NotNull Player player,
-            int containerId,
-            @NotNull Consumer<? super MenuInput> inputSink
-    ) {
+    @NotNull
+    public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink) {
         this.requireOpen();
         ConnectionHandler handler = this.handlers.computeIfAbsent(player.getUniqueId(), ignored -> this.inject(player));
         while (true) {
@@ -109,21 +108,18 @@ public final class PacketListener implements Listener, AutoCloseable {
      * @param packets 要发送的数据包
      * @throws IllegalStateException gateway 已关闭
      */
-    public void send(
-            @NotNull Player player,
-            @NotNull List<? extends Packet<? super ClientGamePacketListener>> packets
-    ) {
+    public void send(@NotNull Player player, @NotNull List<?> packets) {
         this.requireOpen();
         if (packets.isEmpty()) {
             return;
         }
-        Packet<? super ClientGamePacketListener> packet;
+        Object packet; // NMS Packet<ClientGamePacketListener>
         if (packets.size() == 1) {
             packet = packets.getFirst();
         } else {
-            ArrayList<Packet<? super ClientGamePacketListener>> bundled = new ArrayList<>(packets.size());
+            ArrayList<Object> bundled = new ArrayList<>(packets.size()); // NMS 客户端数据包快照
             bundled.addAll(packets);
-            packet = new ClientboundBundlePacket(bundled);
+            packet = ClientboundBundlePacketProxy.INSTANCE.newInstance(bundled);
         }
         this.handlers.computeIfAbsent(player.getUniqueId(), ignored -> this.inject(player)).send(packet);
     }
@@ -170,11 +166,13 @@ public final class PacketListener implements Listener, AutoCloseable {
 
     /**
      * 在连接自己的 event loop 上安装 handler.
-     *
-     * <p>不能从玩家实体线程直接修改 Netty pipeline, 否则会与正在执行的入站读取竞争.</p>
+     * <p>不能从玩家实体线程直接修改 Netty pipeline, 否则会与正在执行的入站读取竞争.
      */
     private ConnectionHandler inject(Player player) {
-        Channel channel = ((CraftPlayer) player).getHandle().connection.connection.channel;
+        Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player); // NMS ServerPlayer
+        Object packetListener = ServerPlayerProxy.INSTANCE.connection(serverPlayer); // NMS ServerGamePacketListenerImpl
+        Object connection = ServerCommonPacketListenerImplProxy.INSTANCE.connection(packetListener); // NMS Connection
+        Channel channel = (Channel) ConnectionProxy.INSTANCE.channel(connection);
         ConnectionHandler handler = new ConnectionHandler(player.getName(), channel);
         Runnable injection = () -> {
             try {
@@ -274,25 +272,31 @@ public final class PacketListener implements Listener, AutoCloseable {
          * <p>容器操作会被消费, 避免 NMS 根据客户端预测修改代理菜单. Pong 仅被观察以确认
          * Window 状态, 仍须继续交给原版处理.</p>
          */
-        private boolean accept(Packet<?> packet) {
+        private boolean accept(Object packet) {
             MenuInput input;
             boolean consume = true;
-            switch (packet) {
-                case ServerboundContainerClickPacket click -> input = interaction(click);
-                case ServerboundContainerClosePacket close -> input = new MenuInput.Common.Close(close.getContainerId());
-                case ServerboundRenameItemPacket rename -> input = new MenuInput.WindowSpecific.Rename(rename.getName());
-                case ServerboundSelectBundleItemPacket selection -> input = new MenuInput.Common.BundleSelection(
+            if (ServerboundContainerClickPacketProxy.CLASS.isInstance(packet)) {
+                input = PacketListener.Session.interaction(packet);
+            }
+            else if (ServerboundContainerClosePacketProxy.CLASS.isInstance(packet)) {
+                input = new MenuInput.Common.Close(ServerboundContainerClosePacketProxy.INSTANCE.containerId(packet));
+            }
+            else if (ServerboundRenameItemPacketProxy.CLASS.isInstance(packet)) {
+                input = new MenuInput.WindowSpecific.Rename(ServerboundRenameItemPacketProxy.INSTANCE.name(packet));
+            }
+            else if (ServerboundSelectBundleItemPacketProxy.CLASS.isInstance(packet)) {
+                input = new MenuInput.Common.BundleSelection(
                         this.containerId,
-                        selection.slotId(),
-                        selection.selectedItemIndex()
+                        ServerboundSelectBundleItemPacketProxy.INSTANCE.slot(packet),
+                        ServerboundSelectBundleItemPacketProxy.INSTANCE.selectedItem(packet)
                 );
-                case ServerboundPongPacket pong -> {
-                    input = new MenuInput.Common.Pong(pong.getId());
-                    consume = false;
-                }
-                default -> {
-                    return false;
-                }
+            }
+            else if (ServerboundPongPacketProxy.CLASS.isInstance(packet)) {
+                input = new MenuInput.Common.Pong(ServerboundPongPacketProxy.INSTANCE.id(packet));
+                consume = false;
+            }
+            else {
+                return false;
             }
             // Pong 只监听而不拦截; 其他 Window 包由领域层作为权威处理.
             this.inputSink.accept(input);
@@ -303,38 +307,39 @@ public final class PacketListener implements Listener, AutoCloseable {
          * 将 NMS 容器输入完整解码为稳定的 Bukkit 点击类型或拖拽步骤.
          * 非法 button 组合保留为 {@link ClickType#UNKNOWN}, 交给实体线程触发权威状态纠正.
          */
-        private static MenuInput.Common.Interaction interaction(ServerboundContainerClickPacket click) {
-            return switch (click.containerInput()) {
-                case PICKUP -> switch (click.buttonNum()) {
+        private static MenuInput.Common.Interaction interaction(Object click) {
+            ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
+            return switch (proxy.containerInput(click)) {
+                case PICKUP -> switch (proxy.button(click)) {
                     case 0 -> singleClick(
                             click,
-                            click.slotNum() == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT
+                            proxy.slot(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT
                     );
                     case 1 -> singleClick(
                             click,
-                            click.slotNum() == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT
+                            proxy.slot(click) == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT
                     );
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
-                case QUICK_MOVE -> switch (click.buttonNum()) {
+                case QUICK_MOVE -> switch (proxy.button(click)) {
                     case 0 -> singleClick(click, ClickType.SHIFT_LEFT);
                     case 1 -> singleClick(click, ClickType.SHIFT_RIGHT);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
                 case SWAP -> {
-                    if (click.buttonNum() >= 0 && click.buttonNum() <= 8) {
-                        yield singleClick(click, ClickType.NUMBER_KEY, click.buttonNum());
+                    if (proxy.button(click) >= 0 && proxy.button(click) <= 8) {
+                        yield singleClick(click, ClickType.NUMBER_KEY, proxy.button(click));
                     }
-                    if (click.buttonNum() == 40) {
+                    if (proxy.button(click) == 40) {
                         yield singleClick(click, ClickType.SWAP_OFFHAND);
                     }
                     yield singleClick(click, ClickType.UNKNOWN);
                 }
                 case CLONE -> singleClick(
                         click,
-                        click.buttonNum() == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN
+                        proxy.button(click) == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN
                 );
-                case THROW -> switch (click.buttonNum()) {
+                case THROW -> switch (proxy.button(click)) {
                     case 0 -> singleClick(click, ClickType.DROP);
                     case 1 -> singleClick(click, ClickType.CONTROL_DROP);
                     default -> singleClick(click, ClickType.UNKNOWN);
@@ -342,27 +347,29 @@ public final class PacketListener implements Listener, AutoCloseable {
                 case QUICK_CRAFT -> dragStep(click);
                 case PICKUP_ALL -> singleClick(
                         click,
-                        click.buttonNum() == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN
+                        proxy.button(click) == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN
                 );
+                case UNKNOWN -> singleClick(click, ClickType.UNKNOWN);
             };
         }
 
         private static MenuInput.Common.Click singleClick(
-                ServerboundContainerClickPacket packet,
+                Object packet,
                 ClickType clickType
         ) {
             return singleClick(packet, clickType, -1);
         }
 
         private static MenuInput.Common.Click singleClick(
-                ServerboundContainerClickPacket packet,
+                Object packet,
                 ClickType clickType,
                 int hotbarButton
         ) {
+            ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
             return new MenuInput.Common.Click(
-                    packet.containerId(),
-                    packet.stateId(),
-                    packet.slotNum(),
+                    proxy.containerId(packet),
+                    proxy.stateId(packet),
+                    proxy.slot(packet),
                     clickType,
                     hotbarButton,
                     ClientMenuPrediction.from(packet)
@@ -373,8 +380,8 @@ public final class PacketListener implements Listener, AutoCloseable {
          * 解码 QUICK_CRAFT 的非连续 button 编码.
          * 无效编码转为 UNKNOWN 单次点击, 使解释器同时重置未完成手势并请求状态纠正.
          */
-        private static MenuInput.Common.Interaction dragStep(ServerboundContainerClickPacket packet) {
-            return switch (packet.buttonNum()) {
+        private static MenuInput.Common.Interaction dragStep(Object packet) {
+            return switch (ServerboundContainerClickPacketProxy.INSTANCE.button(packet)) {
                 case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.START);
                 case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.ADD);
                 case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.END);
@@ -389,14 +396,14 @@ public final class PacketListener implements Listener, AutoCloseable {
         }
 
         private static MenuInput.Common.DragStep dragStep(
-                ServerboundContainerClickPacket packet,
+                Object packet,
                 ClickType clickType,
                 MenuInput.Common.DragPhase phase
         ) {
             return new MenuInput.Common.DragStep(
-                    packet.containerId(),
-                    packet.stateId(),
-                    packet.slotNum(),
+                    ServerboundContainerClickPacketProxy.INSTANCE.containerId(packet),
+                    ServerboundContainerClickPacketProxy.INSTANCE.stateId(packet),
+                    ServerboundContainerClickPacketProxy.INSTANCE.slot(packet),
                     clickType,
                     phase,
                     ClientMenuPrediction.from(packet)
@@ -417,7 +424,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             this.channel = channel;
         }
 
-        private void send(Packet<? super ClientGamePacketListener> packet) {
+        private void send(Object packet) {
             Runnable send = () -> this.channel.writeAndFlush(packet);
             if (this.channel.eventLoop().inEventLoop()) {
                 send.run();
@@ -433,7 +440,7 @@ public final class PacketListener implements Listener, AutoCloseable {
         public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             Session session = this.active.get();
             try {
-                if (session != null && message instanceof Packet<?> packet && session.accept(packet)) {
+                if (session != null && PacketProxy.CLASS.isInstance(message) && session.accept(message)) {
                     return;
                 }
             } catch (RuntimeException | Error throwable) {

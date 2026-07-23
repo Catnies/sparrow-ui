@@ -3,21 +3,20 @@ project-version = "1.0.0"
 kotlin = "2.3.10"
 shadow = "9.3.2"
 paper-api = "26.2.build.+"
-paperweight = "2.0.0-beta.21"
 test-paper = "1.21.11-R0.1-SNAPSHOT"
+netty = "4.2.7.Final"
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
-paperweight = { id = "io.papermc.paperweight.userdev", version.ref = "paperweight" }
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
 folia-api = { module = "dev.folia:folia-api", version.ref = "paper-api" }
-paperweight = { module = "io.papermc.paperweight:paperweight-userdev", version.ref = "paperweight" }
 nyana-nbt = { module = "net.nyana:nyana-nbt-tag", version = "1.0.0" }
 nyana-nbt-codec = { module = "net.nyana:nyana-nbt-codec", version = "1.0.0" }
 nyana-reflection = { module = "net.nyana:nyana-reflection", version = "1.0.2" }
+netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
 
 asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
 gson = { module = "com.google.code.gson:gson", version = "2.13.2" }
