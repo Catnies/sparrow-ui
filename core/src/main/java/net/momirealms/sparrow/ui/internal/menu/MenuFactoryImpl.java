@@ -17,7 +17,7 @@ import org.jetbrains.annotations.NotNull;
  * {@link PacketListener} 切换到 Netty event loop.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
-public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
+public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     private final PacketListener packets;
 
     /**
@@ -25,7 +25,7 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
      *
      * @param plugin 注册网络监听器的插件
      */
-    public PaperMenuFactory(@NotNull Plugin plugin) {
+    public MenuFactoryImpl(@NotNull Plugin plugin) {
         this.packets = new PacketListener(plugin, SparrowUI.getInstance()::handleException);
     }
 
@@ -38,9 +38,9 @@ public final class PaperMenuFactory implements MenuFactory, AutoCloseable {
         return new PaperMenuHandle(
                 this.packets,
                 viewer,
-                PaperMenuFactory.normalMenuType(rows),
+                MenuFactoryImpl.normalMenuType(rows),
                 InventoryType.CHEST,
-                PaperMenuFactory.normalBukkitMenuType(rows),
+                MenuFactoryImpl.normalBukkitMenuType(rows),
                 rows * 9,
                 generation
         );

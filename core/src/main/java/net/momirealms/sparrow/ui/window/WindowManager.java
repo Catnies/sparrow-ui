@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
-import net.momirealms.sparrow.ui.internal.menu.PaperMenuFactory;
+import net.momirealms.sparrow.ui.internal.menu.MenuFactoryImpl;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -58,7 +58,7 @@ public final class WindowManager implements Listener {
      * @return 已注册的 WindowManager
      */
     public static @NotNull WindowManager create() {
-        WindowManager manager = new WindowManager(new PaperMenuFactory(SparrowUI.getInstance().getPlugin()));
+        WindowManager manager = new WindowManager(new MenuFactoryImpl(SparrowUI.getInstance().getPlugin()));
         Bukkit.getPluginManager().registerEvents(manager, SparrowUI.getInstance().getPlugin());
         return manager;
     }

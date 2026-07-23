@@ -42,8 +42,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final Object EMPTY_ITEM = ItemStackProxy.INSTANCE.empty(); // NMS ItemStack.EMPTY
 
     private final PacketListener packets; // 安装入站捕获会话并发送出站协议包
-    private final Player player; // Bukkit 玩家对象, 用于事件视图和网络入口
-    private final Object serverPlayer; // NMS ServerPlayer, 提供菜单与库存协议状态
+    private final Player player;
+    private final Object serverPlayer;
     private final Object menuType; // NMS MenuType<?>, 决定客户端打开的原版菜单类型
     private final int containerId; // 此次菜单会话独占的容器编号
     private final long generation; // 当前 Window 代际, 用于丢弃迟到的旧会话输入
@@ -64,7 +64,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private Object cursor = EMPTY_ITEM; // NMS ItemStack, 实体线程已提交的菜单光标状态
     private boolean predictedCarried; // 客户端预测是否要求重新核对光标
     private boolean committed; // 初始打开批次是否已成功提交
-    private boolean closed; // 菜单是否已进入不可逆的终止状态
+    private boolean closed; // 菜单是否已关闭
 
     PaperMenuHandle(
             PacketListener packets,
