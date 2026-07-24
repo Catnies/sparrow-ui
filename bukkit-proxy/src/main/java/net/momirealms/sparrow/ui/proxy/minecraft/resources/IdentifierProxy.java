@@ -19,4 +19,13 @@ public interface IdentifierProxy {
      */
     @MethodInvoker(name = "withDefaultNamespace", isStatic = true)
     Object withDefaultNamespace(String path);
+
+    @MethodInvoker(name = "fromNamespaceAndPath", isStatic = true)
+    Object fromNamespaceAndPath(String namespace, String path);
+
+    @MethodInvoker(name = "getNamespace")
+    String getNamespace(Object target);
+
+    @MethodInvoker(name = "getPath")
+    String getPath(Object target);
 }

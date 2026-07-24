@@ -21,6 +21,7 @@ public interface MenuTypeProxy {
     Object BREWING_STAND = INSTANCE.BREWING_STAND();
     Object CARTOGRAPHY_TABLE = INSTANCE.CARTOGRAPHY_TABLE();
     Object CRAFTER_3x3 = INSTANCE.CRAFTER_3x3();
+    Object CRAFTING = INSTANCE.CRAFTING();
     Object STONECUTTER = INSTANCE.STONECUTTER();
 
     @FieldGetter(name = "GENERIC_9x1", isStatic = true)
@@ -64,6 +65,9 @@ public interface MenuTypeProxy {
 
     @FieldGetter(name = "CRAFTER_3x3", isStatic = true)
     Object CRAFTER_3x3();
+
+    @FieldGetter(name = "CRAFTING", isStatic = true)
+    Object CRAFTING();
 
     @FieldGetter(name = "STONECUTTER", isStatic = true)
     Object STONECUTTER();
