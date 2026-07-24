@@ -73,6 +73,42 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     }
 
     /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public MenuHandle dispenser(@NotNull Player viewer, long generation) {
+        return new DispenserMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public MenuHandle dropper(@NotNull Player viewer, long generation) {
+        return new DropperMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public MenuHandle grindstone(@NotNull Player viewer, long generation) {
+        return new GrindstoneMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public MenuHandle smithing(@NotNull Player viewer, long generation) {
+        return new SmithingMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
      * 卸载所有已注入的玩家网络 handler.
      */
     @Override

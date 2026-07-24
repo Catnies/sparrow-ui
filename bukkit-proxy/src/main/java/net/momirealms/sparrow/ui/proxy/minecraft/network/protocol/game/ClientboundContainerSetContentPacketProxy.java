@@ -9,9 +9,6 @@ import net.nyana.reflection.proxy.annotation.Type;
 
 import java.util.List;
 
-/**
- * 创建完整容器内容数据包的代理.
- */
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket")
 public interface ClientboundContainerSetContentPacketProxy extends PacketProxy {
     ClientboundContainerSetContentPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerSetContentPacketProxy.class);

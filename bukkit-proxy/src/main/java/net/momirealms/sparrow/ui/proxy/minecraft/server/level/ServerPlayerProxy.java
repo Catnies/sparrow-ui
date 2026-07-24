@@ -8,9 +8,6 @@ import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 
-/**
- * SparrowUI 打开容器时使用的 ServerPlayer 状态访问代理.
- */
 @ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer")
 public interface ServerPlayerProxy extends PlayerProxy {
     ServerPlayerProxy INSTANCE = ASMProxyFactory.create(ServerPlayerProxy.class);

@@ -8,9 +8,9 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements HopperWindow {
+final class SmithingWindowImpl extends AbstractWindow<MenuHandle> implements SmithingWindow {
 
-    HopperWindowImpl(
+    SmithingWindowImpl(
             @NotNull WindowManager manager,
             @NotNull Player viewer,
             @NotNull WindowLayout layout,
@@ -20,13 +20,13 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
     }
 
     @Override
-    protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        return factory.hopper(this.viewer(), generation);
+    @NotNull
+    protected MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+        return factory.smithing(this.viewer(), generation);
     }
 
-    static final class BuilderImpl extends AbstractWindowBuilder<HopperWindow, HopperWindow.Builder>
-            implements HopperWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(5, 1));
+    static final class BuilderImpl extends AbstractWindowBuilder<SmithingWindow, SmithingWindow.Builder> implements SmithingWindow.Builder {
+        private Gui upperGui = Gui.empty(new GuiSize(4, 1));
         private @Nullable Gui lowerGui;
 
         BuilderImpl() {
@@ -39,39 +39,41 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
         }
 
         @Override
-        public @NotNull HopperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+        @NotNull
+        public SmithingWindow.Builder setUpperGui(@NotNull Gui upperGui) {
             this.upperGui = upperGui;
             return this;
         }
 
         @Override
-        public @NotNull HopperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+        @NotNull
+        public SmithingWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
             return this;
         }
 
         @Override
-        public @NotNull HopperWindow.Builder clone() {
+        @NotNull
+        public SmithingWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
         @Override
-        protected @NotNull HopperWindow.Builder self() {
+        @NotNull
+        protected SmithingWindow.Builder self() {
             return this;
         }
 
         @Override
-        protected @NotNull HopperWindow createWindow(
-                @NotNull Player viewer,
-                @NotNull AbstractWindow.Settings settings
-        ) {
-            if (this.upperGui.width() != 5 || this.upperGui.height() != 1) {
-                throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
+        @NotNull
+        protected SmithingWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
+            if (this.upperGui.width() != 4 || this.upperGui.height() != 1) {
+                throw new IllegalArgumentException("smithing upper GUI must have size 4x1");
             }
             WindowLayout layout = this.lowerGui == null
                     ? WindowLayout.playerInventoryBelow(this.upperGui)
                     : WindowLayout.split(this.upperGui, this.lowerGui);
-            return new HopperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
+            return new SmithingWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }
 }

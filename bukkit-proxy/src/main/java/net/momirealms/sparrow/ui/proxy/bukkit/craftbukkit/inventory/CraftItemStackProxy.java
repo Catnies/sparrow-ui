@@ -7,9 +7,6 @@ import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 import org.bukkit.inventory.ItemStack;
 
-/**
- * Bukkit ItemStack 与 Minecraft ItemStack 之间的转换代理.
- */
 @ReflectionProxy(name = "org.bukkit.craftbukkit.inventory.CraftItemStack")
 public interface CraftItemStackProxy {
     CraftItemStackProxy INSTANCE = ASMProxyFactory.create(CraftItemStackProxy.class);

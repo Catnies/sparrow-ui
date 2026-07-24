@@ -5,9 +5,6 @@ import net.nyana.reflection.proxy.ASMProxyFactory;
 import net.nyana.reflection.proxy.annotation.ConstructorInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 
-/**
- * 把多个客户端数据包组成单个 Bundle 的构造代理.
- */
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ClientboundBundlePacket")
 public interface ClientboundBundlePacketProxy extends PacketProxy {
     ClientboundBundlePacketProxy INSTANCE = ASMProxyFactory.create(ClientboundBundlePacketProxy.class);

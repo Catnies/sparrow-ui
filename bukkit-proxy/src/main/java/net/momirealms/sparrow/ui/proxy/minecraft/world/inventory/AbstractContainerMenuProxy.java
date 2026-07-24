@@ -6,9 +6,6 @@ import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 
-/**
- * 容器 state id 与完整远端同步操作的访问代理.
- */
 @ReflectionProxy(name = "net.minecraft.world.inventory.AbstractContainerMenu")
 public interface AbstractContainerMenuProxy {
     AbstractContainerMenuProxy INSTANCE = ASMProxyFactory.create(AbstractContainerMenuProxy.class);

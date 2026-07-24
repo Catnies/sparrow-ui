@@ -8,9 +8,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 普通箱子 Window 的实体线程实现.
- */
 final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements NormalWindow {
 
     NormalWindowImpl(
@@ -27,9 +24,6 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
         return factory.normal(this.viewer(), this.topSlots() / 9, generation);
     }
 
-    /**
-     * 普通箱子 Window Builder 的实现.
-     */
     static final class BuilderImpl extends AbstractWindowBuilder<NormalWindow, NormalWindow.Builder> implements NormalWindow.Builder {
         private Gui upperGui = Gui.empty(new GuiSize(9, 6));
         private @Nullable Gui lowerGui;

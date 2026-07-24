@@ -8,9 +8,6 @@ import net.nyana.reflection.proxy.annotation.ConstructorInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 
-/**
- * 创建客户端打开菜单数据包的代理.
- */
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ClientboundOpenScreenPacket")
 public interface ClientboundOpenScreenPacketProxy extends PacketProxy {
     ClientboundOpenScreenPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundOpenScreenPacketProxy.class);

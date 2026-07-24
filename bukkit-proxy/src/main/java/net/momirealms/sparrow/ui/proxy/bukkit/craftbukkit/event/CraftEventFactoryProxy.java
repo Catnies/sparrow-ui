@@ -7,9 +7,6 @@ import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 
-/**
- * CraftBukkit 库存生命周期事件入口代理.
- */
 @ReflectionProxy(name = "org.bukkit.craftbukkit.event.CraftEventFactory")
 public interface CraftEventFactoryProxy {
     CraftEventFactoryProxy INSTANCE = ASMProxyFactory.create(CraftEventFactoryProxy.class);

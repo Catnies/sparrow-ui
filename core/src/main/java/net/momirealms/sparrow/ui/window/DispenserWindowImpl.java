@@ -8,9 +8,9 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements HopperWindow {
+final class DispenserWindowImpl extends AbstractWindow<MenuHandle> implements DispenserWindow {
 
-    HopperWindowImpl(
+    DispenserWindowImpl(
             @NotNull WindowManager manager,
             @NotNull Player viewer,
             @NotNull WindowLayout layout,
@@ -20,13 +20,14 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
     }
 
     @Override
-    protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        return factory.hopper(this.viewer(), generation);
+    @NotNull
+    protected MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+        return factory.dispenser(this.viewer(), generation);
     }
 
-    static final class BuilderImpl extends AbstractWindowBuilder<HopperWindow, HopperWindow.Builder>
-            implements HopperWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(5, 1));
+    static final class BuilderImpl extends AbstractWindowBuilder<DispenserWindow, DispenserWindow.Builder>
+            implements DispenserWindow.Builder {
+        private Gui upperGui = Gui.empty(new GuiSize(3, 3));
         private @Nullable Gui lowerGui;
 
         BuilderImpl() {
@@ -39,39 +40,41 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
         }
 
         @Override
-        public @NotNull HopperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+        @NotNull
+        public DispenserWindow.Builder setUpperGui(@NotNull Gui upperGui) {
             this.upperGui = upperGui;
             return this;
         }
 
         @Override
-        public @NotNull HopperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+        @NotNull
+        public DispenserWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
             return this;
         }
 
         @Override
-        public @NotNull HopperWindow.Builder clone() {
+        @NotNull
+        public DispenserWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
         @Override
-        protected @NotNull HopperWindow.Builder self() {
+        @NotNull
+        protected DispenserWindow.Builder self() {
             return this;
         }
 
         @Override
-        protected @NotNull HopperWindow createWindow(
-                @NotNull Player viewer,
-                @NotNull AbstractWindow.Settings settings
-        ) {
-            if (this.upperGui.width() != 5 || this.upperGui.height() != 1) {
-                throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
+        @NotNull
+        protected DispenserWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
+            if (this.upperGui.width() != 3 || this.upperGui.height() != 3) {
+                throw new IllegalArgumentException("dispenser upper GUI must have size 3x3");
             }
             WindowLayout layout = this.lowerGui == null
                     ? WindowLayout.playerInventoryBelow(this.upperGui)
                     : WindowLayout.split(this.upperGui, this.lowerGui);
-            return new HopperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
+            return new DispenserWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }
 }

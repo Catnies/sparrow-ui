@@ -7,9 +7,6 @@ import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 
-/**
- * Paper RemoteSlot 客户端哈希和权威物品镜像的访问代理.
- */
 @ReflectionProxy(name = "net.minecraft.world.inventory.RemoteSlot")
 public interface RemoteSlotProxy {
     RemoteSlotProxy INSTANCE = ASMProxyFactory.create(RemoteSlotProxy.class);

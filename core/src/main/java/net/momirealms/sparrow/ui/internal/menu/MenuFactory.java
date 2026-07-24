@@ -37,4 +37,44 @@ public interface MenuFactory {
      * @return 铁砧菜单句柄
      */
     @NotNull AnvilMenuHandle anvil(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的发射器菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 发射器菜单句柄
+     */
+    @NotNull
+    MenuHandle dispenser(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的投掷器菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 投掷器菜单句柄
+     */
+    @NotNull
+    MenuHandle dropper(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的砂轮菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 砂轮菜单句柄
+     */
+    @NotNull
+    MenuHandle grindstone(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的锻造台菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 锻造台菜单句柄
+     */
+    @NotNull
+    MenuHandle smithing(@NotNull Player viewer, long generation);
 }

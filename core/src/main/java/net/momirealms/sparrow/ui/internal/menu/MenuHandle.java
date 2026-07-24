@@ -17,7 +17,7 @@ import java.util.List;
 public interface MenuHandle extends AutoCloseable {
 
     /**
-     * 同一次同步使用的真实光标与只读可视投影.
+     * 在一次同步中的 真实光标物品 和 可视光标物品 的快照.
      *
      * @param actual 菜单真实持有的光标快照
      * @param visual 仅发送给客户端的可视光标快照

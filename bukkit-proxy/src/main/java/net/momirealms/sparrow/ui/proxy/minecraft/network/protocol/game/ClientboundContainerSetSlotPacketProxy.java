@@ -8,9 +8,6 @@ import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
 
-/**
- * 创建和读取单槽位容器更新数据包的代理.
- */
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket")
 public interface ClientboundContainerSetSlotPacketProxy extends PacketProxy {
     ClientboundContainerSetSlotPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerSetSlotPacketProxy.class);

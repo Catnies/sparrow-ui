@@ -31,4 +31,13 @@ public interface MenuTypeProxy {
 
     @FieldGetter(name = "ANVIL", isStatic = true)
     Object ANVIL();
+
+    @FieldGetter(name = "GENERIC_3x3", isStatic = true)
+    Object GENERIC_3x3();
+
+    @FieldGetter(name = "GRINDSTONE", isStatic = true)
+    Object GRINDSTONE();
+
+    @FieldGetter(name = "SMITHING", isStatic = true)
+    Object SMITHING();
 }

@@ -73,6 +73,45 @@ final class WindowLayout {
     }
 
     /**
+     * 按给定顺序把多个连续上部 GUI 编译到原始槽位, 下部继续映射玩家物品栏或独立 GUI.
+     *
+     * @param upperGuis 按原始槽位顺序排列的上部 GUI
+     * @param lowerGui 9x4 下部 GUI, null 表示玩家真实物品栏
+     * @return 编译后的布局
+     */
+    @NotNull
+    static WindowLayout partitioned(@NotNull List<? extends Gui> upperGuis, @Nullable Gui lowerGui) {
+        if (upperGuis.isEmpty()) {
+            throw new IllegalArgumentException("partitioned layout requires at least one upper GUI");
+        }
+        // 计算全部 Upper GUI 的总槽位数
+        int topSlots = 0;
+        for (int index = 0; index < upperGuis.size(); index++) {
+            topSlots += upperGuis.get(index).area();
+        }
+        // 根据槽位数创建路由列表
+        Route[] routes = new Route[topSlots + LOWER_SIZE.area()];
+        int offset = 0;
+        for (int index = 0; index < upperGuis.size(); index++) {
+            Gui gui = upperGuis.get(index);
+            fillGui(routes, offset, gui);
+            offset += gui.area();
+        }
+        // 如果 Lower GUI 未指定, 则填充玩家背包映射
+        if (lowerGui == null) {
+            fillPlayer(routes, topSlots);
+        }
+        // 若指定则正常填充路由
+        else {
+            if (!lowerGui.size().equals(LOWER_SIZE)) {
+                throw new IllegalArgumentException("lower GUI must be 9x4");
+            }
+            fillGui(routes, topSlots, lowerGui);
+        }
+        return new WindowLayout(topSlots, routes);
+    }
+
+    /**
      * 编译合并窗口布局.
      * 单个 GUI 的底部 4 行对应客户端玩家物品栏区域.
      */
