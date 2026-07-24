@@ -2,20 +2,16 @@ package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetSlotPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundUpdateRecipesPacketProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackTemplateProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.*;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.ItemStackSlotDisplayProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -35,7 +31,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
     private static final int INPUT_SLOT = 0;
     private static final int RESULT_SLOT = 1;
     private static final int SELECTED_DATA_SLOT = 0;
-    private static final Object PLACEHOLDER = StonecutterMenuHandleImpl.createPlaceholder();
+    private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier();
     private static final Object ALL_ITEMS = StonecutterMenuHandleImpl.createAllItemsIngredient();
     private static final Set<Class<?>> DISCARDED_OUTGOING = Set.of(ClientboundUpdateRecipesPacketProxy.CLASS);
 
@@ -216,8 +212,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
     private static Object createRecipeEntries(List<StonecutterRecipeOption> options) {
         ArrayList<Object> entries = new ArrayList<>(options.size());
         for (int index = 0; index < options.size(); index++) {
-            ItemStack displayItem = options.get(index).display();
-            Object stack = ItemStackProxy.INSTANCE.copy(ItemUtils.getItemStackNMSHandle(displayItem));
+            Object stack = ItemUtils.getItemStackNMSHandle(options.get(index).display());
             Object display;
             if (VersionHelper.isOrAbove26_1()) {
                 Object template = ItemStackTemplateProxy.INSTANCE.fromNonEmptyStack(stack);
@@ -237,23 +232,4 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
         );
     }
 
-    private static Object createPlaceholder() {
-        Object placeholder = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.BARRIER);
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.CUSTOM_NAME,
-                ComponentProxy.INSTANCE.empty()
-        );
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.TOOLTIP_DISPLAY,
-                TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>())
-        );
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.ITEM_MODEL,
-                IdentifierProxy.INSTANCE.withDefaultNamespace("air")
-        );
-        return placeholder;
-    }
 }

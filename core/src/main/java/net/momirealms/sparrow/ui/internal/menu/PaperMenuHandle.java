@@ -254,7 +254,6 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.packets.send(this.player, outgoing);
             openedSession.commit();
             this.commitFull(full);
-            this.commitMenuDataPackets();
             this.view.initialize(slots, cursor.actual(), title);
             this.committed = true;
             this.prepared = false;
@@ -289,7 +288,6 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.appendMenuDataPackets(outgoing, true);
             this.packets.send(this.player, outgoing);
             this.commitFull(full);
-            this.commitMenuDataPackets();
             this.view.initialize(slots, cursor.actual(), this.view.title());
             return;
         }
@@ -308,7 +306,6 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
         this.packets.send(this.player, outgoing);
         this.commitFull(full);
-        this.commitMenuDataPackets();
         this.view.initialize(slots, cursor.actual(), title);
     }
 
@@ -331,13 +328,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     public void close(@NotNull InventoryCloseEvent.Reason reason) {
         if (this.closed) return;
         this.closed = true;
-        // 无论后续关闭路径如何, 都先停止捕获本 Window 的入站包.
-        this.incoming.close();
-        PacketListener.Session previousSession = this.session;
-        this.session = null;
-        if (previousSession != null) {
-            previousSession.close();
-        }
+        this.closeSession();
 
         // 打开尚未提交时, 只需要恢复被替换的原菜单.
         if (!this.committed) {
@@ -380,15 +371,9 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void retire() {
-        if (this.closed) {
-            return;
-        }
-        this.closed = true;
-        this.incoming.close();
-        PacketListener.Session previousSession = this.session;
-        this.session = null;
-        if (previousSession != null) {
-            previousSession.close();
+        if (!this.closed) {
+            this.closed = true;
+            this.closeSession();
         }
     }
 
@@ -520,7 +505,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 将一次完整发送提交为新的远端镜像.
+     * 将一次完整发送提交为新的槽位、光标和菜单专属远端镜像.
      */
     private void commitFull(FullContents full) {
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
@@ -530,6 +515,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.predictedSlots.clear();
         this.predictedCarried = false;
         this.forcedSlots.clear();
+        this.commitMenuDataPackets();
     }
 
     private Object createRemoteSlot() {
@@ -560,6 +546,16 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private void checkCommitted() {
         if (this.closed || !this.committed) {
             throw new IllegalStateException("menu is not open");
+        }
+    }
+
+    private void closeSession() {
+        // 无论后续关闭路径如何, 都先停止捕获本 Window 的入站包.
+        this.incoming.close();
+        PacketListener.Session previousSession = this.session;
+        this.session = null;
+        if (previousSession != null) {
+            previousSession.close();
         }
     }
 

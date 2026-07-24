@@ -42,7 +42,6 @@ final class WindowLayout {
      */
     @NotNull
     static WindowLayout of(Region @NotNull ... regions) {
-        Objects.requireNonNull(regions, "regions");
         if (regions.length == 0) {
             throw new IllegalArgumentException("window layout requires at least one region");
         }
@@ -52,7 +51,7 @@ final class WindowLayout {
         int lowerRegions = 0;
         int size = 0;
         for (int index = 0; index < regions.length; index++) {
-            Region region = Objects.requireNonNull(regions[index], "regions[" + index + "]");
+            Region region = regions[index];
             if (region.role() == Region.Role.UPPER) {
                 topSlots += region.size();
             } else if (region.role() == Region.Role.LOWER) {
@@ -65,6 +64,7 @@ final class WindowLayout {
 
             size += region.size();
         }
+
         if (topSlots == 0) {
             throw new IllegalArgumentException("window layout requires at least one upper region");
         }

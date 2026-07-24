@@ -156,10 +156,6 @@ public final class WindowManager implements Listener {
         return SparrowUI.getInstance().scheduler().entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
     }
 
-    void closeFromClient(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        this.closeNow(window, reason);
-    }
-
     void closeAfterProtocolFailure(AbstractWindow<?> window) {
         try {
             this.closeNow(window, InventoryCloseEvent.Reason.UNKNOWN);
@@ -265,7 +261,7 @@ public final class WindowManager implements Listener {
         }
         AbstractWindow<?> window = this.active.get(player.getUniqueId());
         if (window != null && window.owns(event.getView())) {
-            window.externalClose(event.getReason());
+            this.externalClose(window, event.getReason());
         }
     }
 

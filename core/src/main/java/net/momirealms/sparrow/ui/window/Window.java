@@ -519,15 +519,6 @@ public interface Window {
         @NotNull B clone();
 
         /**
-         * {@link #clone()} 的语义化别名.
-         *
-         * @return Builder 副本
-         */
-        default @NotNull B copy() {
-            return this.clone();
-        }
-
-        /**
          * 使用已设置的查看者创建 Window.
          *
          * @return 新的未打开 Window

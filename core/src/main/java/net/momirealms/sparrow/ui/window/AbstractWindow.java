@@ -101,7 +101,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable ItemStack[] localSlots;
     private @Nullable MenuHandle.CursorSnapshot localCursor;
     private @Nullable SchedulerTask tickTask;
-    private @Nullable Component pendingReopenTitle;
     private BitSet dirtySlots;
     private BitSet spareDirtySlots;
     private long windowTick;
@@ -109,6 +108,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private boolean cursorDirty;
     private boolean forceFull;
     private boolean menuDirty;
+    private boolean titleDirty;
 
     AbstractWindow(
             @NotNull WindowManager manager,
@@ -456,7 +456,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 () -> {
                     this.cursorDirty = true;
                     this.forceFull = true;
-                    this.flush(false, null);
+                    this.flush(false);
                 },
                 "Failed to resend Window data"
         );
@@ -477,17 +477,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 所有资源在初始完整包成功排入 Netty event loop 后才发布到字段, 失败时按相反方向回滚.
      */
     void openOnEntity(long generation, boolean replacingWindow) {
-        if (this.open) {
-            return;
-        }
-
         // 初始化本次打开的 generation 相关状态
         this.generation = generation;
         this.windowTick = 0;
         this.cursorDirty = true;
         this.forceFull = true;
         this.menuDirty = true;
-        this.pendingReopenTitle = null;
+        this.titleDirty = false;
         this.clickInterpreter.reset();
         this.pendingWindowStates.clear();
         synchronized (this.dirtyLock) {
@@ -556,10 +552,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 先撤销本地可见状态并停掉输入, 再关闭菜单、释放路径、处理 fallback 与关闭回调.
      */
     void closeOnEntity(InventoryCloseEvent.Reason reason) {
-        if (!this.open) {
-            return;
-        }
-
         // 使后续输入与 tick 立即失效
         this.open = false;
         this.generation++;
@@ -573,8 +565,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.paths = null;
         this.localSlots = null;
         this.localCursor = null;
-        this.pendingReopenTitle = null;
         this.menuDirty = false;
+        this.titleDirty = false;
         this.pendingWindowStates.clear();
 
         // 资源关闭应尽量完整执行, 最后才重新抛出第一个失败
@@ -617,8 +609,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.paths = null;
         this.localSlots = null;
         this.localCursor = null;
-        this.pendingReopenTitle = null;
         this.menuDirty = false;
+        this.titleDirty = false;
         this.pendingWindowStates.clear();
 
         if (previousTickTask != null) {
@@ -678,7 +670,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.windowTick++;
         this.invalidatePeriodicSlots();
         this.refreshPlayerState();
-        this.flush(false, null);
+        this.flush(false);
     }
 
     /**
@@ -688,7 +680,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     void updateTitleOnEntity(Component title) {
         this.title = title;
         if (this.open) {
-            this.pendingReopenTitle = title;
+            this.titleDirty = true;
         }
     }
 
@@ -714,10 +706,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             throw new IllegalStateException("Window menu is not open");
         }
         return this.menuHandle.view();
-    }
-
-    void externalClose(InventoryCloseEvent.Reason reason) {
-        this.manager.externalClose(this, reason);
     }
 
     /**
@@ -808,9 +796,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         this.clickInterpreter.reset();
         if (this.closeable) {
-            this.manager.closeFromClient(this, InventoryCloseEvent.Reason.PLAYER);
+            this.manager.closeNow(this, InventoryCloseEvent.Reason.PLAYER);
         } else {
-            this.flush(true, this.title);
+            this.forceFull = true;
+            this.flush(true);
         }
     }
 
@@ -901,7 +890,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 汇总 dirty 槽位、光标和标题变化并交给菜单 Adapter 收敛远端状态.
      * 标题变化必须走重开窗口和完整内容同步, 发送失败时保留状态以便下一 tick 重试.
      */
-    private void flush(boolean forceFull, @Nullable Component reopenTitle) {
+    private void flush(boolean reopenTitle) {
         M menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
         DisplayedSlotPath[] paths = this.paths;
@@ -913,8 +902,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         BitSet dirty = this.takeDirtySlots();
         this.renderDirtySlots(dirty, paths, localSlots);
 
-        Component effectiveReopenTitle = reopenTitle == null ? this.pendingReopenTitle : reopenTitle;
-        boolean full = forceFull || this.forceFull || effectiveReopenTitle != null;
+        boolean reopen = reopenTitle || this.titleDirty;
+        boolean full = this.forceFull || reopen;
         if (dirty.isEmpty() && !this.cursorDirty && !full && !this.menuDirty) {
             return;
         }
@@ -924,8 +913,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (cursor == null || this.cursorDirty) {
                 cursor = this.renderCursor(menu.cursor());
             }
-            if (effectiveReopenTitle != null) {
-                menu.updateTitle(effectiveReopenTitle, localSlots, cursor);
+            if (reopen) {
+                menu.updateTitle(this.title, localSlots, cursor);
             } else {
                 menu.synchronize(localSlots, dirty, cursor, this.cursorDirty, full);
             }
@@ -933,14 +922,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.cursorDirty = false;
             this.forceFull = false;
             this.menuDirty = false;
-            this.pendingReopenTitle = null;
+            this.titleDirty = false;
         } catch (RuntimeException | Error throwable) {
             this.cursorDirty = true;
             this.forceFull = true;
             this.menuDirty = true;
-            if (effectiveReopenTitle != null) {
-                this.pendingReopenTitle = effectiveReopenTitle;
-            }
+            this.titleDirty = reopen;
             this.manager.report("Failed to synchronize Window", throwable);
         }
     }

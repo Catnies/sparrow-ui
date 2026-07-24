@@ -2,18 +2,16 @@ package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMapItemDataPacketProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapDecorationProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapDecorationTypesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapIdProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapPatchProxy;
 import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.CartographyWindow;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -23,7 +21,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -164,7 +161,7 @@ final class CartographyMenuHandleImpl extends PaperMenuHandle implements Cartogr
                     MapIdProxy.INSTANCE.newInstance(this.mapId)
             );
             if (item.isEmpty()) {
-                CartographyMenuHandleImpl.hidePlaceholder(clientItem);
+                ItemUtils.hide(clientItem);
             }
             return clientItem;
         }
@@ -174,7 +171,7 @@ final class CartographyMenuHandleImpl extends PaperMenuHandle implements Cartogr
                     ? ItemStackProxy.INSTANCE.newInstance(targetItem)
                     : ItemStackProxy.INSTANCE.transmuteCopy(super.toClientItem(rawSlot, item), targetItem);
             if (item.isEmpty()) {
-                CartographyMenuHandleImpl.hidePlaceholder(clientItem);
+                ItemUtils.hide(clientItem);
             }
             return clientItem;
         }
@@ -287,21 +284,4 @@ final class CartographyMenuHandleImpl extends PaperMenuHandle implements Cartogr
         };
     }
 
-    private static void hidePlaceholder(Object item) {
-        ItemStackProxy.INSTANCE.set(
-                item,
-                DataComponentsProxy.CUSTOM_NAME,
-                ComponentProxy.INSTANCE.empty()
-        );
-        ItemStackProxy.INSTANCE.set(
-                item,
-                DataComponentsProxy.TOOLTIP_DISPLAY,
-                TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>())
-        );
-        ItemStackProxy.INSTANCE.set(
-                item,
-                DataComponentsProxy.ITEM_MODEL,
-                IdentifierProxy.INSTANCE.withDefaultNamespace("air")
-        );
-    }
 }

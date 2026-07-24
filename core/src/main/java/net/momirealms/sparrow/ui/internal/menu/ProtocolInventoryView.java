@@ -77,10 +77,14 @@ final class ProtocolInventoryView implements InventoryView {
      * @param menuType Bukkit 菜单类型
      */
     ProtocolInventoryView(Player player, Inventory upper, int lowerStart, InventoryType inventoryType, MenuType menuType) {
+        int upperSize = upper.getSize();
+        if (lowerStart < 0 || lowerStart > upperSize) {
+            throw new IllegalArgumentException("lower start must be between 0 and " + upperSize + ": " + lowerStart);
+        }
         this.player = player;
         this.upper = upper;
         this.lowerStart = lowerStart;
-        this.size = upper.getSize() + PLAYER_INVENTORY_SLOTS;
+        this.size = upperSize + PLAYER_INVENTORY_SLOTS;
         this.inventoryType = inventoryType;
         this.menuType = menuType;
         this.lowerItems = new ItemStack[PLAYER_INVENTORY_SLOTS];
@@ -97,7 +101,6 @@ final class ProtocolInventoryView implements InventoryView {
      * @param title 当前标题
      */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
-        this.checkSlotCount(slots);
         this.title = title;
         for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
             int upperSlot = this.upperSlot(rawSlot);
@@ -126,7 +129,6 @@ final class ProtocolInventoryView implements InventoryView {
             @NotNull ItemStack cursor,
             boolean cursorChanged
     ) {
-        this.checkSlotCount(slots);
         for (
                 int slot = changedSlots.nextSetBit(0);
                 slot >= 0 && slot < slots.length;
@@ -333,11 +335,5 @@ final class ProtocolInventoryView implements InventoryView {
 
     private boolean contains(int rawSlot) {
         return rawSlot >= 0 && rawSlot < this.size;
-    }
-
-    private void checkSlotCount(ItemStack[] slots) {
-        if (slots.length != this.size) {
-            throw new IllegalArgumentException("inventory view requires " + this.size + " slots, got " + slots.length);
-        }
     }
 }

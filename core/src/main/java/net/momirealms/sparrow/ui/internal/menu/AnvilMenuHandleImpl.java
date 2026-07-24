@@ -1,21 +1,15 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
-import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.BitSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -24,7 +18,7 @@ import java.util.List;
 @SuppressWarnings("UnstableApiUsage")
 final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
-    private static final Object PLACEHOLDER = AnvilMenuHandleImpl.createPlaceholder(); // NMS ItemStack 不可见占位快照
+    private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier(); // NMS ItemStack 不可见占位快照
 
     private int enchantmentCost;
     private boolean textFieldAlwaysEnabled;
@@ -106,23 +100,4 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
         return super.toClientItem(rawSlot, item);
     }
 
-    private static Object createPlaceholder() {
-        Object placeholder = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.BARRIER); // NMS ItemStack
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.CUSTOM_NAME,
-                ComponentProxy.INSTANCE.empty()
-        );
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.TOOLTIP_DISPLAY,
-                TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>())
-        );
-        ItemStackProxy.INSTANCE.set(
-                placeholder,
-                DataComponentsProxy.ITEM_MODEL,
-                IdentifierProxy.INSTANCE.withDefaultNamespace("air")
-        );
-        return placeholder;
-    }
 }

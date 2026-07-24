@@ -735,15 +735,6 @@ public sealed interface Gui permits AbstractGui {
     boolean frozen();
 
     /**
-     * 返回 GUI 是否已禁止玩家交互.
-     *
-     * @return GUI 是否已禁止玩家交互
-     */
-    default boolean isFrozen() {
-        return this.frozen();
-    }
-
-    /**
      * 设置是否禁止玩家与 GUI 中的 Item 交互.
      *
      * @param frozen true 表示禁止交互
