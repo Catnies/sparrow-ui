@@ -77,4 +77,24 @@ public interface MenuFactory {
      */
     @NotNull
     MenuHandle smithing(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的酿造台菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 酿造台菜单句柄
+     */
+    @NotNull
+    BrewingMenuHandle brewing(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的制图台菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 制图台菜单句柄
+     */
+    @NotNull
+    CartographyMenuHandle cartography(@NotNull Player viewer, long generation);
 }

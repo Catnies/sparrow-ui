@@ -10,6 +10,7 @@ import net.nyana.reflection.proxy.annotation.Type;
 @ReflectionProxy(name = "net.minecraft.world.item.ItemStack")
 public interface ItemStackProxy {
     ItemStackProxy INSTANCE = ASMProxyFactory.create(ItemStackProxy.class);
+    Object EMPTY = INSTANCE.EMPTY();
 
     /**
      * 从原版 ItemLike 创建一份新的 NMS 物品堆.
@@ -21,10 +22,16 @@ public interface ItemStackProxy {
     Object newInstance(@Type(name = "net.minecraft.world.level.ItemLike") Object item);
 
     @FieldGetter(name = "EMPTY", isStatic = true)
-    Object empty();
+    Object EMPTY();
 
     @MethodInvoker(name = "copy")
     Object copy(Object target);
+
+    @MethodInvoker(name = "transmuteCopy")
+    Object transmuteCopy(
+            Object target,
+            @Type(name = "net.minecraft.world.level.ItemLike") Object item
+    );
 
     /**
      * 直接写入 NMS Data Component.

@@ -19,7 +19,7 @@ final class GrindstoneMenuHandleImpl extends PaperMenuHandle {
         super(
                 packets,
                 player,
-                MenuTypeProxy.INSTANCE.GRINDSTONE(),
+                MenuTypeProxy.GRINDSTONE,
                 InventoryType.GRINDSTONE,
                 org.bukkit.inventory.MenuType.GRINDSTONE,
                 3,

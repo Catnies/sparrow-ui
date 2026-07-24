@@ -35,7 +35,7 @@ public final class ItemUtils {
     @NotNull
     public static Object getItemStackNMSHandle(@NotNull ItemStack item) {
         if (item.isEmpty()) {
-            return ItemStackProxy.INSTANCE.empty();
+            return ItemStackProxy.EMPTY;
         }
         return CraftItemStackProxy.INSTANCE.unwrap(item);
     }

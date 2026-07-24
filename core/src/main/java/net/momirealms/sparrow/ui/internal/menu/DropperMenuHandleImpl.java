@@ -15,7 +15,7 @@ final class DropperMenuHandleImpl extends PaperMenuHandle {
         super(
                 packets,
                 player,
-                MenuTypeProxy.INSTANCE.GENERIC_3x3(),
+                MenuTypeProxy.GENERIC_3x3,
                 InventoryType.DROPPER,
                 org.bukkit.inventory.MenuType.GENERIC_3X3,
                 9,

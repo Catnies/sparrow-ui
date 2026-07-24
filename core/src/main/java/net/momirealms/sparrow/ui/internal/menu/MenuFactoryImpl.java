@@ -55,7 +55,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         return new PaperMenuHandle(
                 this.packets,
                 viewer,
-                MenuTypeProxy.INSTANCE.HOPPER(),
+                MenuTypeProxy.HOPPER,
                 InventoryType.HOPPER,
                 MenuType.HOPPER,
                 5,
@@ -109,6 +109,24 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     }
 
     /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public BrewingMenuHandle brewing(@NotNull Player viewer, long generation) {
+        return new BrewingMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public CartographyMenuHandle cartography(@NotNull Player viewer, long generation) {
+        return new CartographyMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
      * 卸载所有已注入的玩家网络 handler.
      */
     @Override
@@ -119,12 +137,12 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     // 返回供 OpenScreen 和菜单代理使用的 NMS MenuType 句柄.
     private static Object normalMenuType(int rows) {
         return switch (rows) {
-            case 1 -> MenuTypeProxy.INSTANCE.GENERIC_9x1();
-            case 2 -> MenuTypeProxy.INSTANCE.GENERIC_9x2();
-            case 3 -> MenuTypeProxy.INSTANCE.GENERIC_9x3();
-            case 4 -> MenuTypeProxy.INSTANCE.GENERIC_9x4();
-            case 5 -> MenuTypeProxy.INSTANCE.GENERIC_9x5();
-            case 6 -> MenuTypeProxy.INSTANCE.GENERIC_9x6();
+            case 1 -> MenuTypeProxy.GENERIC_9x1;
+            case 2 -> MenuTypeProxy.GENERIC_9x2;
+            case 3 -> MenuTypeProxy.GENERIC_9x3;
+            case 4 -> MenuTypeProxy.GENERIC_9x4;
+            case 5 -> MenuTypeProxy.GENERIC_9x5;
+            case 6 -> MenuTypeProxy.GENERIC_9x6;
             default -> throw new IllegalArgumentException("normal inventory must contain between one and six rows");
         };
     }

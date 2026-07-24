@@ -19,7 +19,7 @@ final class SmithingMenuHandleImpl extends PaperMenuHandle {
         super(
                 packets,
                 player,
-                MenuTypeProxy.INSTANCE.SMITHING(),
+                MenuTypeProxy.SMITHING,
                 InventoryType.SMITHING,
                 org.bukkit.inventory.MenuType.SMITHING,
                 4,

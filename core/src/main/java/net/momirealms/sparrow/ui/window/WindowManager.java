@@ -79,6 +79,30 @@ public final class WindowManager implements Listener {
         return Set.copyOf(this.active.values());
     }
 
+    /**
+     * 在插件禁用时退役所有本地资源并移除连接 handler.
+     */
+    public void shutdown() {
+        if (!this.shutdown.compareAndSet(false, true)) {
+            return;
+        }
+        for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
+            window.retire();
+        }
+        this.active.clear();
+        for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {
+            lane.retire();
+        }
+        this.lanes.clear();
+        if (this.menuFactory instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                this.report("Failed to close Window menu backend", exception);
+            }
+        }
+    }
+
     @NotNull CompletionStage<Window.OpenResult> open(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             window.retire();
@@ -130,10 +154,6 @@ public final class WindowManager implements Listener {
         }
         PlayerCommandLane lane = this.lane(window.viewer());
         return SparrowUI.getInstance().scheduler().entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
-    }
-
-    MenuFactory menuFactory() {
-        return this.menuFactory;
     }
 
     void closeFromClient(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
@@ -234,28 +254,8 @@ public final class WindowManager implements Listener {
         this.exceptionHandler.accept(message, throwable);
     }
 
-    /**
-     * 在插件禁用时退役所有本地资源并移除连接 handler.
-     */
-    public void shutdown() {
-        if (!this.shutdown.compareAndSet(false, true)) {
-            return;
-        }
-        for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
-            window.retire();
-        }
-        this.active.clear();
-        for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {
-            lane.retire();
-        }
-        this.lanes.clear();
-        if (this.menuFactory instanceof AutoCloseable closeable) {
-            try {
-                closeable.close();
-            } catch (Exception exception) {
-                this.report("Failed to close Window menu backend", exception);
-            }
-        }
+    MenuFactory menuFactory() {
+        return this.menuFactory;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

@@ -36,7 +36,7 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
         super(
                 packets,
                 player,
-                MenuTypeProxy.INSTANCE.ANVIL(),
+                MenuTypeProxy.ANVIL,
                 InventoryType.ANVIL,
                 org.bukkit.inventory.MenuType.ANVIL,
                 3,
@@ -107,20 +107,20 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
     }
 
     private static Object createPlaceholder() {
-        Object placeholder = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.INSTANCE.barrier()); // NMS ItemStack
+        Object placeholder = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.BARRIER); // NMS ItemStack
         ItemStackProxy.INSTANCE.set(
                 placeholder,
-                DataComponentsProxy.INSTANCE.customName(),
+                DataComponentsProxy.CUSTOM_NAME,
                 ComponentProxy.INSTANCE.empty()
         );
         ItemStackProxy.INSTANCE.set(
                 placeholder,
-                DataComponentsProxy.INSTANCE.tooltipDisplay(),
+                DataComponentsProxy.TOOLTIP_DISPLAY,
                 TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>())
         );
         ItemStackProxy.INSTANCE.set(
                 placeholder,
-                DataComponentsProxy.INSTANCE.itemModel(),
+                DataComponentsProxy.ITEM_MODEL,
                 IdentifierProxy.INSTANCE.withDefaultNamespace("air")
         );
         return placeholder;

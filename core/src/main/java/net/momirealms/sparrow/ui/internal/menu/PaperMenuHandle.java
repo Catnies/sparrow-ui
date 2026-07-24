@@ -42,7 +42,7 @@ import java.util.List;
 @SuppressWarnings("UnstableApiUsage")
 class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final int INCOMING_CAPACITY = 256; // 单个菜单会话最多暂存的入站消息数
-    private static final Object EMPTY_ITEM = ItemStackProxy.INSTANCE.empty(); // NMS ItemStack.EMPTY
+    private static final Object EMPTY_ITEM = ItemStackProxy.EMPTY; // NMS ItemStack.EMPTY
 
     private final PacketListener packets; // 安装入站捕获会话并发送出站协议包
     private final Player player;

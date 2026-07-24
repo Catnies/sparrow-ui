@@ -15,7 +15,7 @@ final class DispenserMenuHandleImpl extends PaperMenuHandle {
         super(
                 packets,
                 player,
-                MenuTypeProxy.INSTANCE.GENERIC_3x3(),
+                MenuTypeProxy.GENERIC_3x3,
                 InventoryType.DISPENSER,
                 org.bukkit.inventory.MenuType.GENERIC_3X3,
                 9,
