@@ -79,7 +79,7 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
             } else {
                 checkUpper(this.upperGui);
                 layout = this.lowerGui == null
-                        ? WindowLayout.playerInventoryBelow(this.upperGui)
+                        ? WindowLayout.upper(this.upperGui)
                         : WindowLayout.split(this.upperGui, this.lowerGui);
             }
             return new NormalWindowImpl(WindowManager.getInstance(), viewer, layout, settings);

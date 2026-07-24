@@ -250,7 +250,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
                 throw new IllegalArgumentException("anvil upper GUI must have size 3x1");
             }
             WindowLayout layout = this.lowerGui == null
-                    ? WindowLayout.playerInventoryBelow(this.upperGui)
+                    ? WindowLayout.upper(this.upperGui)
                     : WindowLayout.split(this.upperGui, this.lowerGui);
             return new AnvilWindowImpl(
                     WindowManager.getInstance(),

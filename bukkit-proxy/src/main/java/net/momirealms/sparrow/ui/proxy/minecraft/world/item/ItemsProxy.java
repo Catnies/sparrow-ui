@@ -13,6 +13,7 @@ public interface ItemsProxy {
     Object PAPER = INSTANCE.PAPER();
     Object MAP = INSTANCE.MAP();
     Object GLASS_PANE = INSTANCE.GLASS_PANE();
+    Object AIR = INSTANCE.AIR();
 
     @FieldGetter(name = "BARRIER", isStatic = true)
     Object BARRIER();
@@ -31,4 +32,7 @@ public interface ItemsProxy {
 
     @FieldGetter(name = "GLASS_PANE", isStatic = true)
     Object GLASS_PANE();
+
+    @FieldGetter(name = "AIR", isStatic = true)
+    Object AIR();
 }

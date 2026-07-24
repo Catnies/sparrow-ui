@@ -153,5 +153,24 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          */
         record Rename(@NotNull String text) implements WindowSpecific {
         }
+
+        /**
+         * 客户端切换了合成器输入槽的启用状态.
+         *
+         * @param containerId 目标容器编号
+         * @param slot 输入槽编号
+         * @param enabled true 表示客户端请求启用该槽位
+         */
+        record CrafterSlotState(int containerId, int slot, boolean enabled) implements WindowSpecific {
+        }
+
+        /**
+         * 客户端选择了菜单中的一个原版按钮.
+         *
+         * @param containerId 目标容器编号
+         * @param button 按钮编号
+         */
+        record ButtonClick(int containerId, int button) implements WindowSpecific {
+        }
     }
 }

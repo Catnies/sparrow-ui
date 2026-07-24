@@ -71,7 +71,7 @@ final class DropperWindowImpl extends AbstractWindow<MenuHandle> implements Drop
                 throw new IllegalArgumentException("dropper upper GUI must have size 3x3");
             }
             WindowLayout layout = this.lowerGui == null
-                    ? WindowLayout.playerInventoryBelow(this.upperGui)
+                    ? WindowLayout.upper(this.upperGui)
                     : WindowLayout.split(this.upperGui, this.lowerGui);
             return new DropperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
