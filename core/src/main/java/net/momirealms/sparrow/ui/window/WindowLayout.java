@@ -14,25 +14,6 @@ import java.util.List;
  * 编译后的布局不可变, Window tick 只读取 route, 不再重复计算区域映射.
  */
 final class WindowLayout {
-
-    /**
-     * 一个协议窗口槽位的内容所有权.
-     */
-    sealed interface Route permits GuiRoute, PlayerRoute {
-    }
-
-    /**
-     * 由 GUI 管理的协议槽位.
-     */
-    record GuiRoute(@NotNull Gui gui, int guiSlot) implements Route {
-    }
-
-    /**
-     * 映射到玩家原生物品栏的协议槽位.
-     */
-    record PlayerRoute(int inventorySlot) implements Route {
-    }
-
     private static final GuiSize LOWER_SIZE = new GuiSize(9, 4);
 
     private final int topSlots;
@@ -142,8 +123,8 @@ final class WindowLayout {
      */
     SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
         return switch (this.route(windowSlot)) {
-            case GuiRoute route -> new SlotElement.GuiLink(route.gui(), route.guiSlot());
-            case PlayerRoute ignoredRoute -> null;
+            case Route.GuiRoute route -> new SlotElement.GuiLink(route.gui(), route.guiSlot());
+            case Route.PlayerRoute ignoredRoute -> null;
         };
     }
 
@@ -159,14 +140,14 @@ final class WindowLayout {
 
     private static void fillGui(Route[] routes, int offset, Gui gui) {
         for (int slot = 0; slot < gui.area(); slot++) {
-            routes[offset + slot] = new GuiRoute(gui, slot);
+            routes[offset + slot] = new Route.GuiRoute(gui, slot);
         }
     }
 
     private static void fillPlayer(Route[] routes, int offset) {
         for (int lowerSlot = 0; lowerSlot < LOWER_SIZE.area(); lowerSlot++) {
             int inventorySlot = lowerSlot < 27 ? lowerSlot + 9 : lowerSlot - 27;
-            routes[offset + lowerSlot] = new PlayerRoute(inventorySlot);
+            routes[offset + lowerSlot] = new Route.PlayerRoute(inventorySlot);
         }
     }
 
@@ -176,10 +157,28 @@ final class WindowLayout {
     private static List<Gui> collectGuis(Route[] routes) {
         ArrayList<Gui> guis = new ArrayList<>(2);
         for (int index = 0; index < routes.length; index++) {
-            if (routes[index] instanceof GuiRoute(var gui, var ignoredGuiSlot) && !guis.contains(gui)) {
+            if (routes[index] instanceof Route.GuiRoute(var gui, var ignoredGuiSlot) && !guis.contains(gui)) {
                 guis.add(gui);
             }
         }
         return List.copyOf(guis);
+    }
+
+    /**
+     * 一个协议窗口槽位的内容所有权.
+     */
+    sealed interface Route permits Route.GuiRoute, Route.PlayerRoute {
+
+        /**
+         * 由 GUI 管理的协议槽位.
+         */
+        record GuiRoute(@NotNull Gui gui, int guiSlot) implements Route {
+        }
+
+        /**
+         * 映射到玩家原生物品栏的协议槽位.
+         */
+        record PlayerRoute(int inventorySlot) implements Route {
+        }
     }
 }

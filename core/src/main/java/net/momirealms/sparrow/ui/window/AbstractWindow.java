@@ -505,18 +505,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         try {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
                 switch (this.layout.route(windowSlot)) {
-                    case WindowLayout.GuiRoute route -> {
-                        DisplayedSlotPath path = new DisplayedSlotPath(
-                                this,
-                                windowSlot,
-                                route.gui(),
-                                route.guiSlot()
-                        );
+                    case WindowLayout.Route.GuiRoute route -> {
+                        DisplayedSlotPath path = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());
                         paths[windowSlot] = path;
                     }
-                    case WindowLayout.PlayerRoute route -> localSlots[windowSlot] = ItemUtils.copyOrEmpty(
-                            this.viewer.getInventory().getItem(route.inventorySlot())
-                    );
+                    case WindowLayout.Route.PlayerRoute route ->
+                            localSlots[windowSlot] = ItemUtils.copyOrEmpty(this.viewer.getInventory().getItem(route.inventorySlot()));
                 }
             }
 
@@ -753,17 +747,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorDirty = true;
         ClickInterpreter.Result result = this.clickInterpreter.interpret(interaction, this.layout, this.generation);
         switch (result) {
-            case ClickInterpreter.Pending ignoredPending -> {}
-            case ClickInterpreter.Rejected ignoredRejection -> this.forceFull = true;
-            case ClickInterpreter.SingleClick click -> this.handleSingleClick(click, menu);
-            case ClickInterpreter.Drag drag -> this.handleDrag(drag, menu);
+            case ClickInterpreter.Result.Pending ignoredPending -> {}
+            case ClickInterpreter.Result.Rejected ignoredRejection -> this.forceFull = true;
+            case ClickInterpreter.Result.SingleClick click -> this.handleSingleClick(click, menu);
+            case ClickInterpreter.Result.Drag drag -> this.handleDrag(drag, menu);
         }
     }
 
     /**
      * 对已解释的单次点击执行 Bukkit 桥接、重入复验和 Item 分派.
      */
-    private void handleSingleClick(ClickInterpreter.SingleClick click, MenuHandle menu) {
+    private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
         if (!this.manager.allowClick(this, click)) {
@@ -772,19 +766,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
-        if (click.target() instanceof ClickInterpreter.GuiTarget(var windowSlot)) {
-            DisplayedSlotPath path = this.requirePath(windowSlot);
-            path.handleClick(new ItemClick(
-                    click.clickType(),
-                    this.viewer,
-                    this,
-                    windowSlot,
-                    click.hotbarButton()
-            ));
-        } else if (
-                click.target() == ClickInterpreter.OutsideTarget.INSTANCE
-                        && !this.fireOutsideClick(click)
-        ) {
+        if (click.target() instanceof ClickInterpreter.Target.GuiTarget(var windowSlot)) {
+            this.requirePath(windowSlot).handleClick(
+                    new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton())
+            );
+        }
+        else if (click.target() == ClickInterpreter.Target.OutsideTarget.INSTANCE && !this.fireOutsideClick(click)) {
             return;
         }
     }
@@ -792,7 +779,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * 对已完成的 QUICK_CRAFT 执行 Bukkit 桥接、重入复验和逐槽 Item 分派.
      */
-    private void handleDrag(ClickInterpreter.Drag drag, MenuHandle menu) {
+    private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
         if (!this.manager.allowDrag(this, drag.clickType(), drag.slots())) {
@@ -803,7 +790,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         for (int index = 0; index < drag.slots().size(); index++) {
             int windowSlot = drag.slots().get(index);
-            if (this.layout.route(windowSlot) instanceof WindowLayout.GuiRoute) {
+            if (this.layout.route(windowSlot) instanceof WindowLayout.Route.GuiRoute) {
                 this.requirePath(windowSlot).handleClick(
                         new ItemClick(this.viewer, drag.clickType(), this, windowSlot)
                 );
@@ -836,11 +823,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.forceFull = true;
             return;
         }
-        if (this.layout.route(packet.slot()) instanceof WindowLayout.GuiRoute) {
-            this.requirePath(packet.slot())
-                    .handleBundleSelect(
-                            new BundleSelect(this.viewer, packet.selectedIndex())
-                    );
+        if (this.layout.route(packet.slot()) instanceof WindowLayout.Route.GuiRoute) {
+            this.requirePath(packet.slot()).handleBundleSelect(
+                    new BundleSelect(this.viewer, packet.selectedIndex())
+            );
         }
         this.forceFull = true;
     }
@@ -901,7 +887,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
-            if (this.layout.route(windowSlot) instanceof WindowLayout.PlayerRoute(var inventorySlot)) {
+            if (this.layout.route(windowSlot) instanceof WindowLayout.Route.PlayerRoute(var inventorySlot)) {
                 ItemStack playerItem = this.viewer.getInventory().getItem(inventorySlot);
                 if (!AbstractWindow.sameItem(localSlots[windowSlot], playerItem)) {
                     localSlots[windowSlot] = ItemUtils.copyOrEmpty(playerItem);
@@ -1000,7 +986,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    private boolean fireOutsideClick(ClickInterpreter.SingleClick click) {
+    private boolean fireOutsideClick(ClickInterpreter.Result.SingleClick click) {
         ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
         List<Consumer<ClickEvent>> handlers = this.outsideClickHandlers;
         for (int index = 0; index < handlers.size(); index++) {

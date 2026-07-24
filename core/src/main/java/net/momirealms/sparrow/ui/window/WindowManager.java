@@ -42,17 +42,12 @@ public final class WindowManager implements Listener {
         this.exceptionHandler = SparrowUI.getInstance()::handleException;
     }
 
-    /**
-     * 返回 SparrowUI 当前启用实例持有的 WindowManager.
-     *
-     * @return 当前 WindowManager
-     */
     public static @NotNull WindowManager getInstance() {
         return SparrowUI.getInstance().windowManager();
     }
 
     /**
-     * 创建并注册使用 Paper 菜单后端的 WindowManager.
+     * 创建并注册 WindowManager.
      *
      * @return 已注册的 WindowManager
      */
@@ -63,7 +58,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回该玩家当前已提交的 Window.
+     * 返回该玩家当前真正观察的 Window.
      *
      * @param player 要查询的玩家
      * @return 当前 Window, 没有时为 null
@@ -118,9 +113,6 @@ public final class WindowManager implements Listener {
         );
     }
 
-    /**
-     * 将 Window 状态修改送入其玩家命令通道, 使公开 setter 可从任意线程调用.
-     */
     void mutate(AbstractWindow<?> window, Runnable mutation, String failureMessage) {
         if (this.shutdown.get()) {
             return;
@@ -177,15 +169,15 @@ public final class WindowManager implements Listener {
      * 在启用桥接时把已映射的协议点击发布为 Bukkit InventoryClickEvent.
      * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      */
-    boolean allowClick(AbstractWindow<?> window, ClickInterpreter.SingleClick click) {
+    boolean allowClick(AbstractWindow<?> window, ClickInterpreter.Result.SingleClick click) {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
             return true;
         }
         InventoryView view = window.menuView();
         int rawSlot = switch (click.target()) {
-            case ClickInterpreter.GuiTarget target -> target.windowSlot();
-            case ClickInterpreter.PlayerTarget target -> target.windowSlot();
-            case ClickInterpreter.OutsideTarget ignoredTarget -> InventoryView.OUTSIDE;
+            case ClickInterpreter.Target.GuiTarget target -> target.windowSlot();
+            case ClickInterpreter.Target.PlayerTarget target -> target.windowSlot();
+            case ClickInterpreter.Target.OutsideTarget ignoredTarget -> InventoryView.OUTSIDE;
         };
         InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
                 ? InventoryType.SlotType.OUTSIDE

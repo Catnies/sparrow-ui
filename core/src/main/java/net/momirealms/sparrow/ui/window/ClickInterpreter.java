@@ -13,81 +13,6 @@ import java.util.List;
  * <p>该解释器拥有 QUICK_CRAFT 的跨包状态, 并统一处理普通点击终止未完成拖拽、协议字段校验和Window 槽位路由.
  */
 final class ClickInterpreter {
-
-    /**
-     * 无法安全解释协议输入的原因.
-     */
-    enum Rejection {
-        INVALID_BUTTON,
-        INVALID_SLOT,
-        INVALID_DRAG_SEQUENCE
-    }
-
-
-
-
-    /**
-     * 已解释单次点击的目标区域.
-     */
-    sealed interface Target permits GuiTarget, PlayerTarget, OutsideTarget {
-    }
-
-    /**
-     * GUI 管理的窗口槽位.
-     */
-    record GuiTarget(int windowSlot) implements Target {
-    }
-
-    /**
-     * 玩家原生物品栏管理的窗口槽位.
-     */
-    record PlayerTarget(int windowSlot, int inventorySlot) implements Target {
-    }
-
-    /**
-     * 容器外点击区域.
-     */
-    enum OutsideTarget implements Target {
-        INSTANCE
-    }
-
-
-
-
-    /**
-     * 一个协议输入的解释结果.
-     */
-    sealed interface Result permits Pending, SingleClick, Drag, Rejected {
-    }
-
-    /**
-     * QUICK_CRAFT 尚未结束, 需要等待后续协议输入.
-     */
-    enum Pending implements Result {
-        INSTANCE
-    }
-
-    /**
-     * 可立即分派的单次点击.
-     */
-    record SingleClick(@NotNull ClickType clickType, int hotbarButton, @NotNull Target target) implements Result {
-    }
-
-    /**
-     * 已完成的 QUICK_CRAFT, 槽位按客户端首次加入顺序排列并去重.
-     */
-    record Drag(@NotNull ClickType clickType, @NotNull List<Integer> slots) implements Result {
-    }
-
-    /**
-     * 因不支持或不可信字段拒绝的协议输入.
-     */
-    record Rejected(@NotNull Rejection reason) implements Result {
-    }
-
-
-
-
     private @Nullable ActiveDrag activeDrag;
 
     /**
@@ -123,7 +48,7 @@ final class ClickInterpreter {
     private Result interpretDrag(MenuInput.Common.DragStep step, WindowLayout layout, long generation) {
         if (!ClickInterpreter.isDragClick(step.clickType())) {
             this.reset();
-            return new Rejected(Rejection.INVALID_BUTTON);
+            return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
 
         return switch (step.phase()) {
@@ -136,36 +61,36 @@ final class ClickInterpreter {
     private Result startDrag(ClickType clickType, long generation) {
         if (this.activeDrag != null) {
             this.reset();
-            return new Rejected(Rejection.INVALID_DRAG_SEQUENCE);
+            return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
 
         this.activeDrag = new ActiveDrag(clickType, generation);
-        return Pending.INSTANCE;
+        return Result.Pending.INSTANCE;
     }
 
     private Result addDrag(ClickType clickType, int windowSlot, long generation, WindowLayout layout) {
         ActiveDrag drag = this.activeDrag;
         if (drag == null || !drag.matches(clickType, generation)) {
             this.reset();
-            return new Rejected(Rejection.INVALID_DRAG_SEQUENCE);
+            return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
         if (windowSlot < 0 || windowSlot >= layout.size()) {
             this.reset();
-            return new Rejected(Rejection.INVALID_SLOT);
+            return new Result.Rejected(Rejection.INVALID_SLOT);
         }
 
         drag.slots.add(windowSlot);
-        return Pending.INSTANCE;
+        return Result.Pending.INSTANCE;
     }
 
     private Result completeDrag(ClickType clickType, long generation) {
         ActiveDrag drag = this.activeDrag;
         if (drag == null || !drag.matches(clickType, generation) || drag.slots.isEmpty()) {
             this.reset();
-            return new Rejected(Rejection.INVALID_DRAG_SEQUENCE);
+            return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
 
-        Drag completed = new Drag(clickType, List.copyOf(drag.slots));
+        Result.Drag completed = new Result.Drag(clickType, List.copyOf(drag.slots));
         this.reset();
         return completed;
     }
@@ -173,26 +98,25 @@ final class ClickInterpreter {
     private static Result interpretSingleClick(MenuInput.Common.Click packet, WindowLayout layout) {
         ClickType clickType = packet.clickType();
         if (!ClickInterpreter.isSingleClick(clickType)) {
-            return new Rejected(Rejection.INVALID_BUTTON);
+            return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
         if (clickType == ClickType.NUMBER_KEY) {
             if (packet.hotbarButton() < 0 || packet.hotbarButton() > 8) {
-                return new Rejected(Rejection.INVALID_BUTTON);
+                return new Result.Rejected(Rejection.INVALID_BUTTON);
             }
         } else if (packet.hotbarButton() != -1) {
-            return new Rejected(Rejection.INVALID_BUTTON);
+            return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
 
         Target target = ClickInterpreter.target(packet.slot(), layout);
         if (target == null) {
-            return new Rejected(Rejection.INVALID_SLOT);
+            return new Result.Rejected(Rejection.INVALID_SLOT);
         }
-        boolean borderClick = clickType == ClickType.WINDOW_BORDER_LEFT
-                || clickType == ClickType.WINDOW_BORDER_RIGHT;
-        if ((target == OutsideTarget.INSTANCE) != borderClick) {
-            return new Rejected(Rejection.INVALID_SLOT);
+        boolean borderClick = clickType == ClickType.WINDOW_BORDER_LEFT || clickType == ClickType.WINDOW_BORDER_RIGHT;
+        if ((target == Target.OutsideTarget.INSTANCE) != borderClick) {
+            return new Result.Rejected(Rejection.INVALID_SLOT);
         }
-        return new SingleClick(clickType, packet.hotbarButton(), target);
+        return new Result.SingleClick(clickType, packet.hotbarButton(), target);
     }
 
     private static boolean isSingleClick(ClickType clickType) {
@@ -218,15 +142,11 @@ final class ClickInterpreter {
     }
 
     private static @Nullable Target target(int windowSlot, WindowLayout layout) {
-        if (windowSlot == -999) {
-            return OutsideTarget.INSTANCE;
-        }
-        if (windowSlot < 0 || windowSlot >= layout.size()) {
-            return null;
-        }
+        if (windowSlot == -999) return Target.OutsideTarget.INSTANCE;
+        if (windowSlot < 0 || windowSlot >= layout.size()) return null;
         return switch (layout.route(windowSlot)) {
-            case WindowLayout.GuiRoute ignoredRoute -> new GuiTarget(windowSlot);
-            case WindowLayout.PlayerRoute route -> new PlayerTarget(windowSlot, route.inventorySlot());
+            case WindowLayout.Route.GuiRoute ignoredRoute -> new Target.GuiTarget(windowSlot);
+            case WindowLayout.Route.PlayerRoute route -> new Target.PlayerTarget(windowSlot, route.inventorySlot());
         };
     }
 
@@ -245,6 +165,75 @@ final class ClickInterpreter {
 
         private boolean matches(ClickType clickType, long generation) {
             return this.clickType == clickType && this.generation == generation;
+        }
+    }
+
+    /**
+     * 无法安全解释协议输入的原因.
+     */
+    enum Rejection {
+        INVALID_BUTTON,
+        INVALID_SLOT,
+        INVALID_DRAG_SEQUENCE
+    }
+
+    /**
+     * 已解释单次点击的目标区域.
+     */
+    sealed interface Target permits Target.GuiTarget, Target.PlayerTarget, Target.OutsideTarget {
+
+        /**
+         * GUI 管理的窗口槽位.
+         */
+        record GuiTarget(int windowSlot) implements Target {
+        }
+
+        /**
+         * 玩家原生物品栏管理的窗口槽位.
+         */
+        record PlayerTarget(int windowSlot, int inventorySlot) implements Target {
+        }
+
+        /**
+         * 容器外点击区域.
+         */
+        enum OutsideTarget implements Target {
+            INSTANCE
+        }
+    }
+
+    /**
+     * 一个协议输入的解释结果.
+     */
+    sealed interface Result permits Result.Pending, Result.SingleClick, Result.Drag, Result.Rejected {
+
+        /**
+         * QUICK_CRAFT 尚未结束, 需要等待后续协议输入.
+         */
+        enum Pending implements Result {
+            INSTANCE
+        }
+
+        /**
+         * 可立即分派的单次点击.
+         */
+        record SingleClick(
+                @NotNull ClickType clickType,
+                int hotbarButton,
+                @NotNull Target target
+        ) implements Result {
+        }
+
+        /**
+         * 已完成的 QUICK_CRAFT, 槽位按客户端首次加入顺序排列并去重.
+         */
+        record Drag(@NotNull ClickType clickType, @NotNull List<Integer> slots) implements Result {
+        }
+
+        /**
+         * 因不支持或不可信字段拒绝的协议输入.
+         */
+        record Rejected(@NotNull Rejection reason) implements Result {
         }
     }
 }
