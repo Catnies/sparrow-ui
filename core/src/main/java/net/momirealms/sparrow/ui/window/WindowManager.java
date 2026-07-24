@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
-import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactoryImpl;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.bukkit.Bukkit;
@@ -110,7 +109,7 @@ public final class WindowManager implements Listener {
             );
         }
         return this.lane(window.viewer()).submit(
-                () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN, MenuHandle.CloseMode.PLUGIN),
+                () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN),
                 () -> {
                     boolean wasOpen = window.retire();
                     this.active.remove(window.viewer().getUniqueId(), window);
@@ -146,12 +145,12 @@ public final class WindowManager implements Listener {
     }
 
     void closeFromClient(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        this.closeNow(window, reason, MenuHandle.CloseMode.CLIENT);
+        this.closeNow(window, reason);
     }
 
     void closeAfterProtocolFailure(AbstractWindow<?> window) {
         try {
-            this.closeNow(window, InventoryCloseEvent.Reason.UNKNOWN, MenuHandle.CloseMode.PLUGIN);
+            this.closeNow(window, InventoryCloseEvent.Reason.UNKNOWN);
         } catch (RuntimeException | Error throwable) {
             this.report("Failed to close Window after a protocol failure", throwable);
         }
@@ -166,7 +165,7 @@ public final class WindowManager implements Listener {
             if (!window.isOpen()) {
                 return null;
             }
-            this.closeNow(window, reason, MenuHandle.CloseMode.CLIENT);
+            this.closeNow(window, reason);
             return null;
         }, () -> {
             window.retire();
@@ -285,7 +284,7 @@ public final class WindowManager implements Listener {
             return;
         }
         this.observe(this.lane(event.getPlayer()).submit(() -> {
-            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT, MenuHandle.CloseMode.CLIENT);
+            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
             return null;
         }, () -> {
             window.retire();
@@ -310,25 +309,25 @@ public final class WindowManager implements Listener {
         }
 
         AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
+        boolean replaceWindow = previous != null && previous != window;
         try {
-            window.openOnEntity(this.generations.getAndIncrement());
+            window.openOnEntity(this.generations.getAndIncrement(), replaceWindow);
         } catch (ViewerUnavailableException ignored) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
         this.active.put(viewer.getUniqueId(), window);
-        if (this.shutdown.get()) {
-            this.active.remove(viewer.getUniqueId(), window);
-            window.closeOnEntity(InventoryCloseEvent.Reason.PLUGIN, MenuHandle.CloseMode.PLUGIN);
-            return Window.OpenResult.VIEWER_UNAVAILABLE;
-        }
-
-        if (previous != null && previous != window) {
+        if (replaceWindow) {
             try {
-                previous.closeOnEntity(InventoryCloseEvent.Reason.OPEN_NEW, MenuHandle.CloseMode.REPLACED);
+                previous.closeOnEntity(InventoryCloseEvent.Reason.OPEN_NEW);
             } catch (RuntimeException | Error throwable) {
                 this.report("Failed to clean up replaced Window", throwable);
             }
+        }
+        if (this.shutdown.get()) {
+            this.active.remove(viewer.getUniqueId(), window);
+            window.closeOnEntity(InventoryCloseEvent.Reason.PLUGIN);
+            return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
         window.fireOpenHandlers();
         return Window.OpenResult.OPENED;
@@ -338,12 +337,12 @@ public final class WindowManager implements Listener {
      * 在玩家实体线程关闭 Window 并先移除 active 映射.
      * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
      */
-    private Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason, MenuHandle.CloseMode mode) {
+    private Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         if (!window.isOpen()) {
             return Window.CloseResult.ALREADY_CLOSED;
         }
         this.active.remove(window.viewer().getUniqueId(), window);
-        window.closeOnEntity(reason, mode);
+        window.closeOnEntity(reason);
         return Window.CloseResult.CLOSED;
     }
 

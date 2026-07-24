@@ -99,7 +99,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable M menuHandle;
     private @Nullable DisplayedSlotPath[] paths;
     private @Nullable ItemStack[] localSlots;
-    private @Nullable ItemStack localCursor;
+    private @Nullable MenuHandle.CursorSnapshot localCursor;
     private @Nullable SchedulerTask tickTask;
     private @Nullable Component pendingReopenTitle;
     private BitSet dirtySlots;
@@ -476,7 +476,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 在查看者实体线程创建菜单、显示路径和初始协议状态.
      * 所有资源在初始完整包成功排入 Netty event loop 后才发布到字段, 失败时按相反方向回滚.
      */
-    void openOnEntity(long generation) {
+    void openOnEntity(long generation, boolean replacingWindow) {
         if (this.open) {
             return;
         }
@@ -528,7 +528,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
             }
-            ItemStack localCursor = this.renderCursor();
+            menuHandle.prepareOpen(replacingWindow);
+            MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
             menuHandle.open(this.title, localSlots, localCursor);
 
             this.menuHandle = menuHandle;
@@ -547,7 +548,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 tickTask.cancel();
             }
             try {
-                menuHandle.close(MenuHandle.CloseMode.PLUGIN);
+                menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
             } catch (RuntimeException | Error closeFailure) {
                 throwable.addSuppressed(closeFailure);
             }
@@ -560,7 +561,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 在查看者实体线程关闭已打开的 Window.
      * 先撤销本地可见状态并停掉输入, 再关闭菜单、释放路径、处理 fallback 与关闭回调.
      */
-    void closeOnEntity(InventoryCloseEvent.Reason reason, MenuHandle.CloseMode mode) {
+    void closeOnEntity(InventoryCloseEvent.Reason reason) {
         if (!this.open) {
             return;
         }
@@ -589,7 +590,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         if (previousMenu != null) {
             try {
-                previousMenu.close(mode);
+                previousMenu.close(reason);
             } catch (RuntimeException | Error throwable) {
                 failure = throwable;
             }
@@ -730,20 +731,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     private void handleInput(MenuInput input) {
         switch (input) {
-            case MenuInput.Common common -> this.handleCommonInput(common);
-            case MenuInput.WindowSpecific windowSpecific -> this.handleWindowInput(windowSpecific);
-        }
-    }
-
-    /**
-     * 分派所有 Window 都理解的公共协议输入.
-     */
-    private void handleCommonInput(MenuInput.Common input) {
-        switch (input) {
             case MenuInput.Common.Interaction interaction -> this.handleInteraction(interaction);
             case MenuInput.Common.Close close -> this.handleClose(close);
             case MenuInput.Common.BundleSelection selection -> this.handleBundleSelection(selection);
             case MenuInput.Common.Pong pong -> this.handlePong(pong);
+            case MenuInput.WindowSpecific windowSpecific -> this.handleWindowInput(windowSpecific);
         }
     }
 
@@ -942,9 +934,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         try {
-            ItemStack cursor = this.localCursor;
+            MenuHandle.CursorSnapshot cursor = this.localCursor;
             if (cursor == null || this.cursorDirty) {
-                cursor = this.renderCursor();
+                cursor = this.renderCursor(menu.cursor());
             }
             if (effectiveReopenTitle != null) {
                 menu.updateTitle(effectiveReopenTitle, localSlots, cursor);
@@ -993,17 +985,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 渲染仅用于协议显示的光标快照.
      * 可视化器失败时回退到真实光标, 因而显示扩展不会破坏容器同步.
      */
-    private ItemStack renderCursor() {
-        ItemStack actual = ItemUtils.copyOrEmpty(this.viewer.getItemOnCursor());
+    private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
+        ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
         try {
             ItemProvider visualizer = this.cursorVisualizer.apply(actual.isEmpty() ? null : actual.clone());
             if (visualizer == null) {
-                return actual;
+                return new MenuHandle.CursorSnapshot(actual, actual.clone());
             }
-            return visualizer.provide(this.cursorRenderContext);
+            ItemStack visual = ItemUtils.copyOrEmpty(visualizer.provide(this.cursorRenderContext));
+            return new MenuHandle.CursorSnapshot(actual, visual);
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);
-            return actual;
+            return new MenuHandle.CursorSnapshot(actual, actual.clone());
         }
     }
 

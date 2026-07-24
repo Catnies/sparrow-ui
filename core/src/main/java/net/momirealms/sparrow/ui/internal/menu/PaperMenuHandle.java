@@ -3,8 +3,9 @@ package net.momirealms.sparrow.ui.internal.menu;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.common.ClientboundPingPacketProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerClosePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetContentPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetSlotPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundOpenScreenPacketProxy;
@@ -21,6 +22,7 @@ import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -49,7 +51,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private final int containerId; // 此次菜单会话独占的容器编号
     private final long generation; // 当前 Window 代际, 用于丢弃迟到的旧会话输入
     private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY); // Netty 到实体线程的有界 FIFO
-    private final Object replacedMenu; // NMS AbstractContainerMenu, 打开前的活动菜单
+    private Object replacedMenu; // NMS AbstractContainerMenu, 光标转移来源与打开失败时的恢复目标
     private final ProtocolInventoryView view; // 提供给 Bukkit 事件读取和临时写入的协议投影
     private final Object proxy; // NMS AbstractContainerMenu, 安装到玩家并禁用原版自动同步的生成菜单
     private final Object[] remoteSlots; // NMS RemoteSlot[], Paper 维护的客户端已知槽位哈希镜像
@@ -62,8 +64,10 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private final Object[] pendingRemoteItems; // NMS ItemStack[], 发送成功前暂存单槽包持有的物品快照
 
     private @Nullable PacketListener.Session session; // 当前入站捕获会话, 打开前和关闭后为空
-    private Object cursor = EMPTY_ITEM; // NMS ItemStack, 实体线程已提交的菜单光标状态
+    private Object actualCarried = EMPTY_ITEM; // NMS ItemStack, 代理菜单唯一持有的真实光标
     private boolean predictedCarried; // 客户端预测是否要求重新核对光标
+    private boolean prepared; // 是否已经捕获待转移的真实光标
+    private boolean cursorClaimed; // 来源菜单的真实光标是否已经被清空
     private boolean committed; // 初始打开批次是否已成功提交
     private boolean closed; // 菜单是否已关闭
 
@@ -89,8 +93,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             this.remoteSlots[slot] = this.createRemoteSlot();
         }
-        this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
         this.remoteCursor = this.createRemoteSlot();
+        this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
     }
 
     @Override
@@ -109,7 +113,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public Object carried() {
-        return this.cursor;
+        return this.actualCarried;
     }
 
     /**
@@ -117,7 +121,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void carried(Object item) {
-        this.cursor = item;
+        this.actualCarried = item;
     }
 
     /**
@@ -128,6 +132,35 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return EMPTY_ITEM;
     }
 
+    /**
+     * 先完成非 Sparrow 菜单的原生关闭，再捕获来源菜单中等待转移的真实光标.
+     */
+    @Override
+    public void prepareOpen(boolean replacingWindow) {
+        this.checkUsable();
+        if (this.prepared) {
+            throw new IllegalStateException("menu opening is already prepared");
+        }
+
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        Object currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        boolean replacingProxy = replacingWindow && currentMenu.getClass() == this.proxy.getClass();
+        if (!replacingProxy && currentMenu != inventoryMenu) {
+            ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, InventoryCloseEvent.Reason.OPEN_NEW);
+            currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
+        }
+
+        this.replacedMenu = currentMenu;
+        this.actualCarried = AbstractContainerMenuProxy.INSTANCE.getCarried(currentMenu);
+        this.prepared = true;
+    }
+
+    @Override
+    @NotNull
+    public ItemStack cursor() {
+        return ItemUtils.copyOrEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(this.actualCarried));
+    }
+
     @Override
     public int playerInventoryVersion() {
         Object inventory = PlayerProxy.INSTANCE.inventory(this.serverPlayer); // NMS Inventory
@@ -136,7 +169,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     @Override
     public int stateId() {
-        return AbstractContainerMenuProxy.INSTANCE.stateId(this.proxy);
+        return AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy);
     }
 
     /**
@@ -148,7 +181,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         if (interaction.containerId() != this.containerId) {
             return false;
         }
-        if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.stateId(this.proxy)) {
+        if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy)) {
             return false;
         }
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
@@ -180,8 +213,9 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * <p>若写包失败, 必须恢复被替换的菜单并回滚捕获会话, 以免后续包落到失效 Window.</p>
      */
     @Override
-    public void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
+    public void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
         this.checkUsable();
+        this.checkPrepared();
         this.checkSlotCount(slots);
 
         // 先冻结完整内容, 使包、远端镜像与 Bukkit 事件视图共享同一份权威输入
@@ -195,6 +229,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 input -> this.incoming.offer(this.generation, input)
         );
         this.session = openedSession;
+        AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, EMPTY_ITEM);
+        this.cursorClaimed = true;
         PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
 
         // 网络批次成功排入 event loop 后提交会话; 同步失败则完整恢复打开前状态
@@ -203,12 +239,15 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             openedSession.commit();
             this.commitFull(full);
             this.commitMenuDataPackets();
-            this.view.initialize(slots, cursor, title);
+            this.view.initialize(slots, cursor.actual(), title);
             this.committed = true;
+            this.prepared = false;
+            this.cursorClaimed = false;
         } catch (RuntimeException | Error throwable) {
             openedSession.rollback();
             this.session = null;
             PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
+            this.restorePreparedCursor();
             throw throwable;
         }
     }
@@ -220,7 +259,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     public void synchronize(
             ItemStack @NotNull [] slots,
             @NotNull BitSet dirtySlots,
-            @NotNull ItemStack cursor,
+            @NotNull CursorSnapshot cursor,
             boolean cursorDirty,
             boolean forceFull
     ) {
@@ -235,7 +274,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.packets.send(this.player, outgoing);
             this.commitFull(full);
             this.commitMenuDataPackets();
-            this.view.initialize(slots, cursor, this.view.title());
+            this.view.initialize(slots, cursor.actual(), this.view.title());
             return;
         }
         this.synchronizeChanges(slots, dirtySlots, cursor, cursorDirty);
@@ -245,11 +284,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 重发 OpenScreen 和完整内容, 因为客户端没有独立的标题更新包.
      */
     @Override
-    public void updateTitle(
-            @NotNull Component title,
-            ItemStack @NotNull [] slots,
-            @NotNull ItemStack cursor
-    ) {
+    public void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
         this.checkCommitted();
         this.checkSlotCount(slots);
         FullContents full = this.prepareFull(slots, cursor);
@@ -258,7 +293,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.packets.send(this.player, outgoing);
         this.commitFull(full);
         this.commitMenuDataPackets();
-        this.view.initialize(slots, cursor, title);
+        this.view.initialize(slots, cursor.actual(), title);
     }
 
     /**
@@ -271,13 +306,13 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 关闭会话并在仍由本代理持有菜单时恢复玩家库存菜单.
+     * 按关闭原因和当前菜单所有权接入 Paper 的容器关闭生命周期.
      *
-     * <p>仅插件主动关闭才发送关闭包. 客户端已关闭或已被其他菜单替换时, 再写关闭包会干扰
-     * 新会话, 因此只恢复服务端状态和库存快照.</p>
+     * <p>代理已不再是活动菜单时，Paper 或替换窗口已经接管关闭流程。客户端关闭与断线不再
+     * 发送关闭包，只发布 Bukkit 事件并执行 doCloseContainer；其余原因走服务端主动关闭。</p>
      */
     @Override
-    public void close(@NotNull CloseMode mode) {
+    public void close(@NotNull InventoryCloseEvent.Reason reason) {
         if (this.closed) return;
         this.closed = true;
         // 无论后续关闭路径如何, 都先停止捕获本 Window 的入站包.
@@ -293,35 +328,32 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
                 PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             }
-            return;
-        }
-        // 新窗口已接管客户端时, 不能再发送旧窗口的关闭包.
-        if (mode == CloseMode.REPLACED) {
+            this.restorePreparedCursor();
             return;
         }
         if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
             return;
         }
-        // 仅当前代理仍处于活动状态时才恢复库存菜单并发送最终快照.
-        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
-        PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, inventoryMenu);
 
         Throwable failure = null;
-        if (mode == CloseMode.PLUGIN) {
-            try {
-                Object closePacket = ClientboundContainerClosePacketProxy.INSTANCE.newInstance(this.containerId);
-                this.packets.send(this.player, List.of(closePacket));
-            } catch (RuntimeException | Error throwable) {
-                failure = throwable;
-            }
-        }
         try {
-            AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
-        } catch (RuntimeException | Error throwable) {
-            if (failure == null) {
-                failure = throwable;
+            if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
+                CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, reason);
             } else {
-                failure.addSuppressed(throwable);
+                ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, reason);
+            }
+        } catch (RuntimeException | Error throwable) {
+            failure = throwable;
+        }
+        if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+            try {
+                ServerPlayerProxy.INSTANCE.doCloseContainer(this.serverPlayer);
+            } catch (RuntimeException | Error throwable) {
+                if (failure == null) {
+                    failure = throwable;
+                } else {
+                    failure.addSuppressed(throwable);
+                }
             }
         }
         ThrowableUtils.throwIfUnchecked(failure);
@@ -362,20 +394,19 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     /**
      * 冻结一次完整状态并推进 NMS 菜单 state id.
      */
-    private FullContents prepareFull(ItemStack[] slots, ItemStack cursor) {
+    private FullContents prepareFull(ItemStack[] slots, CursorSnapshot cursor) {
         ArrayList<Object> items = new ArrayList<>(slots.length); // NMS ItemStack 包快照
         for (int index = 0; index < slots.length; index++) {
             items.add(ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
         }
-        Object menuCursor = ItemUtils.getItemStackNMSHandle(cursor); // 借用的 NMS ItemStack
-        Object packetCursor = ItemStackProxy.INSTANCE.copy(menuCursor); // 包独占的 NMS ItemStack
+        Object visualCursor = ItemUtils.getItemStackNMSHandle(cursor.visual()); // 借用的 NMS ItemStack
         Object packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
                 items,
-                packetCursor
+                ItemStackProxy.INSTANCE.copy(visualCursor)
         );
-        return new FullContents(items, menuCursor, packet);
+        return new FullContents(items, visualCursor, packet);
     }
 
     /**
@@ -384,7 +415,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private void synchronizeChanges(
             ItemStack[] slots,
             BitSet dirtySlots,
-            ItemStack cursor,
+            CursorSnapshot cursor,
             boolean cursorDirty
     ) {
         BitSet candidates = this.candidateSlots;
@@ -424,12 +455,12 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
             boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
             boolean cursorChanged = false;
-            Object sentCursor = this.cursor; // NMS ItemStack
+            Object sentVisualCursor = EMPTY_ITEM; // NMS ItemStack
             if (checkCursor) {
-                sentCursor = ItemUtils.getItemStackNMSHandle(cursor);
-                if (!RemoteSlotProxy.INSTANCE.matches(this.remoteCursor, sentCursor)) {
+                sentVisualCursor = ItemUtils.getItemStackNMSHandle(cursor.visual());
+                if (!RemoteSlotProxy.INSTANCE.matches(this.remoteCursor, sentVisualCursor)) {
                     outgoing.add(ClientboundSetCursorItemPacketProxy.INSTANCE.newInstance(
-                            ItemStackProxy.INSTANCE.copy(sentCursor)
+                            ItemStackProxy.INSTANCE.copy(sentVisualCursor)
                     ));
                     cursorChanged = true;
                 }
@@ -449,14 +480,11 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             ) {
                 RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], this.pendingRemoteItems[slot]);
             }
-            if (checkCursor) {
-                this.cursor = sentCursor;
-            }
             if (cursorChanged) {
-                RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentCursor);
+                RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentVisualCursor);
             }
             changedSlots.or(this.viewTouchedSlots);
-            this.view.apply(slots, changedSlots, cursor, cursorChanged || viewCursorTouched);
+            this.view.apply(slots, changedSlots, cursor.actual(), cursorChanged || viewCursorTouched);
             this.predictedSlots.clear();
             this.predictedCarried = false;
             this.forcedSlots.andNot(changedSlots);
@@ -482,8 +510,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
         }
-        RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.cursor());
-        this.cursor = full.cursor();
+        RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.visualCursor());
         this.predictedSlots.clear();
         this.predictedCarried = false;
         this.forcedSlots.clear();
@@ -508,10 +535,28 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
     }
 
+    private void checkPrepared() {
+        if (!this.prepared) {
+            throw new IllegalStateException("menu opening has not been prepared");
+        }
+    }
+
     private void checkCommitted() {
         if (this.closed || !this.committed) {
             throw new IllegalStateException("menu is not open");
         }
+    }
+
+    private void restorePreparedCursor() {
+        if (!this.prepared) {
+            return;
+        }
+        if (this.cursorClaimed) {
+            AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, this.actualCarried);
+        }
+        this.actualCarried = EMPTY_ITEM;
+        this.prepared = false;
+        this.cursorClaimed = false;
     }
 
     /**
@@ -560,15 +605,15 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 一次完整同步所需的数据包快照和实体线程菜单状态.
+     * 一次完整同步所需的数据包槽位与可视光标快照.
      *
      * @param slots 冻结槽位
-     * @param cursor 菜单在实体线程持有的光标状态.
+     * @param visualCursor 仅发送给客户端的可视光标
      * @param packet 完整内容包
      */
     private record FullContents(
             List<Object> slots, // NMS ItemStack 包快照
-            Object cursor, // NMS ItemStack 实体线程菜单状态
+            Object visualCursor, // NMS ItemStack 可视光标
             Object packet // NMS ClientboundContainerSetContentPacket
     ) {
     }

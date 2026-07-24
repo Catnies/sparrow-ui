@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -16,12 +17,12 @@ import java.util.List;
 public interface MenuHandle extends AutoCloseable {
 
     /**
-     * 菜单关闭的触发来源.
+     * 同一次同步使用的真实光标与只读可视投影.
+     *
+     * @param actual 菜单真实持有的光标快照
+     * @param visual 仅发送给客户端的可视光标快照
      */
-    enum CloseMode {
-        PLUGIN,
-        CLIENT,
-        REPLACED
+    record CursorSnapshot(@NotNull ItemStack actual, @NotNull ItemStack visual) {
     }
 
     /**
@@ -82,6 +83,25 @@ public interface MenuHandle extends AutoCloseable {
     List<MenuInput> drainInputs(int limit);
 
     /**
+     * 在打开菜单前准备真实光标转移.
+     *
+     * <p>替换 Window 时从旧代理菜单转移；否则先完成当前原版菜单的关闭生命周期，
+     * 再从玩家库存菜单转移。实现应在新代理接管活动菜单时才清空来源；打开失败时
+     * {@link #close(InventoryCloseEvent.Reason)} 必须把已经取得的光标归还来源菜单。</p>
+     *
+     * @param replacingWindow 是否正在替换同一玩家的 Window
+     */
+    void prepareOpen(boolean replacingWindow);
+
+    /**
+     * 返回菜单真实持有的光标快照.
+     *
+     * @return 可由调用方独立修改的真实光标快照
+     */
+    @NotNull
+    ItemStack cursor();
+
+    /**
      * 打开菜单并发送初始完整状态.
      *
      * <p>槽位数组只在调用期间有效, 实现不得修改或保留数组引用. 每个物品已经是 Window 独占的
@@ -90,9 +110,9 @@ public interface MenuHandle extends AutoCloseable {
      *
      * @param title 初始标题
      * @param slots 按原始槽位编号排列的权威物品
-     * @param cursor 权威光标物品
+     * @param cursor 同步使用的真实光标与可视投影
      */
-    void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull ItemStack cursor);
+    void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
      * 将远端容器镜像同步到当前服务端权威状态.
@@ -103,14 +123,14 @@ public interface MenuHandle extends AutoCloseable {
      *
      * @param slots 按原始槽位编号排列的权威物品
      * @param dirtySlots 本轮可能变化的槽位
-     * @param cursor 权威光标物品
+     * @param cursor 同步使用的真实光标与可视投影
      * @param cursorDirty 是否需要核对光标
      * @param forceFull 是否强制发送完整状态
      */
     void synchronize(
             ItemStack @NotNull [] slots,
             @NotNull BitSet dirtySlots,
-            @NotNull ItemStack cursor,
+            @NotNull CursorSnapshot cursor,
             boolean cursorDirty,
             boolean forceFull
     );
@@ -118,13 +138,13 @@ public interface MenuHandle extends AutoCloseable {
     /**
      * 用重新打开界面和完整状态更新客户端标题.
      *
-     * <p>参数所有权与 {@link #open(Component, ItemStack[], ItemStack)} 相同.</p>
+     * <p>参数所有权与 {@link #open(Component, ItemStack[], CursorSnapshot)} 相同.</p>
      *
      * @param title 新标题
      * @param slots 按原始槽位编号排列的权威物品
-     * @param cursor 权威光标物品
+     * @param cursor 同步使用的真实光标与可视投影
      */
-    void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull ItemStack cursor);
+    void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
      * 向客户端发送用于 Window 状态确认的协议 Ping.
@@ -136,9 +156,9 @@ public interface MenuHandle extends AutoCloseable {
     /**
      * 清理菜单资源.
      *
-     * @param mode 关闭发生方式
+     * @param reason 关闭原因
      */
-    void close(@NotNull CloseMode mode);
+    void close(@NotNull InventoryCloseEvent.Reason reason);
 
     /**
      * 玩家实体调度器已 retired 时只释放不需要访问玩家状态的资源.
@@ -150,6 +170,6 @@ public interface MenuHandle extends AutoCloseable {
      */
     @Override
     default void close() {
-        this.close(CloseMode.PLUGIN);
+        this.close(InventoryCloseEvent.Reason.PLUGIN);
     }
 }
