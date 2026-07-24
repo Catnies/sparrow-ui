@@ -7,8 +7,7 @@ import java.util.function.Supplier;
 
 /**
  * 为一组已选槽位逐个创建槽位元素.
- *
- * <p>常用于给 Structure 中同一个标志符出现的所有槽位填充内容.</p>
+ * <p>用于给 Structure 中同一个标志符出现的所有槽位填充内容.
  */
 @FunctionalInterface
 public interface SlotElementSupplier {

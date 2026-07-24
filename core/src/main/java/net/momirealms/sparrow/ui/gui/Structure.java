@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.gui;
 
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -237,19 +238,19 @@ public final class Structure {
     private static final class Compiler {
         private final ArrayList<String> identifiers = new ArrayList<>();
         private final HashMap<String, Integer> identifierIndexes = new HashMap<>();
-        private final ArrayList<IntAccumulator> slotsByIdentifier = new ArrayList<>();
+        private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>();
 
         /**
          * 先暂存第一行, 因为只有读完它才能确定 GUI 宽度.
          */
         private ParsedRow parseBuffered(String row, int rowIndex) {
-            IntAccumulator identifiers = new IntAccumulator();
-            IntAccumulator sourceColumns = new IntAccumulator();
+            IntArrayList identifiers = new IntArrayList();
+            IntArrayList sourceColumns = new IntArrayList();
             this.parse(row, rowIndex, (identifier, sourceColumn, ignoredSlot) -> {
                 identifiers.add(identifier);
                 sourceColumns.add(sourceColumn);
             });
-            return new ParsedRow(identifiers.toArray(), sourceColumns.toArray());
+            return new ParsedRow(identifiers.toIntArray(), sourceColumns.toIntArray());
         }
 
         /**
@@ -326,7 +327,7 @@ public final class Structure {
             int index = this.identifiers.size();
             this.identifiers.add(identifier);
             this.identifierIndexes.put(identifier, index);
-            this.slotsByIdentifier.add(new IntAccumulator());
+            this.slotsByIdentifier.add(new IntArrayList());
             return index;
         }
 
@@ -365,7 +366,7 @@ public final class Structure {
             String[] identifiers = this.identifiers.toArray(String[]::new);
             SlotSequence[] slots = new SlotSequence[identifiers.length];
             for (int index = 0; index < slots.length; index++) {
-                slots[index] = SlotSequence.of(size, this.slotsByIdentifier.get(index).toArray());
+                slots[index] = SlotSequence.of(size, this.slotsByIdentifier.get(index).toIntArray());
             }
             return new Structure(
                     size,
@@ -414,24 +415,5 @@ public final class Structure {
         return new IllegalArgumentException(
                 message + " at row " + (rowIndex + 1) + ", source column " + sourceColumn
         );
-    }
-
-    /**
-     * 用可扩容的 int 数组暂存槽位.
-     */
-    private static final class IntAccumulator {
-        private int[] values = new int[8];
-        private int size;
-
-        private void add(int value) {
-            if (this.size == this.values.length) {
-                this.values = Arrays.copyOf(this.values, this.values.length * 2);
-            }
-            this.values[this.size++] = value;
-        }
-
-        private int[] toArray() {
-            return Arrays.copyOf(this.values, this.size);
-        }
     }
 }

@@ -16,9 +16,8 @@ import java.util.function.Supplier;
 
 /**
  * GUI Builder 的通用实现.
- *
  * <p>它记录每个 Structure 标志符要填充的内容, 并统一处理背景,
- * 冻结状态, 构建后修改和失败位置诊断.</p>
+ * 冻结状态, 构建后修改和失败位置诊断.
  */
 abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBuilder<G, B>> implements Gui.Builder<G, B> {
     private final Structure structure;
@@ -93,18 +92,12 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     }
 
     @Override
-    public final @NotNull B addIngredient(
-            @NotNull String identifier,
-            @NotNull Supplier<? extends Item> itemSupplier
-    ) {
+    public final @NotNull B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier) {
         return this.bindIngredient(identifier, SlotElementSupplier.items(itemSupplier));
     }
 
     @Override
-    public final @NotNull B addIngredientElementSupplier(
-            @NotNull String identifier,
-            @NotNull Supplier<? extends SlotElement> elementSupplier
-    ) {
+    public final @NotNull B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends SlotElement> elementSupplier) {
         return this.bindIngredient(identifier, SlotElementSupplier.fromSupplier(elementSupplier));
     }
 
@@ -114,12 +107,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     }
 
     @Override
-    public final @NotNull B addIngredient(
-            @NotNull String identifier,
-            @NotNull Gui gui,
-            int offsetX,
-            int offsetY
-    ) {
+    public final @NotNull B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY) {
         return this.bindIngredient(identifier, SlotElementSupplier.gui(gui, offsetX, offsetY));
     }
 
@@ -222,11 +210,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     /**
      * 在 Supplier 异常中加入标志符, 行, 列和槽位编号, 便于定位模板问题.
      */
-    private IllegalStateException instantiationFailure(
-            int identifierIndex,
-            int slot,
-            RuntimeException cause
-    ) {
+    private IllegalStateException instantiationFailure(int identifierIndex, int slot, RuntimeException cause) {
         int width = this.structure.size().width();
         int row = slot / width;
         int column = slot % width;

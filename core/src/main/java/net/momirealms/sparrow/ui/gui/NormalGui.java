@@ -6,8 +6,6 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * 最基础的 GUI 实现, 每个槽位都直接保存一个 {@link SlotElement}.
- *
- * <p>它没有分页, 滚动, 标签页或 content 列表. 这些状态应由以后的专用 GUI 类型保存.</p>
  */
 public final class NormalGui extends AbstractGui {
 

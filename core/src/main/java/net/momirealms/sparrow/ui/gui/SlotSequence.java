@@ -7,7 +7,7 @@ import java.util.function.IntConsumer;
 
 /**
  * 表示从一个 GUI 中按顺序选中的一组槽位.
- * <p>它可用来批量填充指定槽位, 也可作为分页, 滚动和标签页 GUI 的内容位置.
+ * <p>它用来批量填充指定槽位, 也可作为分页, 滚动和标签页 GUI 的内容位置.
  * 同一槽位不会重复出现, 创建后槽位和顺序都不会改变.
  */
 public final class SlotSequence {
@@ -344,6 +344,7 @@ public final class SlotSequence {
         return collector.finish();
     }
 
+    // 直接返回内部数组而不复制, 调用方只读使用, 不得修改
     int[] trustedArray() {
         return this.slots;
     }

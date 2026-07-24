@@ -14,9 +14,7 @@ import java.util.function.Supplier;
 
 /**
  * 表示一个固定尺寸的 GUI.
- *
  * <p>每个槽位可以为空, 显示 Item, 或连接到另一个 GUI.
- * Structure 可以用标志符命名槽位, 便于一次查询或填充多个位置.</p>
  */
 public sealed interface Gui permits AbstractGui {
 
@@ -362,11 +360,7 @@ public sealed interface Gui permits AbstractGui {
      * @param supplier 元素生成器
      * @param replaceExisting 是否覆盖已有内容
      */
-    void setElements(
-            @NotNull SlotSequence slots,
-            @NotNull SlotElementSupplier supplier,
-            boolean replaceExisting
-    );
+    void setElements(@NotNull SlotSequence slots, @NotNull SlotElementSupplier supplier, boolean replaceExisting);
 
     /**
      * 设置指定槽位显示的 Item.

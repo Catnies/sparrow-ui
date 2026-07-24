@@ -7,9 +7,8 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * 记录对一个 GUI 槽位的订阅, 以及订阅创建时读到的状态.
- *
  * <p>{@link #element()}, {@link #background()} 和 {@link #frozen()} 来自同一时刻.
- * 调用 {@link #close()} 后不再接收该槽位的更新.</p>
+ * 调用 {@link #close()} 后不再接收该槽位的更新.
  */
 public final class GuiSlotAttachment implements AutoCloseable {
     private final SlotElement element;

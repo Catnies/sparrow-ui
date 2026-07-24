@@ -6,8 +6,7 @@ import java.util.Objects;
 
 /**
  * 描述一个 GUI 槽位放什么.
- *
- * <p>槽位可以是空的, 显示一个 Item, 或连接到另一个 GUI 的槽位.</p>
+ * <p>槽位可以是空的, 显示一个 Item, 或连接到另一个 GUI 的槽位.
  */
 public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item, SlotElement.GuiLink {
 
@@ -78,6 +77,7 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
             this.slot = gui.size().checkSlot(slot);
         }
 
+        // trusted 参数仅用于区分签名; 此构造器跳过 checkSlot, 调用方必须保证 slot 已校验
         private GuiLink(Gui gui, int slot, boolean trusted) {
             this.gui = gui;
             this.slot = slot;
@@ -91,6 +91,7 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
             return this.slot;
         }
 
+        // 子槽位已由 GuiSize.indexOf 完成边界检查, 跳过重复校验
         static GuiLink trusted(Gui gui, int slot) {
             return new GuiLink(gui, slot, true);
         }

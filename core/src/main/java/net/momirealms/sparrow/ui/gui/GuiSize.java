@@ -69,6 +69,7 @@ public record GuiSize(int width, int height) {
         return this.indexOfTrusted(x, y);
     }
 
+    // 跳过边界检查的版本, 供已确认坐标合法的包内调用使用
     int indexOfTrusted(int x, int y) {
         return x + y * this.width;
     }

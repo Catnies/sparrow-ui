@@ -11,8 +11,6 @@ import java.util.Objects;
 
 /**
  * 保存 GUI 的槽位元素, 背景, 冻结状态和逐槽订阅.
- *
- * <p>状态修改和订阅链更改使用同一把短锁, 观察者回调始终在锁外执行.</p>
  */
 abstract non-sealed class AbstractGui implements Gui {
     private final Structure structure;
