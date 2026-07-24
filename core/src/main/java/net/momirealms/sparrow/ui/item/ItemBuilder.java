@@ -169,15 +169,15 @@ public final class ItemBuilder {
      * 不同玩家互不影响. 首次点击立即执行, 限制期内被拦截的点击不会延长间隔.
      * 只节流点击, Bundle 选择不受影响.</p>
      *
-     * @param intervalMillis 两次有效点击之间至少间隔的毫秒数
+     * @param interval 两次有效点击之间至少间隔的毫秒数
      * @return 此构建器
      * @throws IllegalArgumentException 间隔不是正数
      */
-    public ItemBuilder throttle(long intervalMillis) {
-        if (intervalMillis <= 0) {
+    public ItemBuilder setThrottleMills(long interval) {
+        if (interval <= 0) {
             throw new IllegalArgumentException("intervalMillis must be positive");
         }
-        this.throttleIntervalMillis = intervalMillis;
+        this.throttleIntervalMillis = interval;
         return this;
     }
 

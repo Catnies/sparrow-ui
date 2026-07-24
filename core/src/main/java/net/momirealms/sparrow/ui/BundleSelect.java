@@ -9,7 +9,7 @@ import java.util.Objects;
  * 玩家在 Item 显示的 Bundle 内容中选择槽位的上下文.
  *
  * @param player 执行选择的玩家
- * @param bundleSlot Bundle 内槽位；{@code -1} 表示光标已离开
+ * @param bundleSlot Bundle 内槽位; {@code -1} 表示光标已离开.
  */
 public record BundleSelect(@NotNull Player player, int bundleSlot) {
 

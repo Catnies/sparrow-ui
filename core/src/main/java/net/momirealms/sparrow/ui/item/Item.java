@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -28,6 +29,16 @@ public interface Item {
      */
     static Item simple(@NotNull ItemProvider itemProvider) {
         return new StaticItem(itemProvider);
+    }
+
+    /**
+     * 创建没有主动更新能力的简单 Item.
+     *
+     * @param itemStack itemStack
+     * @return 使用 {@link StaticItem} 快路径的 Item
+     */
+    static Item simple(@NotNull ItemStack itemStack) {
+        return new StaticItem(ItemProvider.constant(itemStack));
     }
 
     /**
@@ -66,7 +77,7 @@ public interface Item {
      * 将此 Item 挂载到一个最终显示槽位.
      *
      * <p>返回值拥有本次显示关系. Window 在替换路径或关闭时必须关闭它.
-     * 不会主动变化的 Item 返回不保存观察者的共享挂载.</p>
+     * 不会主动变化的 Item 返回不保存观察者的共享挂载.
      *
      * @param observer Item 主动失效时接收通知的观察者
      * @return 本次显示关系

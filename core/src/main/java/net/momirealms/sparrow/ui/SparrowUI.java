@@ -86,50 +86,46 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 获取此 SparrowUI 实例拥有的调度器. 如果尚未初始化, 会先尝试发现插件并完成初始化.
+     * 获取此 SparrowUI 实例拥有的调度器.
+     * 如果尚未初始化, 会先尝试发现插件并完成初始化.
      *
      * @return SparrowUI 调度器
      */
     public BukkitSchedulerAdapter scheduler() {
         if (this.scheduler == null) {
-            getPlugin();
+            this.getPlugin();
         }
         return this.scheduler;
     }
 
     /**
-     * 是否应在与 SparrowUI 物品栏交互时触发 Bukkit 的
-     * {@link org.bukkit.event.inventory.InventoryClickEvent} 和
-     * {@link org.bukkit.event.inventory.InventoryDragEvent}.
+     * 是否应在与 UI 交互时触发 Bukkit 的相关事件:
+     * {@link org.bukkit.event.inventory.InventoryClickEvent}
+     * {@link org.bukkit.event.inventory.InventoryDragEvent}
      * <p>
-     * 默认值为 {@code true}. 可通过 {@link #setFireBukkitInventoryEvents(boolean)} 或系统属性
-     * {@code invui.fireBukkitClickEvents} 修改. 如果该系统属性存在, 它会覆盖通过
-     * {@link #setFireBukkitInventoryEvents(boolean)} 设置的值.
+     * 默认值为 {@code true}. 可通过 {@link #setFireBukkitInventoryEvents(boolean)} 设置.
      *
-     * @return 是否应在与 SparrowUI 物品栏交互时触发 Bukkit 物品栏事件
+     * @return 是否应在与 UI 交互时触发 Bukkit 物品栏事件
      */
     public boolean isFireBukkitInventoryEvents() {
         return this.fireBukkitInventoryEvents;
     }
 
     /**
-     * 设置是否应在与 SparrowUI 物品栏交互时触发 Bukkit 的
-     * {@link org.bukkit.event.inventory.InventoryClickEvent} 和
-     * {@link org.bukkit.event.inventory.InventoryDragEvent}.
+     * 是否应在与 UI 交互时触发 Bukkit 的相关事件:
+     * {@link org.bukkit.event.inventory.InventoryClickEvent}
+     * {@link org.bukkit.event.inventory.InventoryDragEvent}
      * <p>
-     * 默认值为 {@code true}. 可通过此方法或系统属性 {@code invui.fireBukkitInventoryEvents} 修改.
-     * 如果该系统属性存在, 它会覆盖通过此方法设置的值.
+     * 默认值为 {@code true}. 可通过此方法修改.
      *
-     * @param fireBukkitInventoryEvents 是否应在与 SparrowUI 物品栏交互时触发 Bukkit 的
-     *                                  {@link org.bukkit.event.inventory.InventoryClickEvent} 和
-     *                                  {@link org.bukkit.event.inventory.InventoryDragEvent}
+     * @param fireBukkitInventoryEvents 是否应在与 UI 交互时触发 Bukkit 的相关事件
      */
     public void setFireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
         this.fireBukkitInventoryEvents = fireBukkitInventoryEvents;
     }
 
     /**
-     * 设置用于处理用户代码抛出但被 SparrowUI 抑制的异常的处理器,
+     * 设置用于处理用户代码抛出但被 UI 抑制的异常的处理器,
      * 例如处理物品栏事件时发生的异常.
      *
      * @param exceptionHandler 新的异常处理器
@@ -139,7 +135,7 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 将 SparrowUI 已隔离的异常交给当前异常处理器.
+     * 将 UI 已隔离的异常交给当前异常处理器.
      *
      * @param message 异常发生位置
      * @param throwable 原始异常

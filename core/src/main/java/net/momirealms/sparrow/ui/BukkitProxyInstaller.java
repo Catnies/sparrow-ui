@@ -24,10 +24,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * 将 SparrowUI 的反射运行时和 NMS 代理接口安装到 Minecraft 共享类加载器.
- *
- * <p>代理实现必须先于任何代理接口被解析. 安装过程因此只使用 JDK 与 Bukkit 类型, 并把
- * {@code proxy.jarinjar} 作为内存资源根安装到共享类加载器后, 通过反射初始化其中的 {@code BukkitProxy}.</p>
+ * 将NMS 代理接口安装到 Minecraft 共享类加载器.
+ * <p>代理实现必须先于任何代理接口被解析. 安装过程不能使用反射库和代理接口.
  */
 @ApiStatus.Internal
 public final class BukkitProxyInstaller {
@@ -38,7 +36,7 @@ public final class BukkitProxyInstaller {
     }
 
     /**
-     * 安装并初始化当前服务端唯一的 SparrowUI 反射代理运行时.
+     * 安装并初始化当前库的反射代理运行时.
      *
      * @throws IllegalStateException 代理 Jar 缺失、类路径安装失败或代理初始化失败
      */
@@ -158,10 +156,7 @@ public final class BukkitProxyInstaller {
             return this.getContentLength();
         }
     }
-
-    /**
-     * 在 nyana-reflection 尚不可见时取得受信任 Lookup, 只用于调用 URLClassLoader.addURL.
-     */
+    
     @SuppressWarnings({"removal", "deprecation"})
     private static final class ClassPathAccess {
         private static final MethodHandle ADD_URL = ClassPathAccess.createAddUrlHandle();

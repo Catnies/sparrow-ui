@@ -5,9 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-/**
- * 处理仍处于点击限制期内的点击.
- */
 @FunctionalInterface
 public interface ThrottleHandler {
 

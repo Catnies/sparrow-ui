@@ -6,8 +6,7 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * Window 外部点击处理器接收的可取消事件.
- *
- * <p>处理器可调用 {@link #setCancelled(boolean)} 拒绝本次点击; Window 会在全部处理器执行完毕后读取取消状态.</p>
+ * <p>处理器可调用 {@link #setCancelled(boolean)} 拒绝本次点击.
  */
 public final class ClickEvent {
     private final Player player;

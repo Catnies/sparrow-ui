@@ -21,6 +21,10 @@ public final class VersionHelper {
     private static final boolean paper;
     private static final boolean leaves;
     private static final boolean canvas;
+    private static final boolean v1_21_8;
+    private static final boolean v1_21_9;
+    private static final boolean v1_21_10;
+    private static final boolean v1_21_11;
     private static final boolean v26_1;
     private static final boolean v26_1_1;
     private static final boolean v26_1_2;
@@ -59,6 +63,10 @@ public final class VersionHelper {
             // 12104 = 1.21.4
             version = parseVersionToInteger(versionString);
 
+            v1_21_8 = version >= 12108;
+            v1_21_9 = version >= 12109;
+            v1_21_10 = version >= 12110;
+            v1_21_11 = version >= 12111;
             v26_1 = version >= 260100;
             v26_1_1 = version >= 260101;
             v26_1_2 = version >= 260102;
@@ -164,6 +172,22 @@ public final class VersionHelper {
 
     public static boolean isMojmap() {
         return mojmap;
+    }
+
+    public static boolean isOrAbove1_21_8() {
+        return v1_21_8;
+    }
+
+    public static boolean isOrAbove1_21_9() {
+        return v1_21_9;
+    }
+
+    public static boolean isOrAbove1_21_10() {
+        return v1_21_10;
+    }
+
+    public static boolean isOrAbove1_21_11() {
+        return v1_21_11;
     }
 
     public static boolean isOrAbove26_1() {
