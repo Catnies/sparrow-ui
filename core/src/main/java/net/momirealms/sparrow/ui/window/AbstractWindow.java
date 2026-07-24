@@ -213,7 +213,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (hotbarSlot < 0 || hotbarSlot > 8) {
             throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
         }
-        return this.layout.guiAt(this.layout.topSlots() + 27 + hotbarSlot);
+        return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
     }
 
     @Override
@@ -902,7 +902,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 标题变化必须走重开窗口和完整内容同步, 发送失败时保留状态以便下一 tick 重试.
      */
     private void flush(boolean forceFull, @Nullable Component reopenTitle) {
-        MenuHandle menu = this.menuHandle;
+        M menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
         DisplayedSlotPath[] paths = this.paths;
         if (!this.open || menu == null || localSlots == null || paths == null) {

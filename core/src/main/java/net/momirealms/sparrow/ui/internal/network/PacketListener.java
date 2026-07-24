@@ -1,17 +1,21 @@
 package net.momirealms.sparrow.ui.internal.network;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import net.momirealms.sparrow.ui.internal.menu.ClientMenuPrediction;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.common.ServerboundPongPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerButtonClickPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClosePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerSlotStateChangedPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundRenameItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundSelectBundleItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
@@ -28,12 +32,14 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,7 +50,8 @@ import java.util.function.Consumer;
 
 // TODO 最后再来重新设计这个包, 暂时先聚合在一起吧.
 /**
- * 每条玩家连接只安装一个窄 Netty handler, 活动 Window 通过可替换 {@link Session} 接收入站容器包.
+ * 每条玩家连接只安装一个窄 Netty handler, 活动 Window 通过可替换 {@link Session}
+ * 接收入站容器包并屏蔽明确声明的原版出站状态.
  *
  * <p>Window 在玩家实体线程创建或替换 Session. handler 始终在连接的 Netty event loop 中执行,
  * 因此会话引用使用原子操作交接, 实际领域消息则交给菜单会话提供的缓冲接收端.</p>
@@ -77,27 +84,31 @@ public final class PacketListener implements Listener, AutoCloseable {
 
     /**
      * 为一个 Window 会话安装新的入站包接收端.
-     *
      * <p>新 Session 先替换活动引用但尚未提交. 若随后的打开包发送失败, 调用方必须
-     * {@link Session#rollback()} 恢复此前会话; 成功后调用 {@link Session#commit()} 丢弃回滚点.</p>
+     * {@link Session#rollback()} 恢复此前会话; 成功后调用 {@link Session#commit()} 丢弃回滚点.
      *
      * @param player 连接所属玩家
      * @param containerId 要捕获的容器编号
      * @param inputSink 接收领域化入站消息的缓冲入口
+     * @param discardedOutgoingTypes 活动期间丢弃的原版出站包类型
      * @return 可提交、回滚或关闭的会话
-     * @throws IllegalStateException gateway 已关闭
      */
     @NotNull
-    public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink) {
+    public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink, @NotNull Set<Class<?>> discardedOutgoingTypes) {
         this.requireOpen();
         ConnectionHandler handler = this.handlers.computeIfAbsent(player.getUniqueId(), ignored -> this.inject(player));
         while (true) {
             Session previous = handler.active.get();
-            Session session = new Session(handler, previous, containerId, inputSink);
+            Session session = new Session(handler, previous, containerId, inputSink, discardedOutgoingTypes);
             if (handler.active.compareAndSet(previous, session)) {
                 return session;
             }
         }
+    }
+
+    @NotNull
+    public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink) {
+        return this.open(player, containerId, inputSink, Set.of());
     }
 
     /**
@@ -220,7 +231,7 @@ public final class PacketListener implements Listener, AutoCloseable {
     }
 
     /**
-     * 一个可回滚的活动 Window 入站包绑定.
+     * 一个可回滚的活动 Window 协议绑定.
      *
      * <p>构造时即开始捕获数据包, 以避免打开包发送与客户端首个点击之间的空窗. 成功打开后
      * {@link #commit()} 固化替换; 失败时 {@link #rollback()} 恢复前一个 Session.</p>
@@ -230,17 +241,20 @@ public final class PacketListener implements Listener, AutoCloseable {
         private final AtomicReference<Session> replaced;
         private final int containerId;
         private final Consumer<? super MenuInput> inputSink;
+        private final Set<Class<?>> discardedOutgoingTypes;
 
         private Session(
                 ConnectionHandler owner,
                 Session replaced,
                 int containerId,
-                Consumer<? super MenuInput> inputSink
+                Consumer<? super MenuInput> inputSink,
+                Set<Class<?>> discardedOutgoingTypes
         ) {
             this.owner = owner;
             this.replaced = new AtomicReference<>(replaced);
             this.containerId = containerId;
             this.inputSink = inputSink;
+            this.discardedOutgoingTypes = discardedOutgoingTypes;
         }
 
         /**
@@ -285,6 +299,21 @@ public final class PacketListener implements Listener, AutoCloseable {
             else if (ServerboundRenameItemPacketProxy.CLASS.isInstance(packet)) {
                 input = new MenuInput.WindowSpecific.Rename(ServerboundRenameItemPacketProxy.INSTANCE.name(packet));
             }
+            else if (ServerboundContainerSlotStateChangedPacketProxy.CLASS.isInstance(packet)) {
+                ServerboundContainerSlotStateChangedPacketProxy proxy = ServerboundContainerSlotStateChangedPacketProxy.INSTANCE;
+                input = new MenuInput.WindowSpecific.CrafterSlotState(
+                        proxy.containerId(packet),
+                        proxy.slotId(packet),
+                        proxy.newState(packet)
+                );
+            }
+            else if (ServerboundContainerButtonClickPacketProxy.CLASS.isInstance(packet)) {
+                ServerboundContainerButtonClickPacketProxy proxy = ServerboundContainerButtonClickPacketProxy.INSTANCE;
+                input = new MenuInput.WindowSpecific.ButtonClick(
+                        proxy.containerId(packet),
+                        proxy.buttonId(packet)
+                );
+            }
             else if (ServerboundSelectBundleItemPacketProxy.CLASS.isInstance(packet)) {
                 input = new MenuInput.Common.BundleSelection(
                         this.containerId,
@@ -302,6 +331,49 @@ public final class PacketListener implements Listener, AutoCloseable {
             // Pong 只监听而不拦截; 其他 Window 包由领域层作为权威处理.
             this.inputSink.accept(input);
             return consume;
+        }
+
+        /**
+         * 返回当前活动的替代会话是否仍屏蔽指定出站包类型.
+         *
+         * @param packetType 要检查的包类型
+         * @return 替代会话仍接管此包时为 true
+         */
+        public boolean replacementDiscardsOutgoing(@NotNull Class<?> packetType) {
+            Session current = this.owner.active.get();
+            return current != null && current != this && current.discardedOutgoingTypes.contains(packetType);
+        }
+
+        private @Nullable Object filterOutgoing(Object packet) {
+            if (this.discardedOutgoingTypes.isEmpty()) {
+                return packet;
+            }
+            for (Class<?> packetType : this.discardedOutgoingTypes) {
+                if (packetType.isInstance(packet)) {
+                    return null;
+                }
+            }
+            if (!ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
+                return packet;
+            }
+
+            ArrayList<Object> filteredPackets = new ArrayList<>();
+            boolean changed = false;
+            for (Object subPacket : BundlePacketProxy.INSTANCE.subPackets(packet)) {
+                Object filtered = this.filterOutgoing(subPacket);
+                if (filtered == null) {
+                    changed = true;
+                } else {
+                    filteredPackets.add(filtered);
+                    changed |= filtered != subPacket;
+                }
+            }
+            if (!changed) {
+                return packet;
+            }
+            return filteredPackets.isEmpty()
+                    ? null
+                    : ClientboundBundlePacketProxy.INSTANCE.newInstance(filteredPackets);
         }
 
         /**
@@ -408,12 +480,13 @@ public final class PacketListener implements Listener, AutoCloseable {
     }
 
     /**
-     * 连接级 handler, 根据原子活动引用决定捕获还是继续传递入站包.
+     * 连接级 handler, 根据原子活动引用决定捕获入站包或过滤出站包.
      */
-    private final class ConnectionHandler extends ChannelInboundHandlerAdapter {
+    private final class ConnectionHandler extends ChannelDuplexHandler {
         private final String playerName;
         private final Channel channel;
         private final AtomicReference<Session> active = new AtomicReference<>();
+        private @Nullable Object bypassedOutgoing;
 
         private ConnectionHandler(String playerName, Channel channel) {
             this.playerName = playerName;
@@ -421,7 +494,15 @@ public final class PacketListener implements Listener, AutoCloseable {
         }
 
         private void send(Object packet) {
-            Runnable send = () -> this.channel.writeAndFlush(packet);
+            Runnable send = () -> {
+                Object previousBypass = this.bypassedOutgoing;
+                this.bypassedOutgoing = packet;
+                try {
+                    this.channel.writeAndFlush(packet);
+                } finally {
+                    this.bypassedOutgoing = previousBypass;
+                }
+            };
             if (this.channel.eventLoop().inEventLoop()) {
                 send.run();
             } else {
@@ -447,6 +528,36 @@ public final class PacketListener implements Listener, AutoCloseable {
                 return;
             }
             super.channelRead(context, message);
+        }
+
+        /**
+         * 屏蔽活动菜单已经用虚拟状态取代的原版出站包, 同时保留 bundle 中无关的子包.
+         */
+        @Override
+        public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+            Session session = this.active.get();
+            if (
+                    session == null
+                            || message == this.bypassedOutgoing
+                            || !PacketProxy.CLASS.isInstance(message)
+            ) {
+                super.write(context, message, promise);
+                return;
+            }
+            try {
+                Object filtered = session.filterOutgoing(message);
+                if (filtered == null) {
+                    promise.trySuccess();
+                    return;
+                }
+                super.write(context, filtered, promise);
+            } catch (RuntimeException | Error throwable) {
+                PacketListener.this.exceptionHandler.accept(
+                        "Failed to filter an outgoing Window packet for " + this.playerName,
+                        throwable
+                );
+                super.write(context, message, promise);
+            }
         }
     }
 }

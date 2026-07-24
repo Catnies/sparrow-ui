@@ -8,11 +8,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
-
-/**
- * 酿造台 Window 的实体线程实现.
- */
 final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implements BrewingWindow {
     private volatile double brewProgress;
     private volatile double fuelProgress;
@@ -173,9 +168,11 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
             if (this.resultGui.width() != 3 || this.resultGui.height() != 1) {
                 throw new IllegalArgumentException("brewing result GUI must have size 3x1");
             }
-            WindowLayout layout = WindowLayout.partitioned(
-                    List.of(this.resultGui, this.inputGui, this.fuelGui),
-                    this.lowerGui
+            WindowLayout layout = WindowLayout.of(
+                    WindowLayout.Region.upper(this.resultGui),
+                    WindowLayout.Region.upper(this.inputGui),
+                    WindowLayout.Region.upper(this.fuelGui),
+                    WindowLayout.Region.lower(this.lowerGui)
             );
             return new BrewingWindowImpl(
                     WindowManager.getInstance(),

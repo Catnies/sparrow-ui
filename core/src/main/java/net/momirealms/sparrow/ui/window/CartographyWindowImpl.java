@@ -13,7 +13,6 @@ import java.awt.image.BufferedImage;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -238,7 +237,11 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
             if (this.resultGui.width() != 1 || this.resultGui.height() != 1) {
                 throw new IllegalArgumentException("cartography result GUI must have size 1x1");
             }
-            WindowLayout layout = WindowLayout.partitioned(List.of(this.inputGui, this.resultGui), this.lowerGui);
+            WindowLayout layout = WindowLayout.of(
+                    WindowLayout.Region.upper(this.inputGui),
+                    WindowLayout.Region.upper(this.resultGui),
+                    WindowLayout.Region.lower(this.lowerGui)
+            );
             return new CartographyWindowImpl(
                     WindowManager.getInstance(),
                     viewer,

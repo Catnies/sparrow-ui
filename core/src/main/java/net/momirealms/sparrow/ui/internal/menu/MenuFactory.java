@@ -97,4 +97,24 @@ public interface MenuFactory {
      */
     @NotNull
     CartographyMenuHandle cartography(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的合成器菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 合成器菜单句柄
+     */
+    @NotNull
+    CrafterMenuHandle crafter(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的切石机菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 切石机菜单句柄
+     */
+    @NotNull
+    StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation);
 }

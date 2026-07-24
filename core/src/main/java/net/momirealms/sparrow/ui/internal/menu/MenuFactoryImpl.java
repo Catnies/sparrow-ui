@@ -78,7 +78,15 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @Override
     @NotNull
     public MenuHandle dispenser(@NotNull Player viewer, long generation) {
-        return new DispenserMenuHandleImpl(this.packets, viewer, generation);
+        return new PaperMenuHandle(
+                this.packets,
+                viewer,
+                MenuTypeProxy.GENERIC_3x3,
+                InventoryType.DISPENSER,
+                MenuType.GENERIC_3X3,
+                9,
+                generation
+        );
     }
 
     /**
@@ -87,7 +95,15 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @Override
     @NotNull
     public MenuHandle dropper(@NotNull Player viewer, long generation) {
-        return new DropperMenuHandleImpl(this.packets, viewer, generation);
+        return new PaperMenuHandle(
+                this.packets,
+                viewer,
+                MenuTypeProxy.GENERIC_3x3,
+                InventoryType.DROPPER,
+                MenuType.GENERIC_3X3,
+                9,
+                generation
+        );
     }
 
     /**
@@ -124,6 +140,24 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @NotNull
     public CartographyMenuHandle cartography(@NotNull Player viewer, long generation) {
         return new CartographyMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public CrafterMenuHandle crafter(@NotNull Player viewer, long generation) {
+        return new CrafterMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation) {
+        return new StonecutterMenuHandleImpl(this.packets, viewer, generation);
     }
 
     /**

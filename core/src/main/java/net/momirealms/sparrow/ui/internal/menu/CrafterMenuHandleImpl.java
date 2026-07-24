@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.MenuType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.BitSet;
@@ -13,7 +14,8 @@ import java.util.List;
 @SuppressWarnings("UnstableApiUsage")
 final class CrafterMenuHandleImpl extends PaperMenuHandle implements CrafterMenuHandle {
     private static final int CRAFTING_SLOTS = 9;
-    private static final int[] UPPER_RAW_SLOTS = {0, 1, 2, 3, 4, 5, 6, 7, 8, 45};
+    private static final int UPPER_SIZE = CRAFTING_SLOTS + 1;
+    private static final int LOWER_START = CRAFTING_SLOTS;
 
     private final boolean[] disabledSlots = new boolean[CRAFTING_SLOTS];
     private final BitSet dirtyData = new BitSet(CRAFTING_SLOTS);
@@ -25,8 +27,9 @@ final class CrafterMenuHandleImpl extends PaperMenuHandle implements CrafterMenu
                 player,
                 MenuTypeProxy.CRAFTER_3x3,
                 InventoryType.CRAFTER,
-                org.bukkit.inventory.MenuType.CRAFTER_3X3,
-                UPPER_RAW_SLOTS,
+                MenuType.CRAFTER_3X3,
+                UPPER_SIZE,
+                LOWER_START,
                 generation
         );
         this.dirtyData.set(0, CRAFTING_SLOTS);

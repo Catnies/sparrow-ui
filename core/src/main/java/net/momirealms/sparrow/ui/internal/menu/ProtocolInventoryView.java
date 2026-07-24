@@ -28,6 +28,8 @@ final class ProtocolInventoryView implements InventoryView {
 
     private final Player player;
     private final Inventory upper;
+    private final int lowerStart;
+    private final int size;
     private final InventoryType inventoryType;
     private final MenuType menuType;
     private final ItemStack[] lowerItems;
@@ -40,14 +42,45 @@ final class ProtocolInventoryView implements InventoryView {
      * 创建一个初始为空的协议视图.
      *
      * @param player 视图所属玩家
-     * @param topSlots 顶部槽位数量
+     * @param upperSize 顶部槽位数量
      * @param inventoryType Bukkit 库存类型
      * @param menuType Bukkit 菜单类型
      */
-    ProtocolInventoryView(Player player, int topSlots, InventoryType inventoryType, MenuType menuType) {
+    ProtocolInventoryView(Player player, int upperSize, InventoryType inventoryType, MenuType menuType) {
+        this(player, upperSize, upperSize, inventoryType, menuType);
+    }
+
+    /**
+     * 创建下部玩家物品栏位于指定 raw slot 的协议视图.
+     *
+     * <p>顶部库存中位于 {@code lowerStart} 之前的槽位先出现, 随后是固定的 36 个玩家槽位,
+     * 顶部库存的剩余槽位位于协议末尾. 普通菜单的 {@code upperSize == lowerStart},
+     * Crafter 则用末尾的顶部槽位表示结果槽.</p>
+     *
+     * @param player 视图所属玩家
+     * @param upperSize Bukkit 顶部库存槽位数量
+     * @param lowerStart 玩家物品栏在协议中的起始 raw slot
+     * @param inventoryType Bukkit 库存类型
+     * @param menuType Bukkit 菜单类型
+     */
+    ProtocolInventoryView(Player player, int upperSize, int lowerStart, InventoryType inventoryType, MenuType menuType) {
+        this(player, CraftInventoryProxy.INSTANCE.newInstance(SimpleContainerProxy.INSTANCE.newInstance(upperSize)), lowerStart, inventoryType, menuType);
+    }
+
+    /**
+     * 创建使用给定顶部库存作为事件投影的协议视图.
+     *
+     * @param player 视图所属玩家
+     * @param upper Bukkit 顶部库存投影
+     * @param lowerStart 玩家物品栏在协议中的起始 raw slot
+     * @param inventoryType Bukkit 库存类型
+     * @param menuType Bukkit 菜单类型
+     */
+    ProtocolInventoryView(Player player, Inventory upper, int lowerStart, InventoryType inventoryType, MenuType menuType) {
         this.player = player;
-        Object upperContainer = SimpleContainerProxy.INSTANCE.newInstance(topSlots); // NMS SimpleContainer
-        this.upper = CraftInventoryProxy.INSTANCE.newInstance(upperContainer);
+        this.upper = upper;
+        this.lowerStart = lowerStart;
+        this.size = upper.getSize() + PLAYER_INVENTORY_SLOTS;
         this.inventoryType = inventoryType;
         this.menuType = menuType;
         this.lowerItems = new ItemStack[PLAYER_INVENTORY_SLOTS];
@@ -64,13 +97,15 @@ final class ProtocolInventoryView implements InventoryView {
      * @param title 当前标题
      */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
+        this.checkSlotCount(slots);
         this.title = title;
-        int upperSlots = this.upper.getSize();
-        for (int index = 0; index < upperSlots; index++) {
-            this.upper.setItem(index, slots[index]);
-        }
-        for (int index = 0; index < this.lowerItems.length; index++) {
-            this.lowerItems[index] = ItemUtils.copyOrEmpty(slots[upperSlots + index]);
+        for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
+            int upperSlot = this.upperSlot(rawSlot);
+            if (upperSlot >= 0) {
+                this.upper.setItem(upperSlot, slots[rawSlot]);
+            } else {
+                this.lowerItems[this.lowerSlot(rawSlot)] = ItemUtils.copyOrEmpty(slots[rawSlot]);
+            }
         }
         this.cursor = ItemUtils.copyOrEmpty(cursor);
         this.touchedSlots.clear();
@@ -91,16 +126,17 @@ final class ProtocolInventoryView implements InventoryView {
             @NotNull ItemStack cursor,
             boolean cursorChanged
     ) {
-        int upperSlots = this.upper.getSize();
+        this.checkSlotCount(slots);
         for (
                 int slot = changedSlots.nextSetBit(0);
-                slot >= 0;
+                slot >= 0 && slot < slots.length;
                 slot = changedSlots.nextSetBit(slot + 1)
         ) {
-            if (slot < upperSlots) {
-                this.upper.setItem(slot, slots[slot]);
+            int upperSlot = this.upperSlot(slot);
+            if (upperSlot >= 0) {
+                this.upper.setItem(upperSlot, slots[slot]);
             } else {
-                this.lowerItems[slot - upperSlots] = ItemUtils.copyOrEmpty(slots[slot]);
+                this.lowerItems[this.lowerSlot(slot)] = ItemUtils.copyOrEmpty(slots[slot]);
             }
         }
         if (cursorChanged) {
@@ -165,14 +201,15 @@ final class ProtocolInventoryView implements InventoryView {
      */
     @Override
     public void setItem(int rawSlot, @Nullable ItemStack item) {
-        int topSlots = this.upper.getSize();
-        if (rawSlot < 0 || rawSlot >= topSlots + this.lowerItems.length) {
+        int upperSlot = this.upperSlot(rawSlot);
+        int lowerSlot = this.lowerSlot(rawSlot);
+        if (upperSlot < 0 && lowerSlot < 0) {
             return;
         }
-        if (rawSlot < topSlots) {
-            this.upper.setItem(rawSlot, item);
+        if (upperSlot >= 0) {
+            this.upper.setItem(upperSlot, item);
         } else {
-            this.lowerItems[rawSlot - topSlots] = ItemUtils.copyOrEmpty(item);
+            this.lowerItems[lowerSlot] = ItemUtils.copyOrEmpty(item);
         }
         this.touchedSlots.set(rawSlot);
     }
@@ -180,13 +217,14 @@ final class ProtocolInventoryView implements InventoryView {
     @Nullable
     @Override
     public ItemStack getItem(int rawSlot) {
-        int topSlots = this.upper.getSize();
-        if (rawSlot < 0 || rawSlot >= topSlots + this.lowerItems.length) {
+        int upperSlot = this.upperSlot(rawSlot);
+        int lowerSlot = this.lowerSlot(rawSlot);
+        if (upperSlot < 0 && lowerSlot < 0) {
             return null;
         }
-        ItemStack item = rawSlot < topSlots
-                ? this.upper.getItem(rawSlot)
-                : this.lowerItems[rawSlot - topSlots];
+        ItemStack item = upperSlot >= 0
+                ? this.upper.getItem(upperSlot)
+                : this.lowerItems[lowerSlot];
         return ItemUtils.copyOrEmpty(item);
     }
 
@@ -207,18 +245,24 @@ final class ProtocolInventoryView implements InventoryView {
     @Nullable
     @Override
     public Inventory getInventory(int rawSlot) {
-        if (rawSlot < 0 || rawSlot >= this.countSlots()) {
+        int upperSlot = this.upperSlot(rawSlot);
+        int lowerSlot = this.lowerSlot(rawSlot);
+        if (upperSlot < 0 && lowerSlot < 0) {
             return null;
         }
-        return rawSlot < this.upper.getSize() ? this.upper : this.player.getInventory();
+        return upperSlot >= 0 ? this.upper : this.player.getInventory();
     }
 
     @Override
     public int convertSlot(int rawSlot) {
-        if (rawSlot < this.upper.getSize()) {
+        int upperSlot = this.upperSlot(rawSlot);
+        if (upperSlot >= 0) {
+            return upperSlot;
+        }
+        int lowerSlot = this.lowerSlot(rawSlot);
+        if (lowerSlot < 0) {
             return rawSlot;
         }
-        int lowerSlot = rawSlot - this.upper.getSize();
         return lowerSlot >= 27 ? lowerSlot - 27 : lowerSlot + 9;
     }
 
@@ -227,8 +271,7 @@ final class ProtocolInventoryView implements InventoryView {
         if (rawSlot == InventoryView.OUTSIDE) {
             return InventoryType.SlotType.OUTSIDE;
         }
-        int lowerSlot = rawSlot - this.upper.getSize();
-        return lowerSlot >= 27 ? InventoryType.SlotType.QUICKBAR : InventoryType.SlotType.CONTAINER;
+        return this.lowerSlot(rawSlot) >= 27 ? InventoryType.SlotType.QUICKBAR : InventoryType.SlotType.CONTAINER;
     }
 
     @Override
@@ -241,7 +284,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public int countSlots() {
-        return this.upper.getSize() + this.lowerItems.length;
+        return this.size;
     }
 
     @SuppressWarnings("removal")
@@ -270,4 +313,31 @@ final class ProtocolInventoryView implements InventoryView {
         return this.menuType;
     }
 
+    private int upperSlot(int rawSlot) {
+        if (!this.contains(rawSlot)) {
+            return -1;
+        }
+        if (rawSlot < this.lowerStart) {
+            return rawSlot;
+        }
+        return rawSlot >= this.lowerStart + PLAYER_INVENTORY_SLOTS
+                ? rawSlot - PLAYER_INVENTORY_SLOTS
+                : -1;
+    }
+
+    private int lowerSlot(int rawSlot) {
+        return rawSlot >= this.lowerStart && rawSlot < this.lowerStart + PLAYER_INVENTORY_SLOTS
+                ? rawSlot - this.lowerStart
+                : -1;
+    }
+
+    private boolean contains(int rawSlot) {
+        return rawSlot >= 0 && rawSlot < this.size;
+    }
+
+    private void checkSlotCount(ItemStack[] slots) {
+        if (slots.length != this.size) {
+            throw new IllegalArgumentException("inventory view requires " + this.size + " slots, got " + slots.length);
+        }
+    }
 }

@@ -8,120 +8,131 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
- * 把协议窗口槽位一次编译为 GUI 槽位或玩家物品栏槽位.
- * 编译后的布局不可变, Window tick 只读取 route, 不再重复计算区域映射.
+ * 把有序区域一次编译为 Window 槽位 到 GUI 或玩家物品栏的路由.
+ * <p>Region 的声明顺序就是最终协议顺序. 编译后的布局不可变, Window tick
+ * 只读取 route, 不再重复计算区域映射.
  */
 final class WindowLayout {
     private static final GuiSize LOWER_SIZE = new GuiSize(9, 4);
 
-    private final int topSlots;
+    private final int upperSlots;
+    private final int lowerStart;
     private final Route[] routes;
     private final List<Gui> guis;
 
-    private WindowLayout(int topSlots, Route[] routes) {
-        this.topSlots = topSlots;
+    private WindowLayout(int upperSlots, int lowerStart, Route[] routes) {
+        this.upperSlots = upperSlots;
+        this.lowerStart = lowerStart;
         this.routes = routes;
         this.guis = collectGuis(routes);
+    }
+
+    /**
+     * 按声明顺序编译 Window 的全部区域.
+     *
+     * <p>布局必须且只能包含一个 9x4 lower 区域, 至少包含一个 upper 区域.
+     * upper 可以位于 lower 前后, 因而能够表达合成器结果槽位位于玩家物品栏之后
+     * 的协议顺序.
+     *
+     * @param regions 按最终 Window 槽位顺序排列的区域
+     * @return 编译后的不可变布局
+     */
+    @NotNull
+    static WindowLayout of(Region @NotNull ... regions) {
+        Objects.requireNonNull(regions, "regions");
+        if (regions.length == 0) {
+            throw new IllegalArgumentException("window layout requires at least one region");
+        }
+
+        int topSlots = 0;
+        int lowerSlotsStart = -1;
+        int lowerRegions = 0;
+        int size = 0;
+        for (int index = 0; index < regions.length; index++) {
+            Region region = Objects.requireNonNull(regions[index], "regions[" + index + "]");
+            if (region.role() == Region.Role.UPPER) {
+                topSlots += region.size();
+            } else if (region.role() == Region.Role.LOWER) {
+                lowerRegions++;
+                if (lowerRegions > 1) {
+                    throw new IllegalArgumentException("window layout requires exactly one lower region");
+                }
+                lowerSlotsStart = size;
+            }
+
+            size += region.size();
+        }
+        if (topSlots == 0) {
+            throw new IllegalArgumentException("window layout requires at least one upper region");
+        }
+        if (lowerRegions != 1) {
+            throw new IllegalArgumentException("window layout requires exactly one lower region");
+        }
+
+        Route[] routes = new Route[size];
+        int offset = 0;
+        for (int index = 0; index < regions.length; index++) {
+            Region region = regions[index];
+            switch (region) {
+                case Region.GuiRegion guiRegion -> {
+                    for (int slot = 0; slot < guiRegion.size; slot++) {
+                        routes[offset + slot] = new Route.GuiRoute(guiRegion.gui, guiRegion.guiSlot + slot);
+                    }
+                }
+                case Region.PlayerRegion ignoredRegion -> {
+                    for (int lowerSlot = 0; lowerSlot < LOWER_SIZE.area(); lowerSlot++) {
+                        int inventorySlot = lowerSlot < 27 ? lowerSlot + 9 : lowerSlot - 27;
+                        routes[offset + lowerSlot] = new Route.PlayerRoute(inventorySlot);
+                    }
+                }
+            }
+            offset += region.size();
+        }
+        return new WindowLayout(topSlots, lowerSlotsStart, routes);
     }
 
     /**
      * 编译上部 GUI 与下方玩家真实物品栏组成的布局.
      * GUI 占据上半部分, 下半部分映射玩家原生物品栏.
      */
-    static @NotNull WindowLayout playerInventoryBelow(@NotNull Gui gui) {
-        int topSlots = gui.area();
-        Route[] routes = new Route[topSlots + LOWER_SIZE.area()];
-        fillGui(routes, 0, gui);
-        fillPlayer(routes, topSlots);
-        return new WindowLayout(topSlots, routes);
+    @NotNull
+    static WindowLayout upper(@NotNull Gui gui) {
+        return WindowLayout.of(Region.upper(gui), Region.lower(null));
     }
 
     /**
      * 编译分离窗口布局.
      * 两个 GUI 分别占据容器和 9x4 玩家物品栏区域.
      */
-    static @NotNull WindowLayout split(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
-        if (!lowerGui.size().equals(LOWER_SIZE)) {
-            throw new IllegalArgumentException("lower GUI must be 9x4");
-        }
-        int topSlots = upperGui.area();
-        Route[] routes = new Route[topSlots + lowerGui.area()];
-        fillGui(routes, 0, upperGui);
-        fillGui(routes, topSlots, lowerGui);
-        return new WindowLayout(topSlots, routes);
-    }
-
-    /**
-     * 按给定顺序把多个连续上部 GUI 编译到原始槽位, 下部继续映射玩家物品栏或独立 GUI.
-     *
-     * @param upperGuis 按原始槽位顺序排列的上部 GUI
-     * @param lowerGui 9x4 下部 GUI, null 表示玩家真实物品栏
-     * @return 编译后的布局
-     */
     @NotNull
-    static WindowLayout partitioned(@NotNull List<? extends Gui> upperGuis, @Nullable Gui lowerGui) {
-        if (upperGuis.isEmpty()) {
-            throw new IllegalArgumentException("partitioned layout requires at least one upper GUI");
-        }
-        // 计算全部 Upper GUI 的总槽位数
-        int topSlots = 0;
-        for (int index = 0; index < upperGuis.size(); index++) {
-            topSlots += upperGuis.get(index).area();
-        }
-        // 根据槽位数创建路由列表
-        Route[] routes = new Route[topSlots + LOWER_SIZE.area()];
-        int offset = 0;
-        for (int index = 0; index < upperGuis.size(); index++) {
-            Gui gui = upperGuis.get(index);
-            fillGui(routes, offset, gui);
-            offset += gui.area();
-        }
-        // 如果 Lower GUI 未指定, 则填充玩家背包映射
-        if (lowerGui == null) {
-            fillPlayer(routes, topSlots);
-        }
-        // 若指定则正常填充路由
-        else {
-            if (!lowerGui.size().equals(LOWER_SIZE)) {
-                throw new IllegalArgumentException("lower GUI must be 9x4");
-            }
-            fillGui(routes, topSlots, lowerGui);
-        }
-        return new WindowLayout(topSlots, routes);
+    static WindowLayout split(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
+        return WindowLayout.of(Region.upper(upperGui), Region.lower(lowerGui));
     }
 
     /**
      * 编译合并窗口布局.
      * 单个 GUI 的底部 4 行对应客户端玩家物品栏区域.
      */
-    static @NotNull WindowLayout merged(@NotNull Gui gui) {
+    @NotNull
+    static WindowLayout merged(@NotNull Gui gui) {
         if (gui.area() <= LOWER_SIZE.area()) {
             throw new IllegalArgumentException("merged GUI must contain more than 36 slots");
         }
         int topSlots = gui.area() - LOWER_SIZE.area();
-        Route[] routes = new Route[gui.area()];
-        fillGui(routes, 0, gui);
-        return new WindowLayout(topSlots, routes);
-    }
-
-    int topSlots() {
-        return this.topSlots;
-    }
-
-    int size() {
-        return this.routes.length;
-    }
-
-    @NotNull List<Gui> guis() {
-        return this.guis;
+        return WindowLayout.of(
+                Region.upper(gui, 0, topSlots),
+                Region.lower(gui, topSlots, LOWER_SIZE.area())
+        );
     }
 
     /**
      * 返回指定窗口槽位的 GUI 链接, 玩家物品栏槽位返回 null.
      */
-    SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
+    @Nullable
+    SlotElement.GuiLink guiAt(int windowSlot) {
         return switch (this.route(windowSlot)) {
             case Route.GuiRoute route -> new SlotElement.GuiLink(route.gui(), route.guiSlot());
             case Route.PlayerRoute ignoredRoute -> null;
@@ -129,26 +140,31 @@ final class WindowLayout {
     }
 
     /**
-     * 返回指定协议槽位的预编译 route.
+     * 返回指定 Window 槽位的预编译 Route.
      */
-    @NotNull Route route(int windowSlot) {
+    @NotNull
+    Route route(int windowSlot) {
         if (windowSlot < 0 || windowSlot >= this.routes.length) {
             throw new IndexOutOfBoundsException("window slot out of bounds: " + windowSlot);
         }
         return this.routes[windowSlot];
     }
 
-    private static void fillGui(Route[] routes, int offset, Gui gui) {
-        for (int slot = 0; slot < gui.area(); slot++) {
-            routes[offset + slot] = new Route.GuiRoute(gui, slot);
-        }
+    int topSlots() {
+        return this.upperSlots;
     }
 
-    private static void fillPlayer(Route[] routes, int offset) {
-        for (int lowerSlot = 0; lowerSlot < LOWER_SIZE.area(); lowerSlot++) {
-            int inventorySlot = lowerSlot < 27 ? lowerSlot + 9 : lowerSlot - 27;
-            routes[offset + lowerSlot] = new Route.PlayerRoute(inventorySlot);
-        }
+    int size() {
+        return this.routes.length;
+    }
+
+    int windowSlotAtHotbar(int hotbarSlot) {
+        return this.lowerStart + 27 + hotbarSlot;
+    }
+
+    @NotNull
+    List<Gui> guis() {
+        return this.guis;
     }
 
     /**
@@ -165,12 +181,92 @@ final class WindowLayout {
     }
 
     /**
-     * 一个协议窗口槽位的内容所有权.
+     * Window 中一个连续区域的声明.
+     */
+    sealed interface Region permits Region.GuiRegion, Region.PlayerRegion {
+
+        @NotNull
+        static Region upper(@NotNull Gui gui) {
+            return Region.upper(gui, 0, gui.area());
+        }
+
+        @NotNull
+        static Region upper(@NotNull Gui gui, int guiSlot, int size) {
+            return new GuiRegion(Role.UPPER, gui, guiSlot, size);
+        }
+
+        @NotNull
+        static Region lower(@Nullable Gui gui) {
+            if (gui == null) {
+                return PlayerRegion.INSTANCE;
+            }
+            if (!gui.size().equals(LOWER_SIZE)) {
+                throw new IllegalArgumentException("lower GUI must be 9x4");
+            }
+            return Region.lower(gui, 0, gui.area());
+        }
+
+        @NotNull
+        static Region lower(@NotNull Gui gui, int guiSlot, int size) {
+            return new GuiRegion(Role.LOWER, gui, guiSlot, size);
+        }
+
+        @NotNull
+        Role role();
+
+        int size();
+
+        /**
+         * 区域在 Window 中承担的结构角色.
+         */
+        enum Role {
+            UPPER,
+            LOWER
+        }
+
+        /**
+         * 映射到一个 GUI 连续片段的区域.
+         */
+        record GuiRegion(@NotNull Role role, @NotNull Gui gui, int guiSlot, int size) implements Region {
+
+            public GuiRegion {
+                Objects.requireNonNull(role, "role");
+                Objects.requireNonNull(gui, "gui");
+                if (guiSlot < 0 || size <= 0 || guiSlot > gui.area() - size) {
+                    throw new IndexOutOfBoundsException("GUI region out of bounds: slot=" + guiSlot + ", size=" + size);
+                }
+                if (role == Role.LOWER && size != LOWER_SIZE.area()) {
+                    throw new IllegalArgumentException("lower region must contain 36 slots");
+                }
+            }
+        }
+
+        /**
+         * 映射玩家真实物品栏的固定 9x4 lower 区域.
+         */
+        enum PlayerRegion implements Region {
+            INSTANCE;
+
+            @Override
+            @NotNull
+            public Role role() {
+                return Role.LOWER;
+            }
+
+            @Override
+            public int size() {
+                return LOWER_SIZE.area();
+            }
+        }
+    }
+
+    /**
+     * 一个 Window 槽位的内容所有权.
      */
     sealed interface Route permits Route.GuiRoute, Route.PlayerRoute {
 
         /**
-         * 由 GUI 管理的协议槽位.
+         * 由 GUI 管理的 Window 槽位.
          */
         record GuiRoute(@NotNull Gui gui, int guiSlot) implements Route {
         }

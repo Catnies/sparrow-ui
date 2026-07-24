@@ -11,7 +11,8 @@ import java.util.function.BiConsumer;
 /**
  * 使用原版合成器界面的十槽 Window.
  *
- * <p>原始槽位 0 到 8 为 3x3 输入区, 槽位 9 为结果. 玩家可通过原版按钮启用或禁用输入槽.</p>
+ * <p>Window 槽位 0 到 8 为 3x3 输入区, 9 到 44 为玩家物品栏区域, 45 为结果槽.
+ * 结果 GUI 在顶部库存语义中仍是第十个槽位.
  */
 public interface CrafterWindow extends Window {
 
@@ -34,34 +35,12 @@ public interface CrafterWindow extends Window {
     void setSlotDisabled(int slot, boolean disabled);
 
     /**
-     * 按 3x3 坐标设置输入槽的禁用状态.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @param disabled true 表示禁用
-     */
-    default void setSlotDisabled(int x, int y, boolean disabled) {
-        this.setSlotDisabled(CrafterWindow.slotAt(x, y), disabled);
-    }
-
-    /**
      * 返回输入槽是否已禁用.
      *
      * @param slot 输入槽编号
      * @return 禁用时为 true
      */
     boolean isSlotDisabled(int slot);
-
-    /**
-     * 按 3x3 坐标返回输入槽是否已禁用.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @return 禁用时为 true
-     */
-    default boolean isSlotDisabled(int x, int y) {
-        return this.isSlotDisabled(CrafterWindow.slotAt(x, y));
-    }
 
     /**
      * 替换玩家切换输入槽状态时调用的处理器.
@@ -94,13 +73,6 @@ public interface CrafterWindow extends Window {
      * @param handler 要移除的处理器
      */
     void removeSlotToggleHandler(@NotNull BiConsumer<? super Integer, ? super Boolean> handler);
-
-    private static int slotAt(int x, int y) {
-        if (x < 0 || x >= 3 || y < 0 || y >= 3) {
-            throw new IndexOutOfBoundsException("crafter position out of bounds: (" + x + ", " + y + ")");
-        }
-        return x + y * 3;
-    }
 
     /**
      * 合成器 Window 的可重复 Builder.
@@ -143,19 +115,6 @@ public interface CrafterWindow extends Window {
          */
         @NotNull
         Builder setSlotDisabled(int slot, boolean disabled);
-
-        /**
-         * 按 3x3 坐标设置初始输入槽禁用状态.
-         *
-         * @param x 横向坐标
-         * @param y 纵向坐标
-         * @param disabled true 表示禁用
-         * @return 此 Builder
-         */
-        @NotNull
-        default Builder setSlotDisabled(int x, int y, boolean disabled) {
-            return this.setSlotDisabled(CrafterWindow.slotAt(x, y), disabled);
-        }
 
         /**
          * 一次设置全部九个输入槽的初始禁用状态.
