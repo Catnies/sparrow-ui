@@ -169,7 +169,8 @@ public final class WindowManager implements Listener {
      * 不在 InventoryCloseEvent 调用栈中递归操作菜单, 以避免与原生关闭流程冲突.
      */
     void externalClose(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        this.observe(this.lane(window.viewer()).submitDeferred(() -> {
+        PlayerCommandLane lane = this.lane(window.viewer());
+        this.observe(lane.submitDeferred(() -> {
             if (!window.isOpen()) {
                 return null;
             }
@@ -254,32 +255,6 @@ public final class WindowManager implements Listener {
         return this.menuFactory;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    private void handleInventoryClose(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) {
-            return;
-        }
-        AbstractWindow<?> window = this.active.get(player.getUniqueId());
-        if (window != null && window.owns(event.getView())) {
-            this.externalClose(window, event.getReason());
-        }
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    private void handleQuit(PlayerQuitEvent event) {
-        AbstractWindow<?> window = this.active.get(event.getPlayer().getUniqueId());
-        if (window == null) {
-            return;
-        }
-        this.observe(this.lane(event.getPlayer()).submit(() -> {
-            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
-            return null;
-        }, () -> {
-            window.retire();
-            return null;
-        }), "Failed to close Window after player quit");
-    }
-
     /**
      * 在玩家实体线程提交打开状态.
      * 先完成新窗口初始化再发布 active 映射, 随后才关闭被替换的旧窗口.
@@ -325,7 +300,7 @@ public final class WindowManager implements Listener {
      * 在玩家实体线程关闭 Window 并先移除 active 映射.
      * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
      */
-    private Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
+    Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         if (!window.isOpen()) {
             return Window.CloseResult.ALREADY_CLOSED;
         }
@@ -356,5 +331,31 @@ public final class WindowManager implements Listener {
             this.report(message, throwable);
             return null;
         });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    private void handleInventoryClose(InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+        AbstractWindow<?> window = this.active.get(player.getUniqueId());
+        if (window != null && window.owns(event.getView())) {
+            this.externalClose(window, event.getReason());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    private void handleQuit(PlayerQuitEvent event) {
+        AbstractWindow<?> window = this.active.get(event.getPlayer().getUniqueId());
+        if (window == null) {
+            return;
+        }
+        this.observe(this.lane(event.getPlayer()).submit(() -> {
+            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
+            return null;
+        }, () -> {
+            window.retire();
+            return null;
+        }), "Failed to close Window after player quit");
     }
 }

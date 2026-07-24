@@ -38,6 +38,7 @@ final class ConfiguredItem implements ObservableItem {
     ) {
         ItemBuilder.DisplayFactory checkedFactory = Objects.requireNonNull(displayFactory, "displayFactory");
         this.displaySource = Objects.requireNonNull(checkedFactory.create(this::notifyWindows), "displayFactory result");
+        // 合并显示来源自带的刷新计划(如轮播帧周期)与构建器显式配置的计划
         this.refreshPlan = this.displaySource.refreshPlan().or(explicitRefreshPlan);
         this.clickHandler = Objects.requireNonNull(clickHandler, "clickHandler");
         this.bundleHandler = Objects.requireNonNull(bundleHandler, "bundleHandler");
@@ -68,6 +69,7 @@ final class ConfiguredItem implements ObservableItem {
                     timestamps.put(click.player(), now);
                     accepted = true;
                 } else {
+                    // 系统时钟回拨时 interval - elapsed 可能超过 interval, 需要钳制到间隔内
                     remaining = Math.min(interval, interval - elapsed);
                     accepted = false;
                 }
@@ -99,6 +101,7 @@ final class ConfiguredItem implements ObservableItem {
             this.displaySource.onAttached();
             return ItemAttachment.subscribed(this.refreshPlan, subscription);
         } catch (RuntimeException | Error throwable) {
+            // onAttached 失败时回滚订阅, 避免观察者泄漏.
             subscription.close();
             throw throwable;
         }

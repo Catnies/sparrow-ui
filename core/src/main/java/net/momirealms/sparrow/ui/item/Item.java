@@ -9,6 +9,13 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
+/**
+ * Window 最终槽位中显示的 GUI 物品, 组合显示来源与交互行为.
+ *
+ * <p>显示内容由 {@link ItemProvider} 按渲染上下文生成; 点击与 Bundle 选择通过
+ * {@link #handleClick(ItemClick)} 和 {@link #handleBundleSelect(BundleSelect)} 分发.
+ * 需要主动刷新显示内容的 Item 可以实现 {@link ObservableItem}.
+ */
 public interface Item {
     Item EMPTY = new EmptyItem();
 

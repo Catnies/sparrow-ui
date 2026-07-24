@@ -15,13 +15,24 @@ import java.util.function.BiConsumer;
  */
 public final class StaticItem implements Item {
     private final ItemProvider itemProvider;
-    private final BiConsumer<? super Item, ? super ItemClick> clickHandler;
-    private final BiConsumer<? super Item, ? super BundleSelect> bundleSelectHandler;
+    private final BiConsumer<? super Item, ? super ItemClick> clickHandler; // null 表示不处理点击
+    private final BiConsumer<? super Item, ? super BundleSelect> bundleSelectHandler; // null 表示不处理 Bundle 选择
 
+    /**
+     * 创建只持有显示来源的静态 Item.
+     *
+     * @param itemProvider 显示来源
+     */
     public StaticItem(@NotNull ItemProvider itemProvider) {
         this(itemProvider, null);
     }
 
+    /**
+     * 创建带点击处理器的静态 Item.
+     *
+     * @param itemProvider 显示来源
+     * @param clickHandler 点击处理器, 可为 {@code null}
+     */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
             @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler
@@ -29,6 +40,13 @@ public final class StaticItem implements Item {
         this(itemProvider, clickHandler, null);
     }
 
+    /**
+     * 创建带完整交互处理器的静态 Item.
+     *
+     * @param itemProvider 显示来源
+     * @param clickHandler 点击处理器, 可为 {@code null}
+     * @param bundleSelectHandler Bundle 选择处理器, 可为 {@code null}
+     */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
             @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler,

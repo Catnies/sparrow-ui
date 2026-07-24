@@ -188,10 +188,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addThrottleHandler(@NotNull ThrottleHandler handler) {
-        Objects.requireNonNull(handler, "handler");
-        this.throttleHandler = this.throttleHandler == null
-                ? handler
-                : this.throttleHandler.andThen(handler);
+        this.throttleHandler = this.throttleHandler == null ? handler : this.throttleHandler.andThen(handler);
         return this;
     }
 
@@ -245,6 +242,13 @@ public final class ItemBuilder {
         return this;
     }
 
+    /**
+     * 配置异步显示来源解析失败时的异常处理器.
+     * 默认转发给 {@link SparrowUI#handleException(String, Throwable)}.
+     *
+     * @param handler 接收错误消息与异常的处理器
+     * @return 此构建器
+     */
     public ItemBuilder handleAsyncExceptionWith(@NotNull BiConsumer<? super String, ? super Throwable> handler) {
         this.asyncExceptionHandler = handler;
         return this;
@@ -366,6 +370,7 @@ public final class ItemBuilder {
             }
 
             private int frameIndex() {
+                // floorDiv/floorMod 保证 tick 为负时帧序号仍落在合法下标内
                 long frame = Math.floorDiv(tickSource.getAsLong(), periodTicks);
                 return (int) Math.floorMod(frame, frames.size());
             }
@@ -398,10 +403,9 @@ public final class ItemBuilder {
 
             @Override
             public void onAttached() {
+                // 取出并清空挂起的加载器, 保证同一 Item 多次挂载也只执行一次加载
                 AsyncLoader loader = pendingLoader.getAndSet(null);
-                if (loader == null) {
-                    return;
-                }
+                if (loader == null) return;
 
                 CompletionStage<? extends ItemProvider> stage;
                 try {
