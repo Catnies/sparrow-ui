@@ -6,6 +6,7 @@ import net.nyana.reflection.proxy.annotation.FieldGetter;
 import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
+import org.bukkit.inventory.ItemStack;
 
 @ReflectionProxy(name = "net.minecraft.world.item.ItemStack")
 public interface ItemStackProxy {
@@ -24,14 +25,14 @@ public interface ItemStackProxy {
     @FieldGetter(name = "EMPTY", isStatic = true)
     Object EMPTY();
 
+    @MethodInvoker(name = "getBukkitStack", activeIf = "has_patch=paper")
+    ItemStack getBukkitStack(Object target);
+
     @MethodInvoker(name = "copy")
     Object copy(Object target);
 
     @MethodInvoker(name = "transmuteCopy")
-    Object transmuteCopy(
-            Object target,
-            @Type(name = "net.minecraft.world.level.ItemLike") Object item
-    );
+    Object transmuteCopy(Object target, @Type(name = "net.minecraft.world.level.ItemLike") Object item);
 
     /**
      * 直接写入 NMS Data Component.
@@ -42,9 +43,5 @@ public interface ItemStackProxy {
      * @return 被替换的旧组件值, 没有旧值时为 {@code null}
      */
     @MethodInvoker(name = "set")
-    Object set(
-            Object target,
-            @Type(name = "net.minecraft.core.component.DataComponentType") Object component,
-            Object value
-    );
+    Object set(Object target, @Type(name = "net.minecraft.core.component.DataComponentType") Object component, Object value);
 }
