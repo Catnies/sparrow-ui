@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Paper 制图台菜单句柄, 负责虚拟地图、地图数据包和客户端预览输入.
  */
 @SuppressWarnings("UnstableApiUsage")
-final class CartographyMenuHandleImpl extends PaperMenuHandle implements CartographyMenuHandle {
+final class CartographyMenuHandleImpl extends ContainerMenuHandle implements CartographyMenuHandle {
     private static final int MAP_SIZE = CartographyWindow.MAP_SIZE;
     private static final int MAP_SLOT = 0;
     private static final int VIEW_SLOT = 1;

@@ -16,7 +16,7 @@ import java.util.List;
  * Paper 铁砧菜单句柄, 负责文本框可用性、结果槽有效性与经验消耗数据同步.
  */
 @SuppressWarnings("UnstableApiUsage")
-final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHandle {
+final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;
     private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier(); // NMS ItemStack 不可见占位快照
 

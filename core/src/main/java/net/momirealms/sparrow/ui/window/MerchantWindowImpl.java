@@ -12,6 +12,7 @@ import net.momirealms.sparrow.ui.internal.menu.MerchantMenuHandle;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.MiscUtils;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -26,16 +27,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
+/**
+ * {@link MerchantWindow} 的实体线程实现.
+ * <p>公开修改方法允许从任意线程调用: 参数在调用线程完成校验和快照复制, 实际状态变更再通过
+ * {@link AbstractWindow} 的命令通道进入玩家实体线程. volatile 字段只负责向 getter 发布最近已应用快照,
+ * Merchant 协议状态与 Trade/Item 挂载由当前 {@link MerchantMenuHandle} 会话持有.
+ */
 final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implements MerchantWindow {
     private final HandlerList<Consumer<TradeSelection>> tradeSelectionHandlers;
 
     private volatile int level;
     private volatile double progress;
     private volatile boolean restockMessageEnabled;
-    private volatile List<MerchantWindow.Trade> trades;
+    private volatile List<MerchantWindow.Trade> trades; // 已应用的不可修改有序快照
 
-    private int previousTradeIndex = -1;
-    private long selectionResetVersion;
+    private int previousTradeIndex = -1; // 当前客户端会话最近一次成功选择的索引
+    private long selectionResetVersion; // 识别 Item 处理器内重入触发的选择重置
 
     MerchantWindowImpl(
             @NotNull WindowManager manager,
@@ -68,16 +75,11 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setLevel(level);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Merchant Window level"
         );
-    }
-
-    @Override
-    public int getLevel() {
-        return this.level;
     }
 
     @Override
@@ -92,16 +94,11 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setProgress(progress);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Merchant Window progress"
         );
-    }
-
-    @Override
-    public double getProgress() {
-        return this.progress;
     }
 
     @Override
@@ -115,31 +112,49 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setRestockMessageEnabled(enabled);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Merchant Window restock message"
         );
     }
 
-    @Override
-    public boolean isRestockMessageEnabled() {
-        return this.restockMessageEnabled;
-    }
-
+    /**
+     * {@inheritDoc}
+     *
+     * <p>列表及其元素在调用线程同步校验并复制, 实体线程只接收不可修改快照.
+     */
     @Override
     public void setTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
-        List<MerchantWindow.Trade> copy = MerchantWindowImpl.copyTrades(trades);
+        List<MerchantWindow.Trade> copy = List.copyOf(trades);
         this.submit(
                 () -> this.replaceTrades(copy),
                 "Failed to replace Merchant Window trades"
         );
     }
 
-    @Override
-    @NotNull
-    public List<MerchantWindow.Trade> getTrades() {
-        return this.trades;
+    /**
+     * 在实体线程事务性替换 Trade 挂载和已发布快照.
+     */
+    private void replaceTrades(List<MerchantWindow.Trade> trades) {
+        List<MerchantWindow.Trade> previous = this.trades;
+        MerchantMenuHandle menuHandle = this.menuHandle();
+
+        // 先让菜单完整准备候选挂载, 失败时 Window 仍保留旧快照
+        if (menuHandle != null) {
+            menuHandle.setTrades(trades);
+        }
+        this.trades = trades;
+        if (menuHandle != null) {
+            this.requestSynchronize();
+        }
+
+        // 客户端会保留选择索引, 列表缩短后重开同一界面以清除可能悬空的索引
+        if (trades.size() < previous.size()) {
+            this.previousTradeIndex = -1;
+            this.selectionResetVersion++;
+            this.updateTitleOnEntity(this.title());
+        }
     }
 
     @Override
@@ -152,14 +167,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    @NotNull
-    public List<Consumer<TradeSelection>> getTradeSelectionHandlers() {
-        return this.tradeSelectionHandlers.snapshot();
-    }
-
-    @Override
     public void addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
-        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(handler);
+        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.tradeSelectionHandlers.append(copied),
                 "Failed to add Merchant Window trade selection handler"
@@ -168,15 +177,20 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void removeTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
+        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
-                () -> this.tradeSelectionHandlers.remove(MiscUtils.narrowConsumer(handler)),
+                () -> this.tradeSelectionHandlers.remove(copied),
                 "Failed to remove Merchant Window trade selection handler"
         );
     }
 
-    @NotNull
+    /**
+     * 创建并初始化一次 Merchant 菜单会话. 任一步骤失败都会关闭已创建的部分会话.
+     */
     @Override
+    @NotNull
     protected MerchantMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+        // 每次真正打开新会话都从未选择状态开始
         this.previousTradeIndex = -1;
         this.selectionResetVersion++;
         MerchantMenuHandle menuHandle = factory.merchant(this.viewer(), generation, this, this::report);
@@ -187,13 +201,23 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
             menuHandle.setTrades(this.trades);
             return menuHandle;
         } catch (RuntimeException | Error throwable) {
+            // 初始化失败仍要释放菜单和已经挂载的 Trade, 关闭失败作为 suppressed 保留
             try {
                 menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
             } catch (RuntimeException | Error closeFailure) {
-                throwable.addSuppressed(closeFailure);
+                ThrowableUtils.combine(throwable, closeFailure);
             }
             throw throwable;
         }
+    }
+
+    @Override
+    void tick(@Nullable ScheduledTask task) {
+        MerchantMenuHandle menuHandle = this.menuHandle();
+        if (menuHandle != null && menuHandle.tickOffers()) {
+            this.requestSynchronize();
+        }
+        super.tick(task);
     }
 
     @Override
@@ -203,39 +227,18 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         }
     }
 
-    private void replaceTrades(List<MerchantWindow.Trade> trades) {
-        List<MerchantWindow.Trade> previous = this.trades;
-        MerchantMenuHandle menuHandle = this.menuHandle();
-        if (menuHandle != null) {
-            menuHandle.setTrades(trades);
-        }
-        this.trades = trades;
-        if (menuHandle != null) {
-            this.requestMenuSynchronization();
-        }
-
-        if (trades.size() < previous.size()) {
-            this.previousTradeIndex = -1;
-            this.selectionResetVersion++;
-            this.updateTitleOnEntity(this.title());
-        }
-    }
-
-    @Override
-    void tick(@Nullable ScheduledTask task) {
-        MerchantMenuHandle menuHandle = this.menuHandle();
-        if (menuHandle != null && menuHandle.tickOffers()) {
-            this.requestMenuSynchronization();
-        }
-        super.tick(task);
-    }
-
+    /**
+     * 处理原版客户端的交易选择包.
+     * <p>三个 Item 处理器按输入槽 0, 1, 2 的顺序 fail-fast 执行. 处理器内即使重入修改 Trade 列表,
+     * 本次调用仍使用入口快照; 列表缩短触发的选择重置不会被旧索引覆盖.
+     */
     private void handleTradeSelection(MenuInput.WindowSpecific.TradeSelect selection) {
         MerchantMenuHandle menuHandle = this.menuHandle();
         if (menuHandle == null || selection.containerId() != menuHandle.containerId()) {
             return;
         }
 
+        // available 只影响展示, 当前快照中的任意合法索引都允许触发选择
         List<MerchantWindow.Trade> snapshot = this.trades;
         int selectedIndex = selection.index();
         if (selectedIndex < 0 || selectedIndex >= snapshot.size()) {
@@ -249,13 +252,17 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         MerchantWindow.Trade selectedTrade = snapshot.get(selectedIndex);
         long resetVersion = this.selectionResetVersion;
 
+        // 任一 Item 抛错都会终止后续 Item 和 TradeSelection, previous 也不会前移
         selectedTrade.getFirstInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 0));
         selectedTrade.getSecondInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 1));
         selectedTrade.getResult().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 2));
 
+        // Item 处理器可能重入缩短列表; 只有选择状态未被重置时才提交本次索引
         if (this.selectionResetVersion == resetVersion) {
             this.previousTradeIndex = selectedIndex;
         }
+
+        // 重复选择仍执行三个 Item, 但不重复发布 TradeSelection
         if (previousIndex == selectedIndex) {
             return;
         }
@@ -275,6 +282,33 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         );
     }
 
+    @Override
+    public int getLevel() {
+        return this.level;
+    }
+
+    @Override
+    public double getProgress() {
+        return this.progress;
+    }
+
+    @Override
+    public boolean isRestockMessageEnabled() {
+        return this.restockMessageEnabled;
+    }
+
+    @Override
+    @NotNull
+    public List<MerchantWindow.Trade> getTrades() {
+        return this.trades;
+    }
+
+    @Override
+    @NotNull
+    public List<Consumer<TradeSelection>> getTradeSelectionHandlers() {
+        return this.tradeSelectionHandlers.snapshot();
+    }
+
     private static void requireLevel(int level) {
         if (level < 0 || level > 5) {
             throw new IllegalArgumentException("merchant level must be between 0 and 5: " + level);
@@ -287,16 +321,10 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         }
     }
 
-    @NotNull
-    private static List<MerchantWindow.Trade> copyTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
-        Objects.requireNonNull(trades, "trades");
-        ArrayList<MerchantWindow.Trade> copy = new ArrayList<>(trades.size());
-        for (int index = 0; index < trades.size(); index++) {
-            copy.add(Objects.requireNonNull(trades.get(index), "trades contains null"));
-        }
-        return List.copyOf(copy);
-    }
-
+    /**
+     * Trade 的线程安全实现. 三个 Item 引用构建后固定, discount 与 available 使用原子字段跨线程发布;
+     * setter 只在值实际变化时于调用线程同步发送对应的 TradeChange.
+     */
     static final class TradeImpl implements MerchantWindow.Trade {
         private final Item firstInput;
         private final Item secondInput;
@@ -424,7 +452,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<MerchantWindow, MerchantWindow.Builder> implements MerchantWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(3, 1));
+        private Gui upperGui;
         private @Nullable Gui lowerGui;
         private int level;
         private double progress = -1.0;
@@ -486,7 +514,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder setTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
-            this.trades = MerchantWindowImpl.copyTrades(trades);
+            this.trades = List.copyOf(trades);
             return this;
         }
 
@@ -500,7 +528,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
-            this.tradeSelectionHandlers.add(MiscUtils.narrowConsumer(handler));
+            this.tradeSelectionHandlers.add(
+                    MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"))
+            );
             return this;
         }
 
@@ -519,7 +549,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         protected MerchantWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
+            if (this.upperGui == null) {
+                this.upperGui = Gui.empty(new GuiSize(3, 1));
+            } else if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
                 throw new IllegalArgumentException("merchant upper GUI must have size 3x1");
             }
             WindowLayout layout = WindowLayout.of(

@@ -38,7 +38,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @NotNull
     @Override
     public MenuHandle normal(@NotNull Player viewer, int rows, long generation) {
-        return new PaperMenuHandle(
+        return new ContainerMenuHandle(
                 this.packets,
                 viewer,
                 MenuFactoryImpl.normalMenuType(rows),
@@ -55,7 +55,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @NotNull
     @Override
     public MenuHandle hopper(@NotNull Player viewer, long generation) {
-        return new PaperMenuHandle(
+        return new ContainerMenuHandle(
                 this.packets,
                 viewer,
                 MenuTypeProxy.HOPPER,
@@ -81,7 +81,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @Override
     @NotNull
     public MenuHandle dispenser(@NotNull Player viewer, long generation) {
-        return new PaperMenuHandle(
+        return new ContainerMenuHandle(
                 this.packets,
                 viewer,
                 MenuTypeProxy.GENERIC_3x3,
@@ -98,7 +98,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @Override
     @NotNull
     public MenuHandle dropper(@NotNull Player viewer, long generation) {
-        return new PaperMenuHandle(
+        return new ContainerMenuHandle(
                 this.packets,
                 viewer,
                 MenuTypeProxy.GENERIC_3x3,

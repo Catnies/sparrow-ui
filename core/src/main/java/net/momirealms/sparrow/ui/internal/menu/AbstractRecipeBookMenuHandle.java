@@ -23,7 +23,7 @@ import org.jetbrains.annotations.Nullable;
  * 工作台与炉类菜单共用的原版配方书协议实现.
  */
 @SuppressWarnings("UnstableApiUsage")
-abstract class AbstractRecipeBookMenuHandle extends PaperMenuHandle implements RecipeBookMenuHandle {
+abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implements RecipeBookMenuHandle {
     private static Object recipeManager;
 
     AbstractRecipeBookMenuHandle(

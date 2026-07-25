@@ -10,7 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 @SuppressWarnings("UnstableApiUsage")
-final class BrewingMenuHandleImpl extends PaperMenuHandle implements BrewingMenuHandle {
+final class BrewingMenuHandleImpl extends ContainerMenuHandle implements BrewingMenuHandle {
     private static final int BREW_TIME_DATA_SLOT = 0;
     private static final int FUEL_USES_DATA_SLOT = 1;
 

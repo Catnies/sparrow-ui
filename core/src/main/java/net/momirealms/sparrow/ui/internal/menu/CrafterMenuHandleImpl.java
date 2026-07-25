@@ -12,7 +12,7 @@ import java.util.BitSet;
 import java.util.List;
 
 @SuppressWarnings("UnstableApiUsage")
-final class CrafterMenuHandleImpl extends PaperMenuHandle implements CrafterMenuHandle {
+final class CrafterMenuHandleImpl extends ContainerMenuHandle implements CrafterMenuHandle {
     private static final int CRAFTING_SLOTS = 9;
     private static final int UPPER_SIZE = CRAFTING_SLOTS + 1;
     private static final int LOWER_START = CRAFTING_SLOTS;

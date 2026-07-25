@@ -12,7 +12,7 @@ import java.util.BitSet;
  * Paper 锻造台菜单句柄, 负责纠正输入变化后客户端预测的结果槽.
  */
 @SuppressWarnings("UnstableApiUsage")
-final class SmithingMenuHandleImpl extends PaperMenuHandle {
+final class SmithingMenuHandleImpl extends ContainerMenuHandle {
     private static final int RESULT_SLOT = 3;
 
     SmithingMenuHandleImpl(PacketListener packets, Player player, long generation) {

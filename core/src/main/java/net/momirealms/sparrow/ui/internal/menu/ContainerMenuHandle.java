@@ -44,7 +44,7 @@ import java.util.Set;
  * 独立快照. Netty 入站消息由句柄自己的有界队列保序后交回实体线程消费.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
-class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
+class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final int INCOMING_CAPACITY = 256; // 单个菜单会话最多暂存的入站消息数
     private static final int OFF_HAND_SLOT = 45; // 玩家原生 inventory menu 中的副手协议槽位
 
@@ -86,7 +86,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @param upperSize 顶部容器槽位数
      * @param generation 当前 Window 代际
      */
-    PaperMenuHandle(
+    ContainerMenuHandle(
             PacketListener packets,
             Player player,
             Object menuType,
@@ -110,7 +110,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @param lowerStart 玩家物品栏在原始槽位序列中的起始位置
      * @param generation 当前 Window 代际
      */
-    PaperMenuHandle(
+    ContainerMenuHandle(
             PacketListener packets,
             Player player,
             Object menuType,

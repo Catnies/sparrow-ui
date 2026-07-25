@@ -617,7 +617,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      *
      * @return 菜单视图
      */
-    InventoryView menuView() {
+    InventoryView inventoryView() {
         if (this.menuHandle == null) {
             throw new IllegalStateException("Window menu is not open");
         }
@@ -660,7 +660,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * 标记类型化菜单存在不依赖物品槽位的待同步状态.
      */
-    protected final void requestMenuSynchronization() {
+    protected final void requestSynchronize() {
         this.menuDirty = true;
     }
 

@@ -1,12 +1,29 @@
 package net.momirealms.sparrow.ui.util;
 
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 提供非受检异常传播与受检异常穿透功能.
+ * 提供异常聚合、非受检异常传播与受检异常穿透功能.
  */
 public final class ThrowableUtils {
     private ThrowableUtils() {}
+
+    /**
+     * 聚合两个异常. 如果尚无主异常, 直接返回新异常; 否则把新异常附加为 suppressed 异常.
+     *
+     * @param first 当前主异常, 或 {@code null}
+     * @param next 要合并的新异常
+     * @return 非空主异常
+     */
+    @NotNull
+    public static Throwable combine(@Nullable Throwable first, @NotNull Throwable next) {
+        if (first == null) {
+            return next;
+        }
+        first.addSuppressed(next);
+        return first;
+    }
 
     /**
      * 当异常属于 {@link RuntimeException} 或 {@link Error} 时原样重新抛出.

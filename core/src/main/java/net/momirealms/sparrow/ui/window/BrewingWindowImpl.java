@@ -34,7 +34,7 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
                     BrewingMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setBrewProgress(progress);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Brewing Window brew progress"
@@ -55,7 +55,7 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
                     BrewingMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setFuelProgress(progress);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Brewing Window fuel progress"

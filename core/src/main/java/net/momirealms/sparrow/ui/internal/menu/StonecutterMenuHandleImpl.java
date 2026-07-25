@@ -26,7 +26,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.*;
 
 @SuppressWarnings("UnstableApiUsage")
-final class StonecutterMenuHandleImpl extends PaperMenuHandle implements StonecutterMenuHandle {
+final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements StonecutterMenuHandle {
     private static final int INPUT_SLOT = 0;
     private static final int RESULT_SLOT = 1;
     private static final int SELECTED_DATA_SLOT = 0;

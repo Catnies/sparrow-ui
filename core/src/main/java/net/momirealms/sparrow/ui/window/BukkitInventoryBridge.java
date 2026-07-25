@@ -37,7 +37,7 @@ final class BukkitInventoryBridge {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
             return true;
         }
-        InventoryView view = window.menuView();
+        InventoryView view = window.inventoryView();
         int rawSlot = switch (click.target()) {
             case ClickInterpreter.Target.GuiTarget target -> target.windowSlot();
             case ClickInterpreter.Target.PlayerTarget target -> target.windowSlot();
@@ -76,7 +76,7 @@ final class BukkitInventoryBridge {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
             return true;
         }
-        InventoryView view = window.menuView();
+        InventoryView view = window.inventoryView();
         ItemStack oldCursor = view.getCursor();
         LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
         for (int index = 0; index < slots.size(); index++) {

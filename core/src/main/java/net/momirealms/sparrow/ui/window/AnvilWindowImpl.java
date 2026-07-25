@@ -60,7 +60,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
                     AnvilMenuHandle menu = this.menuHandle();
                     if (menu != null) {
                         menu.setEnchantmentCost(enchantmentCost);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Anvil Window enchantment cost"
@@ -81,7 +81,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
                     if (menu != null) {
                         menu.setTextFieldAlwaysEnabled(textFieldAlwaysEnabled);
                         this.notifyUpdate(0);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Anvil Window text field state"
@@ -102,7 +102,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
                     if (menu != null) {
                         menu.setResultAlwaysValid(resultAlwaysValid);
                         this.notifyUpdate(2);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Anvil Window result state"
@@ -161,7 +161,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
             menu.handleRename(text);
         }
         this.notifyUpdate(2);
-        this.requestMenuSynchronization();
+        this.requestSynchronize();
         this.renameHandlers.forEachIsolated(
                 handler -> handler.accept(text),
                 "Failed to handle Anvil Window rename",

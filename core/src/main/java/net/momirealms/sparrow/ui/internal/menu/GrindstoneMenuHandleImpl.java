@@ -12,7 +12,7 @@ import java.util.BitSet;
  * Paper 砂轮菜单句柄, 负责纠正输入变化后客户端预测的结果槽.
  */
 @SuppressWarnings("UnstableApiUsage")
-final class GrindstoneMenuHandleImpl extends PaperMenuHandle {
+final class GrindstoneMenuHandleImpl extends ContainerMenuHandle {
     private static final int RESULT_SLOT = 2;
 
     GrindstoneMenuHandleImpl(PacketListener packets, Player player, long generation) {

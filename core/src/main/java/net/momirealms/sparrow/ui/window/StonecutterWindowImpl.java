@@ -46,7 +46,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
                     StonecutterMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setRecipeOptions(copy);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to replace Stonecutter Window recipe options"
@@ -73,7 +73,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
                     StonecutterMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setSelectedRecipeIndex(index);
-                        this.requestMenuSynchronization();
+                        this.requestSynchronize();
                     }
                 },
                 "Failed to update Stonecutter Window selected recipe"
@@ -138,14 +138,14 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
         int selectedIndex = click.button();
         if (selectedIndex < 0 || selectedIndex >= options.size()) {
             menuHandle.reconcileClientSelection(this.selectedRecipeIndex);
-            this.requestMenuSynchronization();
+            this.requestSynchronize();
             return;
         }
 
         int previousIndex = this.selectedRecipeIndex;
         this.selectedRecipeIndex = selectedIndex;
         menuHandle.reconcileClientSelection(selectedIndex);
-        this.requestMenuSynchronization();
+        this.requestSynchronize();
 
         StonecutterRecipeOption previousOption = previousIndex != -1 ? options.get(previousIndex) : null;
         StonecutterRecipeSelect selection = new StonecutterRecipeSelect(this.viewer(), this, previousIndex, selectedIndex, previousOption, options.get(selectedIndex));

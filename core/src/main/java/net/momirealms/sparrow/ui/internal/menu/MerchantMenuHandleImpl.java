@@ -38,8 +38,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+/**
+ * 将 {@link MerchantWindow} 的状态投影为原版 Merchant 客户端协议.
+ * <p>offers 只承担展示职责, 不参与真实输入匹配, 结果生成或交易次数计算. 每次菜单会话独立持有
+ * Trade 与 Item 挂载; 任意线程到达的失效只推进 revision, 渲染和发包仍由玩家实体线程完成.
+ */
 @SuppressWarnings("UnstableApiUsage")
-final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMenuHandle {
+final class MerchantMenuHandleImpl extends ContainerMenuHandle implements MerchantMenuHandle {
     private static final int FIRST_INPUT_SLOT = 0;
     private static final int SECOND_INPUT_SLOT = 1;
     private static final int RESULT_SLOT = 2;
@@ -50,14 +55,15 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
     private final RenderContext firstInputContext;
     private final RenderContext secondInputContext;
     private final RenderContext resultContext;
-    private final AtomicLong offerRevision = new AtomicLong();
 
     private @Nullable TradeBindings bindings;
     private int level;
     private double progress = -1.0;
     private boolean restockMessageEnabled;
+
+    private final AtomicLong offerRevision = new AtomicLong(); // 任意线程只递增此值, 实际渲染仍在实体线程
     private long offerTick;
-    private long committedOfferRevision = -1;
+    private long committedOfferRevision = -1; // 最近成功进入网络发送批次的 revision
     private long queuedOfferRevision;
     private boolean offersQueued;
 
@@ -111,6 +117,10 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         this.invalidateOffers();
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>先完整创建候选挂载, 成功后才退役旧挂载. 因此准备失败不会破坏当前 offers.
+     */
     @Override
     public void setTrades(@NotNull List<MerchantWindow.Trade> trades) {
         TradeBindings candidate = new TradeBindings(trades, this::invalidateOffers);
@@ -139,26 +149,8 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         return this.offerRevision.get() != this.committedOfferRevision;
     }
 
-    @Override
-    public void close(@NotNull InventoryCloseEvent.Reason reason) {
-        Throwable failure = this.closeBindings();
-        try {
-            super.close(reason);
-        } catch (RuntimeException | Error throwable) {
-            failure = MerchantMenuHandleImpl.combine(failure, throwable);
-        }
-        ThrowableUtils.throwIfUnchecked(failure);
-    }
-
-    @Override
-    public void retire() {
-        Throwable failure = this.closeBindings();
-        try {
-            super.retire();
-        } catch (RuntimeException | Error throwable) {
-            failure = MerchantMenuHandleImpl.combine(failure, throwable);
-        }
-        ThrowableUtils.throwIfUnchecked(failure);
+    private void invalidateOffers() {
+        this.offerRevision.incrementAndGet();
     }
 
     @Override
@@ -167,6 +159,11 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         return DISCARDED_OUTGOING;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>本批次只捕获一次 revision. 发送期间到达的新失效会保留为更大的 revision,
+     * 由后续 tick 再次提交.
+     */
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         long revision = this.offerRevision.get();
@@ -186,18 +183,20 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         }
     }
 
-    private void invalidateOffers() {
-        this.offerRevision.incrementAndGet();
-    }
-
+    /**
+     * 将当前 Trade 挂载渲染为一份完整的 offers 数据包.
+     */
     private Object createOffersPacket() {
         TradeBindings bindings = this.bindings;
         List<TradeBinding> entries = bindings == null ? List.of() : bindings.entries();
+
+        // offers 与 entries 保持一一对应, 单项渲染失败也不能改变客户端索引
         ArrayList<Object> offers = new ArrayList<>(entries.size()); // NMS MerchantOffer 列表
         for (int index = 0; index < entries.size(); index++) {
             offers.add(this.createOffer(entries.get(index), index));
         }
 
+        // progress=-1.0 明确表示隐藏经验条, 其他值换算为当前等级内的 XP
         Object merchantOffers = MerchantOffersProxy.INSTANCE.newInstance(offers);
         boolean showProgress = this.progress != -1.0;
         int villagerXp = showProgress
@@ -213,11 +212,16 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         );
     }
 
+    /**
+     * 将一条 Trade 转换为纯展示的原版 MerchantOffer.
+     */
     private Object createOffer(TradeBinding binding, int tradeIndex) {
+        // 每个位置缓存最近一次成功结果, 渲染异常时由 render 保留旧快照
         ItemStack firstInput = binding.renderFirstInput(this, tradeIndex);
         ItemStack secondInput = binding.renderSecondInput(this, tradeIndex);
         ItemStack result = binding.renderResult(this, tradeIndex);
 
+        // 只标记协议展示副本, 不修改 Trade Item 提供的真实物品
         MarkedStack markedFirstInput = this.mark(firstInput, true);
         Object firstCost = this.createCost(markedFirstInput);
         Optional<Object> secondCost = secondInput.isEmpty()
@@ -242,17 +246,27 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         );
     }
 
+    /**
+     * 创建要求完整组件精确匹配的 ItemCost, 阻止真实背包物品自动填入展示交易.
+     */
     private Object createCost(MarkedStack marked) {
         Object stack = marked.stack(); // NMS ItemStack
+
+        // 1.21.8 与 26.1+ 只在 Item holder 的访问方法上存在差异
         Object holder = VersionHelper.isOrAbove26_1()
                 ? ItemStackProxy.INSTANCE.typeHolder(stack)
                 : ItemStackProxy.INSTANCE.getItemHolder(stack);
+
+        // predicate 包含随机 CUSTOM_DATA, 客户端背包中的真实物品无法精确匹配
         Object predicate = DataComponentExactPredicateProxy.INSTANCE.allOf(
                 ItemStackProxy.INSTANCE.getComponents(stack)
         );
         return ItemCostProxy.INSTANCE.newInstance(holder, marked.count(), predicate, stack);
     }
 
+    /**
+     * 复制展示物品并写入会话内随机标记. 必需位置为空时使用不可见占位以保持 offer 索引.
+     */
     private MarkedStack mark(ItemStack source, boolean required) {
         ItemStack display;
         if (source.isEmpty()) {
@@ -264,6 +278,7 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             display = source.clone();
         }
 
+        // 每次构建都生成新值, 防止客户端复用上一次 offers 的输入匹配结果
         ItemMeta meta = display.getItemMeta();
         meta.getPersistentDataContainer().set(
                 this.markerKey,
@@ -275,6 +290,9 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         return new MarkedStack(stack, Math.max(1, display.getAmount()));
     }
 
+    /**
+     * 渲染一个 Trade Item. 失败时上报异常并保留该位置最近一次成功快照.
+     */
     private ItemStack render(
             @NotNull Item item,
             @NotNull RenderContext context,
@@ -293,6 +311,28 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         }
     }
 
+    @Override
+    public void close(@NotNull InventoryCloseEvent.Reason reason) {
+        Throwable failure = this.closeBindings();
+        try {
+            super.close(reason);
+        } catch (RuntimeException | Error throwable) {
+            failure = ThrowableUtils.combine(failure, throwable);
+        }
+        ThrowableUtils.throwIfUnchecked(failure);
+    }
+
+    @Override
+    public void retire() {
+        Throwable failure = this.closeBindings();
+        try {
+            super.retire();
+        } catch (RuntimeException | Error throwable) {
+            failure = ThrowableUtils.combine(failure, throwable);
+        }
+        ThrowableUtils.throwIfUnchecked(failure);
+    }
+
     @Nullable
     private Throwable closeBindings() {
         TradeBindings bindings = this.bindings;
@@ -300,7 +340,6 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         if (bindings == null) {
             return null;
         }
-        bindings.retire();
         try {
             bindings.close();
             return null;
@@ -309,26 +348,13 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         }
     }
 
-    @Nullable
-    private static Throwable combine(@Nullable Throwable first, @NotNull Throwable next) {
-        if (first == null) {
-            return next;
-        }
-        first.addSuppressed(next);
-        return first;
-    }
-
-    private enum GateState {
-        PREPARING,
-        ACTIVE,
-        RETIRED
-    }
-
     static final class OfferMath {
-
         private OfferMath() {
         }
 
+        /**
+         * 把 API 的正折扣映射为原版负差值. {@link Integer#MIN_VALUE} 无法取反, 因此饱和为最大加价.
+         */
         static int specialPriceDiff(int discount) {
             return discount == Integer.MIN_VALUE ? Integer.MAX_VALUE : -discount;
         }
@@ -337,6 +363,17 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
     private record MarkedStack(Object stack, int count) {
     }
 
+    private enum GateState {
+        PREPARING, // 正在组装挂载, 忽略准备期通知
+        ACTIVE, // 向当前菜单转发失效
+        RETIRED // 忽略替换或关闭后的迟到通知
+    }
+
+    /**
+     * 持有一次菜单会话内的全部 Trade 挂载, 并把它们合并为一个刷新计划.
+     * <p>构造阶段保持 PREPARING gate, 只有全部挂载成功后才激活. 替换或关闭时先退役 gate,
+     * 再按所有权逆序释放资源.
+     */
     static final class TradeBindings implements AutoCloseable {
         private final Runnable invalidator;
         private final List<TradeBinding> entries;
@@ -344,13 +381,12 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
         private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING);
         private boolean closed;
 
-        TradeBindings(
-                @NotNull List<MerchantWindow.Trade> trades,
-                @NotNull Runnable invalidator
-        ) {
+        TradeBindings(@NotNull List<MerchantWindow.Trade> trades, @NotNull Runnable invalidator) {
             this.invalidator = invalidator;
             ArrayList<TradeBinding> entries = new ArrayList<>(trades.size());
             RefreshPlan refreshPlan = RefreshPlan.none();
+
+            // 准备期通知被 gate 拦截, 不会让尚未发布的候选会话变脏
             try {
                 for (int index = 0; index < trades.size(); index++) {
                     TradeBinding binding = new TradeBinding(trades.get(index), this::invalidate);
@@ -358,12 +394,22 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
                     refreshPlan = refreshPlan.or(binding.refreshPlan());
                 }
             } catch (RuntimeException | Error throwable) {
+                // 逆序回滚已经取得的资源, 并把关闭异常附加到原始失败
                 this.gate.set(GateState.RETIRED);
                 TradeBindings.closeEntries(entries, throwable);
                 throw throwable;
             }
+
+            // 全部准备成功后才发布不可修改快照
             this.entries = List.copyOf(entries);
             this.refreshPlan = refreshPlan;
+        }
+
+        void activate() {
+            GateState previous = this.gate.compareAndExchange(GateState.PREPARING, GateState.ACTIVE);
+            if (previous == GateState.RETIRED) {
+                throw new IllegalStateException("Merchant trade bindings have already retired");
+            }
         }
 
         private List<TradeBinding> entries() {
@@ -374,21 +420,14 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             return this.refreshPlan;
         }
 
-        void activate() {
-            GateState previous = this.gate.compareAndExchange(GateState.PREPARING, GateState.ACTIVE);
-            if (previous == GateState.RETIRED) {
-                throw new IllegalStateException("Merchant trade bindings have already retired");
+        private void invalidate() {
+            if (this.gate.get() == GateState.ACTIVE) {
+                this.invalidator.run();
             }
         }
 
         void retire() {
             this.gate.set(GateState.RETIRED);
-        }
-
-        private void invalidate() {
-            if (this.gate.get() == GateState.ACTIVE) {
-                this.invalidator.run();
-            }
         }
 
         @Override
@@ -398,26 +437,31 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
                 return;
             }
             this.closed = true;
+
+            // 继续关闭其余条目, 最后统一抛出首个失败
             Throwable failure = TradeBindings.closeEntries(this.entries, null);
             ThrowableUtils.throwIfUnchecked(failure);
         }
 
+        /**
+         * 按创建顺序的反方向关闭 TradeBinding, 同时聚合所有非受检异常.
+         */
         @Nullable
-        private static Throwable closeEntries(
-                @NotNull List<TradeBinding> entries,
-                @Nullable Throwable failure
-        ) {
+        private static Throwable closeEntries(@NotNull List<TradeBinding> entries, @Nullable Throwable failure) {
             for (int index = entries.size() - 1; index >= 0; index--) {
                 try {
                     entries.get(index).close();
                 } catch (RuntimeException | Error throwable) {
-                    failure = MerchantMenuHandleImpl.combine(failure, throwable);
+                    failure = ThrowableUtils.combine(failure, throwable);
                 }
             }
             return failure;
         }
     }
 
+    /**
+     * 持有一条 Trade 的订阅, 三个 Item 挂载及最近一次成功渲染结果.
+     */
     private static final class TradeBinding implements AutoCloseable {
         private final MerchantWindow.Trade trade;
         private final Subscription tradeSubscription;
@@ -437,12 +481,15 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             ItemAttachment firstInputAttachment = null;
             ItemAttachment secondInputAttachment = null;
             ItemAttachment resultAttachment = null;
+
+            // 三个 Item 独立挂载, 相同 Item 引用也拥有独立的显示生命周期
             try {
                 tradeSubscription = trade.subscribe(ignoredChange -> invalidator.run());
                 firstInputAttachment = trade.getFirstInput().attach(ignoredItem -> invalidator.run());
                 secondInputAttachment = trade.getSecondInput().attach(ignoredItem -> invalidator.run());
                 resultAttachment = trade.getResult().attach(ignoredItem -> invalidator.run());
             } catch (RuntimeException | Error throwable) {
+                // 构造中途失败时只关闭已经取得的资源
                 TradeBinding.close(
                         resultAttachment,
                         secondInputAttachment,
@@ -456,17 +503,11 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             this.firstInputAttachment = firstInputAttachment;
             this.secondInputAttachment = secondInputAttachment;
             this.resultAttachment = resultAttachment;
+
+            // 周期计划只决定何时重渲染, 主动失效仍通过各自订阅立即推进 revision
             this.refreshPlan = firstInputAttachment.refreshPlan()
                     .or(secondInputAttachment.refreshPlan())
                     .or(resultAttachment.refreshPlan());
-        }
-
-        private MerchantWindow.Trade trade() {
-            return this.trade;
-        }
-
-        private RefreshPlan refreshPlan() {
-            return this.refreshPlan;
         }
 
         private ItemStack renderFirstInput(MerchantMenuHandleImpl owner, int tradeIndex) {
@@ -502,6 +543,14 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             return this.result;
         }
 
+        private MerchantWindow.Trade trade() {
+            return this.trade;
+        }
+
+        private RefreshPlan refreshPlan() {
+            return this.refreshPlan;
+        }
+
         @Override
         public void close() {
             if (this.closed) {
@@ -518,6 +567,9 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             ThrowableUtils.throwIfUnchecked(failure);
         }
 
+        /**
+         * 按结果, 第二输入, 第一输入, Trade 订阅的顺序关闭, 兼容构造失败留下的空引用.
+         */
         @Nullable
         private static Throwable close(
                 @Nullable ItemAttachment result,
@@ -540,7 +592,7 @@ final class MerchantMenuHandleImpl extends PaperMenuHandle implements MerchantMe
             try {
                 closeable.close();
             } catch (Throwable throwable) {
-                failure = MerchantMenuHandleImpl.combine(failure, throwable);
+                failure = ThrowableUtils.combine(failure, throwable);
             }
             return failure;
         }
