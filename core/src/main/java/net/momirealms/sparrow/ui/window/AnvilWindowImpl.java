@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.AnvilMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -18,11 +19,11 @@ import java.util.function.Consumer;
  * 铁砧 Window 的实体线程实现.
  */
 final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements AnvilWindow {
+    private final HandlerList<Consumer<String>> renameHandlers;
     private volatile String renameText = "";
     private volatile int enchantmentCost;
     private volatile boolean textFieldAlwaysEnabled;
     private volatile boolean resultAlwaysValid;
-    private volatile List<Consumer<String>> renameHandlers;
 
     AnvilWindowImpl(
             @NotNull WindowManager manager,
@@ -38,7 +39,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         this.enchantmentCost = enchantmentCost;
         this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
         this.resultAlwaysValid = resultAlwaysValid;
-        this.renameHandlers = renameHandlers;
+        this.renameHandlers = new HandlerList<>(renameHandlers);
     }
 
     @Override
@@ -111,19 +112,19 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     @Override
     public void setRenameHandlers(@NotNull List<? extends Consumer<? super String>> handlers) {
         List<Consumer<String>> copy = MiscUtils.copyConsumers(handlers);
-        this.submit(() -> this.renameHandlers = copy, "Failed to replace Anvil Window rename handlers");
+        this.submit(() -> this.renameHandlers.set(copy), "Failed to replace Anvil Window rename handlers");
     }
 
     @Override
     public @NotNull List<Consumer<String>> getRenameHandlers() {
-        return this.renameHandlers;
+        return this.renameHandlers.snapshot();
     }
 
     @Override
     public void addRenameHandler(@NotNull Consumer<? super String> handler) {
         Consumer<String> copied = MiscUtils.narrowConsumer(handler);
         this.submit(
-                () -> this.renameHandlers = MiscUtils.append(this.renameHandlers, copied),
+                () -> this.renameHandlers.append(copied),
                 "Failed to add Anvil Window rename handler"
         );
     }
@@ -131,7 +132,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     @Override
     public void removeRenameHandler(@NotNull Consumer<? super String> handler) {
         this.submit(
-                () -> this.renameHandlers = MiscUtils.removeConsumer(this.renameHandlers, handler),
+                () -> this.renameHandlers.remove(MiscUtils.narrowConsumer(handler)),
                 "Failed to remove Anvil Window rename handler"
         );
     }
@@ -161,14 +162,11 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         }
         this.notifyUpdate(2);
         this.requestMenuSynchronization();
-        List<Consumer<String>> handlers = this.renameHandlers;
-        for (int index = 0; index < handlers.size(); index++) {
-            try {
-                handlers.get(index).accept(text);
-            } catch (Throwable throwable) {
-                this.report("Failed to handle Anvil Window rename", throwable);
-            }
-        }
+        this.renameHandlers.forEachIsolated(
+                handler -> handler.accept(text),
+                "Failed to handle Anvil Window rename",
+                this::report
+        );
     }
 
     /**

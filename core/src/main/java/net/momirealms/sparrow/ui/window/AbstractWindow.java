@@ -14,6 +14,7 @@ import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
@@ -82,19 +83,19 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();
     private final RenderContext cursorRenderContext;
     private final Map<Integer, PendingWindowState> pendingWindowStates = new HashMap<>();
+    private final HandlerList<Runnable> openHandlers;
+    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;
+    private final HandlerList<Consumer<ClickEvent>> outsideClickHandlers;
+    private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;
 
     private volatile Component title;
     private volatile Supplier<? extends Component> titleSupplier;
     private volatile boolean closeable;
     private volatile boolean open;
     private volatile long generation;
-    private volatile List<Runnable> openHandlers;
-    private volatile List<Consumer<InventoryCloseEvent.Reason>> closeHandlers;
-    private volatile List<Consumer<ClickEvent>> outsideClickHandlers;
     private volatile Supplier<? extends @Nullable Window> fallbackWindow;
     private volatile int serverWindowState;
     private volatile int clientWindowState;
-    private volatile List<Consumer<Integer>> windowStateChangeHandlers;
     private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer;
 
     private @Nullable M menuHandle;
@@ -123,12 +124,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.title = Component.empty();
         this.titleSupplier = settings.titleSupplier();
         this.closeable = settings.closeable();
-        this.openHandlers = settings.openHandlers();
-        this.closeHandlers = settings.closeHandlers();
-        this.outsideClickHandlers = settings.outsideClickHandlers();
+        this.openHandlers = new HandlerList<>(settings.openHandlers());
+        this.closeHandlers = new HandlerList<>(settings.closeHandlers());
+        this.outsideClickHandlers = new HandlerList<>(settings.outsideClickHandlers());
         this.fallbackWindow = settings.fallbackWindow();
         this.serverWindowState = settings.windowState();
-        this.windowStateChangeHandlers = settings.windowStateChangeHandlers();
+        this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.cursorVisualizer = settings.cursorVisualizer();
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
@@ -202,19 +203,19 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
         List<Runnable> copy = List.copyOf(openHandlers);
-        this.submit(() -> this.openHandlers = copy, "Failed to replace Window open handlers");
+        this.submit(() -> this.openHandlers.set(copy), "Failed to replace Window open handlers");
     }
 
     @Override
     @NotNull
     public List<Runnable> getOpenHandlers() {
-        return this.openHandlers;
+        return this.openHandlers.snapshot();
     }
 
     @Override
     public void addOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
-                () -> this.openHandlers = MiscUtils.append(this.openHandlers, openHandler),
+                () -> this.openHandlers.append(openHandler),
                 "Failed to add Window open handler"
         );
     }
@@ -222,7 +223,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
-                () -> this.openHandlers = MiscUtils.remove(this.openHandlers, openHandler),
+                () -> this.openHandlers.remove(openHandler),
                 "Failed to remove Window open handler"
         );
     }
@@ -231,7 +232,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
         List<Consumer<InventoryCloseEvent.Reason>> copy = MiscUtils.copyConsumers(closeHandlers);
         this.submit(
-                () -> this.closeHandlers = copy,
+                () -> this.closeHandlers.set(copy),
                 "Failed to replace Window close handlers"
         );
     }
@@ -239,14 +240,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     @NotNull
     public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
-        return this.closeHandlers;
+        return this.closeHandlers.snapshot();
     }
 
     @Override
     public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         Consumer<InventoryCloseEvent.Reason> handler = MiscUtils.narrowConsumer(closeHandler);
         this.submit(
-                () -> this.closeHandlers = MiscUtils.append(this.closeHandlers, handler),
+                () -> this.closeHandlers.append(handler),
                 "Failed to add Window close handler"
         );
     }
@@ -254,7 +255,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         this.submit(
-                () -> this.closeHandlers = MiscUtils.removeConsumer(this.closeHandlers, closeHandler),
+                () -> this.closeHandlers.remove(MiscUtils.narrowConsumer(closeHandler)),
                 "Failed to remove Window close handler"
         );
     }
@@ -263,7 +264,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers) {
         List<Consumer<ClickEvent>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
         this.submit(
-                () -> this.outsideClickHandlers = copy,
+                () -> this.outsideClickHandlers.set(copy),
                 "Failed to replace Window outside click handlers"
         );
     }
@@ -271,14 +272,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     @Override
     public List<Consumer<ClickEvent>> getOutsideClickHandlers() {
-        return this.outsideClickHandlers;
+        return this.outsideClickHandlers.snapshot();
     }
 
     @Override
     public void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
         Consumer<ClickEvent> handler = MiscUtils.narrowConsumer(outsideClickHandler);
         this.submit(
-                () -> this.outsideClickHandlers = MiscUtils.append(this.outsideClickHandlers, handler),
+                () -> this.outsideClickHandlers.append(handler),
                 "Failed to add Window outside click handler"
         );
     }
@@ -286,7 +287,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
         this.submit(
-                () -> this.outsideClickHandlers = MiscUtils.removeConsumer(this.outsideClickHandlers, outsideClickHandler),
+                () -> this.outsideClickHandlers.remove(MiscUtils.narrowConsumer(outsideClickHandler)),
                 "Failed to remove Window outside click handler"
         );
     }
@@ -321,7 +322,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
         List<Consumer<Integer>> copy = MiscUtils.copyConsumers(handlers);
         this.submit(
-                () -> this.windowStateChangeHandlers = copy,
+                () -> this.windowStateChangeHandlers.set(copy),
                 "Failed to replace Window state handlers"
         );
     }
@@ -329,14 +330,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     @Override
     public List<Consumer<Integer>> getWindowStateChangeHandlers() {
-        return this.windowStateChangeHandlers;
+        return this.windowStateChangeHandlers.snapshot();
     }
 
     @Override
     public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         Consumer<Integer> copied = MiscUtils.narrowConsumer(handler);
         this.submit(
-                () -> this.windowStateChangeHandlers = MiscUtils.append(this.windowStateChangeHandlers, copied),
+                () -> this.windowStateChangeHandlers.append(copied),
                 "Failed to add Window state handler"
         );
     }
@@ -344,7 +345,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         this.submit(
-                () -> this.windowStateChangeHandlers = MiscUtils.removeConsumer(this.windowStateChangeHandlers, handler),
+                () -> this.windowStateChangeHandlers.remove(MiscUtils.narrowConsumer(handler)),
                 "Failed to remove Window state handler"
         );
     }
@@ -454,11 +455,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
                 switch (this.layout.route(windowSlot)) {
                     case WindowLayout.Route.GuiRoute route -> {
-                        DisplayedSlotPath path = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());
-                        paths[windowSlot] = path;
+                        paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());;
                     }
-                    case WindowLayout.Route.PlayerRoute route ->
-                            localSlots[windowSlot] = ItemUtils.copyOrEmpty(this.viewer.getInventory().getItem(route.inventorySlot()));
+                    case WindowLayout.Route.PlayerRoute route -> {
+                        localSlots[windowSlot] = ItemUtils.copyOrEmpty(this.viewer.getInventory().getItem(route.inventorySlot()));
+                    }
                 }
             }
 
@@ -595,16 +596,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 在打开状态已经提交后依次运行打开处理器, 单个处理器失败不会阻止后续处理器.
+     * 在打开状态已经提交后按列表快照依次运行打开处理器, 单个处理器失败不会阻止后续处理器.
      */
     void fireOpenHandlers() {
-        for (int index = 0; index < this.openHandlers.size(); index++) {
-            try {
-                this.openHandlers.get(index).run();
-            } catch (Throwable throwable) {
-                this.manager.report("Failed to handle Window open", throwable);
-            }
-        }
+        this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
     }
 
     /**
@@ -748,7 +743,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
-        if (!this.manager.allowClick(this, click)) {
+        if (!this.manager.bukkitBridge().allowClick(this, click)) {
             return;
         }
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
@@ -761,14 +756,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 容器外点击只分发处理器.
         else if (click.target() == ClickInterpreter.Target.OutsideTarget.INSTANCE) {
             ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
-            List<Consumer<ClickEvent>> handlers = this.outsideClickHandlers;
-            for (int index = 0; index < handlers.size(); index++) {
-                try {
-                    handlers.get(index).accept(event);
-                } catch (Throwable throwable) {
-                    this.manager.report("Failed to handle Window outside click", throwable);
-                }
-            }
+            this.outsideClickHandlers.forEachIsolated(
+                    handler -> handler.accept(event),
+                    "Failed to handle Window outside click",
+                    this.manager::report
+            );
         }
     }
 
@@ -778,7 +770,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
-        if (!this.manager.allowDrag(this, drag.clickType(), drag.slots())) {
+        if (!this.manager.bukkitBridge().allowDrag(this, drag.clickType(), drag.slots())) {
             return;
         }
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
@@ -841,14 +833,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
         this.clientWindowState = pending.state();
-        List<Consumer<Integer>> handlers = this.windowStateChangeHandlers;
-        for (int index = 0; index < handlers.size(); index++) {
-            try {
-                handlers.get(index).accept(this.clientWindowState);
-            } catch (Throwable throwable) {
-                this.manager.report("Failed to handle Window state acknowledgement", throwable);
-            }
-        }
+        this.windowStateChangeHandlers.forEachIsolated(
+                handler -> handler.accept(this.clientWindowState),
+                "Failed to handle Window state acknowledgement",
+                this.manager::report
+        );
     }
 
     /**
@@ -1136,16 +1125,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 按注册顺序运行关闭处理器, 单个处理器失败不影响后续处理器.
+     * 按列表快照顺序运行关闭处理器, 单个处理器失败不影响后续处理器.
      */
     private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
-        for (int index = 0; index < this.closeHandlers.size(); index++) {
-            try {
-                this.closeHandlers.get(index).accept(reason);
-            } catch (Throwable throwable) {
-                this.manager.report("Failed to handle Window close", throwable);
-            }
-        }
+        this.closeHandlers.forEachIsolated(
+                handler -> handler.accept(reason),
+                "Failed to handle Window close",
+                this.manager::report
+        );
     }
 
     /**

@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.internal.menu.StonecutterMenuHandle;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -16,9 +17,9 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> implements StonecutterWindow {
+    private final HandlerList<Consumer<StonecutterRecipeSelect>> recipeSelectHandlers;
     private volatile List<StonecutterRecipeOption> recipeOptions;
     private volatile int selectedRecipeIndex;
-    private volatile List<Consumer<StonecutterRecipeSelect>> recipeSelectHandlers;
 
     StonecutterWindowImpl(
             @NotNull WindowManager manager,
@@ -32,7 +33,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
         super(manager, viewer, layout, settings);
         this.recipeOptions = recipeOptions;
         this.selectedRecipeIndex = selectedRecipeIndex;
-        this.recipeSelectHandlers = recipeSelectHandlers;
+        this.recipeSelectHandlers = new HandlerList<>(recipeSelectHandlers);
     }
 
     @Override
@@ -83,7 +84,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
     public void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super StonecutterRecipeSelect>> handlers) {
         List<Consumer<StonecutterRecipeSelect>> copy = MiscUtils.copyConsumers(handlers);
         this.submit(
-                () -> this.recipeSelectHandlers = copy,
+                () -> this.recipeSelectHandlers.set(copy),
                 "Failed to replace Stonecutter Window recipe selection handlers"
         );
     }
@@ -91,14 +92,14 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
     @Override
     @NotNull
     public List<Consumer<StonecutterRecipeSelect>> getRecipeSelectHandlers() {
-        return this.recipeSelectHandlers;
+        return this.recipeSelectHandlers.snapshot();
     }
 
     @Override
     public void addRecipeSelectHandler(@NotNull Consumer<? super StonecutterRecipeSelect> handler) {
         Consumer<StonecutterRecipeSelect> copied = MiscUtils.narrowConsumer(handler);
         this.submit(
-                () -> this.recipeSelectHandlers = MiscUtils.append(this.recipeSelectHandlers, copied),
+                () -> this.recipeSelectHandlers.append(copied),
                 "Failed to add Stonecutter Window recipe selection handler"
         );
     }
@@ -106,7 +107,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
     @Override
     public void removeRecipeSelectHandler(@NotNull Consumer<? super StonecutterRecipeSelect> handler) {
         this.submit(
-                () -> this.recipeSelectHandlers = MiscUtils.removeConsumer(this.recipeSelectHandlers, handler),
+                () -> this.recipeSelectHandlers.remove(MiscUtils.narrowConsumer(handler)),
                 "Failed to remove Stonecutter Window recipe selection handler"
         );
     }
@@ -148,14 +149,11 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
 
         StonecutterRecipeOption previousOption = previousIndex != -1 ? options.get(previousIndex) : null;
         StonecutterRecipeSelect selection = new StonecutterRecipeSelect(this.viewer(), this, previousIndex, selectedIndex, previousOption, options.get(selectedIndex));
-        List<Consumer<StonecutterRecipeSelect>> handlers = this.recipeSelectHandlers;
-        for (int index = 0; index < handlers.size(); index++) {
-            try {
-                handlers.get(index).accept(selection);
-            } catch (Throwable throwable) {
-                this.report("Failed to handle Stonecutter Window recipe selection", throwable);
-            }
-        }
+        this.recipeSelectHandlers.forEachIsolated(
+                handler -> handler.accept(selection),
+                "Failed to handle Stonecutter Window recipe selection",
+                this::report
+        );
     }
 
     private static void checkSelectedRecipeIndex(int index, int optionCount) {

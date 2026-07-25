@@ -12,8 +12,6 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.*;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.inventory.InventoryView;
-import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -33,6 +31,7 @@ import java.util.function.BiConsumer;
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;
     private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
+    private final BukkitInventoryBridge bukkitBridge;
     private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();
     private final AtomicLong generations = new AtomicLong();
@@ -41,6 +40,7 @@ public final class WindowManager implements Listener {
     WindowManager(MenuFactory menuFactory) {
         this.menuFactory = menuFactory;
         this.exceptionHandler = SparrowUI.getInstance()::handleException;
+        this.bukkitBridge = new BukkitInventoryBridge(this.exceptionHandler);
     }
 
     @NotNull
@@ -232,72 +232,6 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 在启用Bukkit事件桥接时, 把已映射的协议点击发布为 Bukkit InventoryClickEvent.
-     * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
-     */
-    boolean allowClick(AbstractWindow<?> window, ClickInterpreter.Result.SingleClick click) {
-        if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
-            return true;
-        }
-        InventoryView view = window.menuView();
-        int rawSlot = switch (click.target()) {
-            case ClickInterpreter.Target.GuiTarget target -> target.windowSlot();
-            case ClickInterpreter.Target.PlayerTarget target -> target.windowSlot();
-            case ClickInterpreter.Target.OutsideTarget ignoredTarget -> InventoryView.OUTSIDE;
-        };
-        InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
-                ? InventoryType.SlotType.OUTSIDE
-                : view.getSlotType(rawSlot);
-        InventoryClickEvent event = new InventoryClickEvent(
-                view,
-                slotType,
-                rawSlot,
-                click.clickType(),
-                InventoryAction.UNKNOWN,
-                click.hotbarButton()
-        );
-        try {
-            Bukkit.getPluginManager().callEvent(event);
-            return !event.isCancelled();
-        } catch (Throwable throwable) {
-            this.report("Failed to bridge Window click to Bukkit", throwable);
-            return false;
-        }
-    }
-
-    /**
-     * 在启用Bukkit事件桥接时, 把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
-     * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
-     */
-    boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {
-        if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
-            return true;
-        }
-        InventoryView view = window.menuView();
-        ItemStack oldCursor = view.getCursor();
-        LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
-        for (int index = 0; index < slots.size(); index++) {
-            int rawSlot = slots.get(index);
-            ItemStack current = view.getItem(rawSlot);
-            results.put(rawSlot, current == null ? ItemStack.empty() : current);
-        }
-        InventoryDragEvent event = new InventoryDragEvent(
-                view,
-                oldCursor.clone(),
-                oldCursor,
-                clickType == ClickType.RIGHT,
-                results
-        );
-        try {
-            Bukkit.getPluginManager().callEvent(event);
-            return !event.isCancelled();
-        } catch (Throwable throwable) {
-            this.report("Failed to bridge Window drag to Bukkit", throwable);
-            return false;
-        }
-    }
-
-    /**
      * Bukkit 观测到容器关闭时, 若 View 属于某个活动 Window 则按外部关闭处理.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -408,6 +342,15 @@ public final class WindowManager implements Listener {
     @Unmodifiable
     public Set<Window> windows() {
         return Set.copyOf(this.active.values());
+    }
+
+    /**
+     * 返回 Bukkit 容器事件桥接器.
+     *
+     * @return Bukkit 事件桥接器
+     */
+    BukkitInventoryBridge bukkitBridge() {
+        return this.bukkitBridge;
     }
 
     /**

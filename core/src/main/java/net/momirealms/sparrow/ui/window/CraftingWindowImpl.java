@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.CraftingMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
@@ -19,7 +20,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
 final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implements CraftingWindow {
-    private volatile List<Consumer<RecipeBookSelect>> recipeSelectHandlers;
+    private final HandlerList<Consumer<RecipeBookSelect>> recipeSelectHandlers;
 
     CraftingWindowImpl(
             @NotNull WindowManager manager,
@@ -29,7 +30,7 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
             @NotNull List<Consumer<RecipeBookSelect>> recipeSelectHandlers
     ) {
         super(manager, viewer, layout, settings);
-        this.recipeSelectHandlers = recipeSelectHandlers;
+        this.recipeSelectHandlers = new HandlerList<>(recipeSelectHandlers);
     }
 
     @Override
@@ -53,7 +54,7 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
     public void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelect>> handlers) {
         List<Consumer<RecipeBookSelect>> copy = MiscUtils.copyConsumers(handlers);
         this.submit(
-                () -> this.recipeSelectHandlers = copy,
+                () -> this.recipeSelectHandlers.set(copy),
                 "Failed to replace Crafting Window recipe selection handlers"
         );
     }
@@ -61,14 +62,14 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
     @Override
     @NotNull
     public List<Consumer<RecipeBookSelect>> getRecipeSelectHandlers() {
-        return this.recipeSelectHandlers;
+        return this.recipeSelectHandlers.snapshot();
     }
 
     @Override
     public void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler) {
         Consumer<RecipeBookSelect> copied = MiscUtils.narrowConsumer(handler);
         this.submit(
-                () -> this.recipeSelectHandlers = MiscUtils.append(this.recipeSelectHandlers, copied),
+                () -> this.recipeSelectHandlers.append(copied),
                 "Failed to add Crafting Window recipe selection handler"
         );
     }
@@ -76,7 +77,7 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
     @Override
     public void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler) {
         this.submit(
-                () -> this.recipeSelectHandlers = MiscUtils.removeConsumer(this.recipeSelectHandlers, handler),
+                () -> this.recipeSelectHandlers.remove(MiscUtils.narrowConsumer(handler)),
                 "Failed to remove Crafting Window recipe selection handler"
         );
     }
@@ -103,14 +104,11 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
         if (bukkitRecipeId == null || !this.viewer().hasDiscoveredRecipe(bukkitRecipeId)) return;
 
         RecipeBookSelect selection = new RecipeBookSelect(this.viewer(), this, recipeId, recipePlace.makeAll());
-        List<Consumer<RecipeBookSelect>> handlers = this.recipeSelectHandlers;
-        for (int index = 0; index < handlers.size(); index++) {
-            try {
-                handlers.get(index).accept(selection);
-            } catch (Throwable throwable) {
-                this.report("Failed to handle Crafting Window recipe selection", throwable);
-            }
-        }
+        this.recipeSelectHandlers.forEachIsolated(
+                handler -> handler.accept(selection),
+                "Failed to handle Crafting Window recipe selection",
+                this::report
+        );
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<CraftingWindow, CraftingWindow.Builder> implements CraftingWindow.Builder {

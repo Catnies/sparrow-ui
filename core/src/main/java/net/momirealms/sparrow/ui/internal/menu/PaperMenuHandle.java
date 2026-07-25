@@ -67,10 +67,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private @Nullable PacketListener.Session session; // 当前入站捕获会话, 打开前和关闭后为空
     private Object actualCarried = ItemStackProxy.EMPTY; // NMS ItemStack, 代理菜单唯一持有的真实光标
     private boolean predictedCarried; // 客户端预测是否要求重新核对光标
-    private boolean prepared; // 是否已经捕获待转移的真实光标
     private boolean cursorClaimed; // 来源菜单的真实光标是否已经被清空
-    private boolean committed; // 初始打开批次是否已成功提交
-    private boolean closed; // 菜单是否已关闭
+    private Lifecycle lifecycle = Lifecycle.CREATED; // 菜单会话的生命周期状态
 
     /**
      * 创建玩家物品栏紧接顶部容器的菜单句柄.
@@ -139,9 +137,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void prepareOpen(boolean replacingWindow) {
-        this.checkUsable();
-        if (this.prepared) {
-            throw new IllegalStateException("menu opening is already prepared");
+        if (this.lifecycle != Lifecycle.CREATED) {
+            throw new IllegalStateException("menu opening cannot be prepared in state " + this.lifecycle);
         }
 
         Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
@@ -154,7 +151,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
         this.replacedMenu = currentMenu;
         this.actualCarried = AbstractContainerMenuProxy.INSTANCE.getCarried(currentMenu);
-        this.prepared = true;
+        this.lifecycle = Lifecycle.PREPARED;
     }
 
     /**
@@ -164,8 +161,9 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
-        this.checkUsable();
-        this.checkPrepared();
+        if (this.lifecycle != Lifecycle.PREPARED) {
+            throw new IllegalStateException("menu cannot be opened in state " + this.lifecycle);
+        }
         this.checkSlotCount(slots);
 
         // 先冻结完整内容, 使包、远端镜像与 Bukkit 事件视图共享同一份权威输入
@@ -190,13 +188,13 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             openedSession.commit();
             this.commitFullContents(full);
             this.view.initialize(slots, cursor.actual(), title);
-            this.committed = true;
-            this.prepared = false;
+            this.lifecycle = Lifecycle.COMMITTED;
             this.cursorClaimed = false;
         } catch (RuntimeException | Error throwable) {
             openedSession.rollback();
             this.session = null;
             PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
+            this.lifecycle = Lifecycle.CREATED;
             this.restorePreparedCursor();
             throw throwable;
         }
@@ -313,12 +311,15 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void close(@NotNull InventoryCloseEvent.Reason reason) {
-        if (this.closed) return;
-        this.closed = true;
+        if (this.lifecycle == Lifecycle.CLOSED) {
+            return;
+        }
+        Lifecycle previous = this.lifecycle;
+        this.lifecycle = Lifecycle.CLOSED;
         this.closeSession();
 
         // 打开尚未提交时, 只需要恢复被替换的原菜单.
-        if (!this.committed) {
+        if (previous != Lifecycle.COMMITTED) {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
                 PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             }
@@ -358,8 +359,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     @Override
     public void retire() {
-        if (!this.closed) {
-            this.closed = true;
+        if (this.lifecycle != Lifecycle.CLOSED) {
+            this.lifecycle = Lifecycle.CLOSED;
             this.closeSession();
         }
     }
@@ -492,7 +493,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @return 当前菜单负责恢复时为 true
      */
     final boolean shouldRestoreOutgoing(@NotNull Class<?> packetType) {
-        if (!this.committed || this.closed) {
+        if (this.lifecycle != Lifecycle.COMMITTED) {
             return false;
         }
         PacketListener.Session currentSession = this.session;
@@ -659,20 +660,8 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
     }
 
-    private void checkUsable() {
-        if (this.closed || this.committed) {
-            throw new IllegalStateException("menu is already open or closed");
-        }
-    }
-
-    private void checkPrepared() {
-        if (!this.prepared) {
-            throw new IllegalStateException("menu opening has not been prepared");
-        }
-    }
-
     private void checkCommitted() {
-        if (this.closed || !this.committed) {
+        if (this.lifecycle != Lifecycle.COMMITTED) {
             throw new IllegalStateException("menu is not open");
         }
     }
@@ -695,15 +684,22 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 只有光标已被清空 (cursorClaimed) 才归还, 避免覆盖来源菜单此后自己设置的光标.
      */
     private void restorePreparedCursor() {
-        if (!this.prepared) {
-            return;
-        }
         if (this.cursorClaimed) {
             AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, this.actualCarried);
         }
         this.actualCarried = ItemStackProxy.EMPTY;
-        this.prepared = false;
         this.cursorClaimed = false;
+    }
+
+    /**
+     * 菜单会话的生命周期状态.
+     * CREATED 经打开预备进入 PREPARED, 初始批次提交成功进入 COMMITTED, 任意状态关闭后进入 CLOSED.
+     */
+    private enum Lifecycle {
+        CREATED,
+        PREPARED,
+        COMMITTED,
+        CLOSED
     }
 
     /**
@@ -719,5 +715,4 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             Object packet // NMS ClientboundContainerSetContentPacket
     ) {
     }
-
 }
