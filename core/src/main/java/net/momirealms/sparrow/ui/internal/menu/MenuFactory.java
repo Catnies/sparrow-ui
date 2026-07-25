@@ -116,7 +116,37 @@ public interface MenuFactory {
      * @return 工作台菜单句柄
      */
     @NotNull
-    CraftingMenuHandle crafting(@NotNull Player viewer, long generation);
+    RecipeBookMenuHandle crafting(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的熔炉菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 熔炉菜单句柄
+     */
+    @NotNull
+    FurnaceMenuHandle furnace(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的烟熏炉菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 烟熏炉菜单句柄
+     */
+    @NotNull
+    FurnaceMenuHandle smoker(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的高炉菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 高炉菜单句柄
+     */
+    @NotNull
+    FurnaceMenuHandle blastFurnace(@NotNull Player viewer, long generation);
 
     /**
      * 为指定玩家创建尚未打开的切石机菜单.

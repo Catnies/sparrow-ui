@@ -156,8 +156,56 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
      */
     @Override
     @NotNull
-    public CraftingMenuHandle crafting(@NotNull Player viewer, long generation) {
+    public RecipeBookMenuHandle crafting(@NotNull Player viewer, long generation) {
         return new CraftingMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public FurnaceMenuHandle furnace(@NotNull Player viewer, long generation) {
+        return new FurnaceMenuHandleImpl(
+                this.packets,
+                viewer,
+                MenuTypeProxy.FURNACE,
+                InventoryType.FURNACE,
+                MenuType.FURNACE,
+                generation
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public FurnaceMenuHandle smoker(@NotNull Player viewer, long generation) {
+        return new FurnaceMenuHandleImpl(
+                this.packets,
+                viewer,
+                MenuTypeProxy.SMOKER,
+                InventoryType.SMOKER,
+                MenuType.SMOKER,
+                generation
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public FurnaceMenuHandle blastFurnace(@NotNull Player viewer, long generation) {
+        return new FurnaceMenuHandleImpl(
+                this.packets,
+                viewer,
+                MenuTypeProxy.BLAST_FURNACE,
+                InventoryType.BLAST_FURNACE,
+                MenuType.BLAST_FURNACE,
+                generation
+        );
     }
 
     /**

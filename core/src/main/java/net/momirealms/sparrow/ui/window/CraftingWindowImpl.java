@@ -1,26 +1,17 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.kyori.adventure.key.Key;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSize;
-import net.momirealms.sparrow.ui.internal.menu.CraftingMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
-import net.momirealms.sparrow.ui.internal.menu.MenuInput;
-import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.MiscUtils;
-import org.bukkit.GameMode;
-import org.bukkit.NamespacedKey;
+import net.momirealms.sparrow.ui.internal.menu.RecipeBookMenuHandle;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
-final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implements CraftingWindow {
-    private final HandlerList<Consumer<RecipeBookSelect>> recipeSelectHandlers;
+final class CraftingWindowImpl extends AbstractRecipeBookWindow<RecipeBookMenuHandle> implements CraftingWindow {
 
     CraftingWindowImpl(
             @NotNull WindowManager manager,
@@ -29,93 +20,19 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
             @NotNull AbstractWindow.Settings settings,
             @NotNull List<Consumer<RecipeBookSelect>> recipeSelectHandlers
     ) {
-        super(manager, viewer, layout, settings);
-        this.recipeSelectHandlers = new HandlerList<>(recipeSelectHandlers);
+        super(manager, viewer, layout, settings, recipeSelectHandlers);
     }
 
     @Override
     @NotNull
-    public CompletionStage<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId) {
-        return this.submit(
-                () -> {
-                    CraftingMenuHandle menuHandle = this.menuHandle();
-                    if (menuHandle == null) {
-                        return GhostRecipeResult.WINDOW_CLOSED;
-                    }
-                    return menuHandle.sendGhostRecipe(recipeId)
-                            ? GhostRecipeResult.SENT
-                            : GhostRecipeResult.RECIPE_NOT_FOUND;
-                },
-                () -> GhostRecipeResult.VIEWER_UNAVAILABLE
-        );
-    }
-
-    @Override
-    public void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelect>> handlers) {
-        List<Consumer<RecipeBookSelect>> copy = MiscUtils.copyConsumers(handlers);
-        this.submit(
-                () -> this.recipeSelectHandlers.set(copy),
-                "Failed to replace Crafting Window recipe selection handlers"
-        );
-    }
-
-    @Override
-    @NotNull
-    public List<Consumer<RecipeBookSelect>> getRecipeSelectHandlers() {
-        return this.recipeSelectHandlers.snapshot();
-    }
-
-    @Override
-    public void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler) {
-        Consumer<RecipeBookSelect> copied = MiscUtils.narrowConsumer(handler);
-        this.submit(
-                () -> this.recipeSelectHandlers.append(copied),
-                "Failed to add Crafting Window recipe selection handler"
-        );
-    }
-
-    @Override
-    public void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler) {
-        this.submit(
-                () -> this.recipeSelectHandlers.remove(MiscUtils.narrowConsumer(handler)),
-                "Failed to remove Crafting Window recipe selection handler"
-        );
-    }
-
-    @Override
-    @NotNull
-    protected CraftingMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+    protected RecipeBookMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         return factory.crafting(this.viewer(), generation);
     }
 
-    @Override
-    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
-        if (input instanceof MenuInput.WindowSpecific.RecipePlace recipePlace) {
-            this.handleRecipeSelection(recipePlace);
-        }
-    }
-
-    private void handleRecipeSelection(MenuInput.WindowSpecific.RecipePlace recipePlace) {
-        CraftingMenuHandle menuHandle = this.menuHandle();
-        if (menuHandle == null || recipePlace.containerId() != menuHandle.containerId() || this.viewer().getGameMode() == GameMode.SPECTATOR) return;
-        Key recipeId = menuHandle.recipeKey(recipePlace.displayId());
-        if (recipeId == null) return;
-        NamespacedKey bukkitRecipeId = NamespacedKey.fromString(recipeId.asString());
-        if (bukkitRecipeId == null || !this.viewer().hasDiscoveredRecipe(bukkitRecipeId)) return;
-
-        RecipeBookSelect selection = new RecipeBookSelect(this.viewer(), this, recipeId, recipePlace.makeAll());
-        this.recipeSelectHandlers.forEachIsolated(
-                handler -> handler.accept(selection),
-                "Failed to handle Crafting Window recipe selection",
-                this::report
-        );
-    }
-
-    static final class BuilderImpl extends AbstractWindowBuilder<CraftingWindow, CraftingWindow.Builder> implements CraftingWindow.Builder {
+    static final class BuilderImpl extends AbstractRecipeBookWindow.BuilderBase<CraftingWindow, CraftingWindow.Builder> implements CraftingWindow.Builder {
         private Gui craftingGui = Gui.empty(new GuiSize(3, 3));
         private Gui resultGui = Gui.empty(new GuiSize(1, 1));
         private @Nullable Gui lowerGui;
-        private List<Consumer<RecipeBookSelect>> recipeSelectHandlers = new ArrayList<>();
 
         BuilderImpl() {
         }
@@ -125,7 +42,6 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
             this.craftingGui = source.craftingGui;
             this.resultGui = source.resultGui;
             this.lowerGui = source.lowerGui;
-            this.recipeSelectHandlers = new ArrayList<>(source.recipeSelectHandlers);
         }
 
         @Override
@@ -146,22 +62,6 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
         @NotNull
         public CraftingWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
-            return this;
-        }
-
-        @Override
-        @NotNull
-        public CraftingWindow.Builder setRecipeSelectHandlers(
-                @NotNull List<? extends Consumer<? super RecipeBookSelect>> handlers
-        ) {
-            this.recipeSelectHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
-            return this;
-        }
-
-        @Override
-        @NotNull
-        public CraftingWindow.Builder addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler) {
-            this.recipeSelectHandlers.add(MiscUtils.narrowConsumer(handler));
             return this;
         }
 
@@ -196,7 +96,7 @@ final class CraftingWindowImpl extends AbstractWindow<CraftingMenuHandle> implem
                     viewer,
                     layout,
                     settings,
-                    List.copyOf(this.recipeSelectHandlers)
+                    this.recipeSelectHandlers()
             );
         }
     }

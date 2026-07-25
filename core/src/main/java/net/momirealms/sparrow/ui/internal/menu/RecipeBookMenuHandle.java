@@ -6,10 +6,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 工作台菜单额外提供的 recipe display 解析与 ghost recipe 能力.
+ * 配方书菜单共用的 recipe display 解析与 ghost recipe 能力.
  */
 @ApiStatus.Internal
-public interface CraftingMenuHandle extends MenuHandle {
+public interface RecipeBookMenuHandle extends MenuHandle {
 
     /**
      * 把客户端 recipe display id 解析为配方资源标识符.

@@ -10,7 +10,7 @@ import java.util.function.Consumer;
 
 /**
  * 具备原版配方书选择通知和 ghost recipe 显示能力的 Window.
- * <p>配方选择只产生通知, grid 和结果始终由应用维护. 所有变更和 ghost 请求都可从
+ * <p>配方选择只产生通知, 菜单输入槽和结果始终由应用维护. 所有变更和 ghost 请求都可从
  * 任意线程调用, 实际处理会与 Window 生命周期一起串行进入玩家的实体线程.
  */
 public interface RecipeBookWindow extends Window {

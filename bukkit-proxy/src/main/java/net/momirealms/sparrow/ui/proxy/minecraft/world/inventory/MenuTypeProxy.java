@@ -22,6 +22,9 @@ public interface MenuTypeProxy {
     Object CARTOGRAPHY_TABLE = INSTANCE.CARTOGRAPHY_TABLE();
     Object CRAFTER_3x3 = INSTANCE.CRAFTER_3x3();
     Object CRAFTING = INSTANCE.CRAFTING();
+    Object FURNACE = INSTANCE.FURNACE();
+    Object SMOKER = INSTANCE.SMOKER();
+    Object BLAST_FURNACE = INSTANCE.BLAST_FURNACE();
     Object STONECUTTER = INSTANCE.STONECUTTER();
 
     @FieldGetter(name = "GENERIC_9x1", isStatic = true)
@@ -68,6 +71,15 @@ public interface MenuTypeProxy {
 
     @FieldGetter(name = "CRAFTING", isStatic = true)
     Object CRAFTING();
+
+    @FieldGetter(name = "FURNACE", isStatic = true)
+    Object FURNACE();
+
+    @FieldGetter(name = "SMOKER", isStatic = true)
+    Object SMOKER();
+
+    @FieldGetter(name = "BLAST_FURNACE", isStatic = true)
+    Object BLAST_FURNACE();
 
     @FieldGetter(name = "STONECUTTER", isStatic = true)
     Object STONECUTTER();
