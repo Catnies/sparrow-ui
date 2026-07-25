@@ -31,6 +31,15 @@ public interface ItemStackProxy {
     @MethodInvoker(name = "copy")
     Object copy(Object target);
 
+    @MethodInvoker(name = "getComponents")
+    Object getComponents(Object target);
+
+    @MethodInvoker(name = "getItemHolder", activeIf = "!min_version=26.1")
+    Object getItemHolder(Object target);
+
+    @MethodInvoker(name = "typeHolder", activeIf = "min_version=26.1")
+    Object typeHolder(Object target);
+
     @MethodInvoker(name = "transmuteCopy")
     Object transmuteCopy(Object target, @Type(name = "net.minecraft.world.level.ItemLike") Object item);
 

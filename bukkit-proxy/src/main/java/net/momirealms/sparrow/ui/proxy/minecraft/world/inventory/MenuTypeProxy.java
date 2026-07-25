@@ -26,6 +26,7 @@ public interface MenuTypeProxy {
     Object SMOKER = INSTANCE.SMOKER();
     Object BLAST_FURNACE = INSTANCE.BLAST_FURNACE();
     Object STONECUTTER = INSTANCE.STONECUTTER();
+    Object MERCHANT = INSTANCE.MERCHANT();
 
     @FieldGetter(name = "GENERIC_9x1", isStatic = true)
     Object GENERIC_9x1();
@@ -83,4 +84,7 @@ public interface MenuTypeProxy {
 
     @FieldGetter(name = "STONECUTTER", isStatic = true)
     Object STONECUTTER();
+
+    @FieldGetter(name = "MERCHANT", isStatic = true)
+    Object MERCHANT();
 }
