@@ -3,11 +3,14 @@ package net.momirealms.sparrow.ui.internal.menu;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
+import net.momirealms.sparrow.ui.window.MerchantWindow;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.MenuType;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.function.BiConsumer;
 
 /**
  * Paper 容器协议适配器.
@@ -215,6 +218,26 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     @NotNull
     public StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation) {
         return new StonecutterMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public MerchantMenuHandle merchant(
+            @NotNull Player viewer,
+            long generation,
+            @NotNull MerchantWindow window,
+            @NotNull BiConsumer<? super String, ? super Throwable> reporter
+    ) {
+        return new MerchantMenuHandleImpl(
+                this.packets,
+                viewer,
+                generation,
+                window,
+                reporter
+        );
     }
 
     /**

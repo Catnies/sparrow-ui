@@ -182,5 +182,14 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          */
         record RecipePlace(int containerId, int displayId, boolean makeAll) implements WindowSpecific {
         }
+
+        /**
+         * 客户端选择了商人界面中的一项交易.
+         *
+         * @param containerId 接收包时所属的容器编号
+         * @param index 交易索引
+         */
+        record TradeSelect(int containerId, int index) implements WindowSpecific {
+        }
     }
 }

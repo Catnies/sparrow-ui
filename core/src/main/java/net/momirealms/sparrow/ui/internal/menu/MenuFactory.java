@@ -1,8 +1,11 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
+import net.momirealms.sparrow.ui.window.MerchantWindow;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.function.BiConsumer;
 
 /**
  * 在玩家实体线程创建由具体 Window 类型明确选择的协议菜单.
@@ -157,4 +160,21 @@ public interface MenuFactory {
      */
     @NotNull
     StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation);
+
+    /**
+     * 为指定玩家创建尚未打开的商人菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @param window 渲染 Trade Item 时使用的 Window
+     * @param reporter 渲染与清理失败的上报目标
+     * @return 商人菜单句柄
+     */
+    @NotNull
+    MerchantMenuHandle merchant(
+            @NotNull Player viewer,
+            long generation,
+            @NotNull MerchantWindow window,
+            @NotNull BiConsumer<? super String, ? super Throwable> reporter
+    );
 }

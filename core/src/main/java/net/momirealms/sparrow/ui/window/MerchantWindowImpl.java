@@ -1,0 +1,542 @@
+package net.momirealms.sparrow.ui.window;
+
+import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.Observer;
+import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
+import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.internal.menu.MerchantMenuHandle;
+import net.momirealms.sparrow.ui.item.Item;
+import net.momirealms.sparrow.ui.util.HandlerList;
+import net.momirealms.sparrow.ui.util.MiscUtils;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+
+final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implements MerchantWindow {
+    private final HandlerList<Consumer<TradeSelection>> tradeSelectionHandlers;
+
+    private volatile int level;
+    private volatile double progress;
+    private volatile boolean restockMessageEnabled;
+    private volatile List<MerchantWindow.Trade> trades;
+
+    private int previousTradeIndex = -1;
+    private long selectionResetVersion;
+
+    MerchantWindowImpl(
+            @NotNull WindowManager manager,
+            @NotNull Player viewer,
+            @NotNull WindowLayout layout,
+            @NotNull AbstractWindow.Settings settings,
+            int level,
+            double progress,
+            boolean restockMessageEnabled,
+            @NotNull List<MerchantWindow.Trade> trades,
+            @NotNull List<Consumer<TradeSelection>> tradeSelectionHandlers
+    ) {
+        super(manager, viewer, layout, settings);
+        this.level = level;
+        this.progress = progress;
+        this.restockMessageEnabled = restockMessageEnabled;
+        this.trades = trades;
+        this.tradeSelectionHandlers = new HandlerList<>(tradeSelectionHandlers);
+    }
+
+    @Override
+    public void setLevel(int level) {
+        MerchantWindowImpl.requireLevel(level);
+        this.submit(
+                () -> {
+                    if (this.level == level) {
+                        return;
+                    }
+                    this.level = level;
+                    MerchantMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setLevel(level);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Merchant Window level"
+        );
+    }
+
+    @Override
+    public int getLevel() {
+        return this.level;
+    }
+
+    @Override
+    public void setProgress(double progress) {
+        MerchantWindowImpl.requireProgress(progress);
+        this.submit(
+                () -> {
+                    if (Double.compare(this.progress, progress) == 0) {
+                        return;
+                    }
+                    this.progress = progress;
+                    MerchantMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setProgress(progress);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Merchant Window progress"
+        );
+    }
+
+    @Override
+    public double getProgress() {
+        return this.progress;
+    }
+
+    @Override
+    public void setRestockMessageEnabled(boolean enabled) {
+        this.submit(
+                () -> {
+                    if (this.restockMessageEnabled == enabled) {
+                        return;
+                    }
+                    this.restockMessageEnabled = enabled;
+                    MerchantMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setRestockMessageEnabled(enabled);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Merchant Window restock message"
+        );
+    }
+
+    @Override
+    public boolean isRestockMessageEnabled() {
+        return this.restockMessageEnabled;
+    }
+
+    @Override
+    public void setTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
+        List<MerchantWindow.Trade> copy = MerchantWindowImpl.copyTrades(trades);
+        this.submit(
+                () -> this.replaceTrades(copy),
+                "Failed to replace Merchant Window trades"
+        );
+    }
+
+    @Override
+    @NotNull
+    public List<MerchantWindow.Trade> getTrades() {
+        return this.trades;
+    }
+
+    @Override
+    public void setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super TradeSelection>> handlers) {
+        List<Consumer<TradeSelection>> copy = MiscUtils.copyConsumers(handlers);
+        this.submit(
+                () -> this.tradeSelectionHandlers.set(copy),
+                "Failed to replace Merchant Window trade selection handlers"
+        );
+    }
+
+    @Override
+    @NotNull
+    public List<Consumer<TradeSelection>> getTradeSelectionHandlers() {
+        return this.tradeSelectionHandlers.snapshot();
+    }
+
+    @Override
+    public void addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
+        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(handler);
+        this.submit(
+                () -> this.tradeSelectionHandlers.append(copied),
+                "Failed to add Merchant Window trade selection handler"
+        );
+    }
+
+    @Override
+    public void removeTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
+        this.submit(
+                () -> this.tradeSelectionHandlers.remove(MiscUtils.narrowConsumer(handler)),
+                "Failed to remove Merchant Window trade selection handler"
+        );
+    }
+
+    @NotNull
+    @Override
+    protected MerchantMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+        this.previousTradeIndex = -1;
+        this.selectionResetVersion++;
+        MerchantMenuHandle menuHandle = factory.merchant(this.viewer(), generation, this, this::report);
+        try {
+            menuHandle.setLevel(this.level);
+            menuHandle.setProgress(this.progress);
+            menuHandle.setRestockMessageEnabled(this.restockMessageEnabled);
+            menuHandle.setTrades(this.trades);
+            return menuHandle;
+        } catch (RuntimeException | Error throwable) {
+            try {
+                menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
+            } catch (RuntimeException | Error closeFailure) {
+                throwable.addSuppressed(closeFailure);
+            }
+            throw throwable;
+        }
+    }
+
+    @Override
+    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
+        if (input instanceof MenuInput.WindowSpecific.TradeSelect tradeSelect) {
+            this.handleTradeSelection(tradeSelect);
+        }
+    }
+
+    private void replaceTrades(List<MerchantWindow.Trade> trades) {
+        List<MerchantWindow.Trade> previous = this.trades;
+        MerchantMenuHandle menuHandle = this.menuHandle();
+        if (menuHandle != null) {
+            menuHandle.setTrades(trades);
+        }
+        this.trades = trades;
+        if (menuHandle != null) {
+            this.requestMenuSynchronization();
+        }
+
+        if (trades.size() < previous.size()) {
+            this.previousTradeIndex = -1;
+            this.selectionResetVersion++;
+            this.updateTitleOnEntity(this.title());
+        }
+    }
+
+    @Override
+    void tick(@Nullable ScheduledTask task) {
+        MerchantMenuHandle menuHandle = this.menuHandle();
+        if (menuHandle != null && menuHandle.tickOffers()) {
+            this.requestMenuSynchronization();
+        }
+        super.tick(task);
+    }
+
+    private void handleTradeSelection(MenuInput.WindowSpecific.TradeSelect selection) {
+        MerchantMenuHandle menuHandle = this.menuHandle();
+        if (menuHandle == null || selection.containerId() != menuHandle.containerId()) {
+            return;
+        }
+
+        List<MerchantWindow.Trade> snapshot = this.trades;
+        int selectedIndex = selection.index();
+        if (selectedIndex < 0 || selectedIndex >= snapshot.size()) {
+            return;
+        }
+
+        int previousIndex = this.previousTradeIndex;
+        MerchantWindow.Trade previousTrade = previousIndex >= 0 && previousIndex < snapshot.size()
+                ? snapshot.get(previousIndex)
+                : null;
+        MerchantWindow.Trade selectedTrade = snapshot.get(selectedIndex);
+        long resetVersion = this.selectionResetVersion;
+
+        selectedTrade.getFirstInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 0));
+        selectedTrade.getSecondInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 1));
+        selectedTrade.getResult().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 2));
+
+        if (this.selectionResetVersion == resetVersion) {
+            this.previousTradeIndex = selectedIndex;
+        }
+        if (previousIndex == selectedIndex) {
+            return;
+        }
+
+        TradeSelection event = new TradeSelection(
+                this.viewer(),
+                this,
+                previousIndex,
+                selectedIndex,
+                previousTrade,
+                selectedTrade
+        );
+        this.tradeSelectionHandlers.forEachIsolated(
+                handler -> handler.accept(event),
+                "Failed to handle Merchant Window trade selection",
+                this::report
+        );
+    }
+
+    private static void requireLevel(int level) {
+        if (level < 0 || level > 5) {
+            throw new IllegalArgumentException("merchant level must be between 0 and 5: " + level);
+        }
+    }
+
+    private static void requireProgress(double progress) {
+        if (progress != -1.0 && (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0)) {
+            throw new IllegalArgumentException("merchant progress must be -1.0 or between 0.0 and 1.0: " + progress);
+        }
+    }
+
+    @NotNull
+    private static List<MerchantWindow.Trade> copyTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
+        Objects.requireNonNull(trades, "trades");
+        ArrayList<MerchantWindow.Trade> copy = new ArrayList<>(trades.size());
+        for (int index = 0; index < trades.size(); index++) {
+            copy.add(Objects.requireNonNull(trades.get(index), "trades contains null"));
+        }
+        return List.copyOf(copy);
+    }
+
+    static final class TradeImpl implements MerchantWindow.Trade {
+        private final Item firstInput;
+        private final Item secondInput;
+        private final Item result;
+        private final AtomicInteger discount;
+        private final AtomicBoolean available;
+        private final ObservableDispatcher<MerchantWindow.TradeChange> changes = new ObservableDispatcher<>();
+
+        private TradeImpl(
+                @NotNull Item firstInput,
+                @NotNull Item secondInput,
+                @NotNull Item result,
+                int discount,
+                boolean available
+        ) {
+            this.firstInput = firstInput;
+            this.secondInput = secondInput;
+            this.result = result;
+            this.discount = new AtomicInteger(discount);
+            this.available = new AtomicBoolean(available);
+        }
+
+        @Override
+        @NotNull
+        public Item getFirstInput() {
+            return this.firstInput;
+        }
+
+        @Override
+        @NotNull
+        public Item getSecondInput() {
+            return this.secondInput;
+        }
+
+        @Override
+        @NotNull
+        public Item getResult() {
+            return this.result;
+        }
+
+        @Override
+        public int getDiscount() {
+            return this.discount.get();
+        }
+
+        @Override
+        public void setDiscount(int discount) {
+            if (this.discount.getAndSet(discount) != discount) {
+                this.changes.publish(MerchantWindow.TradeChange.DISCOUNT);
+            }
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return this.available.get();
+        }
+
+        @Override
+        public void setAvailable(boolean available) {
+            if (this.available.getAndSet(available) != available) {
+                this.changes.publish(MerchantWindow.TradeChange.AVAILABLE);
+            }
+        }
+
+        @Override
+        @NotNull
+        public Subscription subscribe(@NotNull Observer<? super MerchantWindow.TradeChange> observer) {
+            return this.changes.subscribe(observer);
+        }
+
+        static final class BuilderImpl implements MerchantWindow.Trade.Builder {
+            private Item firstInput = Item.empty();
+            private Item secondInput = Item.empty();
+            private Item result = Item.empty();
+            private int discount;
+            private boolean available = true;
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade.Builder setFirstInput(@NotNull Item item) {
+                this.firstInput = Objects.requireNonNull(item, "item");
+                return this;
+            }
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade.Builder setSecondInput(@NotNull Item item) {
+                this.secondInput = Objects.requireNonNull(item, "item");
+                return this;
+            }
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade.Builder setResult(@NotNull Item item) {
+                this.result = Objects.requireNonNull(item, "item");
+                return this;
+            }
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade.Builder setDiscount(int discount) {
+                this.discount = discount;
+                return this;
+            }
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade.Builder setAvailable(boolean available) {
+                this.available = available;
+                return this;
+            }
+
+            @Override
+            @NotNull
+            public MerchantWindow.Trade build() {
+                return new TradeImpl(
+                        this.firstInput,
+                        this.secondInput,
+                        this.result,
+                        this.discount,
+                        this.available
+                );
+            }
+        }
+    }
+
+    static final class BuilderImpl extends AbstractWindowBuilder<MerchantWindow, MerchantWindow.Builder> implements MerchantWindow.Builder {
+        private Gui upperGui = Gui.empty(new GuiSize(3, 1));
+        private @Nullable Gui lowerGui;
+        private int level;
+        private double progress = -1.0;
+        private boolean restockMessageEnabled;
+        private List<MerchantWindow.Trade> trades = List.of();
+        private List<Consumer<TradeSelection>> tradeSelectionHandlers = new ArrayList<>();
+
+        BuilderImpl() {
+        }
+
+        private BuilderImpl(@NotNull BuilderImpl source) {
+            super(source);
+            this.upperGui = source.upperGui;
+            this.lowerGui = source.lowerGui;
+            this.level = source.level;
+            this.progress = source.progress;
+            this.restockMessageEnabled = source.restockMessageEnabled;
+            this.trades = source.trades;
+            this.tradeSelectionHandlers = new ArrayList<>(source.tradeSelectionHandlers);
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+            this.upperGui = upperGui;
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+            this.lowerGui = lowerGui;
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setLevel(int level) {
+            MerchantWindowImpl.requireLevel(level);
+            this.level = level;
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setProgress(double progress) {
+            MerchantWindowImpl.requireProgress(progress);
+            this.progress = progress;
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setRestockMessageEnabled(boolean enabled) {
+            this.restockMessageEnabled = enabled;
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setTrades(@NotNull List<? extends MerchantWindow.Trade> trades) {
+            this.trades = MerchantWindowImpl.copyTrades(trades);
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super TradeSelection>> handlers) {
+            this.tradeSelectionHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
+            this.tradeSelectionHandlers.add(MiscUtils.narrowConsumer(handler));
+            return this;
+        }
+
+        @Override
+        @NotNull
+        public MerchantWindow.Builder clone() {
+            return new BuilderImpl(this);
+        }
+
+        @Override
+        @NotNull
+        protected MerchantWindow.Builder self() {
+            return this;
+        }
+
+        @Override
+        @NotNull
+        protected MerchantWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
+            if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
+                throw new IllegalArgumentException("merchant upper GUI must have size 3x1");
+            }
+            WindowLayout layout = WindowLayout.of(
+                    WindowLayout.Region.upper(this.upperGui),
+                    WindowLayout.Region.lower(this.lowerGui)
+            );
+            return new MerchantWindowImpl(
+                    WindowManager.getInstance(),
+                    viewer,
+                    layout,
+                    settings,
+                    this.level,
+                    this.progress,
+                    this.restockMessageEnabled,
+                    this.trades,
+                    List.copyOf(this.tradeSelectionHandlers)
+            );
+        }
+    }
+}

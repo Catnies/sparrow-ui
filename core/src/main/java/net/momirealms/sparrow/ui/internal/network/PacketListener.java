@@ -19,6 +19,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Serverbou
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundPlaceRecipePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundRenameItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundSelectBundleItemPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundSelectTradePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.RecipeDisplayIdProxy;
@@ -329,6 +330,12 @@ public final class PacketListener implements Listener, AutoCloseable {
                         this.containerId,
                         ServerboundSelectBundleItemPacketProxy.INSTANCE.slot(packet),
                         ServerboundSelectBundleItemPacketProxy.INSTANCE.selectedItem(packet)
+                );
+            }
+            else if (ServerboundSelectTradePacketProxy.CLASS.isInstance(packet)) {
+                input = new MenuInput.WindowSpecific.TradeSelect(
+                        this.containerId,
+                        ServerboundSelectTradePacketProxy.INSTANCE.getItem(packet)
                 );
             }
             else if (ServerboundPongPacketProxy.CLASS.isInstance(packet)) {
