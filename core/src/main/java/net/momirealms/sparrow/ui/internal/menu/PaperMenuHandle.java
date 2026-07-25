@@ -22,8 +22,10 @@ import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.MenuType;
@@ -44,6 +46,7 @@ import java.util.Set;
 @SuppressWarnings("UnstableApiUsage")
 class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final int INCOMING_CAPACITY = 256; // 单个菜单会话最多暂存的入站消息数
+    private static final int OFF_HAND_SLOT = 45; // 玩家原生 inventory menu 中的副手协议槽位
 
     private final PacketListener packets; // 安装入站捕获会话并发送出站协议包
     private final Player player;
@@ -56,6 +59,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private final Object proxy; // NMS AbstractContainerMenu, 安装到玩家并禁用原版自动同步的生成菜单
     private final Object[] remoteSlots; // NMS RemoteSlot[], Paper 维护的客户端已知槽位哈希镜像
     private final Object remoteCursor; // NMS RemoteSlot, Paper 维护的客户端已知光标哈希镜像
+    private final Object remoteOffHand; // NMS RemoteSlot, 玩家原生 inventory menu 的副手远端镜像
     private final BitSet predictedSlots = new BitSet(); // 客户端预测声称发生变化的槽位
     private final BitSet forcedSlots = new BitSet(); // 即使内容相同也必须重发的槽位
     private final BitSet candidateSlots = new BitSet(); // 复用的本轮增量同步候选集合
@@ -67,6 +71,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private @Nullable PacketListener.Session session; // 当前入站捕获会话, 打开前和关闭后为空
     private Object actualCarried = ItemStackProxy.EMPTY; // NMS ItemStack, 代理菜单唯一持有的真实光标
     private boolean predictedCarried; // 客户端预测是否要求重新核对光标
+    private boolean offHandDirty; // 客户端 F 键预测要求无条件重发真实副手
     private boolean cursorClaimed; // 来源菜单的真实光标是否已经被清空
     private Lifecycle lifecycle = Lifecycle.CREATED; // 菜单会话的生命周期状态
 
@@ -129,6 +134,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.remoteSlots[slot] = this.createRemoteSlot();
         }
         this.remoteCursor = this.createRemoteSlot();
+        this.remoteOffHand = this.createRemoteSlot();
         this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
     }
 
@@ -235,8 +241,9 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.prepareSynchronize(dirtySlots, forceFull);
         if (forceFull) {
             FullContents full = this.prepareFull(slots, cursor);
-            ArrayList<Object> outgoing = new ArrayList<>(2); // NMS 客户端数据包列表
+            ArrayList<Object> outgoing = new ArrayList<>(3); // NMS 客户端数据包列表
             outgoing.add(full.packet());
+            outgoing.add(full.offHandPacket());
             this.submitPackets(outgoing, true);
             this.packets.send(this.player, outgoing);
             this.commitFullContents(full);
@@ -276,7 +283,7 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @return 客户端显示物品
      */
     protected Object toClientItem(int rawSlot, ItemStack item) {
-        return ItemUtils.getItemStackNMSHandle(item);
+        return ItemUtils.getItemStackHandle(item);
     }
 
     /**
@@ -376,6 +383,9 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy)) {
             return false;
+        }
+        if (interaction instanceof MenuInput.Common.Click click && click.clickType() == ClickType.SWAP_OFFHAND) {
+            this.offHandDirty = true;
         }
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
             this.predictedCarried |= prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
@@ -504,13 +514,14 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 构造一次打开或标题刷新所需的完整协议序列.
      */
     private List<Object> openPackets(Component title, FullContents full) {
-        ArrayList<Object> outgoing = new ArrayList<>(3); // NMS 客户端数据包列表
+        ArrayList<Object> outgoing = new ArrayList<>(4); // NMS 客户端数据包列表
         outgoing.add(ClientboundOpenScreenPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 this.menuType,
                 PaperAdventureProxy.INSTANCE.asVanilla(title)
         ));
         outgoing.add(full.packet());
+        outgoing.add(full.offHandPacket());
         this.submitPackets(outgoing, true);
         return outgoing;
     }
@@ -523,14 +534,19 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         for (int index = 0; index < slots.length; index++) {
             items.add(ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
         }
-        Object visualCursor = ItemUtils.getItemStackNMSHandle(cursor.visual()); // 借用的 NMS ItemStack
+        Object visualCursor = ItemUtils.getItemStackHandle(cursor.visual()); // 借用的 NMS ItemStack
         Object packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
                 items,
                 ItemStackProxy.INSTANCE.copy(visualCursor)
         );
-        return new FullContents(items, visualCursor, packet);
+        return new FullContents(
+                items,
+                visualCursor,
+                packet,
+                this.createOffHandPacket(ItemUtils.getPlayerItemStackHandle(this.player, EquipmentSlot.OFF_HAND))
+        );
     }
 
     /**
@@ -541,8 +557,10 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
         }
         RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.visualCursor());
+        RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(full.offHandPacket()));
         this.predictedSlots.clear();
         this.predictedCarried = false;
+        this.offHandDirty = false;
         this.forcedSlots.clear();
         this.commitPackets();
     }
@@ -566,9 +584,10 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         boolean viewCursorTouched = this.view.takeCursorTouched();
 
         int candidateCount = candidates.cardinality();
-        ArrayList<Object> outgoing = new ArrayList<>(candidateCount + 2); // NMS 客户端数据包列表
+        ArrayList<Object> outgoing = new ArrayList<>(candidateCount + 3); // NMS 客户端数据包列表
         BitSet changedSlots = this.changedSlots;
         changedSlots.clear();
+        Object sentOffHand = null; // NMS ItemStack
         try {
             for (
                     int slot = candidates.nextSetBit(0);
@@ -588,14 +607,21 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 );
                 outgoing.add(packet);
                 changedSlots.set(slot);
-                this.pendingRemoteItems[slot] = ClientboundContainerSetSlotPacketProxy.INSTANCE.item(packet);
+                this.pendingRemoteItems[slot] = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
+            }
+
+            Object offHand = ItemUtils.getPlayerItemStackHandle(this.player, EquipmentSlot.OFF_HAND); // 借用的 NMS ItemStack
+            if (this.offHandDirty || !RemoteSlotProxy.INSTANCE.matches(this.remoteOffHand, offHand)) {
+                Object packet = this.createOffHandPacket(offHand);
+                outgoing.add(packet);
+                sentOffHand = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
             }
 
             boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
             boolean cursorChanged = false;
             Object sentVisualCursor = ItemStackProxy.EMPTY; // NMS ItemStack
             if (checkCursor) {
-                sentVisualCursor = ItemUtils.getItemStackNMSHandle(cursor.visual());
+                sentVisualCursor = ItemUtils.getItemStackHandle(cursor.visual());
                 if (!RemoteSlotProxy.INSTANCE.matches(this.remoteCursor, sentVisualCursor)) {
                     outgoing.add(ClientboundSetCursorItemPacketProxy.INSTANCE.newInstance(
                             ItemStackProxy.INSTANCE.copy(sentVisualCursor)
@@ -620,6 +646,10 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             }
             if (cursorChanged) {
                 RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentVisualCursor);
+            }
+            if (sentOffHand != null) {
+                RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, sentOffHand);
+                this.offHandDirty = false;
             }
             changedSlots.or(this.viewTouchedSlots);
             this.view.apply(slots, changedSlots, cursor.actual(), cursorChanged || viewCursorTouched);
@@ -692,6 +722,19 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
+     * 构造指定副手快照的同步包.
+     */
+    private Object createOffHandPacket(Object offHand) {
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        return ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
+                AbstractContainerMenuProxy.INSTANCE.containerId(inventoryMenu),
+                AbstractContainerMenuProxy.INSTANCE.incrementStateId(inventoryMenu),
+                OFF_HAND_SLOT,
+                offHand
+        );
+    }
+
+    /**
      * 菜单会话的生命周期状态.
      * CREATED 经打开预备进入 PREPARED, 初始批次提交成功进入 COMMITTED, 任意状态关闭后进入 CLOSED.
      */
@@ -708,11 +751,13 @@ class PaperMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @param slots 冻结槽位
      * @param visualCursor 仅发送给客户端的可视光标
      * @param packet 完整内容包
+     * @param offHandPacket 玩家原生 inventory menu 的副手包
      */
     private record FullContents(
             List<Object> slots, // NMS ItemStack 包快照
             Object visualCursor, // NMS ItemStack 可视光标
-            Object packet // NMS ClientboundContainerSetContentPacket
+            Object packet, // NMS ClientboundContainerSetContentPacket
+            Object offHandPacket // NMS ClientboundContainerSetSlotPacket
     ) {
     }
 }

@@ -208,7 +208,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
     private static Object createRecipeEntries(List<StonecutterRecipeOption> options) {
         ArrayList<Object> entries = new ArrayList<>(options.size());
         for (int index = 0; index < options.size(); index++) {
-            Object stack = ItemUtils.getItemStackNMSHandle(options.get(index).display());
+            Object stack = ItemUtils.getItemStackHandle(options.get(index).display());
             Object display;
             if (VersionHelper.isOrAbove26_1()) {
                 Object template = ItemStackTemplateProxy.INSTANCE.fromNonEmptyStack(stack);

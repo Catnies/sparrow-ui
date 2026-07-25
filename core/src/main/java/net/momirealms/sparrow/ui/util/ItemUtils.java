@@ -7,6 +7,8 @@ import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -33,14 +35,14 @@ public final class ItemUtils {
     }
 
     /**
-     * 从Bukkit ItemStack 获取 NMS ItemStack.
+     * 从 Bukkit ItemStack 获取 NMS ItemStack.
      * <p>返回值仍由传入的 Bukkit 物品持有.
      *
      * @param item Bukkit 物品快照
      * @return 借用的底层物品句柄
      */
     @NotNull
-    public static Object getItemStackNMSHandle(@NotNull ItemStack item) {
+    public static Object getItemStackHandle(@NotNull ItemStack item) {
         if (item.isEmpty()) {
             return ItemStackProxy.EMPTY;
         }
@@ -78,5 +80,16 @@ public final class ItemUtils {
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.CUSTOM_NAME, ComponentProxy.INSTANCE.empty());
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.TOOLTIP_DISPLAY, TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>()));
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.ITEM_MODEL, IdentifierProxy.INSTANCE.withDefaultNamespace("air"));
+    }
+
+    /**
+     * 获取玩家背包中指定槽位的 NMS ItemStack.
+     *
+     * @param player 玩家
+     * @param equipmentSlot 槽位
+     * @return NMS ItemStack
+     */
+    public static Object getPlayerItemStackHandle(Player player, EquipmentSlot equipmentSlot) {
+        return getItemStackHandle(player.getInventory().getItem(equipmentSlot));
     }
 }

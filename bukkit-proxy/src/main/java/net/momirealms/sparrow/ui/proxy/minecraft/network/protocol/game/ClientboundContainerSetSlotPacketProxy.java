@@ -21,5 +21,5 @@ public interface ClientboundContainerSetSlotPacketProxy extends PacketProxy {
     );
 
     @MethodInvoker(name = "getItem")
-    Object item(Object target);
+    Object getItem(Object target);
 }

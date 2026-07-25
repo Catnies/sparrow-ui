@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.proxy.minecraft.world.inventory;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.nyana.reflection.proxy.ASMProxyFactory;
+import net.nyana.reflection.proxy.annotation.FieldGetter;
 import net.nyana.reflection.proxy.annotation.MethodInvoker;
 import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 import net.nyana.reflection.proxy.annotation.Type;
@@ -9,6 +10,9 @@ import net.nyana.reflection.proxy.annotation.Type;
 @ReflectionProxy(name = "net.minecraft.world.inventory.AbstractContainerMenu")
 public interface AbstractContainerMenuProxy {
     AbstractContainerMenuProxy INSTANCE = ASMProxyFactory.create(AbstractContainerMenuProxy.class);
+
+    @FieldGetter(name = "containerId")
+    int containerId(Object target);
 
     @MethodInvoker(name = "getStateId")
     int getStateId(Object target);
