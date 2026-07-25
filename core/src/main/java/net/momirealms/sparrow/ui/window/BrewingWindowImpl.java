@@ -28,14 +28,17 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
     @Override
     public void setBrewProgress(double progress) {
         BrewingWindowImpl.requireProgress(progress, "brew");
-        this.mutate(() -> {
-            this.brewProgress = progress;
-            BrewingMenuHandle menuHandle = this.menuHandle();
-            if (menuHandle != null) {
-                menuHandle.setBrewProgress(progress);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Brewing Window brew progress");
+        this.submit(
+                () -> {
+                    this.brewProgress = progress;
+                    BrewingMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setBrewProgress(progress);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Brewing Window brew progress"
+        );
     }
 
     @Override
@@ -46,14 +49,17 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
     @Override
     public void setFuelProgress(double progress) {
         BrewingWindowImpl.requireProgress(progress, "fuel");
-        this.mutate(() -> {
-            this.fuelProgress = progress;
-            BrewingMenuHandle menuHandle = this.menuHandle();
-            if (menuHandle != null) {
-                menuHandle.setFuelProgress(progress);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Brewing Window fuel progress");
+        this.submit(
+                () -> {
+                    this.fuelProgress = progress;
+                    BrewingMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setFuelProgress(progress);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Brewing Window fuel progress"
+        );
     }
 
     @Override

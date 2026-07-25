@@ -112,44 +112,6 @@ final class CartographyMenuHandleImpl extends PaperMenuHandle implements Cartogr
     }
 
     @Override
-    protected void prepareMenuSynchronization(@NotNull BitSet dirtySlots, boolean forceFull) {
-        if (dirtySlots.get(MAP_SLOT) || dirtySlots.get(VIEW_SLOT)) {
-            this.forceRemoteSlot(RESULT_SLOT);
-        }
-    }
-
-    @Override
-    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
-        this.patchQueued = forceFull || this.hasDirtyPatch();
-        this.iconsQueued = forceFull || this.iconsDirty;
-        if (!this.patchQueued && !this.iconsQueued) {
-            return;
-        }
-
-        Object patch = this.patchQueued ? this.createPatch(forceFull) : null; // NMS MapItemSavedData.MapPatch
-        List<Object> icons = this.iconsQueued ? this.decorations : null; // NMS MapDecoration 列表
-        outgoing.add(ClientboundMapItemDataPacketProxy.INSTANCE.newInstance(
-                MapIdProxy.INSTANCE.newInstance(this.mapId),
-                (byte) 0,
-                false,
-                icons,
-                patch
-        ));
-    }
-
-    @Override
-    protected void commitMenuDataPackets() {
-        if (this.patchQueued) {
-            this.clearDirtyPatch();
-            this.patchQueued = false;
-        }
-        if (this.iconsQueued) {
-            this.iconsDirty = false;
-            this.iconsQueued = false;
-        }
-    }
-
-    @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
         if (rawSlot == MAP_SLOT) {
             Object clientItem = item.isEmpty()
@@ -176,6 +138,44 @@ final class CartographyMenuHandleImpl extends PaperMenuHandle implements Cartogr
             return clientItem;
         }
         return super.toClientItem(rawSlot, item);
+    }
+
+    @Override
+    protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
+        if (dirtySlots.get(MAP_SLOT) || dirtySlots.get(VIEW_SLOT)) {
+            this.forceRemoteSlot(RESULT_SLOT);
+        }
+    }
+
+    @Override
+    protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
+        this.patchQueued = forceFull || this.hasDirtyPatch();
+        this.iconsQueued = forceFull || this.iconsDirty;
+        if (!this.patchQueued && !this.iconsQueued) {
+            return;
+        }
+
+        Object patch = this.patchQueued ? this.createPatch(forceFull) : null; // NMS MapItemSavedData.MapPatch
+        List<Object> icons = this.iconsQueued ? this.decorations : null; // NMS MapDecoration 列表
+        outgoing.add(ClientboundMapItemDataPacketProxy.INSTANCE.newInstance(
+                MapIdProxy.INSTANCE.newInstance(this.mapId),
+                (byte) 0,
+                false,
+                icons,
+                patch
+        ));
+    }
+
+    @Override
+    protected void commitPackets() {
+        if (this.patchQueued) {
+            this.clearDirtyPatch();
+            this.patchQueued = false;
+        }
+        if (this.iconsQueued) {
+            this.iconsDirty = false;
+            this.iconsQueued = false;
+        }
     }
 
     private Object createPatch(boolean forceFull) {

@@ -52,7 +52,7 @@ final class BrewingMenuHandleImpl extends PaperMenuHandle implements BrewingMenu
     }
 
     @Override
-    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
+    protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         this.brewQueued = forceFull || this.brewDirty;
         this.fuelQueued = forceFull || this.fuelDirty;
         if (this.brewQueued) {
@@ -72,7 +72,7 @@ final class BrewingMenuHandleImpl extends PaperMenuHandle implements BrewingMenu
     }
 
     @Override
-    protected void commitMenuDataPackets() {
+    protected void commitPackets() {
         if (this.brewQueued) {
             this.brewDirty = false;
             this.brewQueued = false;

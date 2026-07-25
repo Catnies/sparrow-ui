@@ -16,10 +16,12 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Serverbou
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClosePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerSlotStateChangedPacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundPlaceRecipePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundRenameItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundSelectBundleItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.RecipeDisplayIdProxy;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.Bukkit;
@@ -312,6 +314,14 @@ public final class PacketListener implements Listener, AutoCloseable {
                 input = new MenuInput.WindowSpecific.ButtonClick(
                         proxy.containerId(packet),
                         proxy.buttonId(packet)
+                );
+            }
+            else if (ServerboundPlaceRecipePacketProxy.CLASS.isInstance(packet)) {
+                ServerboundPlaceRecipePacketProxy proxy = ServerboundPlaceRecipePacketProxy.INSTANCE;
+                input = new MenuInput.WindowSpecific.RecipePlace(
+                        proxy.containerId(packet),
+                        RecipeDisplayIdProxy.INSTANCE.index(proxy.recipe(packet)),
+                        proxy.useMaxItems(packet)
                 );
             }
             else if (ServerboundSelectBundleItemPacketProxy.CLASS.isInstance(packet)) {

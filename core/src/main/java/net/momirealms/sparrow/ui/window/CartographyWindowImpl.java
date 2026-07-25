@@ -39,27 +39,33 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
     @Override
     public void applyPatch(@NotNull MapPatch patch) {
         MapPatch snapshot = new MapPatch(patch.startX(), patch.startY(), patch.width(), patch.height(), patch.colors());
-        this.mutate(() -> {
-            CartographyWindowImpl.applyToCanvas(this.canvas, snapshot);
-            CartographyMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.applyPatch(snapshot);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to apply Cartography Window map patch");
+        this.submit(
+                () -> {
+                    CartographyWindowImpl.applyToCanvas(this.canvas, snapshot);
+                    CartographyMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.applyPatch(snapshot);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to apply Cartography Window map patch"
+        );
     }
 
     @Override
     public void setIcons(@NotNull Set<? extends MapIcon> icons) {
         Set<MapIcon> snapshot = CartographyWindowImpl.copyIcons(icons);
-        this.mutate(() -> {
-            this.icons = snapshot;
-            CartographyMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.setIcons(snapshot);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Cartography Window map icons");
+        this.submit(
+                () -> {
+                    this.icons = snapshot;
+                    CartographyMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.setIcons(snapshot);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Cartography Window map icons"
+        );
     }
 
     @Override
@@ -70,28 +76,34 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
 
     @Override
     public void resetMap() {
-        this.mutate(() -> {
-            Arrays.fill(this.canvas, (byte) 0);
-            this.icons = Set.of();
-            CartographyMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.resetMap();
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to reset Cartography Window map");
+        this.submit(
+                () -> {
+                    Arrays.fill(this.canvas, (byte) 0);
+                    this.icons = Set.of();
+                    CartographyMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.resetMap();
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to reset Cartography Window map"
+        );
     }
 
     @Override
     public void setView(@NotNull View view) {
         Objects.requireNonNull(view, "view");
-        this.mutate(() -> {
-            this.view = view;
-            CartographyMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.setView(view);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Cartography Window view");
+        this.submit(
+                () -> {
+                    this.view = view;
+                    CartographyMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.setView(view);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Cartography Window view"
+        );
     }
 
     @Override

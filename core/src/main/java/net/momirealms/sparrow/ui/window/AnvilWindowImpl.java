@@ -53,14 +53,17 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
     @Override
     public void setEnchantmentCost(int enchantmentCost) {
-        this.mutate(() -> {
-            this.enchantmentCost = enchantmentCost;
-            AnvilMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.setEnchantmentCost(enchantmentCost);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Anvil Window enchantment cost");
+        this.submit(
+                () -> {
+                    this.enchantmentCost = enchantmentCost;
+                    AnvilMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.setEnchantmentCost(enchantmentCost);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Anvil Window enchantment cost"
+        );
     }
 
     @Override
@@ -70,15 +73,18 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
     @Override
     public void setTextFieldAlwaysEnabled(boolean textFieldAlwaysEnabled) {
-        this.mutate(() -> {
-            this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
-            AnvilMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.setTextFieldAlwaysEnabled(textFieldAlwaysEnabled);
-                this.notifyUpdate(0);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Anvil Window text field state");
+        this.submit(
+                () -> {
+                    this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
+                    AnvilMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.setTextFieldAlwaysEnabled(textFieldAlwaysEnabled);
+                        this.notifyUpdate(0);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Anvil Window text field state"
+        );
     }
 
     @Override
@@ -88,21 +94,24 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
     @Override
     public void setResultAlwaysValid(boolean resultAlwaysValid) {
-        this.mutate(() -> {
-            this.resultAlwaysValid = resultAlwaysValid;
-            AnvilMenuHandle menu = this.menuHandle();
-            if (menu != null) {
-                menu.setResultAlwaysValid(resultAlwaysValid);
-                this.notifyUpdate(2);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Anvil Window result state");
+        this.submit(
+                () -> {
+                    this.resultAlwaysValid = resultAlwaysValid;
+                    AnvilMenuHandle menu = this.menuHandle();
+                    if (menu != null) {
+                        menu.setResultAlwaysValid(resultAlwaysValid);
+                        this.notifyUpdate(2);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Anvil Window result state"
+        );
     }
 
     @Override
     public void setRenameHandlers(@NotNull List<? extends Consumer<? super String>> handlers) {
         List<Consumer<String>> copy = MiscUtils.copyConsumers(handlers);
-        this.mutate(() -> this.renameHandlers = copy, "Failed to replace Anvil Window rename handlers");
+        this.submit(() -> this.renameHandlers = copy, "Failed to replace Anvil Window rename handlers");
     }
 
     @Override
@@ -113,7 +122,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     @Override
     public void addRenameHandler(@NotNull Consumer<? super String> handler) {
         Consumer<String> copied = MiscUtils.narrowConsumer(handler);
-        this.mutate(
+        this.submit(
                 () -> this.renameHandlers = MiscUtils.append(this.renameHandlers, copied),
                 "Failed to add Anvil Window rename handler"
         );
@@ -121,7 +130,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
     @Override
     public void removeRenameHandler(@NotNull Consumer<? super String> handler) {
-        this.mutate(
+        this.submit(
                 () -> this.renameHandlers = MiscUtils.removeConsumer(this.renameHandlers, handler),
                 "Failed to remove Anvil Window rename handler"
         );

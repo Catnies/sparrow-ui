@@ -63,14 +63,14 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
     }
 
     @Override
-    protected void prepareMenuSynchronization(@NotNull BitSet dirtySlots, boolean forceFull) {
+    protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
         if (forceFull || dirtySlots.get(1)) {
             this.dataDirty = true;
         }
     }
 
     @Override
-    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
+    protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         this.dataQueued = forceFull || this.dataDirty;
         if (this.dataQueued) {
             outgoing.add(ClientboundContainerSetDataPacketProxy.INSTANCE.newInstance(
@@ -82,7 +82,7 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
     }
 
     @Override
-    protected void commitMenuDataPackets() {
+    protected void commitPackets() {
         if (this.dataQueued) {
             this.dataDirty = false;
             this.dataQueued = false;
@@ -99,5 +99,4 @@ final class AnvilMenuHandleImpl extends PaperMenuHandle implements AnvilMenuHand
         }
         return super.toClientItem(rawSlot, item);
     }
-
 }

@@ -47,7 +47,7 @@ final class CrafterMenuHandleImpl extends PaperMenuHandle implements CrafterMenu
     }
 
     @Override
-    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
+    protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         this.queuedData.clear();
         if (forceFull) {
             this.queuedData.set(0, CRAFTING_SLOTS);
@@ -68,7 +68,7 @@ final class CrafterMenuHandleImpl extends PaperMenuHandle implements CrafterMenu
     }
 
     @Override
-    protected void commitMenuDataPackets() {
+    protected void commitPackets() {
         this.dirtyData.andNot(this.queuedData);
         this.queuedData.clear();
     }

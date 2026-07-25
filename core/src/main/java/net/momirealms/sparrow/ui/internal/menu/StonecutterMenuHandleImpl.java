@@ -7,7 +7,6 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetSlotPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundUpdateRecipesPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackTemplateProxy;
@@ -102,7 +101,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
         }
         if (restoreRecipes) {
             try {
-                this.packets.send(this.player, List.of(StonecutterMenuHandleImpl.createRealRecipesPacket()));
+                this.sendClientboundPacket(StonecutterMenuHandleImpl.createRealRecipesPacket());
             } catch (RuntimeException | Error throwable) {
                 if (failure == null) {
                     failure = throwable;
@@ -116,7 +115,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
 
     @Override
     @NotNull
-    protected Set<Class<?>> discardedOutgoingPacketTypes() {
+    protected Set<Class<?>> discardedClientboundPackets() {
         return DISCARDED_OUTGOING;
     }
 
@@ -127,22 +126,19 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
     }
 
     @Override
-    protected void appendMenuDataPackets(@NotNull List<Object> outgoing, boolean forceFull) {
+    protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         this.recipeOptionsQueued = forceFull || this.recipeOptionsDirty;
         this.dataQueued = forceFull || this.dataDirty || this.recipeOptionsQueued;
         if (this.recipeOptionsQueued) {
             outgoing.add(StonecutterMenuHandleImpl.createRecipeOptionsPacket(this.recipeOptions));
             outgoing.add(ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
-                        this.containerId, AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
-                        INPUT_SLOT, ItemStackProxy.EMPTY
+                    this.containerId(), this.incrementStateId(), INPUT_SLOT, ItemStackProxy.EMPTY
             ));
             outgoing.add(ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
-                    this.containerId, AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
-                    INPUT_SLOT, this.clientInput
+                    this.containerId(), this.incrementStateId(), INPUT_SLOT, this.clientInput
             ));
             outgoing.add(ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
-                    this.containerId, AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
-                    RESULT_SLOT, this.clientResult
+                    this.containerId(), this.incrementStateId(), RESULT_SLOT, this.clientResult
             ));
         }
         if (this.dataQueued) {
@@ -155,7 +151,7 @@ final class StonecutterMenuHandleImpl extends PaperMenuHandle implements Stonecu
     }
 
     @Override
-    protected void commitMenuDataPackets() {
+    protected void commitPackets() {
         if (this.recipeOptionsQueued) {
             this.recipeOptionsDirty = false;
             this.recipeOptionsQueued = false;

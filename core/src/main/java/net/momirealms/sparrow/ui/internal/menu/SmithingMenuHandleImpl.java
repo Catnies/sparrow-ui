@@ -28,7 +28,7 @@ final class SmithingMenuHandleImpl extends PaperMenuHandle {
     }
 
     @Override
-    protected void prepareMenuSynchronization(@NotNull BitSet dirtySlots, boolean forceFull) {
+    protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
         if (dirtySlots.get(0) || dirtySlots.get(1) || dirtySlots.get(2)) {
             this.forceRemoteSlot(RESULT_SLOT);
         }

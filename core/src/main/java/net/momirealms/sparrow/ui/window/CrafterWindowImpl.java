@@ -36,14 +36,17 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
     @Override
     public void setSlotDisabled(int slot, boolean disabled) {
         CrafterWindowImpl.checkSlot(slot);
-        this.mutate(() -> {
-            this.disabledMask = CrafterWindowImpl.withSlotState(this.disabledMask, slot, disabled);
-            CrafterMenuHandle menuHandle = this.menuHandle();
-            if (menuHandle != null) {
-                menuHandle.setSlotDisabled(slot, disabled);
-                this.requestMenuSynchronization();
-            }
-        }, "Failed to update Crafter Window slot state");
+        this.submit(
+                () -> {
+                    this.disabledMask = CrafterWindowImpl.withSlotState(this.disabledMask, slot, disabled);
+                    CrafterMenuHandle menuHandle = this.menuHandle();
+                    if (menuHandle != null) {
+                        menuHandle.setSlotDisabled(slot, disabled);
+                        this.requestMenuSynchronization();
+                    }
+                },
+                "Failed to update Crafter Window slot state"
+        );
     }
 
     @Override
@@ -55,7 +58,7 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
     @Override
     public void setSlotToggleHandlers(@NotNull List<? extends BiConsumer<? super Integer, ? super Boolean>> handlers) {
         List<BiConsumer<Integer, Boolean>> copy = MiscUtils.copyBiConsumers(handlers);
-        this.mutate(
+        this.submit(
                 () -> this.slotToggleHandlers = copy,
                 "Failed to replace Crafter Window slot toggle handlers"
         );
@@ -70,7 +73,7 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
     @Override
     public void addSlotToggleHandler(@NotNull BiConsumer<? super Integer, ? super Boolean> handler) {
         BiConsumer<Integer, Boolean> copied = MiscUtils.narrowBiConsumer(handler);
-        this.mutate(
+        this.submit(
                 () -> this.slotToggleHandlers = MiscUtils.append(this.slotToggleHandlers, copied),
                 "Failed to add Crafter Window slot toggle handler"
         );
@@ -78,7 +81,7 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
 
     @Override
     public void removeSlotToggleHandler(@NotNull BiConsumer<? super Integer, ? super Boolean> handler) {
-        this.mutate(
+        this.submit(
                 () -> this.slotToggleHandlers = MiscUtils.removeBiConsumer(this.slotToggleHandlers, handler),
                 "Failed to remove Crafter Window slot toggle handler"
         );

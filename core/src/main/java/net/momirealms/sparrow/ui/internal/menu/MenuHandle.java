@@ -26,63 +26,6 @@ public interface MenuHandle extends AutoCloseable {
     }
 
     /**
-     * 此会话的 Minecraft 容器编号.
-     */
-    int containerId();
-
-    /**
-     * 返回供 Bukkit 事件读取的协议视图.
-     *
-     * <p>视图的 {@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 必须返回可由
-     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.</p>
-     */
-    @NotNull
-    InventoryView view();
-
-    /**
-     * 返回 Paper 玩家物品栏的变更版本.
-     *
-     * <p>Window 使用此版本门控底部物品栏扫描. Adapter 无法提供精确版本时可以返回一个
-     * 持续变化的值, 以退化为每 tick 扫描.</p>
-     *
-     * @return 当前玩家物品栏版本
-     */
-    int playerInventoryVersion();
-
-    /**
-     * 客户端当前应回传的容器 state id.
-     *
-     * @return 当前协议状态编号
-     */
-    int stateId();
-
-    /**
-     * 校验交互所属会话和 state id, 并吸收其中非权威的客户端预测.
-     *
-     * @param interaction 待校验的交互
-     * @return 交互属于当前协议状态时返回 {@code true}
-     */
-    boolean accepts(@NotNull MenuInput.Common.Interaction interaction);
-
-    /**
-     * 返回入站消息缓冲区是否已经溢出.
-     *
-     * <p>缓冲、代际筛选和 Netty 线程交接均由菜单 Adapter 管理, Window 只消费当前会话的领域输入.</p>
-     *
-     * @return 入站消息是否曾超过 Adapter 容量
-     */
-    boolean hasInputOverflowed();
-
-    /**
-     * 按接收顺序处理至多指定数量的当前会话输入.
-     *
-     * @param limit 本次最多移除的输入数量
-     * @return 不可变的领域输入列表
-     */
-    @NotNull
-    List<MenuInput> drainInputs(int limit);
-
-    /**
      * 在打开菜单前准备真实光标转移.
      *
      * <p>替换 Window 时从旧代理菜单转移；否则先完成当前原版菜单的关闭生命周期，
@@ -92,14 +35,6 @@ public interface MenuHandle extends AutoCloseable {
      * @param replacingWindow 是否正在替换同一玩家的 Window
      */
     void prepareOpen(boolean replacingWindow);
-
-    /**
-     * 返回菜单真实持有的光标快照.
-     *
-     * @return 可由调用方独立修改的真实光标快照
-     */
-    @NotNull
-    ItemStack cursor();
 
     /**
      * 打开菜单并发送初始完整状态.
@@ -161,15 +96,80 @@ public interface MenuHandle extends AutoCloseable {
     void close(@NotNull InventoryCloseEvent.Reason reason);
 
     /**
-     * 玩家实体调度器已 retired 时只释放不需要访问玩家状态的资源.
-     */
-    void retire();
-
-    /**
      * 以插件主动关闭方式释放菜单.
      */
     @Override
     default void close() {
         this.close(InventoryCloseEvent.Reason.PLUGIN);
     }
+
+    /**
+     * 玩家实体调度器已 retired 时只释放不需要访问玩家状态的资源.
+     */
+    void retire();
+
+    /**
+     * 校验交互所属会话和 state id, 并吸收其中非权威的客户端预测.
+     *
+     * @param interaction 待校验的交互
+     * @return 交互属于当前协议状态时返回 {@code true}
+     */
+    boolean accepts(@NotNull MenuInput.Common.Interaction interaction);
+
+    /**
+     * 按接收顺序处理至多指定数量的当前会话输入.
+     *
+     * @param limit 本次最多移除的输入数量
+     * @return 不可变的领域输入列表
+     */
+    @NotNull
+    List<MenuInput> drainInputs(int limit);
+
+    /**
+     * 返回入站消息缓冲区是否已经溢出.
+     *
+     * <p>缓冲、代际筛选和 Netty 线程交接均由菜单 Adapter 管理, Window 只消费当前会话的领域输入.</p>
+     *
+     * @return 入站消息是否曾超过 Adapter 容量
+     */
+    boolean hasInputOverflowed();
+
+    /**
+     * 此会话的 Minecraft 容器编号.
+     */
+    int containerId();
+
+    /**
+     * 返回供 Bukkit 事件读取的协议视图.
+     *
+     * <p>视图的 {@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 必须返回可由
+     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.</p>
+     */
+    @NotNull
+    InventoryView view();
+
+    /**
+     * 客户端当前应回传的容器 state id.
+     *
+     * @return 当前协议状态编号
+     */
+    int stateId();
+
+    /**
+     * 返回 Paper 玩家物品栏的变更版本.
+     *
+     * <p>Window 使用此版本门控底部物品栏扫描. Adapter 无法提供精确版本时可以返回一个
+     * 持续变化的值, 以退化为每 tick 扫描.</p>
+     *
+     * @return 当前玩家物品栏版本
+     */
+    int playerInventoryVersion();
+
+    /**
+     * 返回菜单真实持有的光标快照.
+     *
+     * @return 可由调用方独立修改的真实光标快照
+     */
+    @NotNull
+    ItemStack cursor();
 }

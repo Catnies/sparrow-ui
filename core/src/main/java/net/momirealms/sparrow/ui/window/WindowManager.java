@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,7 +43,8 @@ public final class WindowManager implements Listener {
         this.exceptionHandler = SparrowUI.getInstance()::handleException;
     }
 
-    public static @NotNull WindowManager getInstance() {
+    @NotNull
+    public static WindowManager getInstance() {
         return SparrowUI.getInstance().windowManager();
     }
 
@@ -51,7 +53,8 @@ public final class WindowManager implements Listener {
      *
      * @return 已注册的 WindowManager
      */
-    public static @NotNull WindowManager create() {
+    @NotNull
+    public static WindowManager create() {
         WindowManager manager = new WindowManager(new MenuFactoryImpl(SparrowUI.getInstance().getPlugin()));
         Bukkit.getPluginManager().registerEvents(manager, SparrowUI.getInstance().getPlugin());
         return manager;
@@ -103,13 +106,25 @@ public final class WindowManager implements Listener {
         }
     }
 
-    @NotNull CompletionStage<Window.OpenResult> open(AbstractWindow<?> window) {
-        if (this.shutdown.get()) {
-            window.retire();
-            this.active.remove(window.viewer().getUniqueId(), window);
-            return CompletableFuture.completedFuture(Window.OpenResult.VIEWER_UNAVAILABLE);
-        }
-        return this.lane(window.viewer()).submit(
+    /**
+     * 返回创建协议菜单的工厂.
+     *
+     * @return 菜单工厂
+     */
+    MenuFactory menuFactory() {
+        return this.menuFactory;
+    }
+
+    /**
+     * 将 Window 进行开启, 这将会"打开命令"串行化提交到到玩家的实体线程.
+     *
+     * @param window 要打开的 Window
+     * @return 打开结果阶段
+     */
+    @NotNull
+    CompletionStage<Window.OpenResult> open(AbstractWindow<?> window) {
+        return this.submit(
+                window,
                 () -> this.openNow(window),
                 () -> {
                     window.retire();
@@ -119,15 +134,16 @@ public final class WindowManager implements Listener {
         );
     }
 
-    @NotNull CompletionStage<Window.CloseResult> close(AbstractWindow<?> window) {
-        if (this.shutdown.get()) {
-            boolean wasOpen = window.retire();
-            this.active.remove(window.viewer().getUniqueId(), window);
-            return CompletableFuture.completedFuture(
-                    wasOpen ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED
-            );
-        }
-        return this.lane(window.viewer()).submit(
+    /**
+     * 将 Window 进行关闭, 这将会"关闭命令"串行化提交到到玩家的实体线程.
+     *
+     * @param window 要关闭的 Window
+     * @return 关闭结果阶段
+     */
+    @NotNull
+    CompletionStage<Window.CloseResult> close(AbstractWindow<?> window) {
+        return this.submit(
+                window,
                 () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN),
                 () -> {
                     boolean wasOpen = window.retire();
@@ -137,16 +153,35 @@ public final class WindowManager implements Listener {
         );
     }
 
-    void mutate(AbstractWindow<?> window, Runnable mutation, String failureMessage) {
-        if (this.shutdown.get()) {
-            return;
+    /**
+     * 将普通 Window 命令串行化到玩家的实体线程.
+     * Shutdown 后不再调度, 立即执行 retiredAction 并以其结果完成.
+     *
+     * @param window 目标 Window
+     * @param action 正常调度时执行的命令
+     * @param retiredAction 无法调度时执行的替代命令
+     * @param <T> 命令结果类型
+     * @return 命令完成阶段
+     */
+    @NotNull
+    <T> CompletionStage<T> submit(AbstractWindow<?> window, Callable<T> action, Callable<T> retiredAction) {
+        if (!this.shutdown.get()) {
+            return this.lane(window.viewer()).submit(action, retiredAction);
         }
-        this.observe(this.lane(window.viewer()).submit(() -> {
-            mutation.run();
-            return null;
-        }, () -> null), failureMessage);
+        try {
+            return CompletableFuture.completedFuture(retiredAction.call());
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
     }
 
+    /**
+     * 为 Window 启动玩家的实体线程上的周期 tick.
+     * 实体退役时通过 lane 的退役回调回收整个会话.
+     *
+     * @param window 要 tick 的 Window
+     * @return tick 任务, shutdown 后为 null
+     */
     @Nullable
     SchedulerTask startTick(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
@@ -156,34 +191,8 @@ public final class WindowManager implements Listener {
         return SparrowUI.getInstance().scheduler().entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
     }
 
-    void closeAfterProtocolFailure(AbstractWindow<?> window) {
-        try {
-            this.closeNow(window, InventoryCloseEvent.Reason.UNKNOWN);
-        } catch (RuntimeException | Error throwable) {
-            this.report("Failed to close Window after a protocol failure", throwable);
-        }
-    }
-
     /**
-     * 延后处理 Bukkit 观测到的外部关闭.
-     * 不在 InventoryCloseEvent 调用栈中递归操作菜单, 以避免与原生关闭流程冲突.
-     */
-    void externalClose(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        PlayerCommandLane lane = this.lane(window.viewer());
-        this.observe(lane.submitDeferred(() -> {
-            if (!window.isOpen()) {
-                return null;
-            }
-            this.closeNow(window, reason);
-            return null;
-        }, () -> {
-            window.retire();
-            return null;
-        }), "Failed to process external Window close");
-    }
-
-    /**
-     * 在启用桥接时把已映射的协议点击发布为 Bukkit InventoryClickEvent.
+     * 在启用Bukkit事件桥接时, 把已映射的协议点击发布为 Bukkit InventoryClickEvent.
      * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      */
     boolean allowClick(AbstractWindow<?> window, ClickInterpreter.Result.SingleClick click) {
@@ -217,7 +226,8 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 在启用桥接时把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
+     * 在启用Bukkit事件桥接时, 把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
+     * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {
         if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
@@ -247,12 +257,27 @@ public final class WindowManager implements Listener {
         }
     }
 
+    /**
+     * 将内部异常交给插件的统一异常处理器.
+     *
+     * @param message 错误说明
+     * @param throwable 异常
+     */
     void report(String message, Throwable throwable) {
         this.exceptionHandler.accept(message, throwable);
     }
 
-    MenuFactory menuFactory() {
-        return this.menuFactory;
+    /**
+     * 在玩家实体线程关闭 Window 并先移除 active 映射.
+     * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
+     */
+    Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
+        if (!window.isOpen()) {
+            return Window.CloseResult.ALREADY_CLOSED;
+        }
+        this.active.remove(window.viewer().getUniqueId(), window);
+        window.closeOnEntity(reason);
+        return Window.CloseResult.CLOSED;
     }
 
     /**
@@ -297,18 +322,12 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 在玩家实体线程关闭 Window 并先移除 active 映射.
-     * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
+     * 返回玩家的命令通道, 不存在时创建并注册退役回调.
+     * Shutdown 与新通道创建竞争时, 立即退役刚创建的通道.
+     *
+     * @param player 玩家
+     * @return 玩家的命令通道
      */
-    Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        if (!window.isOpen()) {
-            return Window.CloseResult.ALREADY_CLOSED;
-        }
-        this.active.remove(window.viewer().getUniqueId(), window);
-        window.closeOnEntity(reason);
-        return Window.CloseResult.CLOSED;
-    }
-
     private PlayerCommandLane lane(Player player) {
         UUID playerId = player.getUniqueId();
         PlayerCommandLane lane = this.lanes.computeIfAbsent(playerId, ignoredPlayerId -> new PlayerCommandLane(player, () -> this.retire(playerId)));
@@ -318,6 +337,11 @@ public final class WindowManager implements Listener {
         return lane;
     }
 
+    /**
+     * 玩家实体退役时回收其命令通道与活动 Window.
+     *
+     * @param playerId 玩家 id
+     */
     private void retire(UUID playerId) {
         this.lanes.remove(playerId);
         AbstractWindow<?> window = this.active.remove(playerId);
@@ -326,6 +350,12 @@ public final class WindowManager implements Listener {
         }
     }
 
+    /**
+     * 统一上报异步命令的失败.
+     *
+     * @param stage 命令阶段
+     * @param message 失败报告文本
+     */
     private void observe(CompletionStage<?> stage, String message) {
         stage.exceptionally(throwable -> {
             this.report(message, throwable);
@@ -333,29 +363,57 @@ public final class WindowManager implements Listener {
         });
     }
 
+    /**
+     * Bukkit 观测到容器关闭时, 若 View 属于某个活动 Window 则按外部关闭处理.
+     */
     @EventHandler(priority = EventPriority.HIGHEST)
     private void handleInventoryClose(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) {
-            return;
-        }
-        AbstractWindow<?> window = this.active.get(player.getUniqueId());
-        if (window != null && window.owns(event.getView())) {
-            this.externalClose(window, event.getReason());
+        if (event.getPlayer() instanceof Player player) {
+            AbstractWindow<?> window = this.active.get(player.getUniqueId());
+            if (window != null && window.owns(event.getView())) {
+                PlayerCommandLane lane = this.lane(window.viewer());
+                this.observe(
+                        lane.submitDeferred(
+                                () -> {
+                                    if (!window.isOpen()) {
+                                        return null;
+                                    }
+                                    this.closeNow(window, event.getReason());
+                                    return null;
+                                },
+                                () -> {
+                                    window.retire();
+                                    return null;
+                                }
+                        ),
+                        "Failed to process external Window close"
+                );
+            }
         }
     }
 
+    /**
+     * 玩家退出时在其实体线程按 DISCONNECT 关闭活动 Window, 无法调度则直接退役.
+     */
     @EventHandler(priority = EventPriority.MONITOR)
     private void handleQuit(PlayerQuitEvent event) {
         AbstractWindow<?> window = this.active.get(event.getPlayer().getUniqueId());
         if (window == null) {
             return;
         }
-        this.observe(this.lane(event.getPlayer()).submit(() -> {
-            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
-            return null;
-        }, () -> {
-            window.retire();
-            return null;
-        }), "Failed to close Window after player quit");
+        this.observe(
+                this.submit(
+                        window,
+                        () -> {
+                            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
+                            return null;
+                        },
+                        () -> {
+                            window.retire();
+                            return null;
+                        }
+                ),
+                "Failed to close Window after player quit"
+        );
     }
 }

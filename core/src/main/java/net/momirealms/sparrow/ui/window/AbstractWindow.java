@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
@@ -37,7 +38,7 @@ import java.util.function.Supplier;
 
 /**
  * 各类 Window 共用的生命周期、槽位路由和协议同步引擎.
- * <p>公开状态通过 volatile 快照提供跨线程读取, 菜单、路径和容器状态只在查看者实体线程访问.
+ * <p>公开状态通过 volatile 快照提供跨线程读取, 菜单、路径和容器状态只在玩家的实体线程访问.
  * 每次打开都会取得新的 generation, 以隔离迟到的协议输入和异步失效通知.
  */
 abstract class AbstractWindow<M extends MenuHandle> implements Window {
@@ -134,14 +135,294 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorRenderContext = RenderContext.cursor(this);
     }
 
-    /**
-     * 为一次打开创建与具体 Window 类型匹配的协议菜单.
-     *
-     * @param factory 菜单工厂
-     * @param generation 本次打开代际
-     * @return 尚未打开的菜单句柄
-     */
-    protected abstract @NotNull M createMenuHandle(@NotNull MenuFactory factory, long generation);
+    @Override
+    @NotNull
+    public List<Gui> guis() {
+        return this.layout.guis();
+    }
+
+    @Override
+    public SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
+        return this.layout.guiAt(windowSlot);
+    }
+
+    @Override
+    public SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot) {
+        if (hotbarSlot < 0 || hotbarSlot > 8) {
+            throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
+        }
+        return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
+    }
+
+    @Override
+    @NotNull
+    public Player viewer() {
+        return this.viewer;
+    }
+
+    @Override
+    @NotNull
+    public Component title() {
+        return this.title;
+    }
+
+    @Override
+    public boolean isOpen() {
+        return this.open;
+    }
+
+    @Override
+    public boolean isCloseable() {
+        return this.closeable;
+    }
+
+    @Override
+    @NotNull
+    public CompletionStage<OpenResult> open() {
+        return this.manager.open(this);
+    }
+
+    @Override
+    public void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier) {
+        Objects.requireNonNull(titleSupplier, "titleSupplier");
+        this.submit(
+                () -> {
+                    this.titleSupplier = titleSupplier;
+                    this.refreshTitleOnEntity();
+                },
+                "Failed to update Window title supplier"
+        );
+    }
+
+    @Override
+    public void setTitle(@NotNull Component title) {
+        Objects.requireNonNull(title, "title");
+        this.submit(
+                () -> {
+                    this.titleSupplier = () -> title;
+                    this.updateTitleOnEntity(title);
+                },
+                "Failed to update Window title"
+        );
+    }
+
+    @Override
+    public void updateTitle() {
+        this.submit(this::refreshTitleOnEntity, "Failed to refresh Window title");
+    }
+
+    @Override
+    public void setCloseable(boolean closeable) {
+        this.submit(
+                () -> this.closeable = closeable,
+                "Failed to update Window closeable state"
+        );
+    }
+
+    @Override
+    @NotNull
+    public CompletionStage<CloseResult> close() {
+        return this.manager.close(this);
+    }
+
+    @Override
+    public void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
+        List<Runnable> copy = List.copyOf(openHandlers);
+        this.submit(() -> this.openHandlers = copy, "Failed to replace Window open handlers");
+    }
+
+    @Override
+    @NotNull
+    public List<Runnable> getOpenHandlers() {
+        return this.openHandlers;
+    }
+
+    @Override
+    public void addOpenHandler(@NotNull Runnable openHandler) {
+        this.submit(
+                () -> this.openHandlers = MiscUtils.append(this.openHandlers, openHandler),
+                "Failed to add Window open handler"
+        );
+    }
+
+    @Override
+    public void removeOpenHandler(@NotNull Runnable openHandler) {
+        this.submit(
+                () -> this.openHandlers = MiscUtils.remove(this.openHandlers, openHandler),
+                "Failed to remove Window open handler"
+        );
+    }
+
+    @Override
+    public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
+        List<Consumer<InventoryCloseEvent.Reason>> copy = MiscUtils.copyConsumers(closeHandlers);
+        this.submit(
+                () -> this.closeHandlers = copy,
+                "Failed to replace Window close handlers"
+        );
+    }
+
+    @Override
+    @NotNull
+    public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
+        return this.closeHandlers;
+    }
+
+    @Override
+    public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
+        Consumer<InventoryCloseEvent.Reason> handler = MiscUtils.narrowConsumer(closeHandler);
+        this.submit(
+                () -> this.closeHandlers = MiscUtils.append(this.closeHandlers, handler),
+                "Failed to add Window close handler"
+        );
+    }
+
+    @Override
+    public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
+        this.submit(
+                () -> this.closeHandlers = MiscUtils.removeConsumer(this.closeHandlers, closeHandler),
+                "Failed to remove Window close handler"
+        );
+    }
+
+    @Override
+    public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers) {
+        List<Consumer<ClickEvent>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
+        this.submit(
+                () -> this.outsideClickHandlers = copy,
+                "Failed to replace Window outside click handlers"
+        );
+    }
+
+    @NotNull
+    @Override
+    public List<Consumer<ClickEvent>> getOutsideClickHandlers() {
+        return this.outsideClickHandlers;
+    }
+
+    @Override
+    public void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
+        Consumer<ClickEvent> handler = MiscUtils.narrowConsumer(outsideClickHandler);
+        this.submit(
+                () -> this.outsideClickHandlers = MiscUtils.append(this.outsideClickHandlers, handler),
+                "Failed to add Window outside click handler"
+        );
+    }
+
+    @Override
+    public void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
+        this.submit(
+                () -> this.outsideClickHandlers = MiscUtils.removeConsumer(this.outsideClickHandlers, outsideClickHandler),
+                "Failed to remove Window outside click handler"
+        );
+    }
+
+    @Override
+    public void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
+        Objects.requireNonNull(fallbackWindow, "fallbackWindow");
+        this.submit(
+                () -> this.fallbackWindow = fallbackWindow,
+                "Failed to update Window fallback"
+        );
+    }
+
+    @Override
+    public void setWindowState(int windowState) {
+        this.submit(
+                () -> this.updateWindowStateOnEntity(windowState),
+                "Failed to update Window state"
+        );
+    }
+
+    @Override
+    public void incrementWindowState() {
+        this.submit(
+                () -> this.updateWindowStateOnEntity(this.serverWindowState + 1),
+                "Failed to increment Window state"
+        );
+    }
+
+    @Override
+    public int getServerWindowState() {
+        return this.serverWindowState;
+    }
+
+    @Override
+    public int getClientWindowState() {
+        return this.clientWindowState;
+    }
+
+    @Override
+    public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
+        List<Consumer<Integer>> copy = MiscUtils.copyConsumers(handlers);
+        this.submit(
+                () -> this.windowStateChangeHandlers = copy,
+                "Failed to replace Window state handlers"
+        );
+    }
+
+    @NotNull
+    @Override
+    public List<Consumer<Integer>> getWindowStateChangeHandlers() {
+        return this.windowStateChangeHandlers;
+    }
+
+    @Override
+    public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
+        Consumer<Integer> copied = MiscUtils.narrowConsumer(handler);
+        this.submit(
+                () -> this.windowStateChangeHandlers = MiscUtils.append(this.windowStateChangeHandlers, copied),
+                "Failed to add Window state handler"
+        );
+    }
+
+    @Override
+    public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
+        this.submit(
+                () -> this.windowStateChangeHandlers = MiscUtils.removeConsumer(this.windowStateChangeHandlers, handler),
+                "Failed to remove Window state handler"
+        );
+    }
+
+    @Override
+    public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
+        Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
+        this.submit(
+                () -> {
+                    this.cursorVisualizer = cursorVisualizer;
+                    this.cursorDirty = true;
+                },
+                "Failed to update Window cursor visualizer"
+        );
+    }
+
+    @NotNull
+    @Override
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer() {
+        return this.cursorVisualizer;
+    }
+
+    @Override
+    public void sendAllDataToViewer() {
+        this.submit(
+                () -> {
+                    this.cursorDirty = true;
+                    this.forceFull = true;
+                    this.flush(false);
+                },
+                "Failed to resend Window data"
+        );
+    }
+
+    @Override
+    public void notifyUpdate(int windowSlot) {
+        if (windowSlot < 0 || windowSlot >= this.layout.size()) {
+            return;
+        }
+        synchronized (this.dirtyLock) {
+            this.dirtySlots.set(windowSlot);
+        }
+    }
 
     /**
      * 返回窗口顶部协议槽位数量.
@@ -157,18 +438,55 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      *
      * @return 当前菜单
      */
-    protected final @Nullable M menuHandle() {
+    @Nullable
+    protected final M menuHandle() {
         return this.menuHandle;
     }
 
     /**
-     * 将具体 Window 的公开变更串行化到查看者实体线程.
+     * 为一次打开创建与具体 Window 类型匹配的协议菜单.
      *
-     * @param mutation 变更
+     * @param factory 菜单工厂
+     * @param generation 本次打开代际
+     * @return 尚未打开的菜单句柄
+     */
+    @NotNull
+    protected abstract M createMenuHandle(@NotNull MenuFactory factory, long generation);
+
+    /**
+     * 将无需向调用者返回结果的具体 Window 命令串行化到玩家的实体线程.
+     * 命令执行或调度失败时统一上报, 玩家实体退役后静默完成.
+     *
+     * @param action 命令
      * @param failureMessage 失败报告文本
      */
-    protected final void mutate(@NotNull Runnable mutation, @NotNull String failureMessage) {
-        this.manager.mutate(this, mutation, failureMessage);
+    protected final void submit(@NotNull Runnable action, @NotNull String failureMessage) {
+        this.submit(
+                () -> {
+                    action.run();
+                    return null;
+                },
+                () -> null
+        ).exceptionally(throwable -> {
+            this.report(failureMessage, throwable);
+            return null;
+        });
+    }
+
+    /**
+     * 将需要返回结果的具体 Window 命令串行化到玩家的实体线程.
+     *
+     * @param action 玩家仍可调度时执行的操作
+     * @param retiredAction 玩家实体退役后执行的替代操作
+     * @param <T> 命令结果类型
+     * @return 命令完成阶段
+     */
+    @NotNull
+    protected final <T> CompletionStage<T> submit(
+            @NotNull Callable<T> action,
+            @NotNull Callable<T> retiredAction
+    ) {
+        return this.manager.submit(this, action, retiredAction);
     }
 
     /**
@@ -198,282 +516,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
     }
 
-    @Override
-    public @NotNull List<Gui> guis() {
-        return this.layout.guis();
-    }
-
-    @Override
-    public SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
-        return this.layout.guiAt(windowSlot);
-    }
-
-    @Override
-    public SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot) {
-        if (hotbarSlot < 0 || hotbarSlot > 8) {
-            throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
-        }
-        return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
-    }
-
-    @Override
-    public @NotNull Player viewer() {
-        return this.viewer;
-    }
-
-    @Override
-    public @NotNull Component title() {
-        return this.title;
-    }
-
-    @Override
-    public boolean isOpen() {
-        return this.open;
-    }
-
-    @Override
-    public boolean isCloseable() {
-        return this.closeable;
-    }
-
-    @Override
-    public @NotNull CompletionStage<OpenResult> open() {
-        return this.manager.open(this);
-    }
-
-    @Override
-    public void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier) {
-        Objects.requireNonNull(titleSupplier, "titleSupplier");
-        this.manager.mutate(this, () -> {
-            this.titleSupplier = titleSupplier;
-            this.refreshTitleOnEntity();
-        }, "Failed to update Window title supplier");
-    }
-
-    @Override
-    public void setTitle(@NotNull Component title) {
-        Objects.requireNonNull(title, "title");
-        this.manager.mutate(this, () -> {
-            this.titleSupplier = () -> title;
-            this.updateTitleOnEntity(title);
-        }, "Failed to update Window title");
-    }
-
-    @Override
-    public void updateTitle() {
-        this.manager.mutate(this, this::refreshTitleOnEntity, "Failed to refresh Window title");
-    }
-
-    @Override
-    public void setCloseable(boolean closeable) {
-        this.manager.mutate(
-                this,
-                () -> this.closeable = closeable,
-                "Failed to update Window closeable state"
-        );
-    }
-
-    @Override
-    public @NotNull CompletionStage<CloseResult> close() {
-        return this.manager.close(this);
-    }
-
-    @Override
-    public void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
-        List<Runnable> copy = List.copyOf(openHandlers);
-        this.manager.mutate(this, () -> this.openHandlers = copy, "Failed to replace Window open handlers");
-    }
-
-    @Override
-    public @NotNull List<Runnable> getOpenHandlers() {
-        return this.openHandlers;
-    }
-
-    @Override
-    public void addOpenHandler(@NotNull Runnable openHandler) {
-        this.manager.mutate(this,
-                () -> this.openHandlers = MiscUtils.append(this.openHandlers, openHandler),
-                "Failed to add Window open handler"
-        );
-    }
-
-    @Override
-    public void removeOpenHandler(@NotNull Runnable openHandler) {
-        this.manager.mutate(this,
-                () -> this.openHandlers = MiscUtils.remove(this.openHandlers, openHandler),
-                "Failed to remove Window open handler"
-        );
-    }
-
-    @Override
-    public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
-        List<Consumer<InventoryCloseEvent.Reason>> copy = MiscUtils.copyConsumers(closeHandlers);
-        this.manager.mutate(this,
-                () -> this.closeHandlers = copy,
-                "Failed to replace Window close handlers"
-        );
-    }
-
-    @Override
-    public @NotNull List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
-        return this.closeHandlers;
-    }
-
-    @Override
-    public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
-        Consumer<InventoryCloseEvent.Reason> handler = MiscUtils.narrowConsumer(closeHandler);
-        this.manager.mutate(this,
-                () -> this.closeHandlers = MiscUtils.append(this.closeHandlers, handler),
-                "Failed to add Window close handler"
-        );
-    }
-
-    @Override
-    public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
-        this.manager.mutate(this,
-                () -> this.closeHandlers = MiscUtils.removeConsumer(this.closeHandlers, closeHandler),
-                "Failed to remove Window close handler"
-        );
-    }
-
-    @Override
-    public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers) {
-        List<Consumer<ClickEvent>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
-        this.manager.mutate(this,
-                () -> this.outsideClickHandlers = copy,
-                "Failed to replace Window outside click handlers"
-        );
-    }
-
-    @Override
-    public @NotNull List<Consumer<ClickEvent>> getOutsideClickHandlers() {
-        return this.outsideClickHandlers;
-    }
-
-    @Override
-    public void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
-        Consumer<ClickEvent> handler = MiscUtils.narrowConsumer(outsideClickHandler);
-        this.manager.mutate(this,
-                () -> this.outsideClickHandlers = MiscUtils.append(this.outsideClickHandlers, handler),
-                "Failed to add Window outside click handler"
-        );
-    }
-
-    @Override
-    public void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
-        this.manager.mutate(this,
-                () -> this.outsideClickHandlers = MiscUtils.removeConsumer(this.outsideClickHandlers, outsideClickHandler),
-                "Failed to remove Window outside click handler"
-        );
-    }
-
-    @Override
-    public void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
-        Objects.requireNonNull(fallbackWindow, "fallbackWindow");
-        this.manager.mutate(this,
-                () -> this.fallbackWindow = fallbackWindow,
-                "Failed to update Window fallback"
-        );
-    }
-
-    @Override
-    public void setWindowState(int windowState) {
-        this.manager.mutate(this,
-                () -> this.updateWindowStateOnEntity(windowState),
-                "Failed to update Window state"
-        );
-    }
-
-    @Override
-    public void incrementWindowState() {
-        this.manager.mutate(this,
-                () -> this.updateWindowStateOnEntity(this.serverWindowState + 1),
-                "Failed to increment Window state"
-        );
-    }
-
-    @Override
-    public int getServerWindowState() {
-        return this.serverWindowState;
-    }
-
-    @Override
-    public int getClientWindowState() {
-        return this.clientWindowState;
-    }
-
-    @Override
-    public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
-        List<Consumer<Integer>> copy = MiscUtils.copyConsumers(handlers);
-        this.manager.mutate(this,
-                () -> this.windowStateChangeHandlers = copy,
-                "Failed to replace Window state handlers"
-        );
-    }
-
-    @Override
-    public @NotNull List<Consumer<Integer>> getWindowStateChangeHandlers() {
-        return this.windowStateChangeHandlers;
-    }
-
-    @Override
-    public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
-        Consumer<Integer> copied = MiscUtils.narrowConsumer(handler);
-        this.manager.mutate(this,
-                () -> this.windowStateChangeHandlers = MiscUtils.append(this.windowStateChangeHandlers, copied),
-                "Failed to add Window state handler"
-        );
-    }
-
-    @Override
-    public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
-        this.manager.mutate(this,
-                () -> this.windowStateChangeHandlers = MiscUtils.removeConsumer(this.windowStateChangeHandlers, handler),
-                "Failed to remove Window state handler"
-        );
-    }
-
-    @Override
-    public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
-        Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
-        this.manager.mutate(this,
-                () -> {
-                    this.cursorVisualizer = cursorVisualizer;
-                    this.cursorDirty = true;
-                },
-                "Failed to update Window cursor visualizer"
-        );
-    }
-
-    @Override
-    public @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer() {
-        return this.cursorVisualizer;
-    }
-
-    @Override
-    public void sendAllDataToViewer() {
-        this.manager.mutate(this,
-                () -> {
-                    this.cursorDirty = true;
-                    this.forceFull = true;
-                    this.flush(false);
-                },
-                "Failed to resend Window data"
-        );
-    }
-
-    @Override
-    public void notifyUpdate(int windowSlot) {
-        if (windowSlot < 0 || windowSlot >= this.layout.size()) {
-            return;
-        }
-        synchronized (this.dirtyLock) {
-            this.dirtySlots.set(windowSlot);
-        }
-    }
-
     /**
-     * 在查看者实体线程创建菜单、显示路径和初始协议状态.
+     * 在玩家的实体线程创建菜单、显示路径和初始协议状态.
      * 所有资源在初始完整包成功排入 Netty event loop 后才发布到字段, 失败时按相反方向回滚.
      */
     void openOnEntity(long generation, boolean replacingWindow) {
@@ -548,41 +592,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 在查看者实体线程关闭已打开的 Window.
+     * 在玩家的实体线程关闭已打开的 Window.
      * 先撤销本地可见状态并停掉输入, 再关闭菜单、释放路径、处理 fallback 与关闭回调.
      */
     void closeOnEntity(InventoryCloseEvent.Reason reason) {
-        // 使后续输入与 tick 立即失效
-        this.open = false;
-        this.generation++;
-        this.clickInterpreter.reset();
-
-        SchedulerTask previousTickTask = this.tickTask;
-        M previousMenu = this.menuHandle;
-        DisplayedSlotPath[] previousPaths = this.paths;
-        this.tickTask = null;
-        this.menuHandle = null;
-        this.paths = null;
-        this.localSlots = null;
-        this.localCursor = null;
-        this.menuDirty = false;
-        this.titleDirty = false;
-        this.pendingWindowStates.clear();
-
-        // 资源关闭应尽量完整执行, 最后才重新抛出第一个失败
-        Throwable failure = null;
-        if (previousTickTask != null) {
-            previousTickTask.cancel();
-        }
-        if (previousMenu != null) {
-            try {
-                previousMenu.close(reason);
-            } catch (RuntimeException | Error throwable) {
-                failure = throwable;
-            }
-        }
-        failure = closePaths(previousPaths, failure);
-
+        Throwable failure = this.teardownOnEntity(reason);
         // 只有玩家主动关闭才进入 fallback, 然后通知关闭处理器
         this.openFallback(reason);
         this.fireCloseHandlers(reason);
@@ -597,35 +611,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     boolean retire() {
         boolean wasOpen = this.open;
-        this.open = false;
-        this.generation++;
-        this.clickInterpreter.reset();
-
-        SchedulerTask previousTickTask = this.tickTask;
-        M previousMenu = this.menuHandle;
-        DisplayedSlotPath[] previousPaths = this.paths;
-        this.tickTask = null;
-        this.menuHandle = null;
-        this.paths = null;
-        this.localSlots = null;
-        this.localCursor = null;
-        this.menuDirty = false;
-        this.titleDirty = false;
-        this.pendingWindowStates.clear();
-
-        if (previousTickTask != null) {
-            previousTickTask.cancel();
-        }
-        if (previousMenu != null) {
-            try {
-                previousMenu.retire();
-            } catch (RuntimeException | Error throwable) {
-                this.manager.report("Failed to retire Window menu", throwable);
-            }
-        }
-        Throwable failure = closePaths(previousPaths, null);
+        Throwable failure = this.teardownOnEntity(null);
         if (failure != null) {
-            this.manager.report("Failed to retire Window paths", failure);
+            this.manager.report("Failed to retire Window session", failure);
         }
         return wasOpen;
     }
@@ -641,13 +629,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         // 我们的PacketHandler在Paper Limiter之前, 所以还是限制一下包速率, 防止恶意攻击.
+        //异常后按 UNKNOWN 原因强制关闭 Window, 关闭失败只上报不再抛出.
         if (menuHandle.hasInputOverflowed()) {
-            this.manager.report(
-                    "Closing Window because its incoming packet queue overflowed",
-                    new IllegalStateException("incoming packet queue capacity exceeded")
-            );
-            this.manager.closeAfterProtocolFailure(this);
-            return;
+            try {
+                this.manager.report(
+                        "Closing Window because its incoming packet queue overflowed",
+                        new IllegalStateException("incoming packet queue capacity exceeded")
+                );
+                this.manager.closeNow(this, InventoryCloseEvent.Reason.UNKNOWN);
+            } catch (RuntimeException | Error throwable) {
+                this.report("Failed to close Window after a protocol failure", throwable);
+            }
         }
 
         // 限制每 tick 的输入量, 防止单个玩家耗尽实体线程预算
@@ -697,15 +689,71 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 判断给定 Bukkit 视图是否由当前菜单提供.
+     *
+     * @param view Bukkit 视图
+     * @return 属于当前菜单时为 true
+     */
     boolean owns(InventoryView view) {
         return this.menuHandle != null && this.menuHandle.view() == view;
     }
 
+    /**
+     * 返回当前菜单的 Bukkit 视图, 菜单未打开时抛出 IllegalStateException.
+     *
+     * @return 菜单视图
+     */
     InventoryView menuView() {
         if (this.menuHandle == null) {
             throw new IllegalStateException("Window menu is not open");
         }
         return this.menuHandle.view();
+    }
+
+    /**
+     * 撤销本次打开的本地可见状态并释放菜单、tick 与显示路径.
+     * reason 为 null 表示调度退役, 不发送客户端关闭包; 否则按该原因走正常菜单关闭.
+     *
+     * @param reason 关闭原因, 退役路径为 null
+     * @return 清理过程中的第一个失败, 没有失败时为 null
+     */
+    @Nullable
+    private Throwable teardownOnEntity(@Nullable InventoryCloseEvent.Reason reason) {
+        // 使后续输入与 tick 立即失效
+        this.open = false;
+        this.generation++;
+        this.clickInterpreter.reset();
+
+        SchedulerTask previousTickTask = this.tickTask;
+        M previousMenu = this.menuHandle;
+        DisplayedSlotPath[] previousPaths = this.paths;
+        this.tickTask = null;
+        this.menuHandle = null;
+        this.paths = null;
+        this.localSlots = null;
+        this.localCursor = null;
+        this.menuDirty = false;
+        this.titleDirty = false;
+        this.pendingWindowStates.clear();
+
+        // 资源关闭应尽量完整执行, 最后才把第一个失败交给调用方
+        Throwable failure = null;
+        if (previousTickTask != null) {
+            previousTickTask.cancel();
+        }
+        if (previousMenu != null) {
+            try {
+                if (reason == null) {
+                    previousMenu.retire();
+                } else {
+                    previousMenu.close(reason);
+                }
+            } catch (RuntimeException | Error throwable) {
+                failure = throwable;
+            }
+        }
+        return closePaths(previousPaths, failure);
     }
 
     /**
@@ -758,9 +806,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.requirePath(windowSlot).handleClick(
                     new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton())
             );
-        }
-        else if (click.target() == ClickInterpreter.Target.OutsideTarget.INSTANCE && !this.fireOutsideClick(click)) {
-            return;
+        } else if (click.target() == ClickInterpreter.Target.OutsideTarget.INSTANCE) {
+            // 玩家物品栏点击走原生逻辑; 容器外点击只分发处理器, 预测偏差由远端镜像复核兜底
+            this.fireOutsideClick(click);
         }
     }
 
@@ -803,6 +851,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 处理客户端收纳袋选择包.
+     * 选择只转发给 GUI 槽位, 处理后强制完整同步以纠正客户端的本地预测.
+     */
     private void handleBundleSelection(MenuInput.Common.BundleSelection packet) {
         this.clickInterpreter.reset();
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
@@ -866,7 +918,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         int currentVersion = menu.playerInventoryVersion();
-        boolean auditDue = this.windowTick % AbstractWindow.PLAYER_INVENTORY_AUDIT_INTERVAL == 0;
+        boolean auditDue = this.windowTick % PLAYER_INVENTORY_AUDIT_INTERVAL == 0;
         if (currentVersion == this.playerInventoryVersion && !auditDue) {
             return;
         }
@@ -878,7 +930,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
             if (this.layout.route(windowSlot) instanceof WindowLayout.Route.PlayerRoute(var inventorySlot)) {
                 ItemStack playerItem = this.viewer.getInventory().getItem(inventorySlot);
-                if (!AbstractWindow.sameItem(localSlots[windowSlot], playerItem)) {
+                if (!sameItem(localSlots[windowSlot], playerItem)) {
                     localSlots[windowSlot] = ItemUtils.copyOrEmpty(playerItem);
                     this.notifyUpdate(windowSlot);
                 }
@@ -932,6 +984,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 渲染单个显示路径, 失败时上报并回退到上一份本地快照.
+     *
+     * @param path 显示路径
+     * @param windowSlot 窗口槽位
+     * @param fallback 渲染失败时的回退物品
+     * @return 渲染结果
+     */
     private ItemStack render(DisplayedSlotPath path, int windowSlot, @Nullable ItemStack fallback) {
         try {
             return path.render();
@@ -941,6 +1001,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 把 dirty 槽位集合中的 GUI 槽位渲染进本地快照.
+     *
+     * @param dirty 本批 dirty 槽位
+     * @param paths 显示路径
+     * @param localSlots 本地槽位快照
+     */
     private void renderDirtySlots(BitSet dirty, DisplayedSlotPath[] paths, ItemStack[] localSlots) {
         for (
                 int windowSlot = dirty.nextSetBit(0);
@@ -973,7 +1040,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    private boolean fireOutsideClick(ClickInterpreter.Result.SingleClick click) {
+    /**
+     * 按注册顺序分发容器外点击, 单个处理器失败不影响后续处理器.
+     */
+    private void fireOutsideClick(ClickInterpreter.Result.SingleClick click) {
         ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
         List<Consumer<ClickEvent>> handlers = this.outsideClickHandlers;
         for (int index = 0; index < handlers.size(); index++) {
@@ -983,17 +1053,23 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 this.manager.report("Failed to handle Window outside click", throwable);
             }
         }
-        return !event.isCancelled();
     }
 
+    /**
+     * 重新求值标题 supplier 并发布到本地快照, 打开状态下安排重开标题.
+     */
     private void refreshTitleOnEntity() {
         this.updateTitleOnEntity(this.refreshTitleValueOnEntity());
     }
 
+    /**
+     * 求值标题 supplier 并写入本地快照, supplier 返回 null 时立即失败.
+     *
+     * @return 新标题
+     */
     private Component refreshTitleValueOnEntity() {
-        Component resolved = Objects.requireNonNull(this.titleSupplier.get(), "title supplier returned null");
-        this.title = resolved;
-        return resolved;
+        this.title = Objects.requireNonNull(this.titleSupplier.get(), "title supplier returned null");
+        return this.title;
     }
 
     /**
@@ -1042,6 +1118,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         });
     }
 
+    /**
+     * 返回指定窗口槽位的显示路径, 槽位没有 GUI 路径时抛出 IllegalStateException.
+     *
+     * @param windowSlot 窗口槽位
+     * @return 显示路径
+     */
     private DisplayedSlotPath requirePath(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
         if (paths == null || paths[windowSlot] == null) {
@@ -1050,6 +1132,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return paths[windowSlot];
     }
 
+    /**
+     * 确认桥接返回后本次交互仍然有效.
+     * Bukkit 事件处理器可能已关闭或重开 Window, generation、菜单实例和 state id 任一变化都丢弃该交互.
+     *
+     * @param interactionGeneration 交互开始时的 generation
+     * @param interactionMenu 交互开始时的菜单
+     * @param interactionStateId 交互开始时的 state id
+     * @return 交互仍然有效时为 true
+     */
     private boolean isInteractionCurrent(long interactionGeneration, MenuHandle interactionMenu, int interactionStateId) {
         return this.open
                 && this.generation == interactionGeneration
@@ -1057,10 +1148,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 && interactionMenu.stateId() == interactionStateId;
     }
 
+    /**
+     * 取出本批 dirty 槽位并立即清空活动缓冲, 使通知线程可以继续写入下一批.
+     * 返回的是复用缓冲, 调用方只能读取且不能跨 tick 持有.
+     *
+     * @return 本批 dirty 槽位
+     */
     private BitSet takeDirtySlots() {
         synchronized (this.dirtyLock) {
             if (this.dirtySlots.isEmpty()) {
-                return AbstractWindow.EMPTY_DIRTY_SLOTS;
+                return EMPTY_DIRTY_SLOTS;
             }
 
             // 交换活动与备用缓冲, 使通知线程可以立即继续写入下一批 dirty 槽位
@@ -1072,6 +1169,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 按注册顺序运行关闭处理器, 单个处理器失败不影响后续处理器.
+     */
     private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
         for (int index = 0; index < this.closeHandlers.size(); index++) {
             try {
@@ -1082,6 +1182,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * 非对称比较本地快照与玩家物品栏现状.
+     * 右侧为 null 表示空槽位, 只有两侧都非空时才比较数量与相似度.
+     *
+     * @param left 本地快照
+     * @param right 当前物品, 可能为 null
+     * @return 两者表示同一物品时为 true
+     */
     private static boolean sameItem(@NotNull ItemStack left, @Nullable ItemStack right) {
         if (right == null || right.isEmpty()) {
             return left.isEmpty();

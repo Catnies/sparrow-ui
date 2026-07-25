@@ -172,5 +172,15 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          */
         record ButtonClick(int containerId, int button) implements WindowSpecific {
         }
+
+        /**
+         * 客户端从配方书选择了一个 recipe display.
+         *
+         * @param containerId 目标容器编号
+         * @param displayId recipe display 编号
+         * @param makeAll true 表示客户端请求尽可能多地制作
+         */
+        record RecipePlace(int containerId, int displayId, boolean makeAll) implements WindowSpecific {
+        }
     }
 }
