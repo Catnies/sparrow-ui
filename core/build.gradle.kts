@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     compileOnly(project(":bukkit-proxy"))
+    testImplementation(project(":bukkit-proxy"))
 }
 
 tasks.processResources {

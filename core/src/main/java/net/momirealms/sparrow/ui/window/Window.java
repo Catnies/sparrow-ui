@@ -60,56 +60,19 @@ public interface Window {
     }
 
     /**
-     * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
-     *
-     * @return 根 GUI 列表
-     */
-    @Unmodifiable
-    @NotNull List<Gui> guis();
-
-    /**
-     * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
-     *
-     * @param windowSlot 原始窗口槽位
-     * @return 根 GUI 链接
-     */
-    SlotElement.@Nullable GuiLink guiAt(int windowSlot);
-
-    /**
-     * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
-     *
-     * @param hotbarSlot 快捷栏索引
-     * @return 根 GUI 链接
-     */
-    SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot);
-
-    /**
-     * 通知 Window 指定槽位的显示内容需要更新.
-     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
-     *
-     * @param windowSlot 原始窗口槽位
-     */
-    void notifyUpdate(int windowSlot);
-
-    @NotNull Player viewer();
-
-    @NotNull Component title();
-
-    boolean isOpen();
-
-    /**
-     * 返回是否接受客户端主动发送的关闭请求.
-     *
-     * @return 是否接受客户端主动关闭
-     */
-    boolean isCloseable();
-
-    /**
      * 请求打开 Window, Stage 完成表示服务端生命周期已经提交, 不表示客户端已经显示.
      *
      * @return 打开请求的提交结果
      */
     @NotNull CompletionStage<OpenResult> open();
+
+    /**
+     * 请求关闭 Window.
+     * closeable 只限制玩家主动关闭, 不限制插件命令.
+     *
+     * @return 关闭请求的提交结果
+     */
+    @NotNull CompletionStage<CloseResult> close();
 
     /**
      * 设置动态标题来源并请求刷新.
@@ -142,6 +105,8 @@ public interface Window {
      */
     void updateTitle();
 
+    @NotNull Component title();
+
     /**
      * 设置是否接受客户端主动关闭.
      * 此设置不阻止插件、断线或 Bukkit 外部关闭.
@@ -151,12 +116,22 @@ public interface Window {
     void setCloseable(boolean closeable);
 
     /**
-     * 请求关闭 Window.
-     * closeable 只限制玩家主动关闭, 不限制插件命令.
+     * 设置玩家主动关闭时要解析并打开的后备 Window.
+     * Supplier 仅在玩家主动关闭后读取.
      *
-     * @return 关闭请求的提交结果
+     * @param fallbackWindow 后备 Window 来源
      */
-    @NotNull CompletionStage<CloseResult> close();
+    void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
+
+    /**
+     * 设置玩家主动关闭时要打开的固定后备 Window.
+     * 传入 null 可清除后备 Window.
+     *
+     * @param fallbackWindow 后备 Window
+     */
+    default void setFallbackWindow(@Nullable Window fallbackWindow) {
+        this.setFallbackWindow(() -> fallbackWindow);
+    }
 
     /**
      * 替换打开后依次执行的处理器列表.
@@ -232,24 +207,6 @@ public interface Window {
     void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
 
     /**
-     * 设置玩家主动关闭时要打开的固定后备 Window.
-     * 传入 null 可清除后备 Window.
-     *
-     * @param fallbackWindow 后备 Window
-     */
-    default void setFallbackWindow(@Nullable Window fallbackWindow) {
-        this.setFallbackWindow(() -> fallbackWindow);
-    }
-
-    /**
-     * 设置玩家主动关闭时要解析并打开的后备 Window.
-     * Supplier 仅在玩家主动关闭后读取.
-     *
-     * @param fallbackWindow 后备 Window 来源
-     */
-    void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
-
-    /**
      * 设置服务器窗口状态, 并在已打开时发送 Ping 等待客户端确认.
      *
      * @param windowState 新服务器窗口状态
@@ -310,9 +267,52 @@ public interface Window {
     @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer();
 
     /**
+     * 通知 Window 指定槽位的显示内容需要更新.
+     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
+     *
+     * @param windowSlot 原始窗口槽位
+     */
+    void notifyUpdate(int windowSlot);
+
+    /**
      * 在 Window 已打开时请求一次强制全量同步.
      */
     void sendAllDataToViewer();
+
+    @NotNull Player viewer();
+
+    boolean isOpen();
+
+    /**
+     * 返回是否接受客户端主动发送的关闭请求.
+     *
+     * @return 是否接受客户端主动关闭
+     */
+    boolean isCloseable();
+
+    /**
+     * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
+     *
+     * @return 根 GUI 列表
+     */
+    @Unmodifiable
+    @NotNull List<Gui> guis();
+
+    /**
+     * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
+     *
+     * @param windowSlot 原始窗口槽位
+     * @return 根 GUI 链接
+     */
+    SlotElement.@Nullable GuiLink guiAt(int windowSlot);
+
+    /**
+     * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
+     *
+     * @param hotbarSlot 快捷栏索引
+     * @return 根 GUI 链接
+     */
+    SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot);
 
     /**
      * 打开请求的提交结果.
