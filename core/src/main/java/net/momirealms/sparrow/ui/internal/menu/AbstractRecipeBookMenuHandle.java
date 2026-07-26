@@ -24,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
  */
 @SuppressWarnings("UnstableApiUsage")
 abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implements RecipeBookMenuHandle {
-    private static Object recipeManager;
+    private static final Object RECIPE_MANAGER = MinecraftServerProxy.INSTANCE.getRecipeManager(MinecraftServerProxy.INSTANCE.getServer());
 
     AbstractRecipeBookMenuHandle(
             @NotNull PacketListener packets,
@@ -36,27 +36,18 @@ abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implemen
             long generation
     ) {
         super(packets, player, menuType, inventoryType, bukkitMenuType, upperSize, generation);
-        if (recipeManager == null) {
-            Object server = MinecraftServerProxy.INSTANCE.getServer();
-            recipeManager = MinecraftServerProxy.INSTANCE.getRecipeManager(server);
-        }
     }
 
     @Override
     @Nullable
     public final Key recipeKey(int displayId) {
-        Object displayInfo = RecipeManagerProxy.INSTANCE.getRecipeFromDisplay(recipeManager, RecipeDisplayIdProxy.INSTANCE.newInstance(displayId));
+        Object displayInfo = RecipeManagerProxy.INSTANCE.getRecipeFromDisplay(RECIPE_MANAGER, RecipeDisplayIdProxy.INSTANCE.newInstance(displayId));
         if (displayInfo == null) return null;
 
         Object holder = RecipeManagerServerDisplayInfoProxy.INSTANCE.parent(displayInfo);
         Object recipeKey = RecipeHolderProxy.INSTANCE.id(holder);
-        Object identifier = VersionHelper.isOrAbove26_1()
-                ? ResourceKeyProxy.INSTANCE.identifier(recipeKey)
-                : ResourceKeyProxy.INSTANCE.location(recipeKey);
-        return Key.key(
-                IdentifierProxy.INSTANCE.getNamespace(identifier),
-                IdentifierProxy.INSTANCE.getPath(identifier)
-        );
+        Object identifier = VersionHelper.isOrAbove26_1() ? ResourceKeyProxy.INSTANCE.identifier(recipeKey) : ResourceKeyProxy.INSTANCE.location(recipeKey);
+        return Key.key(IdentifierProxy.INSTANCE.getNamespace(identifier), IdentifierProxy.INSTANCE.getPath(identifier));
     }
 
     @Override
@@ -65,8 +56,7 @@ abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implemen
         Object recipeKey = ResourceKeyProxy.INSTANCE.create(RegistriesProxy.RECIPE, identifier);
         Object[] firstDisplay = new Object[1];
         RecipeManagerProxy.INSTANCE.listDisplaysForRecipe(
-                recipeManager,
-                recipeKey,
+                RECIPE_MANAGER, recipeKey,
                 entry -> {
                     if (firstDisplay[0] == null) {
                         firstDisplay[0] = RecipeDisplayEntryProxy.INSTANCE.display(entry);

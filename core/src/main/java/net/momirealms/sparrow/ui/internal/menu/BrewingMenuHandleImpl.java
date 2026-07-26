@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.MenuType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -22,15 +23,7 @@ final class BrewingMenuHandleImpl extends ContainerMenuHandle implements Brewing
     private boolean fuelQueued;
 
     BrewingMenuHandleImpl(PacketListener packets, Player player, long generation) {
-        super(
-                packets,
-                player,
-                MenuTypeProxy.BREWING_STAND,
-                InventoryType.BREWING,
-                org.bukkit.inventory.MenuType.BREWING_STAND,
-                5,
-                generation
-        );
+        super(packets, player, MenuTypeProxy.BREWING_STAND, InventoryType.BREWING, MenuType.BREWING_STAND, 5, generation);
     }
 
     @Override
