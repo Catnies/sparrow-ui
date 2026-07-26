@@ -33,7 +33,9 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
     }
 
     public final void setCookProgress(double progress) {
-        AbstractFurnaceWindow.requireProgress(progress, "cook");
+        if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+            throw new IllegalArgumentException("cook progress must be between 0.0 and 1.0: " + progress);
+        }
         this.submit(
                 () -> {
                     this.cookProgress = progress;
@@ -52,7 +54,9 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
     }
 
     public final void setFuelProgress(double progress) {
-        AbstractFurnaceWindow.requireProgress(progress, "fuel");
+        if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+            throw new IllegalArgumentException("fuel progress must be between 0.0 and 1.0: " + progress);
+        }
         this.submit(
                 () -> {
                     this.fuelProgress = progress;
@@ -81,18 +85,6 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
 
     @NotNull
     protected abstract FurnaceMenuHandle createFurnaceMenuHandle(@NotNull MenuFactory factory, long generation);
-
-    private static void requireProgress(double progress, @NotNull String name) {
-        if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
-            throw new IllegalArgumentException(name + " progress must be between 0.0 and 1.0: " + progress);
-        }
-    }
-
-    private static void requireOneSlot(@NotNull Gui gui, @NotNull String name) {
-        if (gui.width() != 1 || gui.height() != 1) {
-            throw new IllegalArgumentException(name + " GUI must have size 1x1");
-        }
-    }
 
     /**
      * 三种炉类 Window Builder 共用的槽位与进度实现.
@@ -144,14 +136,18 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
 
         @NotNull
         public final B setCookProgress(double progress) {
-            AbstractFurnaceWindow.requireProgress(progress, "cook");
+            if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+                throw new IllegalArgumentException("cook progress must be between 0.0 and 1.0: " + progress);
+            }
             this.cookProgress = progress;
             return this.self();
         }
 
         @NotNull
         public final B setFuelProgress(double progress) {
-            AbstractFurnaceWindow.requireProgress(progress, "fuel");
+            if (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0) {
+                throw new IllegalArgumentException("fuel progress must be between 0.0 and 1.0: " + progress);
+            }
             this.fuelProgress = progress;
             return this.self();
         }
@@ -159,9 +155,13 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
         @Override
         @NotNull
         protected final W createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            AbstractFurnaceWindow.requireOneSlot(this.inputGui, "input");
-            AbstractFurnaceWindow.requireOneSlot(this.fuelGui, "fuel");
-            AbstractFurnaceWindow.requireOneSlot(this.resultGui, "result");
+            if (this.inputGui.width() != 1 || this.inputGui.height() != 1)
+                throw new IllegalArgumentException("input GUI must have size 1x1");
+            if (this.fuelGui.width() != 1 || this.fuelGui.height() != 1)
+                throw new IllegalArgumentException("fuel GUI must have size 1x1");
+            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
+                throw new IllegalArgumentException("result GUI must have size 1x1");
+
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.fuelGui),

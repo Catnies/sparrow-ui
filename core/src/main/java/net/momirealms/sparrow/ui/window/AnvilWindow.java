@@ -50,7 +50,7 @@ public interface AnvilWindow extends Window {
      *
      * @return 是否始终启用文本框
      */
-    boolean getTextFieldAlwaysEnabled();
+    boolean isTextFieldAlwaysEnabled();
 
     /**
      * 设置输入槽为空时是否以不可见占位物保持文本框可编辑.
@@ -64,7 +64,7 @@ public interface AnvilWindow extends Window {
      *
      * @return 是否始终保持结果有效
      */
-    boolean getResultAlwaysValid();
+    boolean isResultAlwaysValid();
 
     /**
      * 设置结果槽为空时是否以不可见占位物保持结果按钮有效.

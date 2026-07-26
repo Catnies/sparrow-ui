@@ -65,7 +65,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void setLevel(int level) {
-        MerchantWindowImpl.requireLevel(level);
+        if (level < 0 || level > 5) {
+            throw new IllegalArgumentException("merchant level must be between 0 and 5: " + level);
+        }
         this.submit(
                 () -> {
                     if (this.level == level) {
@@ -84,7 +86,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void setProgress(double progress) {
-        MerchantWindowImpl.requireProgress(progress);
+        if (progress != -1.0 && (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0)) {
+            throw new IllegalArgumentException("merchant progress must be -1.0 or between 0.0 and 1.0: " + progress);
+        }
         this.submit(
                 () -> {
                     if (Double.compare(this.progress, progress) == 0) {
@@ -313,18 +317,6 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         return this.tradeSelectionHandlers.snapshot();
     }
 
-    private static void requireLevel(int level) {
-        if (level < 0 || level > 5) {
-            throw new IllegalArgumentException("merchant level must be between 0 and 5: " + level);
-        }
-    }
-
-    private static void requireProgress(double progress) {
-        if (progress != -1.0 && (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0)) {
-            throw new IllegalArgumentException("merchant progress must be -1.0 or between 0.0 and 1.0: " + progress);
-        }
-    }
-
     /**
      * Trade 的线程安全实现. 三个 Item 引用构建后固定, discount 与 available 使用原子字段跨线程发布;
      * setter 只在值实际变化时于调用线程同步发送对应的 TradeChange.
@@ -495,7 +487,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder setLevel(int level) {
-            MerchantWindowImpl.requireLevel(level);
+            if (level < 0 || level > 5) {
+                throw new IllegalArgumentException("merchant level must be between 0 and 5: " + level);
+            }
             this.level = level;
             return this;
         }
@@ -503,7 +497,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder setProgress(double progress) {
-            MerchantWindowImpl.requireProgress(progress);
+            if (progress != -1.0 && (!Double.isFinite(progress) || progress < 0.0 || progress > 1.0)) {
+                throw new IllegalArgumentException("merchant progress must be -1.0 or between 0.0 and 1.0: " + progress);
+            }
             this.progress = progress;
             return this;
         }

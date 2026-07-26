@@ -716,9 +716,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      *
      * @return 顶部槽位数量
      */
-    protected final int topSlots() {
+    protected final int upperSize() {
         return this.layout.upperSize();
     }
+
     /**
      * 将已通过 generation 筛选的协议输入分派到对应处理流程.
      */

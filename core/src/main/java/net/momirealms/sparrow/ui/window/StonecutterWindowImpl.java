@@ -41,7 +41,9 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
 
     @Override
     public void setSelectedRecipeIndex(int index) {
-        StonecutterWindowImpl.checkSelectedRecipeIndex(index, this.buttonCapacity);
+        if (index < -1 || index >= this.buttonCapacity) {
+            throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + index);
+        }
         this.submit(
                 () -> {
                     StonecutterMenuHandle menuHandle = this.menuHandle();
@@ -101,12 +103,6 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
             menuHandle.reconcileClientSelection(selectedIndex);
             this.requestSynchronize();
             this.dispatchItemClick(BUTTONS_START + selectedIndex, ClickType.LEFT);
-        }
-    }
-
-    private static void checkSelectedRecipeIndex(int index, int buttonCapacity) {
-        if (index < -1 || index >= buttonCapacity) {
-            throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + index);
         }
     }
 
@@ -170,13 +166,13 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
         @Override
         @NotNull
         protected StonecutterWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 2 || this.upperGui.height() != 1) {
+            if (this.upperGui.width() != 2 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("stonecutter upper GUI must have size 2x1");
-            }
-            if (this.buttonsGui.width() != 4) {
+            if (this.buttonsGui.width() != 4)
                 throw new IllegalArgumentException("stonecutter buttons GUI must have width 4");
-            }
-            StonecutterWindowImpl.checkSelectedRecipeIndex(this.selectedRecipeIndex, this.buttonsGui.area());
+            if (this.selectedRecipeIndex < -1 || this.selectedRecipeIndex >= this.buttonsGui.area())
+                throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + this.selectedRecipeIndex);
+
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.upperGui),
                     WindowLayout.Region.lower(this.lowerGui),

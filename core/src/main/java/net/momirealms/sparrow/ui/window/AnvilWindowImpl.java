@@ -68,7 +68,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     }
 
     @Override
-    public boolean getTextFieldAlwaysEnabled() {
+    public boolean isTextFieldAlwaysEnabled() {
         return this.textFieldAlwaysEnabled;
     }
 
@@ -89,7 +89,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     }
 
     @Override
-    public boolean getResultAlwaysValid() {
+    public boolean isResultAlwaysValid() {
         return this.resultAlwaysValid;
     }
 

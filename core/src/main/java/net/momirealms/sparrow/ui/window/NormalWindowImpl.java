@@ -21,7 +21,7 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
 
     @Override
     protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
-        return factory.normal(this.viewer(), this.topSlots() / 9, generation);
+        return factory.normal(this.viewer(), this.upperSize() / 9, generation);
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<NormalWindow, NormalWindow.Builder> implements NormalWindow.Builder {
@@ -74,27 +74,19 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
         ) {
             WindowLayout layout;
             if (this.mergedGui != null) {
-                checkMerged(this.mergedGui);
+                if (this.mergedGui.width() != 9 || this.mergedGui.height() < 5 || this.mergedGui.height() > 10) {
+                    throw new IllegalArgumentException("merged GUI must have width 9 and height between 5 and 10");
+                }
                 layout = WindowLayout.merged(this.mergedGui);
             } else {
-                checkUpper(this.upperGui);
+                if (this.upperGui.width() != 9 || this.upperGui.height() < 1 || this.upperGui.height() > 6) {
+                    throw new IllegalArgumentException("normal upper GUI must have width 9 and height between 1 and 6");
+                }
                 layout = this.lowerGui == null
                         ? WindowLayout.upper(this.upperGui)
                         : WindowLayout.split(this.upperGui, this.lowerGui);
             }
             return new NormalWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
-        }
-
-        private static void checkUpper(Gui gui) {
-            if (gui.width() != 9 || gui.height() < 1 || gui.height() > 6) {
-                throw new IllegalArgumentException("normal upper GUI must have width 9 and height between 1 and 6");
-            }
-        }
-
-        private static void checkMerged(Gui gui) {
-            if (gui.width() != 9 || gui.height() < 5 || gui.height() > 10) {
-                throw new IllegalArgumentException("merged GUI must have width 9 and height between 5 and 10");
-            }
         }
     }
 }

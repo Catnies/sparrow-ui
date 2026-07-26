@@ -36,7 +36,9 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
 
     @Override
     public void setSlotDisabled(int slot, boolean disabled) {
-        CrafterWindowImpl.checkSlot(slot);
+        if (slot < 0 || slot >= CRAFTING_SLOTS) {
+            throw new IndexOutOfBoundsException("crafter slot out of bounds: " + slot);
+        }
         this.submit(
                 () -> {
                     this.disabledMask = CrafterWindowImpl.withSlotState(this.disabledMask, slot, disabled);
@@ -52,7 +54,9 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
 
     @Override
     public boolean isSlotDisabled(int slot) {
-        CrafterWindowImpl.checkSlot(slot);
+        if (slot < 0 || slot >= CRAFTING_SLOTS) {
+            throw new IndexOutOfBoundsException("crafter slot out of bounds: " + slot);
+        }
         return (this.disabledMask & 1 << slot) != 0;
     }
 
@@ -131,12 +135,6 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
         return disabled ? mask | 1 << slot : mask & ~(1 << slot);
     }
 
-    private static void checkSlot(int slot) {
-        if (slot < 0 || slot >= CRAFTING_SLOTS) {
-            throw new IndexOutOfBoundsException("crafter slot out of bounds: " + slot);
-        }
-    }
-
     static final class BuilderImpl extends AbstractWindowBuilder<CrafterWindow, CrafterWindow.Builder>
             implements CrafterWindow.Builder {
         private Gui craftingGui = Gui.empty(new GuiSize(3, 3));
@@ -181,7 +179,9 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
         @Override
         @NotNull
         public CrafterWindow.Builder setSlotDisabled(int slot, boolean disabled) {
-            CrafterWindowImpl.checkSlot(slot);
+            if (slot < 0 || slot >= CRAFTING_SLOTS) {
+                throw new IndexOutOfBoundsException("crafter slot out of bounds: " + slot);
+            }
             this.disabledMask = CrafterWindowImpl.withSlotState(this.disabledMask, slot, disabled);
             return this;
         }
