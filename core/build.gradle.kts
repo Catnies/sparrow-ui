@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     compileOnly(project(":bukkit-proxy"))
+    compileOnly(libs.datafixerupper)
     testImplementation(project(":bukkit-proxy"))
 }
 

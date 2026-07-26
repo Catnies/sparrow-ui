@@ -1,7 +1,8 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,7 +18,12 @@ public final class SlotDelta {
     @Nullable
     private final ItemStack after; // 变更后的内部快照, 提交后与库存快照共享同一实例
 
-    SlotDelta(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
+    /**
+     * 由事务引擎与规划器构造槽变更.
+     * <p>公开只为跨包协作, 不属于稳定 API.
+     */
+    @ApiStatus.Internal
+    public SlotDelta(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
         this.slot = slot;
         // 先克隆再归一化: 判空针对私有克隆, 入参的并发修改无法走私空表示进入 delta
         this.before = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
@@ -32,9 +38,13 @@ public final class SlotDelta {
         this.after = after;
     }
 
-    // 视图把逻辑槽 delta 映射到底层槽时使用: 只换槽号, 内部快照不再克隆
+    /**
+     * 视图把逻辑槽 delta 映射到底层槽时使用: 只换槽号, 内部快照不再克隆.
+     * <p>公开只为跨包协作, 不属于稳定 API.
+     */
+    @ApiStatus.Internal
     @NotNull
-    SlotDelta relocatedTo(int slot) {
+    public SlotDelta relocatedTo(int slot) {
         return new SlotDelta(slot, this.before, this.after, true);
     }
 
@@ -58,9 +68,13 @@ public final class SlotDelta {
         return ItemUtils.copyOrNull(this.after);
     }
 
-    // 提交路径直接把该内部实例写入新快照, 免去二次克隆; 内部代码不得变异它
+    /**
+     * 提交路径直接把该内部实例写入新快照, 免去二次克隆; 内部代码不得变异它.
+     * <p>公开只为跨包协作, 不属于稳定 API.
+     */
+    @ApiStatus.Internal
     @Nullable
-    ItemStack rawAfter() {
+    public ItemStack rawAfter() {
         return this.after;
     }
 }

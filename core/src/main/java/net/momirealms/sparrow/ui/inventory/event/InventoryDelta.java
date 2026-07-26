@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.event;
 
+import net.momirealms.sparrow.ui.inventory.Inventory;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;

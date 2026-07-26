@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.world.item;
 
+import com.mojang.serialization.Codec;
 import net.nyana.reflection.proxy.ASMProxyFactory;
 import net.nyana.reflection.proxy.annotation.ConstructorInvoker;
 import net.nyana.reflection.proxy.annotation.FieldGetter;
@@ -24,6 +25,9 @@ public interface ItemStackProxy {
 
     @FieldGetter(name = "EMPTY", isStatic = true)
     Object EMPTY();
+
+    @FieldGetter(name = "CODEC", isStatic = true)
+    Codec<Object> getCODEC();
 
     @MethodInvoker(name = "getBukkitStack", activeIf = "has_patch=paper")
     ItemStack getBukkitStack(Object target);

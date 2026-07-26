@@ -19,6 +19,7 @@ repositories {
 
 dependencies {
     compileOnly(libs.paper.api)
+    compileOnly(libs.datafixerupper)
     implementation(libs.asm)
     implementation(libs.nyana.reflection)
 

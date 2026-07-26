@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.event;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -15,7 +16,12 @@ public final class TransactionPreEvent {
     private final List<InventoryDelta> changes;
     private volatile boolean cancelled; // volatile 兜底跨线程误用时的可见性, 正常路径只在派发线程翻转
 
-    TransactionPreEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
+    /**
+     * 由事务引擎在 pre 阶段构造.
+     * <p>公开只为跨包协作, 不属于稳定 API.
+     */
+    @ApiStatus.Internal
+    public TransactionPreEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
         this.reason = reason;
         this.changes = changes;
     }

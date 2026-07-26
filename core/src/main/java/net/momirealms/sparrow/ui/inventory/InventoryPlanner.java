@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
@@ -41,7 +42,7 @@ final class InventoryPlanner {
         for (int i = 0; i < order.size() && remaining > 0; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
-            if (current == null || !ItemUtils.isSimilar(current, item)) {
+            if (!ItemUtils.isSimilar(current, item)) {
                 continue;
             }
             int space = effectiveMaxStackSize(slotLimit, slot, current) - current.getAmount();

@@ -1,6 +1,11 @@
 package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.TransactionPostEvent;
+import net.momirealms.sparrow.ui.inventory.event.TransactionPreEvent;
+import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -8,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -47,8 +53,11 @@ final class InventoryTransactions {
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
-        List<Scope> ordered = validateAndOrder(scopes);
-        List<InventoryDelta> changes = changesOf(ordered);
+        // 声明序列表负责事件载荷, 兑现"按调用方声明顺序"的公开契约;
+        // 锁序列表只服务于加锁与提交, 两个顺序自此解耦
+        List<Scope> declared = validateAndMerge(scopes);
+        List<Scope> ordered = sortByLockOrder(declared);
+        List<InventoryDelta> changes = changesOf(declared);
 
         // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
         if (!bypassPre) {
@@ -115,13 +124,14 @@ final class InventoryTransactions {
     }
 
     /**
-     * 校验事务形状(非空, 槽号界内), 按锁序号排出加锁顺序, 并合并指向同一根库存
-     * 的多个范围 —— 视图场景(共根的两个投影, 源与目标共根)会合法地产生它们.
-     * 合并要求各范围持有同一 planned 引用(同线程内两次读取之间无提交时必然成立),
-     * 且合并后同一槽位至多出现一次; 违反者是调用方缺陷, 立即失败.
+     * 校验事务形状(非空, 槽号界内), 并合并指向同一根库存的多个范围 —— 视图场景
+     * (共根的两个投影, 源与目标共根)会合法地产生它们. 合并要求各范围持有同一
+     * planned 引用(同线程内两次读取之间无提交时必然成立), 且合并后同一槽位至多
+     * 出现一次; 违反者是调用方缺陷, 立即失败.
+     * <p>返回列表保持声明首现顺序, 事件载荷"按调用方声明顺序"的承诺以它为基准.
      */
     @NotNull
-    private static List<Scope> validateAndOrder(List<Scope> scopes) {
+    private static List<Scope> validateAndMerge(List<Scope> scopes) {
         if (scopes.isEmpty()) {
             throw new IllegalArgumentException("transaction requires at least one scope");
         }
@@ -139,28 +149,26 @@ final class InventoryTransactions {
             }
         }
 
-        // 锁序号唯一, 排序后相邻的同根范围即可线性合并
-        List<Scope> sorted = new ArrayList<>(scopes);
-        sorted.sort(Comparator.comparingLong(scope -> scope.inventory().lockOrder()));
-
-        List<Scope> merged = new ArrayList<>(sorted.size());
-        for (int i = 0; i < sorted.size(); i++) {
-            Scope scope = sorted.get(i);
-            if (merged.isEmpty() || merged.getLast().inventory() != scope.inventory()) {
-                merged.add(scope);
+        // 按根库存归并, LinkedHashMap 保住声明首现顺序
+        LinkedHashMap<AbstractInventory, Scope> mergedByRoot = new LinkedHashMap<>();
+        for (int i = 0; i < scopes.size(); i++) {
+            Scope scope = scopes.get(i);
+            Scope previous = mergedByRoot.get(scope.inventory());
+            if (previous == null) {
+                mergedByRoot.put(scope.inventory(), scope);
                 continue;
             }
 
-            Scope previous = merged.getLast();
             if (previous.planned() != scope.planned()) {
                 throw new IllegalArgumentException("transaction contains the same inventory with different planned snapshots");
             }
             List<SlotDelta> combined = new ArrayList<>(previous.deltas());
             combined.addAll(scope.deltas());
-            merged.set(merged.size() - 1, new Scope(scope.inventory(), scope.planned(), combined));
+            mergedByRoot.put(scope.inventory(), new Scope(scope.inventory(), scope.planned(), combined));
         }
 
         // 合并后的同槽重复意味着两个来源对同一物理槽给出冲突写入, 是调用方缺陷
+        List<Scope> merged = List.copyOf(mergedByRoot.values());
         for (int i = 0; i < merged.size(); i++) {
             Scope scope = merged.get(i);
             HashSet<Integer> seenSlots = new HashSet<>();
@@ -171,6 +179,14 @@ final class InventoryTransactions {
             }
         }
         return merged;
+    }
+
+    // 加锁, 乐观校验与快照交换按锁序号全序进行, 与事件载荷的声明顺序解耦
+    @NotNull
+    private static List<Scope> sortByLockOrder(List<Scope> declared) {
+        List<Scope> ordered = new ArrayList<>(declared);
+        ordered.sort(Comparator.comparingLong(scope -> scope.inventory().lockOrder()));
+        return ordered;
     }
 
     // 事件载荷按调用方声明顺序组装, 与加锁顺序无关

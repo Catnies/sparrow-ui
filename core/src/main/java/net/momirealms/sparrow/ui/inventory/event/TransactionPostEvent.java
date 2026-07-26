@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.event;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -13,7 +14,12 @@ public final class TransactionPostEvent {
     private final UpdateReason reason;
     private final List<InventoryDelta> changes;
 
-    TransactionPostEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
+    /**
+     * 由事务引擎在提交成功后构造.
+     * <p>公开只为跨包协作, 不属于稳定 API.
+     */
+    @ApiStatus.Internal
+    public TransactionPostEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
         this.reason = reason;
         this.changes = changes;
     }
