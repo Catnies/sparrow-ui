@@ -159,6 +159,21 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
+     * 返回路径终点的库存连接, 终点不是库存时返回 {@code null}.
+     */
+    @org.jetbrains.annotations.Nullable
+    SlotElement.InventoryLink inventoryLink() {
+        return this.currentState().inventoryLink;
+    }
+
+    /**
+     * 返回路径是否被冻结; 冻结槽不参与点击语义与 Item 分派.
+     */
+    boolean frozen() {
+        return this.currentState().frozen;
+    }
+
+    /**
      * 返回路径是否已关闭.
      *
      * @return 已关闭时为 true

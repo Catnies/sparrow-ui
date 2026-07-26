@@ -236,6 +236,16 @@ abstract class SparrowInventory implements Inventory {
         return this.simulateAdd(item) == 0;
     }
 
+    // 视图的对账驱动: 逐根转发, 镜像型根在其覆写中完成真实对账
+    @Override
+    public void refresh() {
+        LinkedHashSet<AbstractInventory> roots = new LinkedHashSet<>();
+        this.collectRoots(roots);
+        for (AbstractInventory root : roots) {
+            root.refresh();
+        }
+    }
+
     // 双检查锁定懒加载稳定的适配器单例: Bukkit 以 == 或 Map 键关联库存, 每次新建会破坏身份语义.
     @Override
     @NotNull
@@ -338,9 +348,22 @@ abstract class SparrowInventory implements Inventory {
         LinkedHashSet<AbstractInventory> roots = new LinkedHashSet<>();
         this.collectRoots(roots);
         Subscription[] subscriptions = new Subscription[roots.size()];
-        int i = 0;
-        for (AbstractInventory root : roots) {
-            subscriptions[i++] = subscriber.apply(root);
+        int subscribed = 0;
+        try {
+            for (AbstractInventory root : roots) {
+                subscriptions[subscribed] = subscriber.apply(root);
+                subscribed++;
+            }
+        } catch (RuntimeException | Error throwable) {
+            // 全有或全无: 中途失败时逆序关闭已建立的根订阅, 调用方无从关闭未返回的凭证
+            for (int i = subscribed - 1; i >= 0; i--) {
+                try {
+                    subscriptions[i].close();
+                } catch (RuntimeException | Error closeFailure) {
+                    throwable.addSuppressed(closeFailure);
+                }
+            }
+            throw throwable;
         }
         return new CompositeSubscription(subscriptions);
     }

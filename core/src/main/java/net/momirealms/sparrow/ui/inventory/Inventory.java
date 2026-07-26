@@ -155,6 +155,13 @@ public interface Inventory {
     boolean canHold(@NotNull ItemStack item);
 
     /**
+     * 驱动镜像型根库存与其外部真相对账; 快照型库存无操作.
+     * 集成层(如 Window 渲染循环)在主线程每 tick 调用一次, 使被引用容器的
+     * 外部变更以 External 原因进入事件流.
+     */
+    void refresh();
+
+    /**
      * 把本库存尽力适配为 Bukkit 库存接口, 同一库存恒返回同一适配器实例(Bukkit 侧
      * 可以引用身份关联). 适配器的写路径走 Sparrow 事务(原因为
      * {@link UpdateReason.Program}), 线程契约随本库存(快照型任意线程, 引用型写需

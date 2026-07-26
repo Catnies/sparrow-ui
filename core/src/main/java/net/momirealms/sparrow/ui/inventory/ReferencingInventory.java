@@ -131,6 +131,7 @@ public final class ReferencingInventory extends AbstractInventory {
      *
      * @throws IllegalStateException 当调用线程不是主线程时
      */
+    @Override
     public void refresh() {
         requireMainThread();
         this.reconcileFromBukkit();
@@ -161,20 +162,25 @@ public final class ReferencingInventory extends AbstractInventory {
     }
 
     // 对账: diff 容器当前内容与镜像, 差异以 External 原因绕过 pre 提交进镜像.
-    // 主线程串行保证镜像无并发写者, 该提交不应失败; 防御性上报意外结果.
+    // 比较阶段直接用容器的镜像包装引用, 不做任何深克隆 —— 绝大多数 tick 没有外部
+    // 变更, 只有差异槽才在 SlotDelta 构造中克隆归一. 主线程串行保证镜像无并发
+    // 写者, 该提交不应失败; 防御性上报意外结果.
     private void reconcileFromBukkit() {
-        @Nullable ItemStack[] live = readLogicalContents(this.contentsGetter.apply(this.bukkitInventory), this.toBukkitSlots);
+        @Nullable ItemStack[] raw = this.contentsGetter.apply(this.bukkitInventory);
         @Nullable ItemStack[] mirror = this.currentState();
-        List<SlotDelta> deltas = new ArrayList<>();
+        @Nullable List<SlotDelta> deltas = null;
         for (int slot = 0; slot < mirror.length; slot++) {
-            @Nullable ItemStack liveItem = live[slot];
+            @Nullable ItemStack liveItem = raw[this.toBukkitSlots[slot]];
             @Nullable ItemStack mirrorItem = mirror[slot];
-            boolean equal = liveItem == null ? mirrorItem == null : liveItem.equals(mirrorItem);
+            boolean equal = ItemUtils.isEmpty(liveItem) ? mirrorItem == null : liveItem.equals(mirrorItem);
             if (!equal) {
+                if (deltas == null) {
+                    deltas = new ArrayList<>();
+                }
                 deltas.add(new SlotDelta(slot, mirrorItem, liveItem));
             }
         }
-        if (deltas.isEmpty()) {
+        if (deltas == null) {
             return;
         }
 

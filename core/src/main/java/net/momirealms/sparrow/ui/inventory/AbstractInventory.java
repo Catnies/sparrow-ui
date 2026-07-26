@@ -119,6 +119,11 @@ abstract class AbstractInventory extends SparrowInventory {
         return this.openPlan();
     }
 
+    // 自持数据的根没有外部真相; 镜像型子类覆写为真实对账
+    @Override
+    public void refresh() {
+    }
+
     /**
      * 根级写前: 任何写入口在读取规划快照之前经过这里, 无论调用来自本库存
      * 的公开方法还是视图的批量归约. 镜像型实现在此完成线程校验与外部真相同步;

@@ -445,6 +445,14 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return ItemUtils.copyOrEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(this.actualCarried));
     }
 
+    @Override
+    public void cursor(@NotNull ItemStack cursor) {
+        // unwrap 借用底层句柄后复制为独立所有权, 菜单不持有调用方实例
+        this.actualCarried = cursor.isEmpty()
+                ? ItemStackProxy.EMPTY
+                : ItemUtils.copyItemStack(ItemUtils.getItemStackHandle(cursor));
+    }
+
     /**
      * {@inheritDoc}
      */

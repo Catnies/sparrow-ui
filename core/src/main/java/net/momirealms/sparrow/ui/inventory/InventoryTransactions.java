@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -47,13 +48,13 @@ final class InventoryTransactions {
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
         List<Scope> ordered = validateAndOrder(scopes);
-        List<InventoryDelta> changes = changesOf(scopes);
+        List<InventoryDelta> changes = changesOf(ordered);
 
-        // pre 阶段: 锁外派发, 任一观察者取消则整个事务零变更结束
+        // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
         if (!bypassPre) {
             TransactionPreEvent preEvent = new TransactionPreEvent(reason, changes);
-            for (int i = 0; i < scopes.size(); i++) {
-                scopes.get(i).inventory().publishPreUpdate(preEvent);
+            for (int i = 0; i < ordered.size(); i++) {
+                ordered.get(i).inventory().publishPreUpdate(preEvent);
             }
             if (preEvent.cancelled()) {
                 return TransactionResult.Cancelled.INSTANCE;
@@ -114,7 +115,10 @@ final class InventoryTransactions {
     }
 
     /**
-     * 校验事务形状(非空, 槽号界内, 库存不重复), 并按锁序号排出加锁顺序.
+     * 校验事务形状(非空, 槽号界内), 按锁序号排出加锁顺序, 并合并指向同一根库存
+     * 的多个范围 —— 视图场景(共根的两个投影, 源与目标共根)会合法地产生它们.
+     * 合并要求各范围持有同一 planned 引用(同线程内两次读取之间无提交时必然成立),
+     * 且合并后同一槽位至多出现一次; 违反者是调用方缺陷, 立即失败.
      */
     @NotNull
     private static List<Scope> validateAndOrder(List<Scope> scopes) {
@@ -135,15 +139,38 @@ final class InventoryTransactions {
             }
         }
 
-        // 锁序号唯一, 排序后相邻比对即可发现重复库存
-        List<Scope> ordered = new ArrayList<>(scopes);
-        ordered.sort(Comparator.comparingLong(scope -> scope.inventory().lockOrder()));
-        for (int i = 1; i < ordered.size(); i++) {
-            if (ordered.get(i).inventory() == ordered.get(i - 1).inventory()) {
-                throw new IllegalArgumentException("transaction contains the same inventory twice");
+        // 锁序号唯一, 排序后相邻的同根范围即可线性合并
+        List<Scope> sorted = new ArrayList<>(scopes);
+        sorted.sort(Comparator.comparingLong(scope -> scope.inventory().lockOrder()));
+
+        List<Scope> merged = new ArrayList<>(sorted.size());
+        for (int i = 0; i < sorted.size(); i++) {
+            Scope scope = sorted.get(i);
+            if (merged.isEmpty() || merged.getLast().inventory() != scope.inventory()) {
+                merged.add(scope);
+                continue;
+            }
+
+            Scope previous = merged.getLast();
+            if (previous.planned() != scope.planned()) {
+                throw new IllegalArgumentException("transaction contains the same inventory with different planned snapshots");
+            }
+            List<SlotDelta> combined = new ArrayList<>(previous.deltas());
+            combined.addAll(scope.deltas());
+            merged.set(merged.size() - 1, new Scope(scope.inventory(), scope.planned(), combined));
+        }
+
+        // 合并后的同槽重复意味着两个来源对同一物理槽给出冲突写入, 是调用方缺陷
+        for (int i = 0; i < merged.size(); i++) {
+            Scope scope = merged.get(i);
+            HashSet<Integer> seenSlots = new HashSet<>();
+            for (int j = 0; j < scope.deltas().size(); j++) {
+                if (!seenSlots.add(scope.deltas().get(j).slot())) {
+                    throw new IllegalArgumentException("transaction contains conflicting deltas for slot " + scope.deltas().get(j).slot());
+                }
             }
         }
-        return ordered;
+        return merged;
     }
 
     // 事件载荷按调用方声明顺序组装, 与加锁顺序无关

@@ -141,9 +141,8 @@ public interface MenuHandle extends AutoCloseable {
 
     /**
      * 返回供 Bukkit 事件读取的协议视图.
-     *
      * <p>视图的 {@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 必须返回可由
-     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.</p>
+     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.
      */
     @NotNull
     InventoryView view();
@@ -157,9 +156,8 @@ public interface MenuHandle extends AutoCloseable {
 
     /**
      * 返回 Paper 玩家物品栏的变更版本.
-     *
      * <p>Window 使用此版本门控底部物品栏扫描. Adapter 无法提供精确版本时可以返回一个
-     * 持续变化的值, 以退化为每 tick 扫描.</p>
+     * 持续变化的值, 以退化为每 tick 扫描.
      *
      * @return 当前玩家物品栏版本
      */
@@ -172,4 +170,13 @@ public interface MenuHandle extends AutoCloseable {
      */
     @NotNull
     ItemStack cursor();
+
+    /**
+     * 权威覆盖菜单真实持有的光标.
+     * <p>实现取得传入物品的独立快照, 不保留参数引用. 调用方负责随后的光标同步
+     * (脏标记与 synchronize).
+     *
+     * @param cursor 新的真实光标, 空物品表示清空
+     */
+    void cursor(@NotNull ItemStack cursor);
 }

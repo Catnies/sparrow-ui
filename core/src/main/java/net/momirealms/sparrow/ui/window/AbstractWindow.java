@@ -11,6 +11,8 @@ import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.inventory.ClickSemantics;
+import net.momirealms.sparrow.ui.inventory.Inventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
@@ -29,6 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -83,6 +86,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final WindowLayout layout;
     private final Object dirtyLock = new Object();
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();
+    private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的槽位路由与玩家侧 IO
     private final RenderContext cursorRenderContext;
     private final Map<Integer, PendingWindowState> pendingWindowStates = new HashMap<>();
     private final HandlerList<Runnable> openHandlers;
@@ -459,7 +463,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
                 switch (this.layout.route(windowSlot)) {
                     case WindowLayout.Route.GuiRoute route -> {
-                        paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());;
+                        paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());
                     }
                     case WindowLayout.Route.PlayerRoute route -> {
                         localSlots[windowSlot] = ItemUtils.copyOrEmpty(this.viewer.getInventory().getItem(route.inventorySlot()));
@@ -609,6 +613,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
+        this.refreshLinkedInventories();
         this.invalidatePeriodicSlots();
         this.refreshPlayerState();
         this.flush(false);
@@ -775,7 +780,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 对已解释的单次点击执行 Bukkit 桥接、重入复验和 Item 分派.
+     * 对已解释的单次点击执行 Bukkit 桥接、重入复验和语义分派.
+     * <p>库存与玩家区域槽位交给点击语义引擎(库存侧为事务, 玩家侧直接执行);
+     * Item 与空槽位保持原有 Item 分派. 语义执行后涉及槽位已被标脏,
+     * 客户端预测由同一 tick 的 flush 以权威状态收敛.
      */
     private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
         long interactionGeneration = this.generation;
@@ -786,23 +794,30 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
-        // 玩家物品栏点击走原生逻辑;
-        if (click.target() instanceof ClickInterpreter.Target.GuiTarget(var windowSlot)) {
-            this.requirePath(windowSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton()));
-        }
-        // 容器外点击只分发处理器.
-        else if (click.target() == ClickInterpreter.Target.OutsideTarget.INSTANCE) {
-            ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
-            this.outsideClickHandlers.forEachIsolated(
-                    handler -> handler.accept(event),
-                    "Failed to handle Window outside click",
-                    this.manager::report
-            );
+        switch (click.target()) {
+            case ClickInterpreter.Target.GuiTarget(var windowSlot) -> {
+                if (!ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot)) {
+                    this.requirePath(windowSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton()));
+                }
+            }
+            case ClickInterpreter.Target.PlayerTarget(var windowSlot, var ignoredInventorySlot) ->
+                    ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot);
+            case ClickInterpreter.Target.OutsideTarget ignoredOutside -> {
+                ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
+                ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
+                this.outsideClickHandlers.forEachIsolated(
+                        handler -> handler.accept(event),
+                        "Failed to handle Window outside click",
+                        this.manager::report
+                );
+            }
         }
     }
 
     /**
-     * 对已完成的 QUICK_CRAFT 执行 Bukkit 桥接、重入复验和逐槽 Item 分派.
+     * 对已完成的 QUICK_CRAFT 执行 Bukkit 桥接、重入复验和拖拽分配.
+     * <p>参与的库存槽位构成一个事务, 玩家背包槽位在提交成功后应用;
+     * Item 槽位不参与分配.
      */
     private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
         long interactionGeneration = this.generation;
@@ -813,14 +828,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
-        for (int index = 0; index < drag.slots().size(); index++) {
-            int windowSlot = drag.slots().get(index);
-            if (this.layout.route(windowSlot) instanceof WindowLayout.Route.GuiRoute) {
-                this.requirePath(windowSlot).handleClick(
-                        new ItemClick(this.viewer, drag.clickType(), this, windowSlot)
-                );
-            }
-        }
+        ClickSemantics.handleDrag(this.semanticsContext, drag.clickType(), drag.slots());
     }
 
     /**
@@ -905,6 +913,153 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 && this.generation == interactionGeneration
                 && this.menuHandle == interactionMenu
                 && interactionMenu.stateId() == interactionStateId;
+    }
+
+    /**
+     * 点击语义引擎的交互上下文: 槽位路由查询与光标, 玩家背包的权威读写.
+     * 全部方法只在玩家实体线程被点击处理路径调用.
+     */
+    private final class SemanticsContext implements ClickSemantics.Context {
+
+        @Override
+        @NotNull
+        public Player viewer() {
+            return AbstractWindow.this.viewer;
+        }
+
+        @Override
+        @Nullable
+        public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
+            if (!(AbstractWindow.this.layout.route(windowSlot) instanceof WindowLayout.Route.GuiRoute)) {
+                return null;
+            }
+            SlotElement.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();
+            return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
+        }
+
+        @Override
+        public boolean frozenAt(int windowSlot) {
+            return AbstractWindow.this.requirePath(windowSlot).frozen();
+        }
+
+        @Override
+        public int lowerSlotAt(int windowSlot) {
+            return AbstractWindow.this.layout.route(windowSlot) instanceof WindowLayout.Route.PlayerRoute(var inventorySlot)
+                    ? inventorySlot
+                    : -1;
+        }
+
+        @Override
+        public boolean hasPlayerInventory() {
+            return AbstractWindow.this.layout.hasPlayerLower();
+        }
+
+        @Override
+        @NotNull
+        public List<Inventory> linkedInventories() {
+            return AbstractWindow.this.collectLinkedInventories();
+        }
+
+        @Override
+        @NotNull
+        public ItemStack cursor() {
+            M menu = AbstractWindow.this.menuHandle;
+            return menu != null ? menu.cursor() : ItemStack.empty();
+        }
+
+        @Override
+        public void cursor(@NotNull ItemStack cursor) {
+            M menu = AbstractWindow.this.menuHandle;
+            if (menu != null) {
+                menu.cursor(cursor);
+            }
+            AbstractWindow.this.cursorDirty = true;
+        }
+
+        @Override
+        @Nullable
+        public ItemStack lowerAt(int inventorySlot) {
+            // 背包 getItem 返回 live 镜像, 防御拷贝后再交给语义计算
+            return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItem(inventorySlot)));
+        }
+
+        @Override
+        public void lowerAt(int inventorySlot, @Nullable ItemStack item) {
+            AbstractWindow.this.viewer.getInventory().setItem(inventorySlot, item);
+
+            // 同步窗口本地快照并标脏, 客户端在本 tick flush 中收到权威确认
+            int windowSlot = AbstractWindow.this.layout.windowSlotOfInventorySlot(inventorySlot);
+            ItemStack[] localSlots = AbstractWindow.this.localSlots;
+            if (localSlots != null) {
+                localSlots[windowSlot] = ItemUtils.copyOrEmpty(item);
+            }
+            AbstractWindow.this.notifyUpdate(windowSlot);
+        }
+
+        @Override
+        @Nullable
+        public ItemStack offhand() {
+            return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItemInOffHand()));
+        }
+
+        @Override
+        public void offhand(@Nullable ItemStack item) {
+            AbstractWindow.this.viewer.getInventory().setItemInOffHand(item);
+        }
+
+        @Override
+        public void drop(@NotNull ItemStack item) {
+            // 走玩家丢弃路径: 触发 PlayerDropItemEvent, 携带投掷归属与原版轨迹
+            AbstractWindow.this.viewer.dropItem(item);
+        }
+
+        @Override
+        public void markDirty(int windowSlot) {
+            AbstractWindow.this.notifyUpdate(windowSlot);
+        }
+    }
+
+    // 按显示顺序收集去重的连接库存作为点击语义的目标域: 排除冻结槽与协议外
+    // (虚拟尾部)槽连接的库存, 冻结的展示库存不得被转移或收集穿透
+    private List<Inventory> collectLinkedInventories() {
+        LinkedHashSet<Inventory> inventories = new LinkedHashSet<>();
+        this.forEachLinkedInventory(true, inventories::add);
+        return List.copyOf(inventories);
+    }
+
+    /**
+     * 驱动全部连接库存与外部真相对账: 镜像型根库存把被引用容器的外部变更
+     * 吸收为 External 事件, 快照型无操作. 每 tick 一次, 先于渲染消费;
+     * 对账不是语义操作, 冻结与虚拟槽的连接同样保持同步.
+     */
+    private void refreshLinkedInventories() {
+        LinkedHashSet<Inventory> seen = new LinkedHashSet<>();
+        this.forEachLinkedInventory(false, inventory -> {
+            if (seen.add(inventory)) {
+                inventory.refresh();
+            }
+        });
+    }
+
+    // 遍历显示路径终点的库存连接; semanticOnly 时跳过冻结槽与协议外槽
+    private void forEachLinkedInventory(boolean semanticOnly, Consumer<Inventory> action) {
+        DisplayedSlotPath[] paths = this.paths;
+        if (paths == null) {
+            return;
+        }
+        for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
+            DisplayedSlotPath path = paths[windowSlot];
+            if (path == null) {
+                continue;
+            }
+            if (semanticOnly && (windowSlot >= this.layout.protocolSize() || path.frozen())) {
+                continue;
+            }
+            SlotElement.InventoryLink link = path.inventoryLink();
+            if (link != null) {
+                action.accept(link.inventory());
+            }
+        }
     }
 
     /**

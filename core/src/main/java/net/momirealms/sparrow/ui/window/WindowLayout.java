@@ -23,6 +23,7 @@ final class WindowLayout {
     private final int protocolSize;
     private final Route[] routes;
     private final List<Gui> guis;
+    private final boolean playerLower; // lower 区域是否映射真实玩家背包
 
     private WindowLayout(int upperSize, int lowerStart, int protocolSize, Route[] routes, Region[] regions) {
         this.upperSize = upperSize;
@@ -30,6 +31,18 @@ final class WindowLayout {
         this.protocolSize = protocolSize;
         this.routes = routes;
         this.guis = collectGuis(regions);
+        boolean playerLower = false;
+        for (int index = 0; index < regions.length; index++) {
+            playerLower |= regions[index] == Region.PlayerRegion.INSTANCE;
+        }
+        this.playerLower = playerLower;
+    }
+
+    /**
+     * 返回布局的 lower 区域是否映射真实玩家背包; split 与 merged 布局返回 false.
+     */
+    boolean hasPlayerLower() {
+        return this.playerLower;
     }
 
     /**
@@ -182,6 +195,14 @@ final class WindowLayout {
 
     int windowSlotAtHotbar(int hotbarSlot) {
         return this.lowerStart + 27 + hotbarSlot;
+    }
+
+    /**
+     * 返回玩家背包槽号映射到的 Window 槽位, 是 PlayerRoute 编译映射的逆运算.
+     */
+    int windowSlotOfInventorySlot(int inventorySlot) {
+        int lowerSlot = inventorySlot >= 9 ? inventorySlot - 9 : inventorySlot + 27;
+        return this.lowerStart + lowerSlot;
     }
 
     @NotNull
