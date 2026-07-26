@@ -123,7 +123,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
                     MapIdProxy.INSTANCE.newInstance(this.mapId)
             );
             if (item.isEmpty()) {
-                ItemUtils.hide(clientItem);
+                ItemUtils.hideTooltips(clientItem);
             }
             return clientItem;
         }
@@ -133,7 +133,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
                     ? ItemStackProxy.INSTANCE.newInstance(targetItem)
                     : ItemStackProxy.INSTANCE.transmuteCopy(super.toClientItem(rawSlot, item), targetItem);
             if (item.isEmpty()) {
-                ItemUtils.hide(clientItem);
+                ItemUtils.hideTooltips(clientItem);
             }
             return clientItem;
         }

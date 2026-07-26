@@ -14,4 +14,12 @@ public interface UpdateReason {
     enum Program implements UpdateReason {
         INSTANCE
     }
+
+    /**
+     * 外部世界对被引用容器的直接修改, 由对账发现.
+     * 这类变更是既成事实, 只派发 post 事件, 不派发可取消的 pre 事件.
+     */
+    enum External implements UpdateReason {
+        INSTANCE
+    }
 }

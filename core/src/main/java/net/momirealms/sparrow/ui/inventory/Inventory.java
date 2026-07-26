@@ -2,7 +2,13 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.operation.AddResult;
+import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
+import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
+import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
+import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,9 +65,10 @@ public interface Inventory {
     SlotOrder iterationOrder(@NotNull OperationCategory category);
 
     /**
-     * 快速转移与收集语义中选择目标库存的排序键, 值大者优先.
+     * 指定操作类别下选择目标库存的排序键, 值大者优先.
+     * 快速转移消费 ADD 类别, 收集消费 COLLECT 类别, 各类别独立配置.
      */
-    int guiPriority();
+    int guiPriority(@NotNull OperationCategory category);
 
     /**
      * 权威写入单个槽位: 覆盖为给定物品({@code null} 清空), 不受堆叠上限约束.
@@ -146,6 +153,16 @@ public interface Inventory {
      * 库存能否完整容纳给定物品, 等价于 {@code simulateAdd(item) == 0}.
      */
     boolean canHold(@NotNull ItemStack item);
+
+    /**
+     * 把本库存尽力适配为 Bukkit 库存接口, 同一库存恒返回同一适配器实例(Bukkit 侧
+     * 可以引用身份关联). 适配器的写路径走 Sparrow 事务(原因为
+     * {@link UpdateReason.Program}), 线程契约随本库存(快照型任意线程, 引用型写需
+     * 主线程); 与真实容器相关的能力(观看者, 持有者, 位置)按"无"回答, 类型恒为 CHEST.
+     */
+    @ApiStatus.Experimental
+    @NotNull
+    org.bukkit.inventory.Inventory asBukkitInventory();
 
     /**
      * 订阅事务提交前事件. 处理器可取消整个事务;

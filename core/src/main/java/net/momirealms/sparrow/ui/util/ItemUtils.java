@@ -37,6 +37,14 @@ public final class ItemUtils {
     }
 
     /**
+     * 返回独立克隆; {@code null} 原样返回.
+     */
+    @Nullable
+    public static ItemStack copyOrNull(@Nullable ItemStack stack) {
+        return stack == null ? null : stack.clone();
+    }
+
+    /**
      * 把空表示统一收敛为 {@code null}, 非空实例原样返回(不克隆).
      * 幂等: 对已归一化的值再次调用结果不变.
      * <p>这是库存域"空槽唯一表示是 null"契约的收敛点; 需要非 null 空实例的
@@ -55,14 +63,6 @@ public final class ItemUtils {
     }
 
     /**
-     * 返回独立克隆; {@code null} 原样返回.
-     */
-    @Nullable
-    public static ItemStack cloneOrNull(@Nullable ItemStack stack) {
-        return stack == null ? null : stack.clone();
-    }
-
-    /**
      * 相似性判定: 双方均非空且 Bukkit {@code isSimilar} 成立(可堆叠).
      * 任一为 {@code null} 时返回 {@code false}.
      */
@@ -75,6 +75,16 @@ public final class ItemUtils {
      */
     public static int amountOf(@Nullable ItemStack stack) {
         return isEmpty(stack) ? 0 : stack.getAmount();
+    }
+
+    /**
+     * 返回数量为 {@code amount} 的独立克隆, 源物品不受影响.
+     */
+    @NotNull
+    public static ItemStack copyWithAmount(@NotNull ItemStack source, int amount) {
+        ItemStack copy = source.clone();
+        copy.setAmount(amount);
+        return copy;
     }
 
     /**
@@ -99,7 +109,7 @@ public final class ItemUtils {
      * @return 可独立持有的底层物品句柄
      */
     @NotNull
-    public static Object copyNMSItemStack(@NotNull Object itemStackNMSHandle) {
+    public static Object copyItemStack(@NotNull Object itemStackNMSHandle) {
         return ItemStackProxy.INSTANCE.copy(itemStackNMSHandle);
     }
 
@@ -110,7 +120,7 @@ public final class ItemUtils {
      */
     public static Object invisibleBarrier() {
         Object item = ItemStackProxy.INSTANCE.newInstance(ItemsProxy.BARRIER); // 独立 NMS ItemStack
-        ItemUtils.hide(item);
+        ItemUtils.hideTooltips(item);
         return item;
     }
 
@@ -119,7 +129,7 @@ public final class ItemUtils {
      *
      * @param item NMS ItemStack
      */
-    public static void hide(Object item) {
+    public static void hideTooltips(Object item) {
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.CUSTOM_NAME, ComponentProxy.INSTANCE.empty());
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.TOOLTIP_DISPLAY, TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>()));
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.ITEM_MODEL, IdentifierProxy.INSTANCE.withDefaultNamespace("air"));

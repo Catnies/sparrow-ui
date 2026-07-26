@@ -4,35 +4,37 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.inventory.operation.AddResult;
+import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
+import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
- * 库存实现的并发骨架: 不可变快照 + 短写锁.
+ * 自持槽数据库存的并发骨架: 不可变快照 + 短写锁.
  * <p>槽状态收敛为一个 volatile 引用指向的数组快照; 数组创建后永不修改, 替换状态
  * 就是换引用, 这次引用交换即事务的线性化点. 读路径直接取当前快照, 完全无锁;
  * 写路径由 {@link InventoryTransactions} 在写锁内完成校验与交换, 用户回调一律
  * 在锁外执行.
- * <p>全部写方法族在这里以"plan 当前快照 + 提交事务"的方式实现; 子类只需提供
- * 堆叠上限与迭代顺序等配置钩子.
+ * <p>本类是全部事务的落地终点(视图家族把逻辑槽归约到这里); 批量规划走
+ * {@link InventoryPlanner}, 单槽方法在本类直通实现. 子类只需提供堆叠上限与
+ * 迭代顺序等配置钩子.
  * <p>库存实例需经安全发布(final 字段, volatile, 锁或线程启动边界)交给其他线程;
  * 经普通字段的裸发布不在内存模型保障范围内.
  */
-abstract class AbstractInventory implements Inventory {
+abstract class AbstractInventory extends SparrowInventory {
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 进程内锁序号发号器
-    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作的共享成功结果, 不派发事件
 
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨库存事务的全序加锁依据
     private final ReentrantLock writeLock = new ReentrantLock(); // 仅串行化写者, 临界区为纯内存操作
@@ -44,16 +46,26 @@ abstract class AbstractInventory implements Inventory {
     private final AtomicBoolean drainingPostEvents = new AtomicBoolean(); // 排水者标志, 同一时刻至多一个线程派发
 
     private volatile @Nullable ItemStack @NotNull [] state; // 当前不可变快照, 元素归内部所有
-    private volatile int guiPriority; // 快速转移与收集的目标排序键, 弱一致配置
 
     AbstractInventory(@Nullable ItemStack @NotNull [] initial) {
         // 构造即快照化: 先克隆再归一化 —— 判空针对私有克隆进行, 调用方并发修改原物品也无法把 AIR/零数量实例走私进内部快照
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
-            slots[i] = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(initial[i]));
+            slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
         }
         this.state = slots;
         this.naturalOrder = SlotOrder.natural(initial.length);
+    }
+
+    @Override
+    @NotNull
+    Anchor resolveSlot(int slot) {
+        return new Anchor(this, slot);
+    }
+
+    @Override
+    void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots) {
+        roots.add(this);
     }
 
     @Override
@@ -65,7 +77,7 @@ abstract class AbstractInventory implements Inventory {
     @Nullable
     public ItemStack itemAt(int slot) {
         @Nullable ItemStack[] snapshot = this.state;
-        return ItemUtils.cloneOrNull(snapshot[slot]);
+        return ItemUtils.copyOrNull(snapshot[slot]);
     }
 
     // 先把 volatile 引用捕获到局部变量再遍历: 全程只读同一个快照, 写者并发 swap 不会
@@ -75,7 +87,7 @@ abstract class AbstractInventory implements Inventory {
         @Nullable ItemStack[] snapshot = this.state;
         @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
         for (int i = 0; i < snapshot.length; i++) {
-            copy[i] = ItemUtils.cloneOrNull(snapshot[i]);
+            copy[i] = ItemUtils.copyOrNull(snapshot[i]);
         }
         return copy;
     }
@@ -92,16 +104,35 @@ abstract class AbstractInventory implements Inventory {
         return this.naturalOrder;
     }
 
+    // 事务落地终点的直通规划: 单根, 快照即自身状态, 无需逐槽解析
+    @NotNull
     @Override
-    public int guiPriority() {
-        return this.guiPriority;
+    PlanContext openPlan() {
+        @Nullable ItemStack[] planned = this.currentState();
+        return new PlanContext(planned, deltas -> List.of(new InventoryTransactions.Scope(this, planned, deltas)));
+    }
+
+    @NotNull
+    @Override
+    PlanContext openPlanForWrite() {
+        this.beforePlan();
+        return this.openPlan();
     }
 
     /**
-     * 设置快速转移与收集语义选择目标库存的排序键, 值大者优先.
+     * 根级写前: 任何写入口在读取规划快照之前经过这里, 无论调用来自本库存
+     * 的公开方法还是视图的批量归约. 镜像型实现在此完成线程校验与外部真相同步;
+     * 缺省无操作. simulate 等纯读路径不触发.
      */
-    public void guiPriority(int guiPriority) {
-        this.guiPriority = guiPriority;
+    void beforePlan() {
+    }
+
+    /**
+     * 根级提交后: 事务引擎在提交成功后, post 事件派发之前, 对每个参与根
+     * 携带其槽变更调用一次. 镜像型实现在此把变更写回外部真相 —— 先于 post 派发
+     * 保证观察者重入写时外部状态已同步; 缺省无操作.
+     */
+    void afterCommit(@NotNull List<SlotDelta> deltas) {
     }
 
     @Override
@@ -117,6 +148,7 @@ abstract class AbstractInventory implements Inventory {
     }
 
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
+        this.beforePlan();
         @Nullable ItemStack[] planned = this.currentState();
         SlotDelta delta = new SlotDelta(slot, planned[slot], item);
         return InventoryTransactions.commit(
@@ -131,10 +163,11 @@ abstract class AbstractInventory implements Inventory {
     public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
         // 越界契约先于空输入短路生效, 行为不随物品内容摇摆
         Objects.checkIndex(slot, this.size());
-        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(item));
+        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
+        this.beforePlan();
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         int amount = input.getAmount();
@@ -162,15 +195,17 @@ abstract class AbstractInventory implements Inventory {
     @Override
     @NotNull
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+        this.beforePlan();
         @Nullable ItemStack[] planned = this.currentState();
         // modifier 收到克隆, 在锁外执行; 其返回值经 SlotDelta 构造再次归一化与克隆
-        @Nullable ItemStack modified = modifier.apply(ItemUtils.cloneOrNull(planned[slot]));
+        @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
         return this.commitScoped(reason, planned, List.of(new SlotDelta(slot, planned[slot], modified)));
     }
 
     @Override
     @NotNull
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
+        this.beforePlan();
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         if (current == null || change == 0) {
@@ -193,172 +228,8 @@ abstract class AbstractInventory implements Inventory {
         if (target == current.getAmount()) {
             return EMPTY_COMMITTED;
         }
-        @Nullable ItemStack after = target > 0 ? withAmount(current, target) : null;
+        @Nullable ItemStack after = target > 0 ? ItemUtils.copyWithAmount(current, target) : null;
         return this.commitScoped(reason, planned, List.of(new SlotDelta(slot, current, after)));
-    }
-
-    @Override
-    @NotNull
-    public AddResult add(@NotNull UpdateReason reason, @NotNull ItemStack item) {
-        // 先克隆再归一化: 隔离调用方并发修改, 且判空结论与后续读取永远一致
-        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(item));
-        if (input == null) {
-            return new AddResult(EMPTY_COMMITTED, 0);
-        }
-        @Nullable ItemStack[] planned = this.currentState();
-        AddPlan plan = this.planAdd(planned, input);
-        if (plan.deltas().isEmpty()) {
-            return new AddResult(EMPTY_COMMITTED, plan.remaining());
-        }
-        TransactionResult result = this.commitScoped(reason, planned, plan.deltas());
-        return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
-    }
-
-    @Override
-    @NotNull
-    public CollectResult collect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
-        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(template));
-        if (sample == null || upTo <= 0) {
-            return new CollectResult(EMPTY_COMMITTED, 0);
-        }
-        @Nullable ItemStack[] planned = this.currentState();
-        TakePlan plan = this.planCollect(planned, sample, upTo);
-        if (plan.deltas().isEmpty()) {
-            return new CollectResult(EMPTY_COMMITTED, 0);
-        }
-        TransactionResult result = this.commitScoped(reason, planned, plan.deltas());
-        return new CollectResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
-    }
-
-    @Override
-    @NotNull
-    public RemoveResult remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
-        if (upTo <= 0) {
-            return new RemoveResult(EMPTY_COMMITTED, 0);
-        }
-        @Nullable ItemStack[] planned = this.currentState();
-        TakePlan plan = this.planRemove(planned, matcher, upTo);
-        if (plan.deltas().isEmpty()) {
-            return new RemoveResult(EMPTY_COMMITTED, 0);
-        }
-        TransactionResult result = this.commitScoped(reason, planned, plan.deltas());
-        return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
-    }
-
-    @Override
-    public int simulateAdd(@NotNull ItemStack item) {
-        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(item));
-        if (input == null) {
-            return 0;
-        }
-        return this.planAdd(this.currentState(), input).remaining();
-    }
-
-    @Override
-    public int simulateCollect(@NotNull ItemStack template, int upTo) {
-        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(template));
-        if (sample == null || upTo <= 0) {
-            return 0;
-        }
-        return this.planCollect(this.currentState(), sample, upTo).taken();
-    }
-
-    @Override
-    public boolean canHold(@NotNull ItemStack item) {
-        return this.simulateAdd(item) == 0;
-    }
-
-    /**
-     * 批量放入的两遍规划: 先把相似且未满的堆填到有效上限, 再按顺序占用空槽.
-     * 与 simulate 共享同一实现, 数量守恒由结构保证.
-     */
-    private AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item) {
-        List<SlotDelta> deltas = new ArrayList<>();
-        int remaining = item.getAmount();
-        SlotOrder order = this.iterationOrder(OperationCategory.ADD);
-
-        // 第一遍: 合并到相似且未满的堆
-        for (int i = 0; i < order.size() && remaining > 0; i++) {
-            int slot = order.slotAt(i);
-            @Nullable ItemStack current = snapshot[slot];
-            if (current == null || !ItemUtils.isSimilar(current, item)) {
-                continue;
-            }
-            int space = this.effectiveMaxStackSize(slot, current) - current.getAmount();
-            if (space <= 0) {
-                continue;
-            }
-            int moved = Math.min(space, remaining);
-            deltas.add(new SlotDelta(slot, current, withAmount(current, current.getAmount() + moved)));
-            remaining -= moved;
-        }
-
-        // 第二遍: 占用空槽
-        for (int i = 0; i < order.size() && remaining > 0; i++) {
-            int slot = order.slotAt(i);
-            if (snapshot[slot] != null) {
-                continue;
-            }
-            int moved = Math.min(this.effectiveMaxStackSize(slot, item), remaining);
-            if (moved <= 0) {
-                continue;
-            }
-            deltas.add(new SlotDelta(slot, null, withAmount(item, moved)));
-            remaining -= moved;
-        }
-        return new AddPlan(deltas, remaining);
-    }
-
-    /**
-     * 批量收集的两遍规划: 先收取非满堆的零头保持满堆完整, 不足再动满堆.
-     * 快照在规划期间不变, 用 touched 防止同一槽被两遍重复收取.
-     */
-    private TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo) {
-        List<SlotDelta> deltas = new ArrayList<>();
-        int taken = 0;
-        SlotOrder order = this.iterationOrder(OperationCategory.COLLECT);
-        boolean[] touched = new boolean[snapshot.length];
-
-        for (int pass = 0; pass < 2 && taken < upTo; pass++) {
-            boolean wantFullStacks = pass == 1;
-            for (int i = 0; i < order.size() && taken < upTo; i++) {
-                int slot = order.slotAt(i);
-                @Nullable ItemStack current = snapshot[slot];
-                if (touched[slot] || current == null || !ItemUtils.isSimilar(current, template)) {
-                    continue;
-                }
-                boolean fullStack = current.getAmount() >= this.effectiveMaxStackSize(slot, current);
-                if (fullStack != wantFullStacks) {
-                    continue;
-                }
-                int take = Math.min(current.getAmount(), upTo - taken);
-                deltas.add(new SlotDelta(slot, current, reduced(current, take)));
-                touched[slot] = true;
-                taken += take;
-            }
-        }
-        return new TakePlan(deltas, taken);
-    }
-
-    /**
-     * 批量移除的规划: 按 OTHER 顺序逐槽把 matcher 命中的物品扣减到目标数量.
-     */
-    private TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo) {
-        List<SlotDelta> deltas = new ArrayList<>();
-        int taken = 0;
-        SlotOrder order = this.iterationOrder(OperationCategory.OTHER);
-        for (int i = 0; i < order.size() && taken < upTo; i++) {
-            int slot = order.slotAt(i);
-            @Nullable ItemStack current = snapshot[slot];
-            // matcher 是用户代码, 只允许它接触克隆
-            if (current == null || !matcher.test(current.clone())) {
-                continue;
-            }
-            int take = Math.min(current.getAmount(), upTo - taken);
-            deltas.add(new SlotDelta(slot, current, reduced(current, take)));
-            taken += take;
-        }
-        return new TakePlan(deltas, taken);
     }
 
     private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotDelta> deltas) {
@@ -372,18 +243,6 @@ abstract class AbstractInventory implements Inventory {
     // 放入类算法的有效上限 = min(槽上限, 物品自身上限)
     private int effectiveMaxStackSize(int slot, ItemStack item) {
         return Math.min(this.slotMaxStackSize(slot), item.getMaxStackSize());
-    }
-
-    private static ItemStack withAmount(ItemStack source, int amount) {
-        ItemStack copy = source.clone();
-        copy.setAmount(amount);
-        return copy;
-    }
-
-    @Nullable
-    private static ItemStack reduced(ItemStack current, int take) {
-        int left = current.getAmount() - take;
-        return left > 0 ? withAmount(current, left) : null;
     }
 
     @Override
@@ -464,13 +323,5 @@ abstract class AbstractInventory implements Inventory {
                 break;
             }
         }
-    }
-
-    /** 放入规划的产物: 变更集与放不下的余量. */
-    private record AddPlan(List<SlotDelta> deltas, int remaining) {
-    }
-
-    /** 收集与移除规划的产物: 变更集与实际取出的数量. */
-    private record TakePlan(List<SlotDelta> deltas, int taken) {
     }
 }

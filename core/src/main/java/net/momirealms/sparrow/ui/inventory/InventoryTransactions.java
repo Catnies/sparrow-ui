@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -91,6 +92,17 @@ final class InventoryTransactions {
         } finally {
             for (int i = locked - 1; i >= 0; i--) {
                 ordered.get(i).inventory().writeLock().unlock();
+            }
+        }
+
+        // 提交后钩子先于 post 派发: 镜像型根在此把变更写回外部真相, 使 post 观察者
+        // 重入写时外部状态已同步; 钩子异常隔离上报, 不影响已提交的事务结果
+        for (int i = 0; i < ordered.size(); i++) {
+            InventoryTransactions.Scope scope = ordered.get(i);
+            try {
+                scope.inventory().afterCommit(scope.deltas());
+            } catch (Throwable exception) {
+                SparrowUI.getInstance().handleException("Failed to run Inventory after-commit hook", exception);
             }
         }
 

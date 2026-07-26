@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.operation;
 
 /**
  * 批量算法的操作类别, 每个类别可独立配置迭代顺序.
