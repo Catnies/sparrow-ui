@@ -49,7 +49,7 @@ final class SmokerWindowImpl extends AbstractFurnaceWindow implements SmokerWind
 
         @Override
         @NotNull
-        protected SmokerWindow newWindow(
+        protected SmokerWindow createFurnaceWindow(
                 @NotNull Player viewer,
                 @NotNull WindowLayout layout,
                 @NotNull AbstractWindow.Settings settings,

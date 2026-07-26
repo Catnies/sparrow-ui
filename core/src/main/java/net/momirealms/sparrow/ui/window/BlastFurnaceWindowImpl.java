@@ -49,7 +49,7 @@ final class BlastFurnaceWindowImpl extends AbstractFurnaceWindow implements Blas
 
         @Override
         @NotNull
-        protected BlastFurnaceWindow newWindow(
+        protected BlastFurnaceWindow createFurnaceWindow(
                 @NotNull Player viewer,
                 @NotNull WindowLayout layout,
                 @NotNull AbstractWindow.Settings settings,

@@ -42,7 +42,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
                     FurnaceMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setCookProgress(progress);
-                        this.requestSynchronize();
+                        this.notifySynchronize();
                     }
                 },
                 "Failed to update furnace cook progress"
@@ -63,7 +63,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
                     FurnaceMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setFuelProgress(progress);
-                        this.requestSynchronize();
+                        this.notifySynchronize();
                     }
                 },
                 "Failed to update furnace fuel progress"
@@ -168,7 +168,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
                     WindowLayout.Region.upper(this.resultGui),
                     WindowLayout.Region.lower(this.lowerGui)
             );
-            return this.newWindow(
+            return this.createFurnaceWindow(
                     viewer,
                     layout,
                     settings,
@@ -179,7 +179,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
         }
 
         @NotNull
-        protected abstract W newWindow(
+        protected abstract W createFurnaceWindow(
                 @NotNull Player viewer,
                 @NotNull WindowLayout layout,
                 @NotNull AbstractWindow.Settings settings,

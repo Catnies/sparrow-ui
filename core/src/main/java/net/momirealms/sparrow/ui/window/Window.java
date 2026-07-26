@@ -267,17 +267,17 @@ public interface Window {
     @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer();
 
     /**
-     * 通知 Window 指定槽位的显示内容需要更新.
-     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
+     * 通知 Window 对指定槽位的显示内容进行更新.
+     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.
      *
      * @param windowSlot Window 逻辑槽位
      */
     void notifyUpdate(int windowSlot);
 
     /**
-     * 在 Window 已打开时请求一次强制全量同步.
+     * 通知 Window 进行一次强制全量更新.
      */
-    void sendAllDataToViewer();
+    void notifyUpdateAll();
 
     @NotNull Player viewer();
 

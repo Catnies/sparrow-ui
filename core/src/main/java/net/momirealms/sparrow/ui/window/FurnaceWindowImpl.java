@@ -49,7 +49,7 @@ final class FurnaceWindowImpl extends AbstractFurnaceWindow implements FurnaceWi
 
         @Override
         @NotNull
-        protected FurnaceWindow newWindow(
+        protected FurnaceWindow createFurnaceWindow(
                 @NotNull Player viewer,
                 @NotNull WindowLayout layout,
                 @NotNull AbstractWindow.Settings settings,

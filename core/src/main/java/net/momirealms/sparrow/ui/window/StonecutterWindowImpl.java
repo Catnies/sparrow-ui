@@ -53,7 +53,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
                     this.selectedRecipeIndex = index;
                     if (menuHandle != null) {
                         menuHandle.setSelectedRecipeIndex(index);
-                        this.requestSynchronize();
+                        this.notifySynchronize();
                     }
                 },
                 "Failed to update Stonecutter Window selected recipe"
@@ -95,13 +95,13 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
 
             if (selectedIndex < 0 || selectedIndex >= this.effectiveRecipeCount) {
                 menuHandle.reconcileClientSelection(this.selectedRecipeIndex);
-                this.requestSynchronize();
+                this.notifySynchronize();
                 return;
             }
 
             this.selectedRecipeIndex = selectedIndex;
             menuHandle.reconcileClientSelection(selectedIndex);
-            this.requestSynchronize();
+            this.notifySynchronize();
             this.dispatchItemClick(BUTTONS_START + selectedIndex, ClickType.LEFT);
         }
     }

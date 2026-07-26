@@ -381,7 +381,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     @Override
-    public void sendAllDataToViewer() {
+    public void notifyUpdateAll() {
         this.submit(
                 () -> {
                     this.cursorDirty = true;
@@ -687,7 +687,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * 标记类型化菜单存在不依赖物品槽位的待同步状态.
      */
-    protected final void requestSynchronize() {
+    protected final void notifySynchronize() {
         this.menuDirty = true;
     }
 
