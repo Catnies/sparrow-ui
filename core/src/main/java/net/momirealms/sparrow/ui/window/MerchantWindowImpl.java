@@ -238,6 +238,10 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
             return;
         }
 
+        // 客户端在发包前已尝试把付款槽物品搬回背包, 即使索引随后被拒绝也必须恢复完整容器
+        menuHandle.invalidateClientContents();
+        this.requestSynchronize();
+
         // available 只影响展示, 当前快照中的任意合法索引都允许触发选择
         List<MerchantWindow.Trade> snapshot = this.trades;
         int selectedIndex = selection.index();
@@ -477,7 +481,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
+            this.upperGui = Objects.requireNonNull(upperGui, "upperGui");
             return this;
         }
 

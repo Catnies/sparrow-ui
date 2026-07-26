@@ -19,6 +19,7 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
+import net.kyori.adventure.text.Component;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -30,6 +31,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -60,11 +62,16 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private int level;
     private double progress = -1.0;
     private boolean restockMessageEnabled;
+    private boolean selectionReconciliationPending;
+    private boolean selectionContentRecoveryOnly;
+    private boolean resultReconciliationPending;
 
     private final AtomicLong offerRevision = new AtomicLong(); // 任意线程只递增此值, 实际渲染仍在实体线程
     private long offerTick;
     private long committedOfferRevision = -1; // 最近成功进入网络发送批次的 revision
     private long queuedOfferRevision;
+    private @Nullable Object committedOffersPacket;
+    private @Nullable Object queuedOffersPacket;
     private boolean offersQueued;
 
     MerchantMenuHandleImpl(
@@ -141,6 +148,11 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     @Override
+    public void invalidateClientContents() {
+        this.selectionReconciliationPending = true;
+    }
+
+    @Override
     public boolean tickOffers() {
         TradeBindings bindings = this.bindings;
         if (bindings != null && bindings.refreshPlan().isDue(++this.offerTick)) {
@@ -159,6 +171,63 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         return DISCARDED_OUTGOING;
     }
 
+    @Override
+    protected void handleAcceptedInteraction() {
+        this.forceRemoteSlot(RESULT_SLOT);
+        this.resultReconciliationPending = true;
+    }
+
+    @Override
+    protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
+        boolean inputDirty = dirtySlots.get(FIRST_INPUT_SLOT) || dirtySlots.get(SECOND_INPUT_SLOT);
+        if (inputDirty) {
+            this.forceRemoteSlot(RESULT_SLOT);
+        }
+        if (forceFull || inputDirty || dirtySlots.get(RESULT_SLOT)) {
+            this.resultReconciliationPending = true;
+        }
+    }
+
+    /**
+     * 选择交易没有 changed-slots 可供吸收, 必须用完整内容覆盖客户端本地搬运到未知背包槽的物品.
+     */
+    @Override
+    public void synchronize(
+            ItemStack @NotNull [] slots,
+            @NotNull BitSet dirtySlots,
+            @NotNull CursorSnapshot cursor,
+            boolean cursorDirty,
+            boolean forceFull
+    ) {
+        boolean reconcileSelection = this.selectionReconciliationPending;
+        this.selectionContentRecoveryOnly = reconcileSelection && !forceFull;
+        try {
+            super.synchronize(slots, dirtySlots, cursor, cursorDirty, forceFull || reconcileSelection);
+            if (reconcileSelection) {
+                this.selectionReconciliationPending = false;
+            }
+            this.resultReconciliationPending = false;
+        } finally {
+            this.selectionContentRecoveryOnly = false;
+        }
+    }
+
+    /**
+     * 标题重开已经携带完整内容, 同样可以提交待处理的选择纠正.
+     */
+    @Override
+    public void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
+        boolean reconcileResult = this.resultReconciliationPending;
+        this.resultReconciliationPending = false;
+        try {
+            super.updateTitle(title, slots, cursor);
+            this.selectionReconciliationPending = false;
+        } catch (RuntimeException | Error throwable) {
+            this.resultReconciliationPending = reconcileResult;
+            throw throwable;
+        }
+    }
+
     /**
      * {@inheritDoc}
      * <p>本批次只捕获一次 revision. 发送期间到达的新失效会保留为更大的 revision,
@@ -167,20 +236,43 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         long revision = this.offerRevision.get();
-        this.offersQueued = forceFull || revision != this.committedOfferRevision;
-        if (!this.offersQueued) {
-            return;
+        // 选择纠正借用完整内容包恢复全部槽位, 但不应因此重新渲染未变化的 offers
+        boolean forceOffers = forceFull && !this.selectionContentRecoveryOnly;
+        this.offersQueued = forceOffers || revision != this.committedOfferRevision || this.committedOffersPacket == null;
+        this.queuedOffersPacket = null;
+        if (this.offersQueued) {
+            this.queuedOfferRevision = revision;
+            this.queuedOffersPacket = this.createOffersPacket();
         }
-        this.queuedOfferRevision = revision;
-        outgoing.add(this.createOffersPacket());
+
+        if (this.resultReconciliationPending) {
+            // MerchantContainer 会在 Slot.setChanged 后重算并清空不匹配 offers 的结果槽
+            outgoing.add(0, this.createOffersPacket(List.of()));
+            outgoing.add(this.currentOffersPacket());
+        } else if (this.offersQueued) {
+            outgoing.add(this.currentOffersPacket());
+        }
     }
 
     @Override
     protected void commitPackets() {
         if (this.offersQueued) {
             this.committedOfferRevision = this.queuedOfferRevision;
+            this.committedOffersPacket = this.queuedOffersPacket;
+            this.queuedOffersPacket = null;
             this.offersQueued = false;
         }
+    }
+
+    /**
+     * 返回本轮将成为客户端当前状态的 offers 包.
+     */
+    private Object currentOffersPacket() {
+        Object packet = this.offersQueued ? this.queuedOffersPacket : this.committedOffersPacket;
+        if (packet == null) {
+            throw new IllegalStateException("Merchant offers packet is unavailable");
+        }
+        return packet;
     }
 
     /**
@@ -195,13 +287,14 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         for (int index = 0; index < entries.size(); index++) {
             offers.add(this.createOffer(entries.get(index), index));
         }
+        return this.createOffersPacket(offers);
+    }
 
+    private Object createOffersPacket(List<Object> offers) {
         // progress=-1.0 明确表示隐藏经验条, 其他值换算为当前等级内的 XP
         Object merchantOffers = MerchantOffersProxy.INSTANCE.newInstance(offers);
         boolean showProgress = this.progress != -1.0;
-        int villagerXp = showProgress
-                ? (int) Math.floor(VillagerDataProxy.INSTANCE.getMaxXpPerLevel(this.level) * this.progress)
-                : 0;
+        int villagerXp = showProgress ? (int) Math.floor(VillagerDataProxy.INSTANCE.getMaxXpPerLevel(this.level) * this.progress) : 0;
         return ClientboundMerchantOffersPacketProxy.INSTANCE.newInstance(
                 this.containerId(),
                 merchantOffers,

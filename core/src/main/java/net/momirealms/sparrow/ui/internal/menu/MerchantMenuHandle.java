@@ -38,6 +38,11 @@ public interface MerchantMenuHandle extends MenuHandle {
     void setTrades(@NotNull List<MerchantWindow.Trade> trades);
 
     /**
+     * 纠正客户端选择交易时, 自动将付款槽的物品返还至背包产生的预测.
+     */
+    void invalidateClientContents();
+
+    /**
      * 推进 Trade Item 的周期刷新计划并检查尚未提交的 offers revision.
      * <p>此方法只合并刷新状态, 不渲染、发包或提交 revision.
      *
