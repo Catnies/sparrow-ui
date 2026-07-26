@@ -1,14 +1,15 @@
 package net.momirealms.sparrow.ui.gui;
 
+import net.momirealms.sparrow.ui.inventory.Inventory;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
 /**
  * 描述一个 GUI 槽位放什么.
- * <p>槽位可以是空的, 显示一个 Item, 或连接到另一个 GUI 的槽位.
+ * <p>槽位可以是空的, 显示一个 Item, 连接到另一个 GUI 的槽位, 或连接到库存的槽位.
  */
-public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item, SlotElement.GuiLink {
+public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item, SlotElement.GuiLink, SlotElement.InventoryLink {
 
     /**
      * 返回空槽位元素.
@@ -38,6 +39,17 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      */
     static @NotNull GuiLink gui(@NotNull Gui gui, int slot) {
         return new GuiLink(gui, slot);
+    }
+
+    /**
+     * 创建连接到库存槽位的元素.
+     *
+     * @param inventory 库存
+     * @param slot 库存槽位编号
+     * @return 库存连接元素
+     */
+    static @NotNull InventoryLink inventory(@NotNull Inventory inventory, int slot) {
+        return new InventoryLink(inventory, slot);
     }
 
     /**
@@ -94,6 +106,20 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
         // 子槽位已由 GuiSize.indexOf 完成边界检查, 跳过重复校验
         static GuiLink trusted(Gui gui, int slot) {
             return new GuiLink(gui, slot, true);
+        }
+    }
+
+    /**
+     * 把当前槽位连接到库存的指定槽位: 显示该槽的真实物品, 内容随库存事务实时刷新.
+     *
+     * @param inventory 库存
+     * @param slot 库存槽位编号
+     */
+    record InventoryLink(@NotNull Inventory inventory, int slot) implements SlotElement {
+
+        public InventoryLink {
+            Objects.requireNonNull(inventory);
+            Objects.checkIndex(slot, inventory.size());
         }
     }
 }

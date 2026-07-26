@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -20,7 +21,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * 记录 Window 中一个槽位当前显示的内容.
  *
  * <p>它从根 GUI 的指定槽位出发, 跟随 {@link SlotElement.GuiLink} 进入子 GUI,
- * 直到找到 Item 或空槽位. GUI 变化会要求重新解析路径, 最终 Item 变化只会要求重新渲染当前路径.</p>
+ * 直到找到 Item, 库存连接或空槽位. GUI 变化会要求重新解析路径; 最终 Item 变化与
+ * 库存事务通知只要求重新渲染当前路径.</p>
  *
  * <p>路径解析, 显示, 交互和关闭由玩家实体线程执行.
  * 观察通知可以来自其他线程, 但只会标记 Window 槽位, 不会直接修改路径.</p>
@@ -108,13 +110,24 @@ final class DisplayedSlotPath implements AutoCloseable {
     /**
      * 生成该 Window 槽位当前应显示的 ItemStack.
      *
-     * <p>有 Item 时显示 Item, 否则显示路径中最深层 GUI 的背景.
-     * 两者都没有时返回空物品.</p>
+     * <p>路径终点是库存连接时显示库存槽的真实物品, 空槽回退背景;
+     * 终点是 Item 时显示 Item, 否则显示路径中最深层 GUI 的背景.
+     * 都没有时返回空物品.</p>
      *
      * @return 要显示的 ItemStack
      */
     @NotNull ItemStack render() {
         PathState state = this.currentState();
+
+        // 库存连接: 真实物品优先, 空槽回退背景; itemAt 返回的克隆归本槽渲染独占
+        if (state.inventoryLink != null) {
+            ItemStack stack = state.inventoryLink.inventory().itemAt(state.inventoryLink.slot());
+            if (stack != null) {
+                return stack;
+            }
+            return state.background == null ? ItemStack.empty() : state.background.provide(this.renderContext);
+        }
+
         ItemProvider provider = state.item == null
                 ? state.background == null ? ItemProvider.EMPTY : state.background
                 : state.item.getItemProvider();
@@ -204,6 +217,14 @@ final class DisplayedSlotPath implements AutoCloseable {
                     candidate.itemAttachment = item.attach(ignoredInvalidation -> candidate.notifyWindows(false));
                     return;
                 }
+                case SlotElement.InventoryLink link -> {
+                    // 库存事务的 post 通知只要求重新渲染, 不重建路径; 不按槽过滤 ——
+                    // 精确过滤需要跨包解析视图槽域, dirty 是幂等标记, 过度通知只是
+                    // 让本槽多渲染一次并读到相同内容
+                    candidate.inventoryLink = link;
+                    candidate.inventorySubscription = link.inventory().subscribePostUpdate(ignoredEvent -> candidate.notifyWindows(false));
+                    return;
+                }
                 case SlotElement.Empty ignoredEmpty -> {
                     return;
                 }
@@ -263,7 +284,11 @@ final class DisplayedSlotPath implements AutoCloseable {
         private GuiSlotAttachment[] guiAttachments = new GuiSlotAttachment[4]; // 与 guis 使用相同下标
         private int depth;
 
+        // TODO 未来处理, 这里的互斥对象, 是不是有更好的处理办法?
+
         private Item item;
+        private SlotElement.InventoryLink inventoryLink; // 路径终点的库存连接, 与 item 互斥
+        private Subscription inventorySubscription; // 库存 post 事件的渲染订阅
         private ItemProvider background; // 沿路径找到的最深层非 null 背景
         private boolean frozen; // 路径上任何 GUI 冻结时都为 true
         private ItemAttachment itemAttachment = ItemAttachment.passive(); // 最终的 Item 的 ItemAttachment
@@ -413,8 +438,11 @@ final class DisplayedSlotPath implements AutoCloseable {
 
             // 先断开自身持有的状态引用, 再调用外部 close
             ItemAttachment previousItemAttachment = this.itemAttachment;
+            Subscription previousInventorySubscription = this.inventorySubscription;
             this.itemAttachment = ItemAttachment.passive();
+            this.inventorySubscription = null;
             this.item = null;
+            this.inventoryLink = null;
             this.background = null;
 
             Throwable failure = null;
@@ -422,6 +450,18 @@ final class DisplayedSlotPath implements AutoCloseable {
                 previousItemAttachment.close();
             } catch (RuntimeException | Error throwable) {
                 failure = throwable;
+            }
+
+            if (previousInventorySubscription != null) {
+                try {
+                    previousInventorySubscription.close();
+                } catch (RuntimeException | Error throwable) {
+                    if (failure == null) {
+                        failure = throwable;
+                    } else {
+                        failure.addSuppressed(throwable);
+                    }
+                }
             }
 
             // 从最深层 GUI 向根 GUI 逆序取消订阅

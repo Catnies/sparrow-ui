@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.gui;
 
+import net.momirealms.sparrow.ui.inventory.Inventory;
 import net.momirealms.sparrow.ui.item.Item;
 import org.jetbrains.annotations.NotNull;
 
@@ -49,6 +50,18 @@ public interface SlotElementSupplier {
      */
     static @NotNull SlotElementSupplier items(@NotNull Supplier<? extends Item> supplier) {
         return (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(supplier.get());
+    }
+
+    /**
+     * 把库存按 ingredient 出现顺序逐槽铺入: 第 N 次出现的槽位连接库存槽 N.
+     * 出现次数超过库存尺寸时构造失败, 布局错误在绑定期即暴露.
+     *
+     * @param inventory 要铺入的库存
+     * @return 逐槽连接库存的元素来源
+     */
+    @NotNull
+    static SlotElementSupplier inventory(@NotNull Inventory inventory) {
+        return (ignoredSize, occurrence) -> new SlotElement.InventoryLink(inventory, occurrence);
     }
 
     /**
