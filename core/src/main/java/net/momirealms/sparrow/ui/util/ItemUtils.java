@@ -22,6 +22,8 @@ public final class ItemUtils {
 
     /**
      * 返回可独立修改的 Bukkit 快照, 并规范化缺失或空物品.
+     * <p>空表示收敛为 {@code ItemStack.empty()}, 适用于发包与渲染等需要非 null 实例的场景;
+     * 库存域的空表示收敛为 {@code null}, 使用 {@link #nullIfEmpty(ItemStack)}.
      *
      * @param source 源物品堆, 或 {@code null}
      * @return 归调用方所有的物品堆快照
@@ -32,6 +34,47 @@ public final class ItemUtils {
             return ItemStack.empty();
         }
         return source.clone();
+    }
+
+    /**
+     * 把空表示统一收敛为 {@code null}, 非空实例原样返回(不克隆).
+     * 幂等: 对已归一化的值再次调用结果不变.
+     * <p>这是库存域"空槽唯一表示是 null"契约的收敛点; 需要非 null 空实例的
+     * 场景使用 {@link #copyOrEmpty(ItemStack)}.
+     */
+    @Nullable
+    public static ItemStack nullIfEmpty(@Nullable ItemStack stack) {
+        return isEmpty(stack) ? null : stack;
+    }
+
+    /**
+     * 判断是否为空表示: {@code null}, AIR 或数量不大于 0.
+     */
+    public static boolean isEmpty(@Nullable ItemStack stack) {
+        return stack == null || stack.isEmpty();
+    }
+
+    /**
+     * 返回独立克隆; {@code null} 原样返回.
+     */
+    @Nullable
+    public static ItemStack cloneOrNull(@Nullable ItemStack stack) {
+        return stack == null ? null : stack.clone();
+    }
+
+    /**
+     * 相似性判定: 双方均非空且 Bukkit {@code isSimilar} 成立(可堆叠).
+     * 任一为 {@code null} 时返回 {@code false}.
+     */
+    public static boolean isSimilar(@Nullable ItemStack a, @Nullable ItemStack b) {
+        return a != null && b != null && a.isSimilar(b);
+    }
+
+    /**
+     * 返回数量; 空表示一律计为 0.
+     */
+    public static int amountOf(@Nullable ItemStack stack) {
+        return isEmpty(stack) ? 0 : stack.getAmount();
     }
 
     /**

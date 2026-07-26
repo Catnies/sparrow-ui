@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,8 +18,9 @@ public final class SlotDelta {
 
     SlotDelta(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
         this.slot = slot;
-        this.before = ItemStackValues.cloneOrNull(ItemStackValues.normalize(before));
-        this.after = ItemStackValues.cloneOrNull(ItemStackValues.normalize(after));
+        // 先克隆再归一化: 判空针对私有克隆, 入参的并发修改无法走私空表示进入 delta
+        this.before = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(before));
+        this.after = ItemUtils.nullIfEmpty(ItemUtils.cloneOrNull(after));
     }
 
     public int slot() {
@@ -30,7 +32,7 @@ public final class SlotDelta {
      */
     @Nullable
     public ItemStack before() {
-        return ItemStackValues.cloneOrNull(this.before);
+        return ItemUtils.cloneOrNull(this.before);
     }
 
     /**
@@ -38,7 +40,7 @@ public final class SlotDelta {
      */
     @Nullable
     public ItemStack after() {
-        return ItemStackValues.cloneOrNull(this.after);
+        return ItemUtils.cloneOrNull(this.after);
     }
 
     // 提交路径直接把该内部实例写入新快照, 免去二次克隆; 内部代码不得变异它
