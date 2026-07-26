@@ -8,7 +8,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -20,6 +19,8 @@ import java.util.concurrent.locks.ReentrantLock;
  * 就是换引用, 这次引用交换即事务的线性化点. 读路径直接取当前快照, 完全无锁;
  * 写路径由 {@link InventoryTransactions} 在写锁内完成校验与交换, 用户回调一律
  * 在锁外执行.
+ * <p>库存实例需经安全发布(final 字段, volatile, 锁或线程启动边界)交给其他线程;
+ * 经普通字段的裸发布不在内存模型保障范围内.
  */
 abstract class AbstractInventory implements Inventory {
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 进程内锁序号发号器
@@ -55,12 +56,14 @@ abstract class AbstractInventory implements Inventory {
         return ItemStackValues.cloneOrNull(snapshot[slot]);
     }
 
-    // 单次 volatile 读取即得到一致性视图, 逐元素克隆后交给调用方
+    // 先把 volatile 引用捕获到局部变量再遍历: 全程只读同一个快照, 写者并发 swap 不会
+    // 造成新旧元素混排的撕裂视图; 直接反复读 this.state 会破坏一致性契约
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
-        @Nullable ItemStack[] copy = new ItemStack[this.state.length];
-        for (int i = 0; i < this.state.length; i++) {
-            copy[i] = ItemStackValues.cloneOrNull(this.state[i]);
+        @Nullable ItemStack[] snapshot = this.state;
+        @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
+        for (int i = 0; i < snapshot.length; i++) {
+            copy[i] = ItemStackValues.cloneOrNull(snapshot[i]);
         }
         return copy;
     }
@@ -98,12 +101,14 @@ abstract class AbstractInventory implements Inventory {
     }
 
     /**
-     * 在锁外向本库存的 pre 观察者派发事件, 运行时异常隔离上报, 不中止事务.
+     * 在锁外向本库存的 pre 观察者派发事件, 观察者异常隔离上报, 不中止事务.
      */
     void publishPreUpdate(@NotNull TransactionPreEvent event) {
         try {
             this.preUpdates.publish(event);
-        } catch (RuntimeException exception) {
+        } catch (Throwable exception) {
+            // 捕获 Throwable: 观察者抛出的 Error(如测试环境的 AssertionError)同样不得
+            // 逃逸给提交者, 否则事务结果与异常并存, 调用方无从判断
             SparrowUI.getInstance().handleException("Failed to handle Inventory pre-update", exception);
         }
     }
@@ -121,12 +126,14 @@ abstract class AbstractInventory implements Inventory {
     void drainPostEvents() {
         while (this.drainingPostEvents.compareAndSet(false, true)) {
             try {
-                // 独占排水: 逐个出队派发, 单个观察者的异常隔离上报, 不中断排水
+                // 独占排水: 逐个出队派发, 单个观察者的异常隔离上报, 不中断排水.
+                // 捕获 Throwable 而非 RuntimeException: Error 逃逸会把异常抛给无辜的
+                // 提交者(事务实际已提交), 并让队列中剩余事件滞留到下一次提交
                 TransactionPostEvent event;
                 while ((event = this.pendingPostEvents.poll()) != null) {
                     try {
                         this.postUpdates.publish(event);
-                    } catch (RuntimeException exception) {
+                    } catch (Throwable exception) {
                         SparrowUI.getInstance().handleException("Failed to handle Inventory post-update", exception);
                     }
                 }

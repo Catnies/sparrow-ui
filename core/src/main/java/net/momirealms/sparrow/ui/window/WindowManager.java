@@ -214,7 +214,7 @@ public final class WindowManager implements Listener {
      * @param stage 命令阶段
      * @param message 失败报告文本
      */
-    private void observe(CompletionStage<?> stage, String message) {
+    private void reportFailure(CompletionStage<?> stage, String message) {
         stage.exceptionally(throwable -> {
             this.report(message, throwable);
             return null;
@@ -240,7 +240,7 @@ public final class WindowManager implements Listener {
             AbstractWindow<?> window = this.active.get(player.getUniqueId());
             if (window != null && window.owns(event.getView())) {
                 PlayerCommandLane lane = this.lane(window.viewer());
-                this.observe(
+                this.reportFailure(
                         lane.submitDeferred(
                                 () -> {
                                     if (!window.isOpen()) {
@@ -269,7 +269,7 @@ public final class WindowManager implements Listener {
         if (window == null) {
             return;
         }
-        this.observe(
+        this.reportFailure(
                 this.submit(
                         window,
                         () -> {

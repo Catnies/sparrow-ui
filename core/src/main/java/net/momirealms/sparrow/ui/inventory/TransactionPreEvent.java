@@ -13,7 +13,7 @@ import java.util.List;
 public final class TransactionPreEvent {
     private final UpdateReason reason;
     private final List<InventoryDelta> changes;
-    private boolean cancelled; // 只在提交者线程的顺序派发中翻转, 无并发访问
+    private volatile boolean cancelled; // volatile 兜底跨线程误用时的可见性, 正常路径只在派发线程翻转
 
     TransactionPreEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
         this.reason = reason;
@@ -35,6 +35,8 @@ public final class TransactionPreEvent {
 
     /**
      * 取消整个事务. 调用后事务不会提交, 也不会派发 post 事件.
+     * <p>只应在 pre 观察者的派发调用内同步调用; 把事件泄漏到其他线程再异步取消
+     * 没有生效保证 —— 事务可能已经越过取消检查点.
      */
     public void cancel() {
         this.cancelled = true;
