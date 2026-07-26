@@ -19,8 +19,9 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
         super(manager, viewer, layout, settings);
     }
 
+    @NotNull
     @Override
-    protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+    protected MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         return factory.hopper(this.viewer(), generation);
     }
 
@@ -38,33 +39,35 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
             this.lowerGui = source.lowerGui;
         }
 
+        @NotNull
         @Override
-        public @NotNull HopperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+        public HopperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
             this.upperGui = upperGui;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull HopperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+        public HopperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull HopperWindow.Builder clone() {
+        public HopperWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
+        @NotNull
         @Override
-        protected @NotNull HopperWindow.Builder self() {
+        protected HopperWindow.Builder self() {
             return this;
         }
 
+        @NotNull
         @Override
-        protected @NotNull HopperWindow createWindow(
-                @NotNull Player viewer,
-                @NotNull AbstractWindow.Settings settings
-        ) {
+        protected HopperWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
             if (this.upperGui.width() != 5 || this.upperGui.height() != 1) {
                 throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
             }

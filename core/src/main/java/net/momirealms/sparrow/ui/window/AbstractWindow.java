@@ -76,7 +76,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private static final int INCOMING_PER_TICK = 128;
     private static final int PLAYER_INVENTORY_AUDIT_INTERVAL = 20;
     private static final long PING_TIMEOUT_MILLIS = 30_000;
-    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet();
+    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet(); // TODO: 优化点, 防止泄露后被意外修改.
 
     private final WindowManager manager;
     private final Player viewer;
@@ -138,14 +138,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorRenderContext = RenderContext.cursor(this);
     }
 
-    @Override
     @NotNull
+    @Override
     public CompletionStage<OpenResult> open() {
         return this.manager.open(this);
     }
 
-    @Override
     @NotNull
+    @Override
     public CompletionStage<CloseResult> close() {
         return this.manager.close(this);
     }
@@ -179,8 +179,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(this::notifyUpdateTitle, "Failed to refresh Window title");
     }
 
-    @Override
     @NotNull
+    @Override
     public Component title() {
         return this.title;
     }
@@ -208,8 +208,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(() -> this.openHandlers.set(copy), "Failed to replace Window open handlers");
     }
 
-    @Override
     @NotNull
+    @Override
     public List<Runnable> getOpenHandlers() {
         return this.openHandlers.snapshot();
     }
@@ -239,8 +239,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    @Override
     @NotNull
+    @Override
     public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
         return this.closeHandlers.snapshot();
     }
@@ -392,8 +392,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    @Override
     @NotNull
+    @Override
     public Player viewer() {
         return this.viewer;
     }
@@ -408,19 +408,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.closeable;
     }
 
-    @Override
     @NotNull
+    @Override
     public List<Gui> guis() {
         return this.layout.guis();
     }
 
+    @Nullable
     @Override
-    public SlotElement.@Nullable GuiLink guiAt(int windowSlot) {
+    public SlotElement.GuiLink guiAt(int windowSlot) {
         return this.layout.guiAt(windowSlot);
     }
 
+    @Nullable
     @Override
-    public SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot) {
+    public SlotElement.GuiLink guiAtHotbar(int hotbarSlot) {
         if (hotbarSlot < 0 || hotbarSlot > 8) {
             throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
         }
@@ -585,6 +587,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 this.manager.closeNow(this, InventoryCloseEvent.Reason.UNKNOWN);
             } catch (RuntimeException | Error throwable) {
                 this.report("Failed to close Window after a protocol failure", throwable);
+                return;
             }
         }
 

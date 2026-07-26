@@ -19,8 +19,9 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
         super(manager, viewer, layout, settings);
     }
 
+    @NotNull
     @Override
-    protected @NotNull MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+    protected MenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         return factory.normal(this.viewer(), this.upperSize() / 9, generation);
     }
 
@@ -43,35 +44,37 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
             this.mergedGui = source.mergedGui;
         }
 
+        @NotNull
         @Override
-        public @NotNull NormalWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+        public NormalWindow.Builder setUpperGui(@NotNull Gui upperGui) {
             this.upperGui = upperGui;
             this.mergedGui = null;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull NormalWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+        public NormalWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
             this.mergedGui = null;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull NormalWindow.Builder clone() {
+        public NormalWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
+        @NotNull
         @Override
-        protected @NotNull NormalWindow.Builder self() {
+        protected NormalWindow.Builder self() {
             return this;
         }
 
+        @NotNull
         @Override
-        protected @NotNull NormalWindow createWindow(
-                @NotNull Player viewer,
-                @NotNull AbstractWindow.Settings settings
-        ) {
+        protected NormalWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
             WindowLayout layout;
             if (this.mergedGui != null) {
                 if (this.mergedGui.width() != 9 || this.mergedGui.height() < 5 || this.mergedGui.height() > 10) {

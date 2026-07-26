@@ -191,8 +191,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     /**
      * 创建并初始化一次 Merchant 菜单会话. 任一步骤失败都会关闭已创建的部分会话.
      */
-    @Override
     @NotNull
+    @Override
     protected MerchantMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         // 每次真正打开新会话都从未选择状态开始
         this.previousTradeIndex = -1;
@@ -216,7 +216,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    void tick(@Nullable ScheduledTask task) {
+    void tick(ScheduledTask task) {
         MerchantMenuHandle menuHandle = this.menuHandle();
         if (menuHandle != null && menuHandle.tickOffers()) {
             this.notifySynchronize();

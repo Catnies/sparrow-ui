@@ -10,6 +10,7 @@ import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,8 +43,9 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         this.renameHandlers = new HandlerList<>(renameHandlers);
     }
 
+    @NotNull
     @Override
-    public @NotNull String getRenameText() {
+    public String getRenameText() {
         return this.renameText;
     }
 
@@ -115,8 +117,10 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         this.submit(() -> this.renameHandlers.set(copy), "Failed to replace Anvil Window rename handlers");
     }
 
+    @NotNull
     @Override
-    public @NotNull List<Consumer<String>> getRenameHandlers() {
+    @Unmodifiable
+    public List<Consumer<String>> getRenameHandlers() {
         return this.renameHandlers.snapshot();
     }
 
@@ -137,8 +141,9 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         );
     }
 
+    @NotNull
     @Override
-    protected @NotNull AnvilMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
+    protected AnvilMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         AnvilMenuHandle menuHandle = factory.anvil(this.viewer(), generation);
         menuHandle.setEnchantmentCost(this.enchantmentCost);
         menuHandle.setTextFieldAlwaysEnabled(this.textFieldAlwaysEnabled);
@@ -194,26 +199,30 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
             this.renameHandlers = new ArrayList<>(source.renameHandlers);
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder setUpperGui(@NotNull Gui upperGui) {
+        public AnvilWindow.Builder setUpperGui(@NotNull Gui upperGui) {
             this.upperGui = upperGui;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
+        public AnvilWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
             this.lowerGui = lowerGui;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder setEnchantmentCost(int enchantmentCost) {
+        public AnvilWindow.Builder setEnchantmentCost(int enchantmentCost) {
             this.enchantmentCost = enchantmentCost;
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder setTextFieldAlwaysEnabled(boolean textFieldAlwaysEnabled) {
+        public AnvilWindow.Builder setTextFieldAlwaysEnabled(boolean textFieldAlwaysEnabled) {
             this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
             return this;
         }
@@ -224,35 +233,35 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder setRenameHandlers(
-                @NotNull List<? extends Consumer<? super String>> handlers
-        ) {
+        public AnvilWindow.Builder setRenameHandlers(@NotNull List<? extends Consumer<? super String>> handlers) {
             this.renameHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder addRenameHandler(@NotNull Consumer<? super String> handler) {
+        public AnvilWindow.Builder addRenameHandler(@NotNull Consumer<? super String> handler) {
             this.renameHandlers.add(MiscUtils.narrowConsumer(handler));
             return this;
         }
 
+        @NotNull
         @Override
-        public @NotNull AnvilWindow.Builder clone() {
+        public AnvilWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
+        @NotNull
         @Override
-        protected @NotNull AnvilWindow.Builder self() {
+        protected AnvilWindow.Builder self() {
             return this;
         }
 
+        @NotNull
         @Override
-        protected @NotNull AnvilWindow createWindow(
-                @NotNull Player viewer,
-                @NotNull AbstractWindow.Settings settings
-        ) {
+        protected AnvilWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
             if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
                 throw new IllegalArgumentException("anvil upper GUI must have size 3x1");
             }

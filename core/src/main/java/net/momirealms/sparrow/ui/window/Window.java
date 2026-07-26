@@ -304,7 +304,8 @@ public interface Window {
      * @param windowSlot Window 逻辑槽位
      * @return 根 GUI 链接
      */
-    SlotElement.@Nullable GuiLink guiAt(int windowSlot);
+    @Nullable
+    SlotElement.GuiLink guiAt(int windowSlot);
 
     /**
      * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
@@ -312,7 +313,8 @@ public interface Window {
      * @param hotbarSlot 快捷栏索引
      * @return 根 GUI 链接
      */
-    SlotElement.@Nullable GuiLink guiAtHotbar(int hotbarSlot);
+    @Nullable
+    SlotElement.GuiLink guiAtHotbar(int hotbarSlot);
 
     /**
      * 打开请求的提交结果.
