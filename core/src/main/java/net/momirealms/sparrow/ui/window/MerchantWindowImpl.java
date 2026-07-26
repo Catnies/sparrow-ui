@@ -157,7 +157,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         if (trades.size() < previous.size()) {
             this.previousTradeIndex = -1;
             this.selectionResetVersion++;
-            this.updateTitleOnEntity(this.title());
+            this.notifyUpdateTitle(this.title());
         }
     }
 

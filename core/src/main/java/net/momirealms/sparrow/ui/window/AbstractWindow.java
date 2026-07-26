@@ -156,7 +156,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(
                 () -> {
                     this.titleSupplier = titleSupplier;
-                    this.refreshTitleOnEntity();
+                    this.notifyUpdateTitle();
                 },
                 "Failed to update Window title supplier"
         );
@@ -168,7 +168,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(
                 () -> {
                     this.titleSupplier = () -> title;
-                    this.updateTitleOnEntity(title);
+                    this.notifyUpdateTitle(title);
                 },
                 "Failed to update Window title"
         );
@@ -176,7 +176,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @Override
     public void updateTitle() {
-        this.submit(this::refreshTitleOnEntity, "Failed to refresh Window title");
+        this.submit(this::notifyUpdateTitle, "Failed to refresh Window title");
     }
 
     @Override
@@ -445,7 +445,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.dirtySlots.clear();
             this.spareDirtySlots.clear();
         }
-        this.refreshTitleValueOnEntity();
+        this.refreshTitle();
 
         // 先在局部变量中构建资源, 避免半初始化状态对 tick 可见
         M menuHandle = this.createMenuHandle(this.manager.menuFactory(), generation);
@@ -615,11 +615,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 更新本地标题快照, 并在打开状态下标记下一次 tick 重开容器标题.
      * 多次调用只保留最后一个标题, 避免重复发送 OpenScreen 与全量内容包.
      */
-    void updateTitleOnEntity(Component title) {
+    void notifyUpdateTitle(Component title) {
         this.title = title;
         if (this.open) {
             this.titleDirty = true;
         }
+    }
+
+    /**
+     * 重新求值标题 supplier 并发布到本地快照, 打开状态下安排重开标题.
+     */
+    void notifyUpdateTitle() {
+        this.notifyUpdateTitle(this.refreshTitle());
     }
 
     /**
@@ -1207,18 +1214,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 重新求值标题 supplier 并发布到本地快照, 打开状态下安排重开标题.
-     */
-    private void refreshTitleOnEntity() {
-        this.updateTitleOnEntity(this.refreshTitleValueOnEntity());
-    }
-
-    /**
      * 求值标题 supplier 并写入本地快照, supplier 返回 null 时立即失败.
      *
      * @return 新标题
      */
-    private Component refreshTitleValueOnEntity() {
+    private Component refreshTitle() {
         Component component = this.titleSupplier.get();
         this.title = component != null ? component : Component.empty();
         return this.title;
