@@ -7,20 +7,20 @@ import org.jetbrains.annotations.NotNull;
  *
  * <p>槽位从左到右, 再从上到下编号. 左上角槽位是 0.</p>
  *
- * @param width 正数宽度
- * @param height 正数高度
+ * @param width 非负宽度
+ * @param height 非负高度
  */
 public record GuiSize(int width, int height) {
 
     /**
-     * 检查宽高为正数, 且槽位总数没有超出 int 范围.
+     * 检查宽高为非负数, 且槽位总数没有超出 int 范围.
      *
      * @param width 宽度
      * @param height 高度
      */
     public GuiSize {
-        if (width <= 0 || height <= 0) {
-            throw new IllegalArgumentException("GUI dimensions must be positive: " + width + "x" + height);
+        if (width < 0 || height < 0) {
+            throw new IllegalArgumentException("GUI dimensions must be non-negative: " + width + "x" + height);
         }
         Math.multiplyExact(width, height);
     }

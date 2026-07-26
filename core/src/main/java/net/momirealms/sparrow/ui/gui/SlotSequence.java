@@ -166,7 +166,8 @@ public final class SlotSequence {
     public static @NotNull SlotSequence borders(@NotNull GuiSize guiSize) {
         int width = guiSize.width();
         int height = guiSize.height();
-        if (width == 1 || height == 1) {
+        // 0维和1槽的 GUI 选中全部槽位作为 borders.
+        if (guiSize.area() == 0 || width == 1 || height == 1) {
             return all(guiSize);
         }
 

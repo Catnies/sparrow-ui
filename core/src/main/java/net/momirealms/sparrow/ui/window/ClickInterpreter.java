@@ -74,7 +74,7 @@ final class ClickInterpreter {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
-        if (windowSlot < 0 || windowSlot >= layout.size()) {
+        if (windowSlot < 0 || windowSlot >= layout.protocolSize()) {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_SLOT);
         }
@@ -143,7 +143,7 @@ final class ClickInterpreter {
 
     private static @Nullable Target target(int windowSlot, WindowLayout layout) {
         if (windowSlot == -999) return Target.OutsideTarget.INSTANCE;
-        if (windowSlot < 0 || windowSlot >= layout.size()) return null;
+        if (windowSlot < 0 || windowSlot >= layout.protocolSize()) return null;
         return switch (layout.route(windowSlot)) {
             case WindowLayout.Route.GuiRoute ignoredRoute -> new Target.GuiTarget(windowSlot);
             case WindowLayout.Route.PlayerRoute route -> new Target.PlayerTarget(windowSlot, route.inventorySlot());

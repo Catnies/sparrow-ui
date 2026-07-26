@@ -11,23 +11,25 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 把有序区域一次编译为 Window 槽位 到 GUI 或玩家物品栏的路由.
- * <p>Region 的声明顺序就是最终协议顺序. 编译后的布局不可变, Window tick
- * 只读取 route, 不再重复计算区域映射.
+ * 把有序区域一次编译为 Window 逻辑槽位到 GUI 或玩家物品栏的路由.
+ * <p>Region 的声明顺序就是最终逻辑顺序, 尾部 virtual region 不进入菜单协议.
+ * 编译后的布局不可变, Window tick 只读取 route, 不再重复计算区域映射.
  */
 final class WindowLayout {
     private static final GuiSize LOWER_SIZE = new GuiSize(9, 4);
 
-    private final int upperSlots;
+    private final int upperSize;
     private final int lowerStart;
+    private final int protocolSize;
     private final Route[] routes;
     private final List<Gui> guis;
 
-    private WindowLayout(int upperSlots, int lowerStart, Route[] routes) {
-        this.upperSlots = upperSlots;
+    private WindowLayout(int upperSize, int lowerStart, int protocolSize, Route[] routes, Region[] regions) {
+        this.upperSize = upperSize;
         this.lowerStart = lowerStart;
+        this.protocolSize = protocolSize;
         this.routes = routes;
-        this.guis = collectGuis(routes);
+        this.guis = collectGuis(regions);
     }
 
     /**
@@ -35,7 +37,7 @@ final class WindowLayout {
      *
      * <p>布局必须且只能包含一个 9x4 lower 区域, 至少包含一个 upper 区域.
      * upper 可以位于 lower 前后, 因而能够表达合成器结果槽位位于玩家物品栏之后
-     * 的协议顺序.
+     * 的协议顺序. virtual region 如果存在, 必须全部位于物理区域之后.
      *
      * @param regions 按最终 Window 槽位顺序排列的区域
      * @return 编译后的不可变布局
@@ -46,26 +48,39 @@ final class WindowLayout {
             throw new IllegalArgumentException("window layout requires at least one region");
         }
 
-        int topSlots = 0;
-        int lowerSlotsStart = -1;
+        int upperSize = 0;
+        int lowerStart = -1;
         int lowerRegions = 0;
         int size = 0;
+        int protocolSize = 0;
+        boolean virtualSeen = false;
         for (int index = 0; index < regions.length; index++) {
             Region region = regions[index];
             if (region.role() == Region.Role.UPPER) {
-                topSlots += region.size();
+                if (virtualSeen) {
+                    throw new IllegalArgumentException("virtual regions must be a trailing suffix");
+                }
+                upperSize = Math.addExact(upperSize, region.size());
             } else if (region.role() == Region.Role.LOWER) {
+                if (virtualSeen) {
+                    throw new IllegalArgumentException("virtual regions must be a trailing suffix");
+                }
                 lowerRegions++;
                 if (lowerRegions > 1) {
                     throw new IllegalArgumentException("window layout requires exactly one lower region");
                 }
-                lowerSlotsStart = size;
+                lowerStart = size;
+            } else {
+                virtualSeen = true;
             }
 
-            size += region.size();
+            size = Math.addExact(size, region.size());
+            if (!virtualSeen) {
+                protocolSize = size;
+            }
         }
 
-        if (topSlots == 0) {
+        if (upperSize == 0) {
             throw new IllegalArgumentException("window layout requires at least one upper region");
         }
         if (lowerRegions != 1) {
@@ -91,7 +106,7 @@ final class WindowLayout {
             }
             offset += region.size();
         }
-        return new WindowLayout(topSlots, lowerSlotsStart, routes);
+        return new WindowLayout(upperSize, lowerStart, protocolSize, routes, regions);
     }
 
     /**
@@ -121,10 +136,10 @@ final class WindowLayout {
         if (gui.area() <= LOWER_SIZE.area()) {
             throw new IllegalArgumentException("merged GUI must contain more than 36 slots");
         }
-        int topSlots = gui.area() - LOWER_SIZE.area();
+        int lowerStart = gui.area() - LOWER_SIZE.area();
         return WindowLayout.of(
-                Region.upper(gui, 0, topSlots),
-                Region.lower(gui, topSlots, LOWER_SIZE.area())
+                Region.upper(gui, 0, lowerStart),
+                Region.lower(gui, lowerStart, LOWER_SIZE.area())
         );
     }
 
@@ -150,12 +165,19 @@ final class WindowLayout {
         return this.routes[windowSlot];
     }
 
-    int topSlots() {
-        return this.upperSlots;
+    int upperSize() {
+        return this.upperSize;
     }
 
     int size() {
         return this.routes.length;
+    }
+
+    /**
+     * 返回实际发送给原版菜单协议的物理槽位长度.
+     */
+    int protocolSize() {
+        return this.protocolSize;
     }
 
     int windowSlotAtHotbar(int hotbarSlot) {
@@ -170,10 +192,10 @@ final class WindowLayout {
     /**
      * 以首次出现顺序收集不同的根 GUI, 用于 Window 的公开查询 API.
      */
-    private static List<Gui> collectGuis(Route[] routes) {
-        ArrayList<Gui> guis = new ArrayList<>(2);
-        for (int index = 0; index < routes.length; index++) {
-            if (routes[index] instanceof Route.GuiRoute(var gui, var ignoredGuiSlot) && !guis.contains(gui)) {
+    private static List<Gui> collectGuis(Region[] regions) {
+        ArrayList<Gui> guis = new ArrayList<>(regions.length);
+        for (int index = 0; index < regions.length; index++) {
+            if (regions[index] instanceof Region.GuiRegion(var ignoredRole, var gui, var ignoredGuiSlot, var ignoredSize) && !guis.contains(gui)) {
                 guis.add(gui);
             }
         }
@@ -191,8 +213,8 @@ final class WindowLayout {
         }
 
         @NotNull
-        static Region upper(@NotNull Gui gui, int guiSlot, int size) {
-            return new GuiRegion(Role.UPPER, gui, guiSlot, size);
+        static Region upper(@NotNull Gui gui, int startSlot, int size) {
+            return new GuiRegion(Role.UPPER, gui, startSlot, size);
         }
 
         @NotNull
@@ -207,8 +229,13 @@ final class WindowLayout {
         }
 
         @NotNull
-        static Region lower(@NotNull Gui gui, int guiSlot, int size) {
-            return new GuiRegion(Role.LOWER, gui, guiSlot, size);
+        static Region lower(@NotNull Gui gui, int startSlot, int size) {
+            return new GuiRegion(Role.LOWER, gui, startSlot, size);
+        }
+
+        @NotNull
+        static Region virtual(@NotNull Gui gui) {
+            return new GuiRegion(Role.VIRTUAL, gui, 0, gui.area());
         }
 
         @NotNull
@@ -221,7 +248,8 @@ final class WindowLayout {
          */
         enum Role {
             UPPER,
-            LOWER
+            LOWER,
+            VIRTUAL
         }
 
         /**
@@ -232,8 +260,11 @@ final class WindowLayout {
             public GuiRegion {
                 Objects.requireNonNull(role, "role");
                 Objects.requireNonNull(gui, "gui");
-                if (guiSlot < 0 || size <= 0 || guiSlot > gui.area() - size) {
+                if (guiSlot < 0 || size < 0 || guiSlot > gui.area() - size) {
                     throw new IndexOutOfBoundsException("GUI region out of bounds: slot=" + guiSlot + ", size=" + size);
+                }
+                if (role != Role.VIRTUAL && size == 0) {
+                    throw new IllegalArgumentException("physical GUI region must contain at least one slot");
                 }
                 if (role == Role.LOWER && size != LOWER_SIZE.area()) {
                     throw new IllegalArgumentException("lower region must contain 36 slots");

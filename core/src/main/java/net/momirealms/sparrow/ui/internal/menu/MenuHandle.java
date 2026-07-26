@@ -44,7 +44,7 @@ public interface MenuHandle extends AutoCloseable {
      * （包括异步编码的数据包）都必须在返回前取得独立快照.</p>
      *
      * @param title 初始标题
-     * @param slots 按原始槽位编号排列的权威物品
+     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
      * @param cursor 同步使用的真实光标与可视投影
      */
     void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
@@ -56,7 +56,7 @@ public interface MenuHandle extends AutoCloseable {
      * 发送完整状态. 数组和位图只在调用期间有效, 实现不得修改或保留其引用. 槽位与光标物品
      * 已经是 Window 独占的稳定快照, 可以直接用于同步比较；异步数据包必须持有自己的快照.</p>
      *
-     * @param slots 按原始槽位编号排列的权威物品
+     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
      * @param dirtySlots 本轮可能变化的槽位
      * @param cursor 同步使用的真实光标与可视投影
      * @param cursorDirty 是否需要核对光标
@@ -76,7 +76,7 @@ public interface MenuHandle extends AutoCloseable {
      * <p>参数所有权与 {@link #open(Component, ItemStack[], CursorSnapshot)} 相同.</p>
      *
      * @param title 新标题
-     * @param slots 按原始槽位编号排列的权威物品
+     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
      * @param cursor 同步使用的真实光标与可视投影
      */
     void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);

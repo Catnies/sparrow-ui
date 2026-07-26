@@ -270,7 +270,7 @@ public interface Window {
      * 通知 Window 指定槽位的显示内容需要更新.
      * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.</p>
      *
-     * @param windowSlot 原始窗口槽位
+     * @param windowSlot Window 逻辑槽位
      */
     void notifyUpdate(int windowSlot);
 
@@ -301,7 +301,7 @@ public interface Window {
     /**
      * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
      *
-     * @param windowSlot 原始窗口槽位
+     * @param windowSlot Window 逻辑槽位
      * @return 根 GUI 链接
      */
     SlotElement.@Nullable GuiLink guiAt(int windowSlot);

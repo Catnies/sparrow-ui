@@ -3,23 +3,19 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
-
-import java.util.List;
-import java.util.function.Consumer;
+import net.momirealms.sparrow.ui.ItemClick;
 
 /**
  * 使用原版切石机界面的 Window.
- *
- * <p>上部 GUI 的两个真实 raw slot 分别为输入和结果. 左侧配方列表是切石机原生控件,
- * 不属于 Window 槽位, 不参与 {@link #guis()}、{@link #guiAt(int)} 或普通物品点击.
- * Window 只负责提交有序显示选项并报告客户端选择; 真实结果由使用者按业务规则更新.
- * 每次合法客户端选择都会产生事件, 包括再次选择当前索引; 过期索引只会被纠正.</p>
+ * <p>上部 GUI 的两个真实 raw slot 分别为输入和结果, 玩家物品栏随后占据 36 个槽位.
+ * 配方按钮由固定宽度为 4 的尾部 GUI 提供, 其逻辑 Window 槽位从 38 开始, 但不会成为
+ * 原版菜单的真实槽位. 客户端选择按钮时, Window 会先更新选择索引, 再以普通左键
+ * {@link ItemClick} 分发给对应 Item.
  */
 public interface StonecutterWindow extends Window {
 
     /**
-     * 创建使用 2x1 上部 GUI 的 Builder.
+     * 创建使用 2x1 上部 GUI 和空 4x0 按钮 GUI 的 Builder.
      *
      * @return 切石机 Window Builder
      */
@@ -29,70 +25,20 @@ public interface StonecutterWindow extends Window {
     }
 
     /**
-     * 替换原生配方列表的全部显示选项.
+     * 返回当前选中的配方按钮索引.
      *
-     * <p>选项按列表顺序取得连续索引, 允许重复但不支持空洞. 替换列表总会把选择
-     * 清除为 -1, 但不会调用配方选择处理器.</p>
-     *
-     * @param options 新的有序显示快照
-     */
-    void setRecipeOptions(@NotNull List<? extends StonecutterRecipeOption> options);
-
-    /**
-     * 返回最近一次已提交的配方选项快照.
-     *
-     * @return 不可修改的有序选项列表
-     */
-    @Unmodifiable
-    @NotNull
-    List<StonecutterRecipeOption> getRecipeOptions();
-
-    /**
-     * 返回当前选中的配方索引.
-     *
-     * @return 配方索引, -1 表示未选择
+     * @return 配方按钮索引, -1 表示未选择
      */
     int getSelectedRecipeIndex();
 
     /**
-     * 设置当前选择的配方.
+     * 设置当前选中的配方按钮.
+     * <p>-1 表示清除选择. Window 打开时, 非负索引必须属于当前发送给客户端的有效
+     * 按钮前缀; Window 关闭时只按按钮 GUI 的容量校验, 并在下次初始渲染时归一化.
      *
-     * <p>-1 表示清除选择. 此操作不会调用配方选择处理器;
-     * 非负索引必须在执行变更时属于当前配方列表.
-     *
-     * @param index 配方索引或 -1
+     * @param index 配方按钮索引或 -1
      */
     void setSelectedRecipeIndex(int index);
-
-    /**
-     * 替换玩家选择原生配方时调用的处理器.
-     *
-     * @param handlers 新处理器列表
-     */
-    void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super StonecutterRecipeSelect>> handlers);
-
-    /**
-     * 返回配方选择处理器快照.
-     *
-     * @return 不可修改的处理器列表
-     */
-    @Unmodifiable
-    @NotNull
-    List<Consumer<StonecutterRecipeSelect>> getRecipeSelectHandlers();
-
-    /**
-     * 添加玩家配方选择处理器.
-     *
-     * @param handler 要添加的处理器
-     */
-    void addRecipeSelectHandler(@NotNull Consumer<? super StonecutterRecipeSelect> handler);
-
-    /**
-     * 移除一个与给定对象相等的玩家配方选择处理器.
-     *
-     * @param handler 要移除的处理器
-     */
-    void removeRecipeSelectHandler(@NotNull Consumer<? super StonecutterRecipeSelect> handler);
 
     /**
      * 切石机 Window 的可重复 Builder.
@@ -118,42 +64,24 @@ public interface StonecutterWindow extends Window {
         Builder setLowerGui(@Nullable Gui lowerGui);
 
         /**
-         * 设置初始原生配方列表.
+         * 设置固定宽度为 4 的配方按钮 GUI.
+         * <p>Builder 默认使用 4x0 空 GUI. Window 构建后不允许替换此 GUI;
+         * 调用方可以继续直接修改同一个 GUI 的内容.
          *
-         * @param options 有序显示快照
+         * @param buttonsGui 配方按钮 GUI
          * @return 此 Builder
          */
         @NotNull
-        Builder setRecipeOptions(@NotNull List<? extends StonecutterRecipeOption> options);
+        Builder setButtonsGui(@NotNull Gui buttonsGui);
 
         /**
          * 设置初始选择.
          *
-         * @param index 配方索引或 -1
+         * @param index 配方按钮索引或 -1
          * @return 此 Builder
          */
         @NotNull
         Builder setSelectedRecipeIndex(int index);
-
-        /**
-         * 替换玩家选择原生配方时调用的处理器.
-         *
-         * @param handlers 新处理器列表
-         * @return 此 Builder
-         */
-        @NotNull
-        Builder setRecipeSelectHandlers(
-                @NotNull List<? extends Consumer<? super StonecutterRecipeSelect>> handlers
-        );
-
-        /**
-         * 添加玩家配方选择处理器.
-         *
-         * @param handler 要添加的处理器
-         * @return 此 Builder
-         */
-        @NotNull
-        Builder addRecipeSelectHandler(@NotNull Consumer<? super StonecutterRecipeSelect> handler);
 
         @Override
         @NotNull

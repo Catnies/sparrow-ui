@@ -19,12 +19,14 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.MiscUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
@@ -465,6 +467,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
             // 构造路径会标记初始 dirty; 全部路径就绪后统一渲染一次, 后续到达的通知留给首个 tick
             this.renderDirtySlots(this.takeDirtySlots(), paths, localSlots);
+            this.prepareVirtualContent(menuHandle, localSlots);
 
             // 先安排周期 tick, 再发送初始完整状态, 两者都成功才发布打开状态
             tickTask = this.manager.startTick(this);
@@ -473,7 +476,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             menuHandle.prepareOpen(replacingWindow);
             MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
-            menuHandle.open(this.title, localSlots, localCursor);
+            menuHandle.open(this.title, this.protocolSlots(localSlots), localCursor);
 
             this.menuHandle = menuHandle;
             this.paths = paths;
@@ -509,6 +512,30 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @NotNull
     protected abstract M createMenuHandle(@NotNull MenuFactory factory, long generation);
+
+    /**
+     * 把逻辑尾部区域的渲染结果投影到具体菜单状态.
+     * <p>调用发生在玩家实体线程, 初次打开和后续虚拟槽位或全量状态刷新都会执行.
+     * 默认实现不做任何处理.
+     *
+     * @param menuHandle 当前菜单句柄
+     * @param logicalSlots 包含虚拟尾部的完整逻辑槽位快照
+     */
+    protected void prepareVirtualContent(@NotNull M menuHandle, ItemStack @NotNull [] logicalSlots) {
+    }
+
+    /**
+     * 直接把一个逻辑 GUI 槽位交给其当前显示 Item 处理.
+     * <p>此路径不桥接 Bukkit InventoryClickEvent, 冻结、背景和空路径仍由
+     * {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
+     *
+     * @param windowSlot 逻辑 Window 槽位
+     * @param clickType 点击类型
+     */
+    protected final void dispatchItemClick(int windowSlot, @NotNull ClickType clickType) {
+        this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, windowSlot, -1));
+    }
+
 
     /**
      * 在玩家的实体线程关闭已打开的 Window.
@@ -690,9 +717,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @return 顶部槽位数量
      */
     protected final int topSlots() {
-        return this.layout.topSlots();
+        return this.layout.upperSize();
     }
-
     /**
      * 将已通过 generation 筛选的协议输入分派到对应处理流程.
      */
@@ -812,7 +838,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
-        if (packet.slot() < 0 || packet.slot() >= this.layout.size() || packet.selectedIndex() < -1) {
+        if (packet.slot() < 0 || packet.slot() >= this.layout.protocolSize() || packet.selectedIndex() < -1) {
             this.forceFull = true;
             return;
         }
@@ -948,6 +974,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         BitSet dirty = this.takeDirtySlots();
         this.renderDirtySlots(dirty, paths, localSlots);
 
+        boolean virtualDirty = dirty.nextSetBit(this.layout.protocolSize()) >= 0;
         boolean reopen = reopenTitle || this.titleDirty;
         boolean full = this.forceFull || reopen;
         if (dirty.isEmpty() && !this.cursorDirty && !full && !this.menuDirty) {
@@ -955,14 +982,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         try {
+            if (virtualDirty || full) {
+                this.prepareVirtualContent(menu, localSlots);
+            }
+            if (virtualDirty) {
+                dirty.clear(this.layout.protocolSize(), dirty.length());
+            }
+            ItemStack[] protocolSlots = this.protocolSlots(localSlots);
             MenuHandle.CursorSnapshot cursor = this.localCursor;
             if (cursor == null || this.cursorDirty) {
                 cursor = this.renderCursor(menu.cursor());
             }
             if (reopen) {
-                menu.updateTitle(this.title, localSlots, cursor);
+                menu.updateTitle(this.title, protocolSlots, cursor);
             } else {
-                menu.synchronize(localSlots, dirty, cursor, this.cursorDirty, full);
+                menu.synchronize(protocolSlots, dirty, cursor, this.cursorDirty, full);
             }
             this.localCursor = cursor;
             this.cursorDirty = false;
@@ -1017,6 +1051,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 localSlots[windowSlot] = this.render(path, windowSlot, localSlots[windowSlot]);
             }
         }
+    }
+
+    /**
+     * 返回菜单协议可见的物理槽位前缀, 普通布局直接复用原数组.
+     */
+    @NotNull
+    private ItemStack[] protocolSlots(ItemStack @NotNull [] logicalSlots) {
+        if (logicalSlots.length == this.layout.protocolSize()) {
+            return logicalSlots;
+        }
+        return Arrays.copyOf(logicalSlots, this.layout.protocolSize());
     }
 
     /**

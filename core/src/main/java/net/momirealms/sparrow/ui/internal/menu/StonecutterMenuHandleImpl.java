@@ -16,7 +16,6 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.Ite
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
-import net.momirealms.sparrow.ui.window.StonecutterRecipeOption;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -31,16 +30,19 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     private static final int RESULT_SLOT = 1;
     private static final int SELECTED_DATA_SLOT = 0;
     private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier();
-    private static final Object ALL_ITEMS = StonecutterMenuHandleImpl.createAllItemsIngredient();
     private static final Set<Class<?>> DISCARDED_OUTGOING = Set.of(ClientboundUpdateRecipesPacketProxy.CLASS);
+    private static final Object RECIPE_MANAGER = MinecraftServerProxy.INSTANCE.getRecipeManager(MinecraftServerProxy.INSTANCE.getServer());
+    private static final Object ALL_ITEMS = IngredientProxy.INSTANCE.of(
+            RegistryProxy.INSTANCE.stream(BuiltInRegistriesProxy.ITEM).filter(item -> item != ItemsProxy.AIR)
+    );
 
-    private List<StonecutterRecipeOption> recipeOptions = List.of();
+    private List<ItemStack> recipeButtons = List.of();
     private Object clientInput = PLACEHOLDER;
     private Object clientResult = ItemStackProxy.EMPTY;
     private int selectedRecipeIndex = -1;
-    private boolean recipeOptionsDirty = true;
+    private boolean recipeButtonsDirty = true;
     private boolean dataDirty = true;
-    private boolean recipeOptionsQueued;
+    private boolean recipeButtonsQueued;
     private boolean dataQueued;
     private boolean recipeRestoreHandled;
 
@@ -57,10 +59,22 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     }
 
     @Override
-    public void setRecipeOptions(@NotNull List<? extends StonecutterRecipeOption> options) {
-        this.recipeOptions = List.copyOf(options);
-        this.selectedRecipeIndex = -1;
-        this.recipeOptionsDirty = true;
+    public void setRecipeButtons(ItemStack @NotNull [] buttons) {
+        Objects.requireNonNull(buttons, "buttons");
+        ArrayList<ItemStack> copy = new ArrayList<>(buttons.length);
+        for (int index = 0; index < buttons.length; index++) {
+            copy.add(ItemUtils.copyOrEmpty(Objects.requireNonNull(buttons[index], "buttons contains null")));
+        }
+        List<ItemStack> snapshot = List.copyOf(copy);
+        if (this.recipeButtons.equals(snapshot)) {
+            return;
+        }
+
+        this.recipeButtons = snapshot;
+        if (this.selectedRecipeIndex >= snapshot.size()) {
+            this.selectedRecipeIndex = -1;
+        }
+        this.recipeButtonsDirty = true;
         this.dataDirty = true;
         this.forceRemoteSlot(RESULT_SLOT);
     }
@@ -89,28 +103,20 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         boolean restoreRecipes = false;
         if (!this.recipeRestoreHandled) {
             this.recipeRestoreHandled = true;
-            restoreRecipes = reason != InventoryCloseEvent.Reason.DISCONNECT
-                    && this.shouldRestoreOutgoing(ClientboundUpdateRecipesPacketProxy.CLASS);
+            restoreRecipes = reason != InventoryCloseEvent.Reason.DISCONNECT && this.shouldRestoreOutgoing(ClientboundUpdateRecipesPacketProxy.CLASS);
         }
 
-        Throwable failure = null;
         try {
             super.close(reason);
-        } catch (RuntimeException | Error throwable) {
-            failure = throwable;
-        }
-        if (restoreRecipes) {
-            try {
-                this.sendClientboundPacket(StonecutterMenuHandleImpl.createRealRecipesPacket());
-            } catch (RuntimeException | Error throwable) {
-                if (failure == null) {
-                    failure = throwable;
-                } else {
-                    failure.addSuppressed(throwable);
-                }
+            if (restoreRecipes) {
+                this.sendClientboundPacket(ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
+                        RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(RECIPE_MANAGER),
+                        RecipeManagerProxy.INSTANCE.getSynchronizedStonecutterRecipes(RECIPE_MANAGER)
+                ));
             }
+        } catch (RuntimeException | Error throwable) {
+            ThrowableUtils.throwIfUnchecked(throwable);
         }
-        ThrowableUtils.throwIfUnchecked(failure);
     }
 
     @Override
@@ -127,10 +133,13 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
 
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
-        this.recipeOptionsQueued = forceFull || this.recipeOptionsDirty;
-        this.dataQueued = forceFull || this.dataDirty || this.recipeOptionsQueued;
-        if (this.recipeOptionsQueued) {
-            outgoing.add(StonecutterMenuHandleImpl.createRecipeOptionsPacket(this.recipeOptions));
+        this.recipeButtonsQueued = forceFull || this.recipeButtonsDirty;
+        this.dataQueued = forceFull || this.dataDirty || this.recipeButtonsQueued;
+        if (this.recipeButtonsQueued) {
+            outgoing.add(ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
+                    RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(RECIPE_MANAGER),
+                    StonecutterMenuHandleImpl.createRecipeEntries(this.recipeButtons)
+            ));
             outgoing.add(ClientboundContainerSetSlotPacketProxy.INSTANCE.newInstance(
                     this.containerId(), this.incrementStateId(), INPUT_SLOT, ItemStackProxy.EMPTY
             ));
@@ -143,18 +152,16 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         }
         if (this.dataQueued) {
             outgoing.add(ClientboundContainerSetDataPacketProxy.INSTANCE.newInstance(
-                    this.containerId(),
-                    SELECTED_DATA_SLOT,
-                    this.selectedRecipeIndex
+                    this.containerId(), SELECTED_DATA_SLOT, this.selectedRecipeIndex
             ));
         }
     }
 
     @Override
     protected void commitPackets() {
-        if (this.recipeOptionsQueued) {
-            this.recipeOptionsDirty = false;
-            this.recipeOptionsQueued = false;
+        if (this.recipeButtonsQueued) {
+            this.recipeButtonsDirty = false;
+            this.recipeButtonsQueued = false;
         }
         if (this.dataQueued) {
             this.dataDirty = false;
@@ -179,36 +186,16 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     }
 
     private void checkSelectedRecipeIndex(int index) {
-        if (index < -1 || index >= this.recipeOptions.size()) {
+        if (index < -1 || index >= this.recipeButtons.size()) {
             throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + index);
         }
     }
 
-    private static Object createRecipeOptionsPacket(List<StonecutterRecipeOption> options) {
-        Object recipeManager = StonecutterMenuHandleImpl.recipeManager();
-        return ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
-                RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(recipeManager),
-                StonecutterMenuHandleImpl.createRecipeEntries(options)
-        );
-    }
-
-    private static Object createRealRecipesPacket() {
-        Object recipeManager = StonecutterMenuHandleImpl.recipeManager();
-        return ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
-                RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(recipeManager),
-                RecipeManagerProxy.INSTANCE.getSynchronizedStonecutterRecipes(recipeManager)
-        );
-    }
-
-    private static Object recipeManager() {
-        Object server = MinecraftServerProxy.INSTANCE.getServer();
-        return MinecraftServerProxy.INSTANCE.getRecipeManager(server);
-    }
-
-    private static Object createRecipeEntries(List<StonecutterRecipeOption> options) {
-        ArrayList<Object> entries = new ArrayList<>(options.size());
-        for (int index = 0; index < options.size(); index++) {
-            Object stack = ItemUtils.getItemStackHandle(options.get(index).display());
+    private static Object createRecipeEntries(List<ItemStack> buttons) {
+        ArrayList<Object> entries = new ArrayList<>(buttons.size());
+        for (int index = 0; index < buttons.size(); index++) {
+            ItemStack button = buttons.get(index);
+            Object stack = button.isEmpty() ? PLACEHOLDER : ItemUtils.getItemStackHandle(button);
             Object display;
             if (VersionHelper.isOrAbove26_1()) {
                 Object template = ItemStackTemplateProxy.INSTANCE.fromNonEmptyStack(stack);
@@ -221,11 +208,4 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         }
         return SelectableRecipeSingleInputSetProxy.INSTANCE.newInstance(entries);
     }
-
-    private static Object createAllItemsIngredient() {
-        return IngredientProxy.INSTANCE.of(
-                RegistryProxy.INSTANCE.stream(BuiltInRegistriesProxy.ITEM).filter(item -> item != ItemsProxy.AIR)
-        );
-    }
-
 }

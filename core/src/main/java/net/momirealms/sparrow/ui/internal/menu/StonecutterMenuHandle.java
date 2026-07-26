@@ -1,20 +1,21 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.window.StonecutterRecipeOption;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.List;
 
 @ApiStatus.Internal
 public interface StonecutterMenuHandle extends MenuHandle {
 
     /**
-     * 替换客户端原生配方列表并清除当前选择.
+     * 替换客户端原生配方按钮快照.
      *
-     * @param options 按客户端索引顺序排列的显示选项
+     * <p>空物品表示有效前缀中的中间空洞, 实现需向客户端显示不可见占位符.
+     * 数组只在调用期间有效, 实现不得修改或保留数组和物品引用.</p>
+     *
+     * @param buttons 按客户端索引顺序排列的按钮物品
      */
-    void setRecipeOptions(@NotNull List<? extends StonecutterRecipeOption> options);
+    void setRecipeButtons(ItemStack @NotNull [] buttons);
 
     /**
      * 设置当前选中的原生配方索引.

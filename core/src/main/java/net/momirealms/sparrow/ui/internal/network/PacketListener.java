@@ -116,8 +116,7 @@ public final class PacketListener implements Listener, AutoCloseable {
 
     /**
      * 将一个或多个客户端包切换到玩家连接的 Netty event loop 后发送.
-     *
-     * <p>多个包会包装为 bundle, 保持窗口状态更新在客户端侧的同一处理批次内.</p>
+     * <p>多个包会包装为 bundle, 保持窗口状态更新在客户端侧的同一处理批次内.
      *
      * @param player 接收数据包的玩家
      * @param packets 要发送的数据包
