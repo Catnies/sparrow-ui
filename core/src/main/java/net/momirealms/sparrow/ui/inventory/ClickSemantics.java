@@ -312,7 +312,9 @@ public final class ClickSemantics {
         for (int i = 0; i < lowerWrites.size(); i++) {
             lowerWrites.get(i).run();
         }
-        if (!creative && placedTotal > 0) {
+        if (creative) {
+            context.cursor(ItemStack.empty());
+        } else {
             int left = cursor.getAmount() - placedTotal;
             context.cursor(left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty());
         }
