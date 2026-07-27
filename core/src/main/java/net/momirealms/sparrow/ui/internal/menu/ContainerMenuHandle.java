@@ -314,7 +314,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 按关闭原因和当前菜单所有权接入 Paper 的容器关闭生命周期.
      *
      * <p>代理已不再是活动菜单时，Paper 或替换窗口已经接管关闭流程。客户端关闭与断线不再
-     * 发送关闭包，只发布 Bukkit 事件并执行 doCloseContainer；其余原因走服务端主动关闭。</p>
+     * 发送关闭包，只发布 Bukkit 事件并执行 doCloseContainer；其余原因走服务端主动关闭。
+     * 正常回到玩家库存菜单后重发完整状态，清除 Window 留在下部库存中的客户端投影。</p>
      */
     @Override
     public void close(@NotNull InventoryCloseEvent.Reason reason) {
@@ -337,6 +338,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             return;
         }
 
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
         Throwable failure = null;
         try {
             if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
@@ -351,11 +353,14 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             try {
                 ServerPlayerProxy.INSTANCE.doCloseContainer(this.serverPlayer);
             } catch (RuntimeException | Error throwable) {
-                if (failure == null) {
-                    failure = throwable;
-                } else {
-                    failure.addSuppressed(throwable);
-                }
+                failure = ThrowableUtils.combine(failure, throwable);
+            }
+        }
+        if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
+            try {
+                AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
+            } catch (RuntimeException | Error throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
             }
         }
         ThrowableUtils.throwIfUnchecked(failure);
