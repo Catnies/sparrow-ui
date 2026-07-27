@@ -799,16 +799,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     this.requirePath(windowSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton()));
                 }
             }
-            case ClickInterpreter.Target.PlayerTarget(var windowSlot, var ignoredInventorySlot) ->
-                    ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot);
+            case ClickInterpreter.Target.PlayerTarget(var windowSlot, var ignoredInventorySlot) -> {
+                ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot);
+            }
             case ClickInterpreter.Target.OutsideTarget ignoredOutside -> {
-                ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
                 ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
                 this.outsideClickHandlers.forEachIsolated(
                         handler -> handler.accept(event),
                         "Failed to handle Window outside click",
                         this.manager::report
                 );
+                // todo: 有必要重新检查isInteractionCurrent吗?
+                if (event.isCancelled() || !this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
+                    return;
+                }
+                ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
             }
         }
     }
