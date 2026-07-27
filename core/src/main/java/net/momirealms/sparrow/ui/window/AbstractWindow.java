@@ -15,7 +15,6 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.Inventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.MiscUtils;
@@ -108,7 +107,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable DisplayedSlotPath[] paths;
     private @Nullable ItemStack[] localSlots;
     private @Nullable MenuHandle.CursorSnapshot localCursor;
-    private @Nullable SchedulerTask tickTask;
+    private @Nullable ScheduledTask tickTask;
     private BitSet dirtySlots;
     private BitSet spareDirtySlots;
     private long windowTick;
@@ -457,7 +456,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         M menuHandle = this.createMenuHandle(this.manager.menuFactory(), generation);
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
-        SchedulerTask tickTask = null;
+        ScheduledTask tickTask = null;
 
         try {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
@@ -1280,7 +1279,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.generation++;
         this.clickInterpreter.reset();
 
-        SchedulerTask previousTickTask = this.tickTask;
+        ScheduledTask previousTickTask = this.tickTask;
         M previousMenu = this.menuHandle;
         DisplayedSlotPath[] previousPaths = this.paths;
         this.tickTask = null;

@@ -1,7 +1,5 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.scheduler.executor.EntityExecutor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -11,17 +9,14 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Executor;
 
 /**
  * 将任意线程提交的 Window 命令线性化到一个玩家的实体线程.
  * 同一时刻最多一个 drain 在运行, 因而生命周期、渲染与协议状态不会跨线程交错.
  */
 final class PlayerCommandLane {
-    private static final EntityExecutor ENTITY_EXECUTOR = SparrowUI.getInstance().scheduler().entity();
-    private static final Executor ASYNC_EXECUTOR = SparrowUI.getInstance().scheduler().async();
-
     private final Player player;
+    private final WindowScheduler scheduler;
     private final Runnable retiredHandler;
     private final ArrayDeque<Command<?>> commands = new ArrayDeque<>();
 
@@ -29,8 +24,9 @@ final class PlayerCommandLane {
     private boolean draining;
     private boolean retired;
 
-    PlayerCommandLane(Player player, Runnable retiredHandler) {
+    PlayerCommandLane(Player player, WindowScheduler scheduler, Runnable retiredHandler) {
         this.player = player;
+        this.scheduler = scheduler;
         this.retiredHandler = retiredHandler;
     }
 
@@ -68,7 +64,7 @@ final class PlayerCommandLane {
         boolean runNow = false;
         boolean schedule = false;
         boolean retireNow = false;
-        boolean owned = ENTITY_EXECUTOR.isOwnedByCurrentThread(this.player);
+        boolean owned = this.scheduler.entity().isOwnedByCurrentRegion(this.player);
 
         synchronized (this) {
             if (this.retired) {
@@ -91,9 +87,7 @@ final class PlayerCommandLane {
             this.drain();
         } else if (schedule) {
             try {
-                if (!ENTITY_EXECUTOR.execute(this.player, this::runScheduled, this::retire)) {
-                    this.retire();
-                }
+                this.scheduler.entity().run(this.player, this::runScheduled, this::retire);
             } catch (Throwable throwable) {
                 this.fail(throwable);
             }
@@ -115,7 +109,7 @@ final class PlayerCommandLane {
             pending = this.takePending();
         }
         this.completeRetired(pending);
-        ASYNC_EXECUTOR.execute(this.retiredHandler);
+        this.scheduler.async().runNow(this.retiredHandler);
     }
 
     private void fail(Throwable failure) {
@@ -128,12 +122,12 @@ final class PlayerCommandLane {
             this.scheduled = false;
             pending = this.takePending();
         }
-        ASYNC_EXECUTOR.execute(() -> {
+        this.scheduler.async().runNow(() -> {
             for (int index = 0; index < pending.size(); index++) {
                 pending.get(index).fail(failure);
             }
         });
-        ASYNC_EXECUTOR.execute(this.retiredHandler);
+        this.scheduler.async().runNow(this.retiredHandler);
     }
 
     private void runScheduled() {
@@ -190,7 +184,7 @@ final class PlayerCommandLane {
         if (pending.isEmpty()) {
             return;
         }
-        ASYNC_EXECUTOR.execute(() -> {
+        this.scheduler.async().runNow(() -> {
             for (int index = 0; index < pending.size(); index++) {
                 pending.get(index).retire();
             }

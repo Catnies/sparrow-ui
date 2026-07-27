@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
-import net.momirealms.sparrow.ui.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -19,7 +18,6 @@ public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
-    private BukkitSchedulerAdapter scheduler;
     private WindowManager windowManager;
     private boolean fireBukkitInventoryEvents = true;
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
@@ -80,22 +78,8 @@ public class SparrowUI implements Listener {
         BukkitProxyInstaller.setUp();
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
-        this.scheduler = new BukkitSchedulerAdapter(plugin);
         this.windowManager = WindowManager.create();
         this.addDisableHandler(this.windowManager::shutdown);
-    }
-
-    /**
-     * 获取此 SparrowUI 实例拥有的调度器.
-     * 如果尚未初始化, 会先尝试发现插件并完成初始化.
-     *
-     * @return SparrowUI 调度器
-     */
-    public BukkitSchedulerAdapter scheduler() {
-        if (this.scheduler == null) {
-            this.getPlugin();
-        }
-        return this.scheduler;
     }
 
     /**
@@ -159,13 +143,7 @@ public class SparrowUI implements Listener {
     @EventHandler
     private void handlePluginDisable(PluginDisableEvent event) {
         if (event.getPlugin().equals(this.plugin)) {
-            try {
-                this.disableHandlers.forEach(Runnable::run);
-            } finally {
-                if (this.scheduler != null) {
-                    this.scheduler.shutdown();
-                }
-            }
+            this.disableHandlers.forEach(Runnable::run);
         }
     }
 

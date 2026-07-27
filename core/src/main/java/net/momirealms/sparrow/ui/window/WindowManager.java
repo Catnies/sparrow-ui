@@ -1,22 +1,25 @@
 package net.momirealms.sparrow.ui.window;
 
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactoryImpl;
-import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.*;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -30,15 +33,21 @@ import java.util.function.BiConsumer;
  */
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;
-    private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
+    private final WindowScheduler scheduler;
     private final BukkitInventoryBridge bukkitBridge;
+    private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
     private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>();
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();
     private final AtomicLong generations = new AtomicLong();
     private final AtomicBoolean shutdown = new AtomicBoolean();
 
-    WindowManager(MenuFactory menuFactory) {
+    WindowManager(Plugin plugin) {
+        this(plugin, new MenuFactoryImpl(plugin));
+    }
+
+    WindowManager(Plugin plugin, MenuFactory menuFactory) {
         this.menuFactory = menuFactory;
+        this.scheduler = new WindowScheduler(plugin);
         this.exceptionHandler = SparrowUI.getInstance()::handleException;
         this.bukkitBridge = new BukkitInventoryBridge(this.exceptionHandler);
     }
@@ -55,12 +64,11 @@ public final class WindowManager implements Listener {
      */
     @NotNull
     public static WindowManager create() {
-        WindowManager manager = new WindowManager(new MenuFactoryImpl(SparrowUI.getInstance().getPlugin()));
-        Bukkit.getPluginManager().registerEvents(manager, SparrowUI.getInstance().getPlugin());
+        Plugin plugin = SparrowUI.getInstance().getPlugin();
+        WindowManager manager = new WindowManager(plugin);
+        Bukkit.getPluginManager().registerEvents(manager, plugin);
         return manager;
     }
-
-
 
     /**
      * 将 Window 进行开启, 这将会"打开命令"串行化提交到到玩家的实体线程.
@@ -130,12 +138,12 @@ public final class WindowManager implements Listener {
      * @return tick 任务, shutdown 后为 null
      */
     @Nullable
-    SchedulerTask startTick(AbstractWindow<?> window) {
+    ScheduledTask startTick(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
             return null;
         }
         PlayerCommandLane lane = this.lane(window.viewer());
-        return SparrowUI.getInstance().scheduler().entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
+        return this.scheduler.entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
     }
 
     /**
@@ -201,7 +209,10 @@ public final class WindowManager implements Listener {
      */
     private PlayerCommandLane lane(Player player) {
         UUID playerId = player.getUniqueId();
-        PlayerCommandLane lane = this.lanes.computeIfAbsent(playerId, ignoredPlayerId -> new PlayerCommandLane(player, () -> this.retire(playerId)));
+        PlayerCommandLane lane = this.lanes.computeIfAbsent(
+                playerId,
+                ignoredPlayerId -> new PlayerCommandLane(player, this.scheduler, () -> this.retire(playerId))
+        );
         if (this.shutdown.get() && this.lanes.remove(playerId, lane)) {
             lane.retire();
         }

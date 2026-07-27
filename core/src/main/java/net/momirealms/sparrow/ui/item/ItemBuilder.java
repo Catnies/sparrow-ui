@@ -4,7 +4,6 @@ import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 
@@ -97,10 +96,36 @@ public final class ItemBuilder {
     }
 
     /**
+     * 使用 Paper 全局异步调度器执行可能阻塞的 Provider 解析函数.
+     * 解析函数仍然只会在 Item 第一次挂载时提交.
+     *
+     * @param placeholder 加载完成前的显示内容
+     * @param supplier Provider 解析函数
+     * @return 此构建器
+     */
+    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull Supplier<? extends ItemProvider> supplier) {
+        Supplier<? extends ItemProvider> checkedSupplier = Objects.requireNonNull(supplier, "supplier");
+        return this.setAsyncItemProvider(placeholder, () -> {
+            CompletableFuture<ItemProvider> future = new CompletableFuture<>();
+            Bukkit.getAsyncScheduler().runNow(
+                    SparrowUI.getInstance().getPlugin(),
+                    ignoredTask -> {
+                        try {
+                            future.complete(checkedSupplier.get());
+                        } catch (Throwable throwable) {
+                            future.completeExceptionally(throwable);
+                        }
+                    }
+            );
+            return future;
+        });
+    }
+
+    /**
      * 配置第一次挂载时启动、在 Item 生命周期内只执行一次的异步显示来源.
      *
      * @param placeholder 加载完成前的显示内容
-     * @param loader 创建异步结果的懒加载器
+     * @param loader 由调用方选择执行器并创建异步结果的懒加载器
      * @return 此构建器
      */
     public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull AsyncLoader loader) {
@@ -109,36 +134,6 @@ public final class ItemBuilder {
                 Objects.requireNonNull(loader, "loader")
         ));
         return this;
-    }
-
-    /**
-     * 使用 SparrowUI 异步调度器执行可能阻塞的 Provider 解析函数.
-     * 解析函数仍然只会在 Item 第一次挂载时提交.
-     *
-     * @param placeholder 加载完成前的显示内容
-     * @param supplier Provider 解析函数
-     * @return 此构建器
-     */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull Supplier<? extends ItemProvider> supplier) {
-        return this.setAsyncItemProvider(placeholder, supplier, SparrowUI.getInstance().scheduler());
-    }
-
-    ItemBuilder setAsyncItemProvider(
-            @NotNull ItemProvider placeholder,
-            @NotNull Supplier<? extends ItemProvider> supplier,
-            @NotNull SchedulerAdapter<?> scheduler
-    ) {
-        return setAsyncItemProvider(placeholder, () -> {
-            CompletableFuture<ItemProvider> future = new CompletableFuture<>();
-            scheduler.executeAsync(() -> {
-                try {
-                    future.complete(supplier.get());
-                } catch (Throwable throwable) {
-                    future.completeExceptionally(throwable);
-                }
-            });
-            return future;
-        });
     }
 
     /**
@@ -289,7 +284,8 @@ public final class ItemBuilder {
     }
 
     /**
-     * 创建此 Item 唯一一次异步解析阶段. 此方法自身不得阻塞调用线程.
+     * 创建此 Item 唯一一次异步解析阶段.
+     * 调用方负责调度实际工作, 此方法自身不得阻塞调用线程.
      */
     @FunctionalInterface
     public interface AsyncLoader {
@@ -309,17 +305,8 @@ public final class ItemBuilder {
             return ignoredItem -> new DisplaySource.CyclingDisplaySource(periodTicks, frames, tickSource);
         }
 
-        static DisplayFactory asyncOnce(
-                ItemProvider placeholder,
-                AsyncLoader loader,
-                BiConsumer<? super String, ? super Throwable> exceptionHandler
-        ) {
-            return invalidator -> new DisplaySource.AsyncOnceDisplaySource(
-                    placeholder,
-                    loader,
-                    invalidator,
-                    exceptionHandler
-            );
+        static DisplayFactory asyncOnce(ItemProvider placeholder, AsyncLoader loader, BiConsumer<? super String, ? super Throwable> exceptionHandler) {
+            return invalidator -> new DisplaySource.AsyncOnceDisplaySource(placeholder, loader, invalidator, exceptionHandler);
         }
     }
 
@@ -384,12 +371,7 @@ public final class ItemBuilder {
             private volatile ItemProvider currentProvider;
             private final ItemProvider renderingProvider = context -> currentProvider.provide(context);
 
-            AsyncOnceDisplaySource(
-                    ItemProvider placeholder,
-                    AsyncLoader loader,
-                    Runnable invalidator,
-                    BiConsumer<? super String, ? super Throwable> exceptionHandler
-            ) {
+            AsyncOnceDisplaySource(ItemProvider placeholder, AsyncLoader loader, Runnable invalidator, BiConsumer<? super String, ? super Throwable> exceptionHandler) {
                 this.currentProvider = Objects.requireNonNull(placeholder, "placeholder");
                 this.pendingLoader = new AtomicReference<>(Objects.requireNonNull(loader, "loader"));
                 this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
