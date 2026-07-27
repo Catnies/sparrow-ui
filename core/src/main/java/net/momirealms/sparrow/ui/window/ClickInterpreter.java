@@ -112,10 +112,6 @@ final class ClickInterpreter {
         if (target == null) {
             return new Result.Rejected(Rejection.INVALID_SLOT);
         }
-        boolean borderClick = clickType == ClickType.WINDOW_BORDER_LEFT || clickType == ClickType.WINDOW_BORDER_RIGHT;
-        if ((target == Target.OutsideTarget.INSTANCE) != borderClick) {
-            return new Result.Rejected(Rejection.INVALID_SLOT);
-        }
         return new Result.SingleClick(clickType, packet.hotbarButton(), target);
     }
 
