@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
@@ -75,7 +76,7 @@ final class InventoryPlanner {
      * 用 touched 防止同一槽被两遍重复收取.
      */
     @NotNull
-    static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, IntUnaryOperator slotLimit) {
+    static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
         List<SlotDelta> deltas = new ArrayList<>();
         int taken = 0;
         boolean[] touched = new boolean[snapshot.length];
@@ -90,6 +91,10 @@ final class InventoryPlanner {
                 }
                 boolean fullStack = current.getAmount() >= effectiveMaxStackSize(slotLimit, slot, current);
                 if (fullStack != wantFullStacks) {
+                    continue;
+                }
+                // 匹配槽只会落入一个 pass, 因而过滤器至多调用一次;调用方可据此认领跨域物理槽.
+                if (includedSlot != null && !includedSlot.test(slot)) {
                     continue;
                 }
                 int take = Math.min(current.getAmount(), upTo - taken);

@@ -43,10 +43,19 @@ abstract class SparrowInventory implements Inventory {
     // 懒加载的稳定适配器单例, Bukkit 侧以引用身份关联库存
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
 
+    sealed interface SlotKey permits Anchor, ExternalSlot {
+    }
+
     /**
-     * 逻辑槽在自持数据根库存中的落点.
+     * 逻辑槽在自持数据根库存中的落点;普通根槽同时以此作为最终物理身份.
      */
-    record Anchor(@NotNull AbstractInventory root, int rootSlot) {
+    record Anchor(@NotNull AbstractInventory root, int rootSlot) implements SlotKey {
+    }
+
+    /**
+     * 多个镜像根或玩家路由共同指向的外部物理槽.
+     */
+    record ExternalSlot(@NotNull Object owner, int slot) implements SlotKey {
     }
 
     /**
@@ -54,6 +63,15 @@ abstract class SparrowInventory implements Inventory {
      */
     @NotNull
     abstract Anchor resolveSlot(int slot);
+
+    /**
+     * 把逻辑槽解析到最终物理存储槽.
+     */
+    @NotNull
+    final SlotKey physicalKey(int slot) {
+        Anchor anchor = this.resolveSlot(slot);
+        return anchor.root().rootPhysicalKey(anchor);
+    }
 
     /**
      * 按遍历序收集全部去重后的根库存, 用于订阅转发与事务参与者展开.
@@ -194,7 +212,7 @@ abstract class SparrowInventory implements Inventory {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(context.snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), this::slotMaxStackSize);
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(context.snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize);
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
@@ -232,7 +250,7 @@ abstract class SparrowInventory implements Inventory {
         if (sample == null || upTo <= 0) {
             return 0;
         }
-        return InventoryPlanner.planCollect(this.openPlan().snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), this::slotMaxStackSize).taken();
+        return InventoryPlanner.planCollect(this.openPlan().snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize).taken();
     }
 
     @Override

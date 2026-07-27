@@ -178,6 +178,20 @@ final class InventoryTransactions {
                 }
             }
         }
+
+        // 单根库存的物理映射在构造时保证一对一;只有多个根可能跨镜像写入同一个外部槽.
+        if (merged.size() > 1) {
+            HashSet<SparrowInventory.SlotKey> seenPhysicalSlots = new HashSet<>();
+            for (int i = 0; i < merged.size(); i++) {
+                Scope scope = merged.get(i);
+                for (int j = 0; j < scope.deltas().size(); j++) {
+                    int slot = scope.deltas().get(j).slot();
+                    if (!seenPhysicalSlots.add(scope.inventory().physicalKey(slot))) {
+                        throw new IllegalArgumentException("transaction contains conflicting deltas for the same physical slot");
+                    }
+                }
+            }
+        }
         return merged;
     }
 

@@ -3,9 +3,11 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
+import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
@@ -34,18 +36,19 @@ import java.util.function.UnaryOperator;
 public final class ReferencingInventory extends AbstractInventory {
     private final org.bukkit.inventory.Inventory bukkitInventory;
     private final Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter; // 读取被引用的内容区段
-    private final int[] toBukkitSlots; // 逻辑槽 -> Bukkit 槽的固定映射, 读取与写回共用
+    private final ExternalSlot[] externalSlots; // 逻辑槽 -> 驻留的最终外部槽身份, 读取与写回共用
     private final int bukkitMaxStackSize; // 被引用容器的堆叠上限, 构造时缓存
 
     private ReferencingInventory(
             org.bukkit.inventory.Inventory bukkitInventory,
             Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter,
-            UnaryOperator<int[]> slotReorder
+            @Nullable ItemStack[] initialMirror,
+            SlotOrder slotMapping
     ) {
-        super(initialMirror(bukkitInventory, contentsGetter, slotReorder));
+        super(initialMirror);
         this.bukkitInventory = bukkitInventory;
         this.contentsGetter = contentsGetter;
-        this.toBukkitSlots = slotReorder.apply(identitySlots(this.size()));
+        this.externalSlots = externalSlots(bukkitInventory, slotMapping);
         this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
     }
 
@@ -91,18 +94,13 @@ public final class ReferencingInventory extends AbstractInventory {
             boolean folia
     ) {
         requireNotFolia(folia);
-        return new ReferencingInventory(inventory, contentsGetter, slotReorder);
-    }
-
-    // 构造前置: 主线程校验后读取容器建立首个镜像
-    private static @Nullable ItemStack[] initialMirror(
-            org.bukkit.inventory.Inventory bukkitInventory,
-            Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter,
-            UnaryOperator<int[]> slotReorder
-    ) {
         requireMainThread();
-        @Nullable ItemStack[] raw = contentsGetter.apply(bukkitInventory);
-        return readLogicalContents(raw, slotReorder.apply(identitySlots(raw.length)));
+        @Nullable ItemStack[] raw = contentsGetter.apply(inventory);
+        SlotOrder slotMapping = SlotOrder.of(slotReorder.apply(identitySlots(raw.length)));
+        if (slotMapping.size() != raw.length) {
+            throw new IllegalArgumentException("slot mapping size " + slotMapping.size() + " does not match contents size " + raw.length);
+        }
+        return new ReferencingInventory(inventory, contentsGetter, readLogicalContents(raw, slotMapping), slotMapping);
     }
 
     static void requireNotFolia(boolean folia) {
@@ -145,6 +143,12 @@ public final class ReferencingInventory extends AbstractInventory {
         return this.bukkitMaxStackSize;
     }
 
+    @Override
+    @NotNull
+    SlotKey rootPhysicalKey(@NotNull Anchor anchor) {
+        return this.externalSlots[anchor.rootSlot()];
+    }
+
     // 写前钩子: 任何写入口(本库存方法或视图批量归约)都先经这里 —— 主线程校验
     // 加对账, 使规划基于容器的最新真相
     @Override
@@ -159,7 +163,7 @@ public final class ReferencingInventory extends AbstractInventory {
     void afterCommit(@NotNull List<SlotDelta> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotDelta delta = deltas.get(i);
-            this.bukkitInventory.setItem(this.toBukkitSlots[delta.slot()], delta.after());
+            this.bukkitInventory.setItem(this.externalSlots[delta.slot()].slot(), delta.after());
         }
     }
 
@@ -172,7 +176,7 @@ public final class ReferencingInventory extends AbstractInventory {
         @Nullable ItemStack[] mirror = this.currentState();
         @Nullable List<SlotDelta> deltas = null;
         for (int slot = 0; slot < mirror.length; slot++) {
-            @Nullable ItemStack liveItem = raw[this.toBukkitSlots[slot]];
+            @Nullable ItemStack liveItem = raw[this.externalSlots[slot].slot()];
             @Nullable ItemStack mirrorItem = mirror[slot];
             boolean equal = ItemUtils.isNullOrEmpty(liveItem) ? mirrorItem == null : liveItem.equals(mirrorItem);
             if (!equal) {
@@ -200,10 +204,10 @@ public final class ReferencingInventory extends AbstractInventory {
     }
 
     // 按逻辑槽序读取容器内容, 元素克隆并归一化为镜像约定
-    private static @Nullable ItemStack[] readLogicalContents(@Nullable ItemStack[] raw, int[] toBukkitSlots) {
+    private static @Nullable ItemStack[] readLogicalContents(@Nullable ItemStack[] raw, SlotOrder slotMapping) {
         @Nullable ItemStack[] logical = new ItemStack[raw.length];
         for (int slot = 0; slot < raw.length; slot++) {
-            logical[slot] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(raw[toBukkitSlots[slot]]));
+            logical[slot] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(raw[slotMapping.slotAt(slot)]));
         }
         return logical;
     }
@@ -216,6 +220,25 @@ public final class ReferencingInventory extends AbstractInventory {
         return slots;
     }
 
+    private static ExternalSlot[] externalSlots(org.bukkit.inventory.Inventory inventory, SlotOrder slotMapping) {
+        Object owner = physicalOwner(inventory);
+        ExternalSlot[] externalSlots = new ExternalSlot[slotMapping.size()];
+        for (int slot = 0; slot < slotMapping.size(); slot++) {
+            externalSlots[slot] = new ExternalSlot(owner, slotMapping.slotAt(slot));
+        }
+        return externalSlots;
+    }
+
+    private static Object physicalOwner(org.bukkit.inventory.Inventory inventory) {
+        if (inventory instanceof PlayerInventory playerInventory) {
+            HumanEntity holder = playerInventory.getHolder();
+            if (holder != null) {
+                return holder.getUniqueId();
+            }
+        }
+        return inventory;
+    }
+
     // 玩家背包重排: 逻辑槽 i -> 真实槽 (i + 9) % 36, 热键行(真实 0-8)落到逻辑 27-35
     private static int[] reorderPlayerStorage(int[] slots) {
         int[] reordered = new int[slots.length];
@@ -224,4 +247,5 @@ public final class ReferencingInventory extends AbstractInventory {
         }
         return reordered;
     }
+
 }

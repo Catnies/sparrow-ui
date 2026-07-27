@@ -67,6 +67,11 @@ abstract class AbstractInventory extends SparrowInventory {
         return new Anchor(this, slot);
     }
 
+    @NotNull
+    SlotKey rootPhysicalKey(@NotNull Anchor anchor) {
+        return anchor;
+    }
+
     @Override
     void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots) {
         roots.add(this);
@@ -113,7 +118,9 @@ abstract class AbstractInventory extends SparrowInventory {
     @Override
     PlanContext openPlan() {
         @Nullable ItemStack[] planned = this.currentState();
-        return new PlanContext(planned, deltas -> List.of(new InventoryTransactions.Scope(this, planned, deltas)));
+        return new PlanContext(planned, deltas -> deltas.isEmpty()
+                ? List.of()
+                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
     }
 
     @NotNull

@@ -2,8 +2,6 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
-import net.momirealms.sparrow.ui.inventory.operation.AddResult;
-import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
@@ -212,12 +210,9 @@ public final class ClickSemantics {
             return;
         }
 
-        // 阶段一: 按窗口槽收集参与描述, 库存槽先按物理锚点去重(镜像显示只参与一次),
-        // 再按库存分组取得写规划快照 —— 读取全部发生在对账后的快照上
-        Map<Inventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
-        HashSet<SparrowInventory.Anchor> seenAnchors = new HashSet<>();
-        HashSet<Integer> seenLowerSlots = new HashSet<>();
-        List<DragTarget> targets = new ArrayList<>(windowSlots.size());
+        // 阶段一: 跨 InventoryLink 与 PlayerRoute 按最终物理槽去重;同一槽同时存在两种表示时
+        // 优先保留 InventoryLink,使写入继续经过事务与 ReferencingInventory 镜像
+        LinkedHashMap<SparrowInventory.SlotKey, DragCandidate> candidates = new LinkedHashMap<>();
         for (int i = 0; i < windowSlots.size(); i++) {
             int windowSlot = windowSlots.get(i);
             int lowerSlot = context.lowerSlotAt(windowSlot);
@@ -229,18 +224,25 @@ public final class ClickSemantics {
                 continue;
             }
 
+            SparrowInventory.SlotKey physicalKey = physicalKey(context, link, lowerSlot);
+            DragCandidate previous = candidates.get(physicalKey);
+            if (previous == null || previous.link() == null && link != null) {
+                candidates.put(physicalKey, new DragCandidate(link, lowerSlot));
+            }
+        }
+
+        // 阶段二: 按库存分组取得写规划快照 —— 读取全部发生在对账后的快照上
+        Map<Inventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
+        List<DragTarget> targets = new ArrayList<>(candidates.size());
+        for (DragCandidate candidate : candidates.values()) {
+            LinkedSlot link = candidate.link();
+            int lowerSlot = candidate.lowerSlot();
             @Nullable ItemStack current;
             if (link != null) {
                 SparrowInventory inventory = (SparrowInventory) link.inventory();
-                if (!seenAnchors.add(inventory.resolveSlot(link.slot()))) {
-                    continue;
-                }
                 SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
                 current = plan.snapshot()[link.slot()];
             } else {
-                if (!seenLowerSlots.add(lowerSlot)) {
-                    continue;
-                }
                 current = context.lowerAt(lowerSlot);
             }
             if (current != null && !ItemUtils.isSimilar(current, cursor)) {
@@ -268,7 +270,7 @@ public final class ClickSemantics {
             return;
         }
 
-        // 阶段二: 逐槽计算实放量, 库存槽 delta 归入各自规划, 背包写入先累积后应用
+        // 阶段三: 逐槽计算实放量, 库存槽 delta 归入各自规划, 背包写入先累积后应用
         Map<Inventory, List<SlotDelta>> deltasByInventory = new LinkedHashMap<>();
         List<Runnable> lowerWrites = new ArrayList<>();
         int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
@@ -522,9 +524,10 @@ public final class ClickSemantics {
             return;
         }
         UpdateReason reason = reasonOf(context, clickType);
+        SparrowInventory.SlotKey sourceKey = physicalKey(context, link, -1);
 
         for (Inventory target : addTargets(context, link.inventory())) {
-            MoveOutcome outcome = moveIntoInventory(reason, link, target);
+            MoveOutcome outcome = moveIntoInventory(reason, link, target, sourceKey);
             if (outcome == MoveOutcome.MOVED || outcome == MoveOutcome.REJECTED) {
                 // 有进展即停; 事务被取消或冲突同样终止本次转移
                 context.markDirty(windowSlot);
@@ -533,20 +536,20 @@ public final class ClickSemantics {
         }
 
         if (context.hasPlayerInventory()) {
-            moveIntoLower(context, link, reason);
+            moveIntoLower(context, link, reason, sourceKey);
         }
         context.markDirty(windowSlot);
     }
 
     // 库存槽 -> 玩家背包: 库存扣减经事务, 背包写在提交成功后应用
-    private static void moveIntoLower(Context context, LinkedSlot link, UpdateReason reason) {
+    private static void moveIntoLower(Context context, LinkedSlot link, UpdateReason reason, SparrowInventory.SlotKey sourceKey) {
         SparrowInventory inventory = (SparrowInventory) link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         @Nullable ItemStack current = plan.snapshot()[link.slot()];
         if (current == null) {
             return;
         }
-        LowerPlacement placement = planLowerPlacement(context, current);
+        LowerPlacement placement = planLowerPlacement(context, current, sourceKey);
         if (placement.moved() == 0) {
             return;
         }
@@ -569,16 +572,14 @@ public final class ClickSemantics {
             return;
         }
         UpdateReason reason = reasonOf(context, clickType);
+        SparrowInventory.SlotKey sourceKey = physicalKey(context, null, lowerSlot);
 
         for (Inventory target : addTargets(context, null)) {
-            AddResult added = target.add(reason, current);
-            if (!(added.result() instanceof TransactionResult.Committed)) {
+            MoveOutcome outcome = moveLowerIntoInventory(context, reason, lowerSlot, current, target, sourceKey);
+            if (outcome == MoveOutcome.REJECTED) {
                 break;
             }
-            int moved = current.getAmount() - added.remaining();
-            if (moved > 0) {
-                int left = current.getAmount() - moved;
-                context.lowerAt(lowerSlot, left > 0 ? ItemUtils.copyWithAmount(current, left) : null);
+            if (outcome == MoveOutcome.MOVED) {
                 break;
             }
         }
@@ -592,7 +593,7 @@ public final class ClickSemantics {
     }
 
     // 源库存槽与目标库存合并为同一个事务: 跨根全成全败, 源槽读取在双方对账后的快照上
-    private static MoveOutcome moveIntoInventory(UpdateReason reason, LinkedSlot source, Inventory target) {
+    private static MoveOutcome moveIntoInventory(UpdateReason reason, LinkedSlot source, Inventory target, SparrowInventory.SlotKey sourceKey) {
         SparrowInventory sourceInventory = (SparrowInventory) source.inventory();
         SparrowInventory targetInventory = (SparrowInventory) target;
 
@@ -606,7 +607,7 @@ public final class ClickSemantics {
                 targetPlan.snapshot(),
                 current,
                 targetInventory.iterationOrder(OperationCategory.ADD),
-                targetInventory::slotMaxStackSize
+                slot -> targetInventory.physicalKey(slot).equals(sourceKey) ? 0 : targetInventory.slotMaxStackSize(slot)
         );
         int moved = current.getAmount() - addPlan.remaining();
         if (moved <= 0) {
@@ -626,10 +627,41 @@ public final class ClickSemantics {
                 : MoveOutcome.REJECTED;
     }
 
+    // 玩家背包槽 -> 连接库存:目标规划排除源槽的任何视图别名,提交成功后才扣减玩家侧源槽
+    private static MoveOutcome moveLowerIntoInventory(
+            Context context,
+            UpdateReason reason,
+            int lowerSlot,
+            ItemStack current,
+            Inventory target,
+            SparrowInventory.SlotKey sourceKey
+    ) {
+        SparrowInventory targetInventory = (SparrowInventory) target;
+        SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
+        InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
+                targetPlan.snapshot(),
+                current,
+                targetInventory.iterationOrder(OperationCategory.ADD),
+                slot -> targetInventory.physicalKey(slot).equals(sourceKey) ? 0 : targetInventory.slotMaxStackSize(slot)
+        );
+        int moved = current.getAmount() - addPlan.remaining();
+        if (moved <= 0) {
+            return MoveOutcome.FULL;
+        }
+
+        TransactionResult result = InventoryTransactions.commit(reason, targetPlan.scoper().apply(addPlan.deltas()), false);
+        if (!(result instanceof TransactionResult.Committed)) {
+            return MoveOutcome.REJECTED;
+        }
+        int left = current.getAmount() - moved;
+        context.lowerAt(lowerSlot, left > 0 ? ItemUtils.copyWithAmount(current, left) : null);
+        return MoveOutcome.MOVED;
+    }
+
     // ---- 双击收集 ----
 
-    // 收集域 = 全部参与库存(按 COLLECT 优先级降序, 每库存一个事务) + 玩家背包扫尾.
-    // 事务被否决即终止后续收集与扫尾; 已提交的收集量必须进入光标以维持守恒.
+    // 收集域 = 全部参与库存按 COLLECT 优先级逐库规划、一次提交 + 玩家背包扫尾.
+    // 上下域按最终物理槽去重;事务被否决时玩家背包与光标保持零变更.
     private static void collectToCursor(Context context) {
         ItemStack cursor = context.cursor();
         int space = cursor.getMaxStackSize() - cursor.getAmount();
@@ -638,7 +670,8 @@ public final class ClickSemantics {
         }
         UpdateReason reason = reasonOf(context, ClickType.DOUBLE_CLICK);
         int collected = 0;
-        boolean rejected = false;
+        HashSet<SparrowInventory.SlotKey> coveredSlots = new HashSet<>();
+        List<InventoryTransactions.Scope> scopes = new ArrayList<>();
 
         List<Inventory> domain = new ArrayList<>(context.linkedInventories());
         domain.sort((left, right) -> Integer.compare(
@@ -646,19 +679,31 @@ public final class ClickSemantics {
                 left.guiPriority(OperationCategory.COLLECT)
         ));
         for (int i = 0; i < domain.size() && collected < space; i++) {
-            CollectResult result = domain.get(i).collect(reason, cursor, space - collected);
-            if (!(result.result() instanceof TransactionResult.Committed)) {
-                rejected = true;
-                break;
-            }
-            collected += result.collected();
+            SparrowInventory inventory = (SparrowInventory) domain.get(i);
+            SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
+            InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
+                    plan.snapshot(),
+                    cursor,
+                    space - collected,
+                    inventory.iterationOrder(OperationCategory.COLLECT),
+                    slot -> coveredSlots.add(inventory.physicalKey(slot)),
+                    inventory::slotMaxStackSize
+            );
+            scopes.addAll(plan.scoper().apply(takePlan.deltas()));
+            collected += takePlan.taken();
+        }
+        if (!scopes.isEmpty() && !(InventoryTransactions.commit(reason, scopes, false) instanceof TransactionResult.Committed)) {
+            return;
         }
 
         // 玩家背包扫尾: 与背包放置同序(主背包在前), 玩家侧直接写
-        if (!rejected && context.hasPlayerInventory()) {
+        if (context.hasPlayerInventory()) {
             int[] order = lowerPlacementOrder();
             for (int i = 0; i < order.length && collected < space; i++) {
                 int inventorySlot = order[i];
+                if (!coveredSlots.add(physicalKey(context, null, inventorySlot))) {
+                    continue;
+                }
                 @Nullable ItemStack stack = context.lowerAt(inventorySlot);
                 if (stack == null || !ItemUtils.isSimilar(stack, cursor)) {
                     continue;
@@ -740,7 +785,7 @@ public final class ClickSemantics {
     }
 
     // 规划玩家背包的放置: 先合并主背包与热键栏的相似堆, 再占用空槽(主背包 9-35 优先)
-    private static LowerPlacement planLowerPlacement(Context context, ItemStack item) {
+    private static LowerPlacement planLowerPlacement(Context context, ItemStack item, SparrowInventory.SlotKey excludedKey) {
         List<Runnable> writes = new ArrayList<>();
         int remaining = item.getAmount();
 
@@ -748,6 +793,9 @@ public final class ClickSemantics {
         // 第一遍: 合并相似且未满的堆
         for (int i = 0; i < order.length && remaining > 0; i++) {
             int inventorySlot = order[i];
+            if (physicalKey(context, null, inventorySlot).equals(excludedKey)) {
+                continue;
+            }
             @Nullable ItemStack current = context.lowerAt(inventorySlot);
             if (current == null || !ItemUtils.isSimilar(current, item)) {
                 continue;
@@ -765,6 +813,9 @@ public final class ClickSemantics {
         // 第二遍: 占用空槽
         for (int i = 0; i < order.length && remaining > 0; i++) {
             int inventorySlot = order[i];
+            if (physicalKey(context, null, inventorySlot).equals(excludedKey)) {
+                continue;
+            }
             if (context.lowerAt(inventorySlot) != null) {
                 continue;
             }
@@ -775,6 +826,13 @@ public final class ClickSemantics {
             remaining -= moved;
         }
         return new LowerPlacement(item.getAmount() - remaining, writes);
+    }
+
+    private static SparrowInventory.SlotKey physicalKey(Context context, @Nullable LinkedSlot link, int lowerSlot) {
+        if (link != null) {
+            return ((SparrowInventory) link.inventory()).physicalKey(link.slot());
+        }
+        return new SparrowInventory.ExternalSlot(context.viewer().getUniqueId(), lowerSlot);
     }
 
     // 玩家背包的放置顺序: 主背包 9-35 在前, 热键栏 0-8 在后
@@ -808,6 +866,9 @@ public final class ClickSemantics {
     }
 
     private record DragTarget(@Nullable LinkedSlot link, int lowerSlot, @Nullable ItemStack current, int capacity) {
+    }
+
+    private record DragCandidate(@Nullable LinkedSlot link, int lowerSlot) {
     }
 
     // 玩家背包放置的延迟应用: 全部写在库存事务提交成功后执行

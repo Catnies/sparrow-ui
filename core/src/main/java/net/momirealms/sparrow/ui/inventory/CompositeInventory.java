@@ -53,14 +53,13 @@ public final class CompositeInventory extends SparrowInventory {
         this.requireNoOverlap();
     }
 
-    // 展开全部逻辑槽到 (根库存, 根槽), 拒绝任何重叠; 同一根库存的不相交投影是合法成员.
-    // Anchor 的 equals 基于根库存引用身份与槽号, 判重精确无哈希碰撞
+    // 展开全部逻辑槽到最终物理存储槽并拒绝重叠;不同镜像根指向同一 Bukkit 槽同样属于重叠.
     private void requireNoOverlap() {
-        HashSet<Anchor> seen = new HashSet<>();
+        HashSet<SlotKey> seen = new HashSet<>();
         for (int slot = 0; slot < this.size; slot++) {
-            Anchor anchor = this.resolveSlot(slot);
-            if (!seen.add(anchor)) {
-                throw new IllegalArgumentException("composite members overlap at physical slot " + anchor.rootSlot() + " of " + anchor.root());
+            SlotKey key = this.physicalKey(slot);
+            if (!seen.add(key)) {
+                throw new IllegalArgumentException("composite members overlap at physical slot " + key);
             }
         }
     }
