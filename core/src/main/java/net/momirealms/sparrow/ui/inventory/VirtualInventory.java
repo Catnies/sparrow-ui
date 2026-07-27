@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.exception.InventoryDecodeException;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import org.bukkit.inventory.ItemStack;
@@ -54,6 +55,25 @@ public final class VirtualInventory extends AbstractInventory {
     public VirtualInventory(@NotNull UUID uuid, @Nullable ItemStack @NotNull [] initial) {
         super(initial);
         this.uuid = uuid;
+    }
+
+    /**
+     * 从字节数组反序列化库存.
+     * <p>只恢复 UUID 与槽内容, 且必须在 SparrowUI 完成 setup 后调用.
+     *
+     * @throws InventoryDecodeException 当输入不是本实现支持的完整库存数据时.
+     */
+    @NotNull
+    public static VirtualInventory deserialize(byte @NotNull [] bytes) {
+        return VirtualInventoryCodec.deserialize(bytes);
+    }
+
+    /**
+     * 把 UUID 与当前槽内容的一致性快照序列化为字节数组.
+     * <p>必须在 SparrowUI 完成 setup 后调用.
+     */
+    public byte @NotNull [] serialize() {
+        return VirtualInventoryCodec.serialize(this);
     }
 
     /**

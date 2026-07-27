@@ -8,6 +8,6 @@ import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 public interface NbtAccounterProxy {
     NbtAccounterProxy INSTANCE = ASMProxyFactory.create(NbtAccounterProxy.class);
 
-    @MethodInvoker(name = "create", isStatic = true)
-    Object create(long quota);
+    @MethodInvoker(name = "unlimitedHeap", isStatic = true)
+    Object unlimitedHeap();
 }

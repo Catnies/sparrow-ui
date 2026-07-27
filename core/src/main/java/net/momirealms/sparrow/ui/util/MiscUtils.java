@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.ui.util;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -118,5 +121,22 @@ public final class MiscUtils {
             copy.add(narrowBiConsumer(consumers.get(index)));
         }
         return List.copyOf(copy);
+    }
+
+    /**
+     * 按数组元素是否非 null 构建位图, 每个字节从低位到高位对应连续八个元素.
+     *
+     * @param values 待检查的数组
+     * @param <T> 元素类型
+     * @return 长度为 {@code ceil(values.length / 8)} 的位图
+     */
+    public static <T> byte @NotNull [] buildMask(@Nullable T @NotNull [] values) {
+        byte[] mask = new byte[(values.length + 7) / 8];
+        for (int index = 0; index < values.length; index++) {
+            if (values[index] != null) {
+                mask[index >> 3] |= (byte) (1 << (index & 7));
+            }
+        }
+        return mask;
     }
 }

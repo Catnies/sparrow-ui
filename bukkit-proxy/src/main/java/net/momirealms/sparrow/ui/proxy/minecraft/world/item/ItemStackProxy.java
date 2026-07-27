@@ -12,7 +12,8 @@ import org.bukkit.inventory.ItemStack;
 @ReflectionProxy(name = "net.minecraft.world.item.ItemStack")
 public interface ItemStackProxy {
     ItemStackProxy INSTANCE = ASMProxyFactory.create(ItemStackProxy.class);
-    Object EMPTY = INSTANCE.EMPTY();
+    Object EMPTY = INSTANCE.getEMPTY();
+    Codec<Object> CODEC = INSTANCE.getCODEC();
 
     /**
      * 从原版 ItemLike 创建一份新的 NMS 物品堆.
@@ -24,7 +25,7 @@ public interface ItemStackProxy {
     Object newInstance(@Type(name = "net.minecraft.world.level.ItemLike") Object item);
 
     @FieldGetter(name = "EMPTY", isStatic = true)
-    Object EMPTY();
+    Object getEMPTY();
 
     @FieldGetter(name = "CODEC", isStatic = true)
     Codec<Object> getCODEC();

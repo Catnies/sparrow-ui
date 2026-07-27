@@ -174,7 +174,7 @@ public final class ReferencingInventory extends AbstractInventory {
         for (int slot = 0; slot < mirror.length; slot++) {
             @Nullable ItemStack liveItem = raw[this.toBukkitSlots[slot]];
             @Nullable ItemStack mirrorItem = mirror[slot];
-            boolean equal = ItemUtils.isEmpty(liveItem) ? mirrorItem == null : liveItem.equals(mirrorItem);
+            boolean equal = ItemUtils.isNullOrEmpty(liveItem) ? mirrorItem == null : liveItem.equals(mirrorItem);
             if (!equal) {
                 if (deltas == null) {
                     deltas = new ArrayList<>();

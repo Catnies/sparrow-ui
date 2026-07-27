@@ -450,7 +450,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         // unwrap 借用底层句柄后复制为独立所有权, 菜单不持有调用方实例
         this.actualCarried = cursor.isEmpty()
                 ? ItemStackProxy.EMPTY
-                : ItemUtils.copyItemStack(ItemUtils.getItemStackHandle(cursor));
+                : ItemStackProxy.INSTANCE.copy(ItemUtils.getItemStackHandle(cursor));
     }
 
     /**

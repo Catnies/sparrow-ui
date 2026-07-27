@@ -30,10 +30,7 @@ public final class ItemUtils {
      */
     @NotNull
     public static ItemStack copyOrEmpty(@Nullable ItemStack source) {
-        if (source == null || source.isEmpty()) {
-            return ItemStack.empty();
-        }
-        return source.clone();
+        return isNullOrEmpty(source) ? ItemStack.empty() : source.clone();
     }
 
     /**
@@ -42,39 +39,6 @@ public final class ItemUtils {
     @Nullable
     public static ItemStack copyOrNull(@Nullable ItemStack stack) {
         return stack == null ? null : stack.clone();
-    }
-
-    /**
-     * 把空表示统一收敛为 {@code null}, 非空实例原样返回(不克隆).
-     * 幂等: 对已归一化的值再次调用结果不变.
-     * <p>这是库存域"空槽唯一表示是 null"契约的收敛点; 需要非 null 空实例的
-     * 场景使用 {@link #copyOrEmpty(ItemStack)}.
-     */
-    @Nullable
-    public static ItemStack nullIfEmpty(@Nullable ItemStack stack) {
-        return isEmpty(stack) ? null : stack;
-    }
-
-    /**
-     * 判断是否为空表示: {@code null}, AIR 或数量不大于 0.
-     */
-    public static boolean isEmpty(@Nullable ItemStack stack) {
-        return stack == null || stack.isEmpty();
-    }
-
-    /**
-     * 相似性判定: 双方均非空且 Bukkit {@code isSimilar} 成立(可堆叠).
-     * 任一为 {@code null} 时返回 {@code false}.
-     */
-    public static boolean isSimilar(@Nullable ItemStack a, @Nullable ItemStack b) {
-        return a != null && b != null && a.isSimilar(b);
-    }
-
-    /**
-     * 返回数量; 空表示一律计为 0.
-     */
-    public static int amountOf(@Nullable ItemStack stack) {
-        return isEmpty(stack) ? 0 : stack.getAmount();
     }
 
     /**
@@ -103,14 +67,36 @@ public final class ItemUtils {
     }
 
     /**
-     * 通过 Bukkit Proxy 创建可独立持有的底层物品快照.
-     *
-     * @param itemStackNMSHandle 借用的底层物品句柄
-     * @return 可独立持有的底层物品句柄
+     * 把空表示统一收敛为 {@code null}, 非空实例原样返回(不克隆).
+     * 幂等: 对已归一化的值再次调用结果不变.
+     * <p>这是库存域"空槽唯一表示是 null"契约的收敛点; 需要非 null 空实例的
+     * 场景使用 {@link #copyOrEmpty(ItemStack)}.
      */
-    @NotNull
-    public static Object copyItemStack(@NotNull Object itemStackNMSHandle) {
-        return ItemStackProxy.INSTANCE.copy(itemStackNMSHandle);
+    @Nullable
+    public static ItemStack nullIfEmpty(@Nullable ItemStack stack) {
+        return isNullOrEmpty(stack) ? null : stack;
+    }
+
+    /**
+     * 返回数量; 空表示一律计为 0.
+     */
+    public static int amountOf(@Nullable ItemStack stack) {
+        return isNullOrEmpty(stack) ? 0 : stack.getAmount();
+    }
+
+    /**
+     * 判断是否为空表示: {@code null}, AIR 或数量不大于 0.
+     */
+    public static boolean isNullOrEmpty(@Nullable ItemStack stack) {
+        return stack == null || stack.isEmpty();
+    }
+
+    /**
+     * 相似性判定: 双方均非空且 Bukkit {@code isSimilar} 成立(可堆叠).
+     * 任一为 {@code null} 时返回 {@code false}.
+     */
+    public static boolean isSimilar(@Nullable ItemStack a, @Nullable ItemStack b) {
+        return a != null && b != null && a.isSimilar(b);
     }
 
     /**
