@@ -64,7 +64,11 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
 
     @Override
     protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
-        if (forceFull || dirtySlots.get(1)) {
+        if (forceFull) {
+            this.dataDirty = true;
+        } else if (dirtySlots.get(0) || dirtySlots.get(1)) {
+            // 客户端应用任一输入槽纠正时会重新计算铁砧结果; 结果槽必须随后覆盖, cost data 再在批次末尾覆盖.
+            this.forceRemoteSlot(2);
             this.dataDirty = true;
         }
     }
