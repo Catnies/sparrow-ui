@@ -4,13 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版工作台界面的四十六槽 Window.
- *
- * <p>raw slot {@code 0} 是结果, {@code 1..9} 是 3x3 合成网格,
- * {@code 10..45} 是玩家物品栏区域. 原版配方书只报告选择并显示 ghost recipe,
- * 不会自动搬运材料.
- */
 public interface CraftingWindow extends RecipeBookWindow {
 
     /**

@@ -5,13 +5,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import net.momirealms.sparrow.ui.ItemClick;
 
-/**
- * 使用原版切石机界面的 Window.
- * <p>上部 GUI 的两个真实 raw slot 分别为输入和结果, 玩家物品栏随后占据 36 个槽位.
- * 配方按钮由固定宽度为 4 的尾部 GUI 提供, 其逻辑 Window 槽位从 38 开始, 但不会成为
- * 原版菜单的真实槽位. 客户端选择按钮时, Window 会先更新选择索引, 再以普通左键
- * {@link ItemClick} 分发给对应 Item.
- */
 public interface StonecutterWindow extends Window {
 
     /**

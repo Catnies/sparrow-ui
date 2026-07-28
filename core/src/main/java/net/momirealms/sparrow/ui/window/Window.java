@@ -320,11 +320,8 @@ public interface Window {
      * 打开请求的提交结果.
      */
     enum OpenResult {
-        /** Window 已成功打开. */
         OPENED,
-        /** Window 已处于打开状态. */
         ALREADY_OPEN,
-        /** 玩家实体不可用, 无法提交打开操作. */
         VIEWER_UNAVAILABLE
     }
 
@@ -332,9 +329,7 @@ public interface Window {
      * 关闭请求的提交结果.
      */
     enum CloseResult {
-        /** Window 已成功关闭. */
         CLOSED,
-        /** Window 已经关闭. */
         ALREADY_CLOSED
     }
 

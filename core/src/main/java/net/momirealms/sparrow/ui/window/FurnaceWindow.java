@@ -4,12 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版熔炉界面的三槽配方书 Window.
- *
- * <p>raw slot {@code 0} 是原料, {@code 1} 是燃料, {@code 2} 是结果.
- * 烹饪与燃烧进度只负责客户端展示, 物品消耗和结果计算始终由应用维护.</p>
- */
 public interface FurnaceWindow extends RecipeBookWindow {
 
     /**

@@ -4,11 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版酿造台界面的五槽 Window.
- *
- * <p>原始槽位依次为三个药水结果槽、原料槽和燃料槽.</p>
- */
 public interface BrewingWindow extends Window {
 
     /**

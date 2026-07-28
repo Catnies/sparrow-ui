@@ -25,8 +25,7 @@ final class DispenserWindowImpl extends AbstractWindow<MenuHandle> implements Di
         return factory.dispenser(this.viewer(), generation);
     }
 
-    static final class BuilderImpl extends AbstractWindowBuilder<DispenserWindow, DispenserWindow.Builder>
-            implements DispenserWindow.Builder {
+    static final class BuilderImpl extends AbstractWindowBuilder<DispenserWindow, DispenserWindow.Builder> implements DispenserWindow.Builder {
         private Gui upperGui = Gui.empty(new GuiSize(3, 3));
         private @Nullable Gui lowerGui;
 

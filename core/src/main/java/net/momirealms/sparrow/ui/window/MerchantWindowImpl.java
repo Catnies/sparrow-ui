@@ -27,12 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-/**
- * {@link MerchantWindow} 的实体线程实现.
- * <p>公开修改方法允许从任意线程调用: 参数在调用线程完成校验和快照复制, 实际状态变更再通过
- * {@link AbstractWindow} 的命令通道进入玩家实体线程. volatile 字段只负责向 getter 发布最近已应用快照,
- * Merchant 协议状态与 Trade/Item 挂载由当前 {@link MerchantMenuHandle} 会话持有.
- */
 final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implements MerchantWindow {
     private final HandlerList<Consumer<MerchantTradeSelection>> tradeSelectionHandlers;
 
@@ -144,7 +138,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         List<MerchantWindow.Trade> previous = this.trades;
         MerchantMenuHandle menuHandle = this.menuHandle();
 
-        // 先让菜单完整准备候选挂载, 失败时 Window 仍保留旧快照
+        // 先让UI完整准备候选挂载, 失败时 Window 仍保留旧快照
         if (menuHandle != null) {
             menuHandle.setTrades(trades);
         }

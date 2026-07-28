@@ -82,9 +82,6 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
         }
     }
 
-    /**
-     * 酿造台 Window Builder 的实现.
-     */
     static final class BuilderImpl extends AbstractWindowBuilder<BrewingWindow, BrewingWindow.Builder> implements BrewingWindow.Builder {
         private Gui inputGui = Gui.empty(new GuiSize(1, 1));
         private Gui fuelGui = Gui.empty(new GuiSize(1, 1));

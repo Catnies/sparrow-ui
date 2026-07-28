@@ -4,9 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版砂轮界面的三槽 Window.
- */
 public interface GrindstoneWindow extends Window {
 
     /**

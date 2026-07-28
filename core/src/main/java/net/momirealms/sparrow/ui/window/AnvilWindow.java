@@ -8,11 +8,6 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * 使用原版铁砧界面的三槽 Window.
- *
- * <p>重命名文本由入站协议包更新, 并与等级消耗、文本框和结果槽策略一起在玩家实体线程提交.</p>
- */
 public interface AnvilWindow extends Window {
 
     /**

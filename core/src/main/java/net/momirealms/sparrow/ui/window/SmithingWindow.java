@@ -4,9 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版锻造台界面的四槽 Window.
- */
 public interface SmithingWindow extends Window {
 
     /**

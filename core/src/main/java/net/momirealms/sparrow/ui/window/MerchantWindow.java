@@ -10,12 +10,6 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * 使用原版商人界面的纯展示 Window.
- *
- * <p>交易列表只控制客户端左侧 offers, 不匹配真实输入、不生成结果也不增加使用次数.
- * 顶部三个真实 raw slot 仍由 3x1 GUI 控制.</p>
- */
 public interface MerchantWindow extends Window {
 
     /**

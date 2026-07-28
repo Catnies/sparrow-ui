@@ -8,12 +8,6 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-/**
- * 使用原版合成器界面的十槽 Window.
- *
- * <p>Window 槽位 0 到 8 为 3x3 输入区, 9 到 44 为玩家物品栏区域, 45 为结果槽.
- * 结果 GUI 在顶部库存语义中仍是第十个槽位.
- */
 public interface CrafterWindow extends Window {
 
     /**

@@ -15,16 +15,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * {@link EnchantmentWindow} 的实体线程实现.
- * <p>可变状态通过玩家实体命令通道应用. 选项数组使用写时复制快照, 使任意线程读取和
- * 处理器重入都只能观察到完整的一版状态.
- */
 final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> implements EnchantmentWindow {
     private static final int OPTION_COUNT = 3; // 原版附魔台固定提供三个按钮
 
     private final HandlerList<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers; // 按注册顺序分发的选择处理器
-
     private volatile EnchantOption[] options; // 最近在实体线程发布的写时复制选项快照
     private volatile int enchantmentSeed;     // 最近在实体线程应用的客户端符文种子
 
@@ -43,9 +37,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         this.enchantSelectionHandlers = new HandlerList<>(enchantSelectionHandlers);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setOption(int index, @Nullable EnchantOption option) {
         EnchantmentWindowImpl.checkOptionIndex(index);
@@ -71,9 +62,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @Nullable
     public EnchantOption getOption(int index) {
@@ -81,9 +69,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         return this.options[index];
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setEnchantmentSeed(int seed) {
         this.submit(
@@ -105,17 +90,11 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int getEnchantmentSeed() {
         return this.enchantmentSeed;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setEnchantSelectionHandlers(
             @NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers
@@ -127,18 +106,12 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> getEnchantSelectionHandlers() {
         return this.enchantSelectionHandlers.snapshot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
         Objects.requireNonNull(handler, "handler");
@@ -148,9 +121,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
         Objects.requireNonNull(handler, "handler");
@@ -160,13 +130,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * 创建附魔台协议 handle, 并在首次发包前写入当前全部选项和 seed.
-     *
-     * @param factory 菜单 handle 工厂
-     * @param generation 当前打开世代
-     * @return 已初始化的附魔台菜单 handle
-     */
     @Override
     @NotNull
     protected EnchantmentMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
@@ -180,9 +143,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         return menuHandle;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
         // 非按钮输入和过期、越界按钮都不属于当前附魔选择
@@ -218,16 +178,12 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         }
     }
 
-    /**
-     * 收集附魔台 Window 的初始布局、选项和选择处理器.
-     * <p>clone 会独立复制选项数组和处理器列表, 但沿用现有 Builder 对 GUI 引用的共享语义.
-     */
     static final class BuilderImpl extends AbstractWindowBuilder<EnchantmentWindow, EnchantmentWindow.Builder> implements EnchantmentWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(2, 1)); // 待附魔物品和青金石的两个上部槽
-        private @Nullable Gui lowerGui;                      // null 时使用玩家真实背包
+        private Gui upperGui = Gui.empty(new GuiSize(2, 1));
+        private @Nullable Gui lowerGui;
         private EnchantOption[] options = new EnchantOption[OPTION_COUNT]; // 三个初始按钮, null 表示禁用
-        private int enchantmentSeed;                         // 初始客户端符文种子
-        private List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers = new ArrayList<>(); // 初始选择处理器
+        private int enchantmentSeed;
+        private List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers = new ArrayList<>();
 
         BuilderImpl() {
         }
@@ -241,9 +197,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             this.enchantSelectionHandlers = new ArrayList<>(source.enchantSelectionHandlers);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public EnchantmentWindow.Builder setUpperGui(@NotNull Gui upperGui) {
@@ -251,9 +204,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public EnchantmentWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
@@ -261,9 +211,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public EnchantmentWindow.Builder setOption(int index, @Nullable EnchantOption option) {
@@ -272,9 +219,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public EnchantmentWindow.Builder setEnchantmentSeed(int seed) {
@@ -282,42 +226,26 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
-        public EnchantmentWindow.Builder setEnchantSelectionHandlers(
-                @NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers
-        ) {
+        public EnchantmentWindow.Builder setEnchantSelectionHandlers(@NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers) {
             this.enchantSelectionHandlers = new ArrayList<>(List.copyOf(handlers));
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
-        public EnchantmentWindow.Builder addEnchantSelectionHandler(
-                @NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler
-        ) {
+        public EnchantmentWindow.Builder addEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
             this.enchantSelectionHandlers.add(Objects.requireNonNull(handler, "handler"));
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public EnchantmentWindow.Builder clone() {
             return new BuilderImpl(this);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         protected EnchantmentWindow.Builder self() {

@@ -4,11 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用普通 9 列箱子协议的 Window.
- *
- * <p>窗口类型由此接口明确选择, 不会根据 GUI 面积自动推断为其他客户端界面.</p>
- */
 public interface NormalWindow extends Window {
 
     /**

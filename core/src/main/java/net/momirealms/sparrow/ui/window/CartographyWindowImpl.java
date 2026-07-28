@@ -68,8 +68,8 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
         );
     }
 
-    @Override
     @NotNull
+    @Override
     public Set<MapIcon> getIcons() {
         return this.icons;
     }
@@ -106,14 +106,14 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
         );
     }
 
-    @Override
     @NotNull
+    @Override
     public View getView() {
         return this.view;
     }
 
-    @Override
     @NotNull
+    @Override
     protected CartographyMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         CartographyMenuHandle menu = factory.cartography(this.viewer(), generation);
         menu.setView(this.view);
@@ -144,9 +144,6 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
         return Collections.unmodifiableSet(copy);
     }
 
-    /**
-     * 制图台 Window Builder 的实现.
-     */
     static final class BuilderImpl extends AbstractWindowBuilder<CartographyWindow, CartographyWindow.Builder> implements CartographyWindow.Builder {
         private Gui inputGui = Gui.empty(new GuiSize(1, 2));
         private Gui resultGui = Gui.empty(new GuiSize(1, 1));

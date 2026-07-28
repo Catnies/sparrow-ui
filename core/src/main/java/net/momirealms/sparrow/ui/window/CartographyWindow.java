@@ -12,10 +12,6 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 
-/**
- * 使用原版制图台界面的三槽 Window.
- * <p>窗口使用独立的虚拟地图编号和 128x128 画布, 不会修改服务器中的真实地图数据.
- */
 public interface CartographyWindow extends Window {
     int MAP_SIZE = 128;
 
@@ -114,6 +110,7 @@ public interface CartographyWindow extends Window {
             }
         }
 
+        // todo 换成 MapCursor.Type
         /**
          * 客户端原版地图支持的图标类型.
          */
@@ -199,6 +196,7 @@ public interface CartographyWindow extends Window {
         }
     }
 
+    // todo 看看bukkit有没有对应类
     /**
      * 制图台客户端预览模式.
      */

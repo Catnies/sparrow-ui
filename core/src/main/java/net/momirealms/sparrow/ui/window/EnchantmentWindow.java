@@ -10,11 +10,6 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 
-/**
- * 使用原版附魔台界面的 Window.
- * <p>上部 GUI 的两个 raw slot 分别为待附魔物品和青金石展示位. 三个附魔选项由
- * container data slot 投影到客户端, 选择只发布事件, 不执行原版附魔、经验或物品消耗.
- */
 public interface EnchantmentWindow extends Window {
 
     /**

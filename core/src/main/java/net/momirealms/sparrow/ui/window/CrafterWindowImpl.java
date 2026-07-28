@@ -135,8 +135,7 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
         return disabled ? mask | 1 << slot : mask & ~(1 << slot);
     }
 
-    static final class BuilderImpl extends AbstractWindowBuilder<CrafterWindow, CrafterWindow.Builder>
-            implements CrafterWindow.Builder {
+    static final class BuilderImpl extends AbstractWindowBuilder<CrafterWindow, CrafterWindow.Builder> implements CrafterWindow.Builder {
         private Gui craftingGui = Gui.empty(new GuiSize(3, 3));
         private Gui resultGui = Gui.empty(new GuiSize(1, 1));
         private @Nullable Gui lowerGui;

@@ -140,6 +140,11 @@ public class SparrowUI implements Listener {
         this.disableHandlers.add(runnable);
     }
 
+    /**
+     * 处理插件关闭时的预设任务.
+     *
+     * @param event 插件关闭事件
+     */
     @EventHandler
     private void handlePluginDisable(PluginDisableEvent event) {
         if (event.getPlugin().equals(this.plugin)) {

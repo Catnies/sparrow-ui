@@ -4,14 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版高炉界面的三槽配方书 Window.
- *
- * <p>raw slot {@code 0} 是原料, {@code 1} 是燃料, {@code 2} 是结果.
- * 烹饪与燃烧进度只负责客户端展示, 物品消耗和结果计算始终由应用维护.</p>
- *
- * <p>进度与 Builder 契约和 {@link FurnaceWindow} 相同.</p>
- */
 public interface BlastFurnaceWindow extends RecipeBookWindow {
 
     /**
@@ -24,12 +16,32 @@ public interface BlastFurnaceWindow extends RecipeBookWindow {
         return new BlastFurnaceWindowImpl.BuilderImpl();
     }
 
+    /**
+     * 设置箭头已经完成的烹饪进度.
+     *
+     * @param progress 范围为 0.0 到 1.0 的进度
+     */
     void setCookProgress(double progress);
 
+    /**
+     * 返回最近一次已在玩家实体线程应用的烹饪进度.
+     *
+     * @return 范围为 0.0 到 1.0 的进度
+     */
     double getCookProgress();
 
+    /**
+     * 设置剩余燃烧火焰的填充进度.
+     *
+     * @param progress 范围为 0.0 到 1.0 的进度
+     */
     void setFuelProgress(double progress);
 
+    /**
+     * 返回最近一次已在玩家实体线程应用的剩余燃烧进度.
+     *
+     * @return 范围为 0.0 到 1.0 的进度
+     */
     double getFuelProgress();
 
     /**

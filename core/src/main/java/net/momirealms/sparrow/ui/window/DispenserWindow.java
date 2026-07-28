@@ -4,9 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版发射器界面的九槽 Window.
- */
 public interface DispenserWindow extends Window {
 
     /**

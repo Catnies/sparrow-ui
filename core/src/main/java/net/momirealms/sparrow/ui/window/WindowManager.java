@@ -310,7 +310,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 在插件禁用时退役所有本地资源并移除连接 handler.
+     * 在插件禁用时清理所有本地资源并移除连接 handler.
      */
     public void shutdown() {
         if (!this.shutdown.compareAndSet(false, true)) {
@@ -334,7 +334,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回该玩家当前真正观察的 Window.
+     * 返回该玩家当前观察的 Window.
      *
      * @param player 要查询的玩家
      * @return 当前 Window, 没有时为 null
@@ -345,7 +345,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回当前已提交 Window 的不可修改快照.
+     * 返回当前已提交 Window 的快照.
      *
      * @return 所有活动 Window
      */
@@ -356,7 +356,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回 Bukkit 容器事件桥接器.
+     * 返回 Bukkit Inventory 事件桥接器.
      *
      * @return Bukkit 事件桥接器
      */

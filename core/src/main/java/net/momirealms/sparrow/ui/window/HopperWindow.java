@@ -4,9 +4,6 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用原版漏斗界面的五槽 Window.
- */
 public interface HopperWindow extends Window {
 
     /**

@@ -16,9 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * 铁砧 Window 的实体线程实现.
- */
 final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements AnvilWindow {
     private final HandlerList<Consumer<String>> renameHandlers;
     private volatile String renameText = "";
@@ -174,11 +171,7 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         );
     }
 
-    /**
-     * 铁砧 Window Builder 的实现.
-     */
-    static final class BuilderImpl extends AbstractWindowBuilder<AnvilWindow, AnvilWindow.Builder>
-            implements AnvilWindow.Builder {
+    static final class BuilderImpl extends AbstractWindowBuilder<AnvilWindow, AnvilWindow.Builder> implements AnvilWindow.Builder {
         private Gui upperGui = Gui.empty(new GuiSize(3, 1));
         private @Nullable Gui lowerGui;
         private int enchantmentCost;
