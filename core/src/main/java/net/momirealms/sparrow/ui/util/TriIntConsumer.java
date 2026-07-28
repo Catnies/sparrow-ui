@@ -4,15 +4,15 @@ import org.jspecify.annotations.NullUnmarked;
 
 @NullUnmarked
 @FunctionalInterface
-public interface TriConsumer<A, B, C> {
+public interface TriIntConsumer {
 
-    void accept(A a, B b, C c);
+    void accept(int a, int b, int c);
 
-    default TriConsumer<A, B, C> andThen(TriConsumer<? super A, ? super B, ? super C> after) {
+    default TriIntConsumer andThen(TriIntConsumer after) {
         return (a, b, c) -> {
             accept(a, b, c);
             after.accept(a, b, c);
         };
     }
-    
+
 }

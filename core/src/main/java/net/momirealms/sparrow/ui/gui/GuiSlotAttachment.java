@@ -11,12 +11,12 @@ import org.jetbrains.annotations.Nullable;
  * 调用 {@link #close()} 后不再接收该槽位的更新.
  */
 public final class GuiSlotAttachment implements AutoCloseable {
-    private final SlotElement element;
-    private final ItemProvider background;
-    private final boolean frozen;
-    private final Subscription subscription;
+    private final SlotElement element;      // 订阅创建时的槽位元素
+    private final ItemProvider background;  // 订阅创建时的 GUI 背景, 可为 null
+    private final boolean frozen; // 订阅创建时的冻结状态
+    private final Subscription subscription; // 槽位更新订阅
 
-    GuiSlotAttachment(SlotElement element, ItemProvider background, boolean frozen, Subscription subscription) {
+    GuiSlotAttachment(SlotElement element, @Nullable ItemProvider background, boolean frozen, Subscription subscription) {
         this.element = element;
         this.background = background;
         this.frozen = frozen;
@@ -28,7 +28,8 @@ public final class GuiSlotAttachment implements AutoCloseable {
      *
      * @return 订阅创建时的槽位元素
      */
-    public @NotNull SlotElement element() {
+    @NotNull
+    public SlotElement element() {
         return this.element;
     }
 
@@ -37,7 +38,8 @@ public final class GuiSlotAttachment implements AutoCloseable {
      *
      * @return 订阅创建时的 GUI 背景, 没有背景时为 null
      */
-    public @Nullable ItemProvider background() {
+    @Nullable
+    public ItemProvider background() {
         return this.background;
     }
 

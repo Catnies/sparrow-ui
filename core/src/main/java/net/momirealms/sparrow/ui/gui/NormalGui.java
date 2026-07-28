@@ -19,7 +19,8 @@ public final class NormalGui extends AbstractGui {
      * @param size GUI 尺寸
      * @return 空 GUI
      */
-    public static @NotNull NormalGui empty(@NotNull GuiSize size) {
+    @NotNull
+    public static NormalGui empty(@NotNull GuiSize size) {
         return builder(size).build();
     }
 
@@ -29,7 +30,8 @@ public final class NormalGui extends AbstractGui {
      * @param structure GUI 布局
      * @return 空 GUI
      */
-    public static @NotNull NormalGui from(@NotNull Structure structure) {
+    @NotNull
+    public static NormalGui from(@NotNull Structure structure) {
         return builder(structure).build();
     }
 
@@ -39,7 +41,8 @@ public final class NormalGui extends AbstractGui {
      * @param size GUI 尺寸
      * @return 普通 GUI Builder
      */
-    public static @NotNull Gui.Builder<NormalGui, ?> builder(@NotNull GuiSize size) {
+    @NotNull
+    public static Gui.Builder<NormalGui, ?> builder(@NotNull GuiSize size) {
         return new Builder(Structure.of(size));
     }
 
@@ -49,7 +52,8 @@ public final class NormalGui extends AbstractGui {
      * @param structure GUI 布局
      * @return 普通 GUI Builder
      */
-    public static @NotNull Gui.Builder<NormalGui, ?> builder(@NotNull Structure structure) {
+    @NotNull
+    public static Gui.Builder<NormalGui, ?> builder(@NotNull Structure structure) {
         return new Builder(structure);
     }
 
@@ -65,18 +69,21 @@ public final class NormalGui extends AbstractGui {
             super(source);
         }
 
+        @NotNull
         @Override
-        protected @NotNull Builder self() {
+        protected Builder self() {
             return this;
         }
 
+        @NotNull
         @Override
-        protected @NotNull Builder newCopy() {
+        protected Builder newCopy() {
             return new Builder(this);
         }
 
+        @NotNull
         @Override
-        protected @NotNull NormalGui create(
+        protected NormalGui create(
                 @NotNull Structure structure,
                 SlotElement @NotNull [] elements,
                 @Nullable ItemProvider background,

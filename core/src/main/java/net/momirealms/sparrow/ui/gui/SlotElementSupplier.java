@@ -20,7 +20,8 @@ public interface SlotElementSupplier {
      * @param occurrence 当前槽位在选择中的序号
      * @return 非 null 槽位元素
      */
-    @NotNull SlotElement get(@NotNull SlotSequence slots, int occurrence);
+    @NotNull
+    SlotElement get(@NotNull SlotSequence slots, int occurrence);
 
     /**
      * 让每个选中槽位共用同一个元素.
@@ -28,7 +29,8 @@ public interface SlotElementSupplier {
      * @param element 共用元素
      * @return 固定元素生成器
      */
-    static @NotNull SlotElementSupplier fixed(@NotNull SlotElement element) {
+    @NotNull
+    static SlotElementSupplier fixed(@NotNull SlotElement element) {
         return (ignoredSize, ignoredOccurrence) -> element;
     }
 
@@ -38,7 +40,8 @@ public interface SlotElementSupplier {
      * @param supplier 元素来源
      * @return 槽位元素生成器
      */
-    static @NotNull SlotElementSupplier fromSupplier(@NotNull Supplier<? extends SlotElement> supplier) {
+    @NotNull
+    static SlotElementSupplier fromSupplier(@NotNull Supplier<? extends SlotElement> supplier) {
         return (ignoredSize, ignoredOccurrence) -> supplier.get();
     }
 
@@ -48,7 +51,8 @@ public interface SlotElementSupplier {
      * @param supplier Item 来源
      * @return Item 元素生成器
      */
-    static @NotNull SlotElementSupplier items(@NotNull Supplier<? extends Item> supplier) {
+    @NotNull
+    static SlotElementSupplier items(@NotNull Supplier<? extends Item> supplier) {
         return (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(supplier.get());
     }
 
@@ -70,7 +74,8 @@ public interface SlotElementSupplier {
      * @param gui 子 GUI
      * @return GUI 连接生成器
      */
-    static @NotNull SlotElementSupplier gui(@NotNull Gui gui) {
+    @NotNull
+    static SlotElementSupplier gui(@NotNull Gui gui) {
         return gui(gui, 0, 0);
     }
 
@@ -82,11 +87,14 @@ public interface SlotElementSupplier {
      * @param offsetY 子 GUI 内的纵向偏移
      * @return GUI 连接生成器
      */
-    static @NotNull SlotElementSupplier gui(@NotNull Gui gui, int offsetX, int offsetY) {
+    @NotNull
+    static SlotElementSupplier gui(@NotNull Gui gui, int offsetX, int offsetY) {
         return (slots, occurrence) -> {
+            // 选中区域保持原有二维形状, 相对坐标加偏移后映射到子 GUI 槽位
             int childX = slots.xAt(occurrence) - slots.minX() + offsetX;
             int childY = slots.yAt(occurrence) - slots.minY() + offsetY;
             int childSlot = gui.size().indexOf(childX, childY);
+            // 子槽位刚由 indexOf 完成边界检查, 使用免校验构造
             return SlotElement.GuiLink.trusted(gui, childSlot);
         };
     }

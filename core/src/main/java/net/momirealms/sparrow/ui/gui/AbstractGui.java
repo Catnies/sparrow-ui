@@ -11,15 +11,26 @@ import java.util.Objects;
 
 /**
  * 保存 GUI 的槽位元素, 背景, 冻结状态和逐槽订阅.
+ *
+ * <p>所有状态读写都在 GUI 锁内完成, 订阅回调统一在锁外发布,
+ * 避免观察者回调用户代码时发生死锁.
  */
 abstract non-sealed class AbstractGui implements Gui {
-    private final Structure structure;
-    private final SlotElement[] elements;
+    private final Structure structure;      // 槽位布局
+    private final SlotElement[] elements;   // 每个槽位当前保存的元素
     private final SlotObserver[] observers; // 每个槽位对应一条订阅链的头节点
 
-    private ItemProvider background;
-    private boolean frozen;
+    private ItemProvider background; // 空槽位显示的背景, 可为 null
+    private boolean frozen; // 是否禁止玩家交互
 
+    /**
+     * 创建 GUI 并接管槽位元素数组.
+     *
+     * @param structure 槽位布局
+     * @param elements 初始槽位元素数组, 长度必须与布局面积一致
+     * @param background 空槽位背景, 可为 null
+     * @param frozen 是否禁止玩家交互
+     */
     AbstractGui(Structure structure, SlotElement[] elements, ItemProvider background, boolean frozen) {
         this.structure = structure;
         this.elements = elements;
@@ -28,45 +39,67 @@ abstract non-sealed class AbstractGui implements Gui {
         this.observers = new SlotObserver[elements.length];
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
-    public final @NotNull GuiSize size() {
+    @NotNull
+    public final GuiSize size() {
         return this.structure.size();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
-    public final @NotNull Structure structure() {
+    @NotNull
+    public final Structure structure() {
         return this.structure;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
-    public final synchronized @NotNull SlotElement element(int slot) {
+    @NotNull
+    public final synchronized SlotElement element(int slot) {
         return this.elements[slot];
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final synchronized SlotElement @NotNull [] elements() {
         return this.elements.clone();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void setElement(int slot, @NotNull SlotElement element) {
         Objects.requireNonNull(element, "element");
         SlotObserver[] observers;
         synchronized (this) {
+            // 元素未变化时不触发任何通知
             SlotElement previous = this.elements[slot];
             if (previous == element) {
                 return;
             }
             this.elements[slot] = element;
+            // 在锁内取出订阅快照, 保证通知与本次变更对应
             observers = this.snapshot(this.observers[slot]);
         }
+        // 回调在锁外发布, 避免观察者回调用户代码时死锁
         this.publish(observers);
     }
 
     /**
-     * 在锁外完成元素生成, 再在一次短锁中提交变更并发布订阅快照.
+     * {@inheritDoc}
      *
-     * <p>这样既不让用户提供的 Supplier 占用 GUI 锁, 也保证生成失败时不会留下部分更新.</p>
+     * <p>此实现在锁外完成元素生成, 再在一次短锁中提交变更并发布订阅快照.
+     * 这样既不让用户提供的 Supplier 占用 GUI 锁, 也保证生成失败时不会留下部分更新.
      */
     @Override
     public final void setElements(
@@ -87,7 +120,7 @@ abstract non-sealed class AbstractGui implements Gui {
         }
 
         SlotObserver[][] changedObservers = new SlotObserver[length][];
-        int[] indices = slots.trustedArray();
+        int[] indices = slots.unsafeSlots();
         // 在同一次短锁中写入元素, 并保存需要通知的订阅快照
         synchronized (this) {
             for (int occurrence = 0; occurrence < length; occurrence++) {
@@ -108,8 +141,12 @@ abstract non-sealed class AbstractGui implements Gui {
         this.publish(changedObservers);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void addElements(SlotElement @NotNull ... newElements) {
+        // 预先拒绝 null 元素, 避免写入一半才失败
         for (SlotElement element : newElements) {
             if (element == null) {
                 throw new NullPointerException("elements must not contain null");
@@ -119,8 +156,12 @@ abstract non-sealed class AbstractGui implements Gui {
         this.addElementsTrusted(newElements);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void addItems(Item @NotNull ... items) {
+        // 先把 Item 包装成槽位元素, 再复用同一入口
         SlotElement[] elements = new SlotElement[items.length];
         for (int index = 0; index < items.length; index++) {
             elements[index] = new SlotElement.Item(items[index]);
@@ -130,6 +171,8 @@ abstract non-sealed class AbstractGui implements Gui {
 
     /**
      * 把已验证元素依次放入最靠前的空槽位.
+     *
+     * @param newElements 已验证非空的元素
      */
     private void addElementsTrusted(SlotElement[] newElements) {
         SlotObserver[][] changedObservers = new SlotObserver[Math.min(newElements.length, this.elements.length)][];
@@ -140,10 +183,12 @@ abstract non-sealed class AbstractGui implements Gui {
                 if (element == SlotElement.Empty.INSTANCE) {
                     continue;
                 }
+                // 从上次找到的位置继续向右找下一个空槽位
                 while (searchFrom < this.elements.length
                         && this.elements[searchFrom] != SlotElement.Empty.INSTANCE) {
                     searchFrom++;
                 }
+                // GUI 已满, 剩余元素放不下时提前结束
                 if (searchFrom == this.elements.length) {
                     break;
                 }
@@ -155,6 +200,9 @@ abstract non-sealed class AbstractGui implements Gui {
         this.publish(changedObservers, changed);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void dirty(@NotNull SlotSequence slots) {
         if (!this.size().equals(slots.guiSize())) {
@@ -162,7 +210,8 @@ abstract non-sealed class AbstractGui implements Gui {
         }
 
         SlotObserver[][] observers = new SlotObserver[slots.length()][];
-        int[] indices = slots.trustedArray();
+        int[] indices = slots.unsafeSlots();
+        // 元素本身没变, 只需取出订阅快照重新通知
         synchronized (this) {
             for (int occurrence = 0; occurrence < indices.length; occurrence++) {
                 observers[occurrence] = this.snapshot(this.observers[indices[occurrence]]);
@@ -171,51 +220,74 @@ abstract non-sealed class AbstractGui implements Gui {
         this.publish(observers);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
-    public final synchronized @Nullable ItemProvider background() {
+    @Nullable
+    public final synchronized ItemProvider background() {
         return this.background;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void setBackground(@Nullable ItemProvider background) {
         SlotObserver[][] observers;
         synchronized (this) {
+            // 背景未变化时不触发任何通知
             if (this.background == background) {
                 return;
             }
             this.background = background;
+            // 背景影响所有空槽位的显示, 需要通知全部槽位的订阅
             observers = this.snapshotAll();
         }
         this.publish(observers);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final synchronized boolean frozen() {
         return this.frozen;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public final void setFrozen(boolean frozen) {
         SlotObserver[][] observers;
         synchronized (this) {
+            // 冻结状态未变化时不触发任何通知
             if (this.frozen == frozen) {
                 return;
             }
             this.frozen = frozen;
+            // 冻结状态影响所有槽位的交互, 需要通知全部槽位的订阅
             observers = this.snapshotAll();
         }
         this.publish(observers);
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    @NotNull
     @Override
-    public final synchronized @NotNull GuiSlotAttachment attach(int slot, @NotNull Observer<? super Gui> observer) {
+    public final synchronized GuiSlotAttachment attach(int slot, @NotNull Observer<? super Gui> observer) {
         Objects.requireNonNull(observer, "observer");
+        // 头插法把新订阅挂到链头
         SlotObserver head = this.observers[slot];
         SlotObserver subscription = new SlotObserver(this, slot, observer, head);
         if (head != null) {
             head.previous = subscription;
         }
         this.observers[slot] = subscription;
+        // 快照当前状态, 与订阅一起交还调用方
         return new GuiSlotAttachment(
                 this.elements[slot],
                 this.background,
@@ -226,13 +298,17 @@ abstract non-sealed class AbstractGui implements Gui {
 
     /**
      * 从槽位订阅链中断开指定节点, 并清除它持有的引用.
+     *
+     * @param subscription 要移除的订阅节点
      */
     private synchronized void remove(SlotObserver subscription) {
+        // 已断开的节点直接忽略, 保证重复 close 无副作用
         if (!subscription.active) {
             return;
         }
         subscription.active = false;
 
+        // 标准双向链摘链
         SlotObserver previous = subscription.previous;
         SlotObserver next = subscription.next;
         if (previous == null) {
@@ -243,6 +319,7 @@ abstract non-sealed class AbstractGui implements Gui {
         if (next != null) {
             next.previous = previous;
         }
+        // 清除引用, 让已关闭订阅持有的观察者和 GUI 可以被回收
         subscription.previous = null;
         subscription.next = null;
         subscription.observer = null;
@@ -251,12 +328,16 @@ abstract non-sealed class AbstractGui implements Gui {
 
     /**
      * 复制一个槽位中仍然有效的订阅, 供锁外回调使用.
+     *
+     * @param head 订阅链头节点, 可为 null
+     * @return 有效订阅快照, 没有有效订阅时返回 null
      */
     private SlotObserver[] snapshot(SlotObserver head) {
         if (head == null) {
             return null;
         }
 
+        // 先统计有效订阅数量
         int size = 0;
         for (SlotObserver current = head; current != null; current = current.next) {
             if (current.active) {
@@ -267,6 +348,7 @@ abstract non-sealed class AbstractGui implements Gui {
             return null;
         }
 
+        // 再按链表顺序收集快照
         SlotObserver[] snapshot = new SlotObserver[size];
         int index = 0;
         for (SlotObserver current = head; current != null; current = current.next) {
@@ -279,6 +361,8 @@ abstract non-sealed class AbstractGui implements Gui {
 
     /**
      * 复制所有槽位的订阅, 用于背景或冻结状态更改.
+     *
+     * @return 每个槽位的有效订阅快照
      */
     private SlotObserver[][] snapshotAll() {
         SlotObserver[][] snapshots = new SlotObserver[this.observers.length][];
@@ -288,6 +372,11 @@ abstract non-sealed class AbstractGui implements Gui {
         return snapshots;
     }
 
+    /**
+     * 发布一个槽位的订阅快照, 回调失败时抛出合并后的异常.
+     *
+     * @param observers 一个槽位的订阅快照, 可为 null
+     */
     private void publish(SlotObserver[] observers) {
         RuntimeException failure = this.notify(observers, null);
         if (failure != null) {
@@ -295,10 +384,21 @@ abstract non-sealed class AbstractGui implements Gui {
         }
     }
 
+    /**
+     * 发布全部槽位的订阅快照.
+     *
+     * @param observers 每个槽位的订阅快照
+     */
     private void publish(SlotObserver[][] observers) {
         this.publish(observers, observers.length);
     }
 
+    /**
+     * 发布前 {@code length} 个槽位的订阅快照.
+     *
+     * @param observers 每个槽位的订阅快照
+     * @param length 要发布的槽位数量
+     */
     private void publish(SlotObserver[][] observers, int length) {
         RuntimeException failure = null;
         for (int index = 0; index < length; index++) {
@@ -311,12 +411,17 @@ abstract non-sealed class AbstractGui implements Gui {
 
     /**
      * 通知快照中仍然有效的观察者, 并合并回调抛出的异常.
+     *
+     * @param observers 一个槽位的订阅快照, 可为 null
+     * @param failure 已收集的第一个异常, 可为 null
+     * @return 合并后的第一个异常, 没有异常时返回 null
      */
     private RuntimeException notify(SlotObserver[] observers, RuntimeException failure) {
         if (observers == null) {
             return failure;
         }
         for (SlotObserver current : observers) {
+            // 订阅可能已关闭并被清除了引用
             Observer<? super Gui> observer = current.observer;
             if (observer == null) {
                 continue;
@@ -324,6 +429,7 @@ abstract non-sealed class AbstractGui implements Gui {
             try {
                 observer.onUpdate(this);
             } catch (RuntimeException exception) {
+                // 保留第一个异常, 后续异常作为 suppressed 附加
                 if (failure == null) {
                     failure = exception;
                 } else {
@@ -338,14 +444,22 @@ abstract non-sealed class AbstractGui implements Gui {
      * 一次槽位订阅在双向链中的节点, 调用 close 可以直接断开该节点.
      */
     private static final class SlotObserver implements Subscription {
-        private volatile AbstractGui owner;
-        private final int slot;
-        private volatile Observer<? super Gui> observer;
+        private volatile AbstractGui owner; // 所属 GUI, 关闭后清除
+        private final int slot; // 订阅的槽位编号
+        private volatile Observer<? super Gui> observer; // 更新观察者, 关闭后清除
 
         private volatile SlotObserver next; // 更早加入的订阅
-        private volatile boolean active = true;
+        private volatile boolean active = true; // 订阅是否仍在链上
         private SlotObserver previous; // 更晚加入的订阅
 
+        /**
+         * 创建订阅节点并链接到原有链头之前.
+         *
+         * @param owner 所属 GUI
+         * @param slot 订阅的槽位编号
+         * @param observer 更新观察者
+         * @param next 原链头节点, 可为 null
+         */
         private SlotObserver(
                 AbstractGui owner,
                 int slot,
@@ -365,6 +479,7 @@ abstract non-sealed class AbstractGui implements Gui {
 
         @Override
         public void close() {
+            // owner 在 remove 中被清除, 重复关闭时自然跳过
             AbstractGui owner = this.owner;
             if (owner != null) {
                 owner.remove(this);

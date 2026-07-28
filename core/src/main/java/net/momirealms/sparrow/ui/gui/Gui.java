@@ -24,7 +24,8 @@ public sealed interface Gui permits AbstractGui {
      * @param size GUI 尺寸
      * @return 普通 GUI Builder
      */
-    static @NotNull Builder<NormalGui, ?> builder(@NotNull GuiSize size) {
+    @NotNull
+    static Builder<NormalGui, ?> builder(@NotNull GuiSize size) {
         return NormalGui.builder(size);
     }
 
@@ -35,7 +36,8 @@ public sealed interface Gui permits AbstractGui {
      * @param height GUI 高度
      * @return 普通 GUI Builder
      */
-    static @NotNull Builder<NormalGui, ?> builder(int width, int height) {
+    @NotNull
+    static Builder<NormalGui, ?> builder(int width, int height) {
         return builder(new GuiSize(width, height));
     }
 
@@ -45,7 +47,8 @@ public sealed interface Gui permits AbstractGui {
      * @param structure GUI 布局
      * @return 普通 GUI Builder
      */
-    static @NotNull Builder<NormalGui, ?> builder(@NotNull Structure structure) {
+    @NotNull
+    static Builder<NormalGui, ?> builder(@NotNull Structure structure) {
         return NormalGui.builder(structure);
     }
 
@@ -55,7 +58,8 @@ public sealed interface Gui permits AbstractGui {
      * @param rows 布局模板行
      * @return 普通 GUI Builder
      */
-    static @NotNull Builder<NormalGui, ?> builder(String @NotNull ... rows) {
+    @NotNull
+    static Builder<NormalGui, ?> builder(String @NotNull ... rows) {
         return NormalGui.builder(Structure.of(rows));
     }
 
@@ -67,7 +71,8 @@ public sealed interface Gui permits AbstractGui {
      * @param flatData 连续布局文本
      * @return 普通 GUI Builder
      */
-    static @NotNull Builder<NormalGui, ?> builder(int width, int height, @NotNull String flatData) {
+    @NotNull
+    static Builder<NormalGui, ?> builder(int width, int height, @NotNull String flatData) {
         return builder(Structure.of(new GuiSize(width, height), flatData));
     }
 
@@ -78,7 +83,8 @@ public sealed interface Gui permits AbstractGui {
      * @param height GUI 高度
      * @return 空 GUI
      */
-    static @NotNull NormalGui empty(int width, int height) {
+    @NotNull
+    static NormalGui empty(int width, int height) {
         return NormalGui.empty(new GuiSize(width, height));
     }
 
@@ -88,7 +94,8 @@ public sealed interface Gui permits AbstractGui {
      * @param size GUI 尺寸
      * @return 空 GUI
      */
-    static @NotNull NormalGui empty(@NotNull GuiSize size) {
+    @NotNull
+    static NormalGui empty(@NotNull GuiSize size) {
         return NormalGui.empty(size);
     }
 
@@ -100,7 +107,8 @@ public sealed interface Gui permits AbstractGui {
      * @param item 每个槽位显示的 Item
      * @return 填满 Item 的 GUI
      */
-    static @NotNull NormalGui filled(int width, int height, @NotNull Item item) {
+    @NotNull
+    static NormalGui filled(int width, int height, @NotNull Item item) {
         NormalGui gui = empty(width, height);
         gui.fill(item);
         return gui;
@@ -112,7 +120,8 @@ public sealed interface Gui permits AbstractGui {
      * @param structure GUI 布局
      * @return 空 GUI
      */
-    static @NotNull NormalGui of(@NotNull Structure structure) {
+    @NotNull
+    static NormalGui of(@NotNull Structure structure) {
         return NormalGui.from(structure);
     }
 
@@ -122,7 +131,8 @@ public sealed interface Gui permits AbstractGui {
      * @param item 唯一槽位显示的 Item
      * @return 单槽位 GUI
      */
-    static @NotNull NormalGui single(@NotNull Item item) {
+    @NotNull
+    static NormalGui single(@NotNull Item item) {
         return NormalGui.builder(new GuiSize(1, 1))
                 .addModifier(gui -> gui.setItem(0, item))
                 .build();
@@ -133,14 +143,16 @@ public sealed interface Gui permits AbstractGui {
      *
      * @return GUI 尺寸
      */
-    @NotNull GuiSize size();
+    @NotNull
+    GuiSize size();
 
     /**
      * 返回 GUI 使用的槽位布局.
      *
      * @return GUI 布局
      */
-    @NotNull Structure structure();
+    @NotNull
+    Structure structure();
 
     /**
      * 返回 GUI 宽度.
@@ -175,7 +187,8 @@ public sealed interface Gui permits AbstractGui {
      * @param slot 槽位编号
      * @return 槽位元素
      */
-    @NotNull SlotElement element(int slot);
+    @NotNull
+    SlotElement element(int slot);
 
     /**
      * 按坐标返回槽位元素.
@@ -184,7 +197,8 @@ public sealed interface Gui permits AbstractGui {
      * @param y 纵向坐标
      * @return 槽位元素
      */
-    default @NotNull SlotElement element(int x, int y) {
+    @NotNull
+    default SlotElement element(int x, int y) {
         return this.element(this.size().indexOf(x, y));
     }
 
@@ -222,7 +236,8 @@ public sealed interface Gui permits AbstractGui {
      * @param slot 槽位编号
      * @return Item, 或 null
      */
-    default @Nullable Item item(int slot) {
+    @Nullable
+    default Item item(int slot) {
         return this.element(slot) instanceof SlotElement.Item(var item) ? item : null;
     }
 
@@ -233,7 +248,8 @@ public sealed interface Gui permits AbstractGui {
      * @param y 纵向坐标
      * @return Item, 或 null
      */
-    default @Nullable Item item(int x, int y) {
+    @Nullable
+    default Item item(int x, int y) {
         return this.item(this.size().indexOf(x, y));
     }
 
@@ -243,7 +259,8 @@ public sealed interface Gui permits AbstractGui {
      * @param slot 槽位编号
      * @return 标志符, 或 null
      */
-    default @Nullable String identifierAt(int slot) {
+    @Nullable
+    default String identifierAt(int slot) {
         return this.structure().identifierAt(slot);
     }
 
@@ -254,7 +271,8 @@ public sealed interface Gui permits AbstractGui {
      * @param y 纵向坐标
      * @return 标志符, 或 null
      */
-    default @Nullable String identifierAt(int x, int y) {
+    @Nullable
+    default String identifierAt(int x, int y) {
         return this.structure().identifierAt(this.size().indexOf(x, y));
     }
 
@@ -287,7 +305,8 @@ public sealed interface Gui permits AbstractGui {
      * @param identifier 标志符
      * @return 对应槽位选择
      */
-    default @NotNull SlotSequence slots(@NotNull String identifier) {
+    @NotNull
+    default SlotSequence slots(@NotNull String identifier) {
         return this.structure().slots(identifier);
     }
 
@@ -298,7 +317,8 @@ public sealed interface Gui permits AbstractGui {
      * @param identifiers 要合并的标志符
      * @return 筛选并排列后的槽位选择
      */
-    default @NotNull SlotSequence slots(@NotNull SlotPattern pattern, String @NotNull ... identifiers) {
+    @NotNull
+    default SlotSequence slots(@NotNull SlotPattern pattern, String @NotNull ... identifiers) {
         return this.structure().slots(pattern, identifiers);
     }
 
@@ -760,7 +780,8 @@ public sealed interface Gui permits AbstractGui {
          *
          * @return GUI 布局
          */
-        @NotNull Structure structure();
+        @NotNull
+        Structure structure();
 
         /**
          * 为指定标志符的每个槽位绑定元素生成器.
@@ -769,7 +790,8 @@ public sealed interface Gui permits AbstractGui {
          * @param supplier 元素生成器
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull SlotElementSupplier supplier);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull SlotElementSupplier supplier);
 
         /**
          * 为单字符标志的每个槽位绑定元素生成器.
@@ -778,7 +800,8 @@ public sealed interface Gui permits AbstractGui {
          * @param supplier 元素生成器
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(char identifier, @NotNull SlotElementSupplier supplier);
+        @NotNull
+        B addIngredient(char identifier, @NotNull SlotElementSupplier supplier);
 
         /**
          * 把同一标志符的槽位绑定为同一元素.
@@ -787,7 +810,8 @@ public sealed interface Gui permits AbstractGui {
          * @param element 槽位元素
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull SlotElement element);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull SlotElement element);
 
         /**
          * 把单字符标志的槽位绑定为同一元素.
@@ -796,7 +820,8 @@ public sealed interface Gui permits AbstractGui {
          * @param element 槽位元素
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(char identifier, @NotNull SlotElement element);
+        @NotNull
+        B addIngredient(char identifier, @NotNull SlotElement element);
 
         /**
          * 把同一标志符的槽位绑定为同一 Item.
@@ -805,7 +830,8 @@ public sealed interface Gui permits AbstractGui {
          * @param item Item
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull Item item);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Item item);
 
         /**
          * 把单字符标志的槽位绑定为同一 Item.
@@ -814,7 +840,8 @@ public sealed interface Gui permits AbstractGui {
          * @param item Item
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(char identifier, @NotNull Item item);
+        @NotNull
+        B addIngredient(char identifier, @NotNull Item item);
 
         /**
          * 为同一标志符的每个槽位调用 ItemBuilder.
@@ -823,7 +850,8 @@ public sealed interface Gui permits AbstractGui {
          * @param itemBuilder Item Builder
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder);
 
         /**
          * 把同一标志符的槽位绑定为同一 ItemProvider.
@@ -832,7 +860,8 @@ public sealed interface Gui permits AbstractGui {
          * @param provider Item 内容来源
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull ItemProvider provider);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull ItemProvider provider);
 
         /**
          * 把同一标志符的槽位绑定为指定 ItemStack.
@@ -841,7 +870,8 @@ public sealed interface Gui permits AbstractGui {
          * @param itemStack Bukkit ItemStack
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull ItemStack itemStack);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull ItemStack itemStack);
 
         /**
          * 为同一标志符的每个槽位创建 Item.
@@ -850,7 +880,8 @@ public sealed interface Gui permits AbstractGui {
          * @param itemSupplier Item 来源
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier);
 
         /**
          * 为指定标志符的每个槽位单独调用 Supplier.
@@ -859,7 +890,8 @@ public sealed interface Gui permits AbstractGui {
          * @param elementSupplier 槽位元素来源
          * @return 当前 Builder
          */
-        @NotNull B addIngredientElementSupplier(
+        @NotNull
+        B addIngredientElementSupplier(
                 @NotNull String identifier,
                 @NotNull Supplier<? extends SlotElement> elementSupplier
         );
@@ -871,7 +903,8 @@ public sealed interface Gui permits AbstractGui {
          * @param gui 子 GUI
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull Gui gui);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Gui gui);
 
         /**
          * 按二维形状把标志槽位连接到子 GUI 的指定偏移位置.
@@ -882,7 +915,8 @@ public sealed interface Gui permits AbstractGui {
          * @param offsetY 子 GUI 纵向偏移
          * @return 当前 Builder
          */
-        @NotNull B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY);
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY);
 
         /**
          * 设置空槽位使用的背景.
@@ -890,7 +924,8 @@ public sealed interface Gui permits AbstractGui {
          * @param background GUI 背景, null 表示清除背景
          * @return 当前 Builder
          */
-        @NotNull B setBackground(@Nullable ItemProvider background);
+        @NotNull
+        B setBackground(@Nullable ItemProvider background);
 
         /**
          * 使用 ItemStack 设置空槽位背景.
@@ -898,7 +933,8 @@ public sealed interface Gui permits AbstractGui {
          * @param background 背景 ItemStack
          * @return 当前 Builder
          */
-        @NotNull B setBackground(@NotNull ItemStack background);
+        @NotNull
+        B setBackground(@NotNull ItemStack background);
 
         /**
          * 设置是否禁止玩家与 GUI 中的 Item 交互.
@@ -906,7 +942,8 @@ public sealed interface Gui permits AbstractGui {
          * @param frozen true 表示禁止交互
          * @return 当前 Builder
          */
-        @NotNull B setFrozen(boolean frozen);
+        @NotNull
+        B setFrozen(boolean frozen);
 
         /**
          * 添加一个在 GUI 创建后执行的修改操作.
@@ -914,7 +951,8 @@ public sealed interface Gui permits AbstractGui {
          * @param modifier GUI 修改操作
          * @return 当前 Builder
          */
-        @NotNull B addModifier(@NotNull Consumer<? super G> modifier);
+        @NotNull
+        B addModifier(@NotNull Consumer<? super G> modifier);
 
         /**
          * 替换全部构建后修改操作.
@@ -922,20 +960,23 @@ public sealed interface Gui permits AbstractGui {
          * @param modifiers GUI 修改操作
          * @return 当前 Builder
          */
-        @NotNull B setModifiers(@NotNull List<? extends Consumer<? super G>> modifiers);
+        @NotNull
+        B setModifiers(@NotNull List<? extends Consumer<? super G>> modifiers);
 
         /**
          * 创建可独立修改的 Builder 副本.
          *
          * @return Builder 副本
          */
-        @NotNull B copy();
+        @NotNull
+        B copy();
 
         /**
          * 根据当前配置创建一个新 GUI.
          *
          * @return 新 GUI
          */
-        @NotNull G build();
+        @NotNull
+        G build();
     }
 }

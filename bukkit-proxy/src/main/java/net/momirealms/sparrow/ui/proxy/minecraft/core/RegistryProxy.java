@@ -12,4 +12,7 @@ public interface RegistryProxy {
 
     @MethodInvoker(name = "stream")
     Stream<?> stream(Object target);
+
+    @MethodInvoker(name = "getId")
+    int getId(Object target, Object value);
 }

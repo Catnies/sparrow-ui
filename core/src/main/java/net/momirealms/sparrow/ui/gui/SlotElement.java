@@ -16,7 +16,8 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      *
      * @return 空槽位单例
      */
-    static @NotNull Empty empty() {
+    @NotNull
+    static Empty empty() {
         return Empty.INSTANCE;
     }
 
@@ -26,7 +27,8 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * @param item 要显示的 Item
      * @return Item 槽位元素
      */
-    static @NotNull Item item(@NotNull net.momirealms.sparrow.ui.item.Item item) {
+    @NotNull
+    static Item item(@NotNull net.momirealms.sparrow.ui.item.Item item) {
         return new Item(item);
     }
 
@@ -37,7 +39,8 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * @param slot 子 GUI 的槽位编号
      * @return GUI 连接元素
      */
-    static @NotNull GuiLink gui(@NotNull Gui gui, int slot) {
+    @NotNull
+    static GuiLink gui(@NotNull Gui gui, int slot) {
         return new GuiLink(gui, slot);
     }
 
@@ -48,7 +51,8 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * @param slot 库存槽位编号
      * @return 库存连接元素
      */
-    static @NotNull InventoryLink inventory(@NotNull Inventory inventory, int slot) {
+    @NotNull
+    static InventoryLink inventory(@NotNull Inventory inventory, int slot) {
         return new InventoryLink(inventory, slot);
     }
 
@@ -75,35 +79,59 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * 把当前槽位连接到另一个 GUI 的指定槽位.
      */
     final class GuiLink implements SlotElement {
-        private final Gui gui;
-        private final int slot;
+        private final Gui gui;  // 子 GUI
+        private final int slot; // 子 GUI 槽位编号
 
         /**
          * 创建到子 GUI 槽位的连接.
          *
          * @param gui 子 GUI
          * @param slot 子 GUI 槽位编号
+         * @throws IndexOutOfBoundsException 槽位编号超出子 GUI 范围时抛出
          */
         public GuiLink(@NotNull Gui gui, int slot) {
             this.gui = gui;
             this.slot = gui.size().checkSlot(slot);
         }
 
-        // trusted 参数仅用于区分签名; 此构造器跳过 checkSlot, 调用方必须保证 slot 已校验
+        /**
+         * 创建到子 GUI 槽位的连接, 跳过边界检查.
+         *
+         * @param gui 子 GUI
+         * @param slot 子 GUI 槽位编号, 调用方必须保证已校验
+         * @param trusted 仅用于区分签名, 无实际含义
+         */
         private GuiLink(Gui gui, int slot, boolean trusted) {
             this.gui = gui;
             this.slot = slot;
         }
 
-        public @NotNull Gui gui() {
+        /**
+         * 返回子 GUI.
+         *
+         * @return 子 GUI
+         */
+        @NotNull
+        public Gui gui() {
             return this.gui;
         }
 
+        /**
+         * 返回子 GUI 槽位编号.
+         *
+         * @return 子 GUI 槽位编号
+         */
         public int slot() {
             return this.slot;
         }
 
-        // 子槽位已由 GuiSize.indexOf 完成边界检查, 跳过重复校验
+        /**
+         * 创建到子 GUI 槽位的连接, 跳过重复边界检查.
+         *
+         * @param gui 子 GUI
+         * @param slot 已校验的子 GUI 槽位编号
+         * @return GUI 连接元素
+         */
         static GuiLink trusted(Gui gui, int slot) {
             return new GuiLink(gui, slot, true);
         }

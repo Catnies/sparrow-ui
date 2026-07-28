@@ -20,7 +20,7 @@ import java.util.function.Supplier;
 
 /**
  * 由一名玩家查看的 GUI 会话.
- * <p>所有变更方法都可以从任意线程调用. SparrowUI 会按玩家串行化命令, 并只在玩家实体线程修改
+ * <p>所有变更方法都可以从任意线程调用. 命令会按玩家串行化命, 并只在玩家实体线程修改
  * GUI、菜单和协议状态. 查询方法返回最近一次已提交状态的线程安全快照.
  */
 public interface Window {

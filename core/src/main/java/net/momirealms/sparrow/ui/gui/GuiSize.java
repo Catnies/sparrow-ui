@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 表示 GUI 的宽度和高度, 并负责槽位编号与坐标之间的转换.
  *
- * <p>槽位从左到右, 再从上到下编号. 左上角槽位是 0.</p>
+ * <p>槽位从左到右, 再从上到下编号. 左上角槽位是 0.
  *
  * @param width 非负宽度
  * @param height 非负高度
@@ -14,9 +14,6 @@ public record GuiSize(int width, int height) {
 
     /**
      * 检查宽高为非负数, 且槽位总数没有超出 int 范围.
-     *
-     * @param width 宽度
-     * @param height 高度
      */
     public GuiSize {
         if (width < 0 || height < 0) {
@@ -32,7 +29,8 @@ public record GuiSize(int width, int height) {
      * @param height 高度
      * @return GUI 尺寸
      */
-    public static @NotNull GuiSize of(int width, int height) {
+    @NotNull
+    public static GuiSize of(int width, int height) {
         return new GuiSize(width, height);
     }
 
@@ -50,6 +48,7 @@ public record GuiSize(int width, int height) {
      *
      * @param position GUI 内的坐标
      * @return 槽位编号
+     * @throws IndexOutOfBoundsException 坐标超出 GUI 范围时抛出
      */
     public int indexOf(@NotNull GuiPosition position) {
         return this.indexOf(position.x(), position.y());
@@ -61,6 +60,7 @@ public record GuiSize(int width, int height) {
      * @param x 横向坐标
      * @param y 纵向坐标
      * @return 槽位编号
+     * @throws IndexOutOfBoundsException 坐标超出 GUI 范围时抛出
      */
     public int indexOf(int x, int y) {
         if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
@@ -69,7 +69,13 @@ public record GuiSize(int width, int height) {
         return this.indexOfTrusted(x, y);
     }
 
-    // 跳过边界检查的版本, 供已确认坐标合法的包内调用使用
+    /**
+     * 将已确认合法的 {@code (x, y)} 坐标转换为槽位编号, 跳过边界检查.
+     *
+     * @param x 横向坐标, 必须已在宽度范围内
+     * @param y 纵向坐标, 必须已在高度范围内
+     * @return 槽位编号
+     */
     int indexOfTrusted(int x, int y) {
         return x + y * this.width;
     }
@@ -79,8 +85,10 @@ public record GuiSize(int width, int height) {
      *
      * @param slot 槽位编号
      * @return GUI 内的坐标
+     * @throws IndexOutOfBoundsException 槽位编号超出范围时抛出
      */
-    public @NotNull GuiPosition positionOf(int slot) {
+    @NotNull
+    public GuiPosition positionOf(int slot) {
         this.checkSlot(slot);
         return new GuiPosition(slot % this.width, slot / this.width);
     }
@@ -90,6 +98,7 @@ public record GuiSize(int width, int height) {
      *
      * @param slot 要检查的槽位编号
      * @return 原槽位编号
+     * @throws IndexOutOfBoundsException 槽位编号超出范围时抛出
      */
     public int checkSlot(int slot) {
         int area = this.area();

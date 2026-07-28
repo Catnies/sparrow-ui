@@ -8,7 +8,11 @@ import net.nyana.reflection.proxy.annotation.ReflectionProxy;
 public interface RegistriesProxy {
     RegistriesProxy INSTANCE = ASMProxyFactory.create(RegistriesProxy.class);
     Object RECIPE = INSTANCE.RECIPE();
+    Object ENCHANTMENT = INSTANCE.ENCHANTMENT();
 
     @FieldGetter(name = "RECIPE", isStatic = true)
     Object RECIPE();
+
+    @FieldGetter(name = "ENCHANTMENT", isStatic = true)
+    Object ENCHANTMENT();
 }
