@@ -68,12 +68,11 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
         @NotNull
         @Override
         protected HopperWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 5 || this.upperGui.height() != 1) {
+            if (this.upperGui.width() != 5 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
-            }
-            WindowLayout layout = this.lowerGui == null
-                    ? WindowLayout.upper(this.upperGui)
-                    : WindowLayout.split(this.upperGui, this.lowerGui);
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
             return new HopperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

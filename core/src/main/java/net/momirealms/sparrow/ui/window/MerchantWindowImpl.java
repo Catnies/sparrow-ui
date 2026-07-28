@@ -554,6 +554,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
             } else if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
                 throw new IllegalArgumentException("merchant upper GUI must have size 3x1");
             }
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.upperGui),
                     WindowLayout.Region.lower(this.lowerGui)

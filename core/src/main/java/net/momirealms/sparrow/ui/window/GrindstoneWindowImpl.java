@@ -76,12 +76,12 @@ final class GrindstoneWindowImpl extends AbstractWindow<MenuHandle> implements G
         @Override
         @NotNull
         protected GrindstoneWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.inputGui.width() != 1 || this.inputGui.height() != 2) {
+            if (this.inputGui.width() != 1 || this.inputGui.height() != 2)
                 throw new IllegalArgumentException("grindstone input GUI must have size 1x2");
-            }
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1) {
+            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("grindstone result GUI must have size 1x1");
-            }
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.resultGui),

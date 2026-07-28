@@ -299,21 +299,21 @@ public interface Window {
     @NotNull List<Gui> guis();
 
     /**
-     * 返回窗口槽位对应的根 GUI 链接, 玩家原生物品栏槽位返回 null.
+     * 返回窗口槽位对应的根 GUI 链接.
      *
      * @param windowSlot Window 逻辑槽位
      * @return 根 GUI 链接
      */
-    @Nullable
+    @NotNull
     SlotElement.GuiLink guiAt(int windowSlot);
 
     /**
-     * 返回玩家快捷栏槽位对应的根 GUI 链接, 该区域不由 GUI 控制时返回 null.
+     * 返回玩家快捷栏槽位对应的根 GUI 链接.
      *
      * @param hotbarSlot 快捷栏索引
      * @return 根 GUI 链接
      */
-    @Nullable
+    @NotNull
     SlotElement.GuiLink guiAtHotbar(int hotbarSlot);
 
     /**

@@ -68,12 +68,11 @@ final class DispenserWindowImpl extends AbstractWindow<MenuHandle> implements Di
         @Override
         @NotNull
         protected DispenserWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 3) {
+            if (this.upperGui.width() != 3 || this.upperGui.height() != 3)
                 throw new IllegalArgumentException("dispenser upper GUI must have size 3x3");
-            }
-            WindowLayout layout = this.lowerGui == null
-                    ? WindowLayout.upper(this.upperGui)
-                    : WindowLayout.split(this.upperGui, this.lowerGui);
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
             return new DispenserWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

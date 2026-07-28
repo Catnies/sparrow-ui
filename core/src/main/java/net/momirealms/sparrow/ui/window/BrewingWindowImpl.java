@@ -165,15 +165,14 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
         @Override
         @NotNull
         protected BrewingWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.inputGui.width() != 1 || this.inputGui.height() != 1) {
+            if (this.inputGui.width() != 1 || this.inputGui.height() != 1)
                 throw new IllegalArgumentException("brewing input GUI must have size 1x1");
-            }
-            if (this.fuelGui.width() != 1 || this.fuelGui.height() != 1) {
+            if (this.fuelGui.width() != 1 || this.fuelGui.height() != 1)
                 throw new IllegalArgumentException("brewing fuel GUI must have size 1x1");
-            }
-            if (this.resultGui.width() != 3 || this.resultGui.height() != 1) {
+            if (this.resultGui.width() != 3 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("brewing result GUI must have size 3x1");
-            }
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.resultGui),
                     WindowLayout.Region.upper(this.inputGui),

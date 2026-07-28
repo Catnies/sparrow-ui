@@ -262,12 +262,11 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         @NotNull
         @Override
         protected AnvilWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
+            if (this.upperGui.width() != 3 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("anvil upper GUI must have size 3x1");
-            }
-            WindowLayout layout = this.lowerGui == null
-                    ? WindowLayout.upper(this.upperGui)
-                    : WindowLayout.split(this.upperGui, this.lowerGui);
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
             return new AnvilWindowImpl(
                     WindowManager.getInstance(),
                     viewer,

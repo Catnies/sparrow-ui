@@ -232,12 +232,12 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
         @Override
         @NotNull
         protected CrafterWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.craftingGui.width() != 3 || this.craftingGui.height() != 3) {
+            if (this.craftingGui.width() != 3 || this.craftingGui.height() != 3)
                 throw new IllegalArgumentException("crafter crafting GUI must have size 3x3");
-            }
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1) {
+            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("crafter result GUI must have size 1x1");
-            }
+
+            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.craftingGui),
                     WindowLayout.Region.lower(this.lowerGui),
