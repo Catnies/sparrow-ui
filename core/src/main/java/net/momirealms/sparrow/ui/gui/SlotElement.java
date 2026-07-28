@@ -106,21 +106,11 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
             this.slot = slot;
         }
 
-        /**
-         * 返回子 GUI.
-         *
-         * @return 子 GUI
-         */
         @NotNull
         public Gui gui() {
             return this.gui;
         }
 
-        /**
-         * 返回子 GUI 槽位编号.
-         *
-         * @return 子 GUI 槽位编号
-         */
         public int slot() {
             return this.slot;
         }

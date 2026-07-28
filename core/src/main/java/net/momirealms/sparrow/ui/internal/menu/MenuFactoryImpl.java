@@ -216,6 +216,15 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
      */
     @Override
     @NotNull
+    public EnchantmentMenuHandle enchantment(@NotNull Player viewer, long generation) {
+        return new EnchantmentMenuHandleImpl(this.packets, viewer, generation);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
     public StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation) {
         return new StonecutterMenuHandleImpl(this.packets, viewer, generation);
     }

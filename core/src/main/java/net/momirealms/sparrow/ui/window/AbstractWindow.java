@@ -749,8 +749,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 处理只属于具体 Window 类型的协议输入.
-     *
-     * <p>共享生命周期只保证输入顺序和实体线程所有权, 具体语义由对应 Window 实现解释.</p>
+     * 共享生命周期只保证输入顺序和实体线程所有权, 具体语义由对应 Window 实现解释.
      *
      * @param input Window 专属输入
      */

@@ -152,6 +152,16 @@ public interface MenuFactory {
     FurnaceMenuHandle blastFurnace(@NotNull Player viewer, long generation);
 
     /**
+     * 为指定玩家创建尚未打开的附魔台菜单.
+     *
+     * @param viewer 菜单观察者
+     * @param generation 此 Window 会话的代际
+     * @return 附魔台菜单句柄
+     */
+    @NotNull
+    EnchantmentMenuHandle enchantment(@NotNull Player viewer, long generation);
+
+    /**
      * 为指定玩家创建尚未打开的切石机菜单.
      *
      * @param viewer 菜单观察者
