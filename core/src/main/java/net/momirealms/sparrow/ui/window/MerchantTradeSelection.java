@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
  * @param previousTrade 之前索引在本次入口快照中对应的 Trade
  * @param selectedTrade 本次选择的 Trade
  */
-public record TradeSelection(
+public record MerchantTradeSelection(
         @NotNull Player player,
         @NotNull MerchantWindow window,
         int previousIndex,

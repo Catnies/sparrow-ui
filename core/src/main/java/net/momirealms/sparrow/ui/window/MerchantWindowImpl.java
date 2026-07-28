@@ -34,7 +34,7 @@ import java.util.function.Consumer;
  * Merchant 协议状态与 Trade/Item 挂载由当前 {@link MerchantMenuHandle} 会话持有.
  */
 final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implements MerchantWindow {
-    private final HandlerList<Consumer<TradeSelection>> tradeSelectionHandlers;
+    private final HandlerList<Consumer<MerchantTradeSelection>> tradeSelectionHandlers;
 
     private volatile int level;
     private volatile double progress;
@@ -53,7 +53,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
             double progress,
             boolean restockMessageEnabled,
             @NotNull List<MerchantWindow.Trade> trades,
-            @NotNull List<Consumer<TradeSelection>> tradeSelectionHandlers
+            @NotNull List<Consumer<MerchantTradeSelection>> tradeSelectionHandlers
     ) {
         super(manager, viewer, layout, settings);
         this.level = level;
@@ -162,8 +162,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    public void setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super TradeSelection>> handlers) {
-        List<Consumer<TradeSelection>> copy = MiscUtils.copyConsumers(handlers);
+    public void setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelection>> handlers) {
+        List<Consumer<MerchantTradeSelection>> copy = MiscUtils.copyConsumers(handlers);
         this.submit(
                 () -> this.tradeSelectionHandlers.set(copy),
                 "Failed to replace Merchant Window trade selection handlers"
@@ -171,8 +171,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    public void addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
-        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+    public void addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
+        Consumer<MerchantTradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.tradeSelectionHandlers.append(copied),
                 "Failed to add Merchant Window trade selection handler"
@@ -180,8 +180,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    public void removeTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
-        Consumer<TradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+    public void removeTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
+        Consumer<MerchantTradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.tradeSelectionHandlers.remove(copied),
                 "Failed to remove Merchant Window trade selection handler"
@@ -275,7 +275,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
             return;
         }
 
-        TradeSelection event = new TradeSelection(
+        MerchantTradeSelection event = new MerchantTradeSelection(
                 this.viewer(),
                 this,
                 previousIndex,
@@ -313,7 +313,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     @NotNull
-    public List<Consumer<TradeSelection>> getTradeSelectionHandlers() {
+    public List<Consumer<MerchantTradeSelection>> getTradeSelectionHandlers() {
         return this.tradeSelectionHandlers.snapshot();
     }
 
@@ -454,7 +454,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         private double progress = -1.0;
         private boolean restockMessageEnabled;
         private List<MerchantWindow.Trade> trades = List.of();
-        private List<Consumer<TradeSelection>> tradeSelectionHandlers = new ArrayList<>();
+        private List<Consumer<MerchantTradeSelection>> tradeSelectionHandlers = new ArrayList<>();
 
         BuilderImpl() {
         }
@@ -520,14 +520,14 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
         @Override
         @NotNull
-        public MerchantWindow.Builder setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super TradeSelection>> handlers) {
+        public MerchantWindow.Builder setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelection>> handlers) {
             this.tradeSelectionHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
             return this;
         }
 
         @Override
         @NotNull
-        public MerchantWindow.Builder addTradeSelectionHandler(@NotNull Consumer<? super TradeSelection> handler) {
+        public MerchantWindow.Builder addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
             this.tradeSelectionHandlers.add(
                     MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"))
             );

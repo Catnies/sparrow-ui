@@ -5,6 +5,12 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
+/**
+ * 点击被节流拦截时接收通知的回调.
+ *
+ * <p>同一玩家对同一 Item 在节流间隔内的重复点击不会执行正常点击处理器,
+ * 而是分发给此处理器, 并附带距离解除节流还剩多少毫秒.
+ */
 @FunctionalInterface
 public interface ThrottleHandler {
 
@@ -23,7 +29,8 @@ public interface ThrottleHandler {
      * @param after 后续处理器
      * @return 组合后的处理器
      */
-    default @NotNull ThrottleHandler andThen(@NotNull ThrottleHandler after) {
+    @NotNull
+    default ThrottleHandler andThen(@NotNull ThrottleHandler after) {
         Objects.requireNonNull(after, "after");
         return (item, click, remainingMillis) -> {
             this.accept(item, click, remainingMillis);

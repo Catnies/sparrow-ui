@@ -17,7 +17,7 @@ import java.util.Objects;
  * 需要主动刷新显示内容的 Item 可以实现 {@link ObservableItem}.
  */
 public interface Item {
-    Item EMPTY = new EmptyItem();
+    Item EMPTY = new EmptyItem(); // 共享的空 Item 实例
 
     /**
      * 创建空的 Item.
@@ -29,23 +29,23 @@ public interface Item {
     }
 
     /**
-     * 创建没有主动更新能力的简单 Item.
+     * 创建以固定物品堆显示、没有主动更新能力的简单 Item.
      *
-     * @param itemProvider ItemProvider
+     * @param itemStack 固定显示的物品堆
      * @return 使用 {@link StaticItem} 快路径的 Item
      */
-    static Item simple(@NotNull ItemProvider itemProvider) {
-        return new StaticItem(itemProvider);
+    static Item simple(@NotNull ItemStack itemStack) {
+        return new StaticItem(ItemProvider.constant(itemStack));
     }
 
     /**
      * 创建没有主动更新能力的简单 Item.
      *
-     * @param itemStack itemStack
+     * @param itemProvider 显示提供器
      * @return 使用 {@link StaticItem} 快路径的 Item
      */
-    static Item simple(@NotNull ItemStack itemStack) {
-        return new StaticItem(ItemProvider.constant(itemStack));
+    static Item simple(@NotNull ItemProvider itemProvider) {
+        return new StaticItem(itemProvider);
     }
 
     /**
@@ -90,6 +90,7 @@ public interface Item {
      * @return 本次显示关系
      */
     default ItemAttachment attach(@NotNull Observer<? super Item> observer) {
+        // 默认实现不保存观察者, 但仍提前拒绝 null 以固定契约
         Objects.requireNonNull(observer, "observer");
         return ItemAttachment.passive();
     }

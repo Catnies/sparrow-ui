@@ -10,11 +10,17 @@ import org.jetbrains.annotations.NotNull;
 public interface ItemAttachment extends AutoCloseable {
     /** 不携带订阅与刷新计划的共享挂载实例. */
     ItemAttachment PASSIVE = new ItemAttachment() {
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public RefreshPlan refreshPlan() {
             return RefreshPlan.none();
         }
 
+        /**
+         * {@inheritDoc}
+         */
         @Override
         public void close() {
         }
@@ -38,11 +44,19 @@ public interface ItemAttachment extends AutoCloseable {
      */
     static ItemAttachment subscribed(@NotNull RefreshPlan refreshPlan, @NotNull Subscription subscription) {
         return new ItemAttachment() {
+            /**
+             * {@inheritDoc}
+             */
             @Override
             public RefreshPlan refreshPlan() {
                 return refreshPlan;
             }
 
+            /**
+             * {@inheritDoc}
+             *
+             * <p>同时关闭携带的主动失效订阅.</p>
+             */
             @Override
             public void close() {
                 subscription.close();
@@ -52,6 +66,8 @@ public interface ItemAttachment extends AutoCloseable {
 
     /**
      * 获取此显示关系需要的周期刷新计划.
+     *
+     * @return 周期刷新计划, 不需要周期刷新时返回空计划
      */
     RefreshPlan refreshPlan();
 

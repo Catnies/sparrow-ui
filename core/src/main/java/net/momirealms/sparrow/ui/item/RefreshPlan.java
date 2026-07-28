@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.item;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
-import java.util.Objects;
 import java.util.stream.IntStream;
 
 /**
@@ -13,9 +12,16 @@ import java.util.stream.IntStream;
  * 重新计算上下文时，计划会在 5 或 7 的倍数到期.</p>
  */
 public final class RefreshPlan {
-    private static final RefreshPlan NONE = new RefreshPlan(new int[0]);
-    private final int[] periods;
+    private static final RefreshPlan NONE = new RefreshPlan(new int[0]); // 共享的永不到期计划
 
+    private final int[] periods; // 到期周期(tick), 已去重并升序排列; 空数组表示永不到期.
+
+    /**
+     * 创建刷新计划.
+     * 调用方必须保证传入数组不会被后续修改.
+     *
+     * @param periods 到期周期数组, 已去重排序
+     */
     private RefreshPlan(int[] periods) {
         this.periods = periods;
     }
@@ -34,11 +40,12 @@ public final class RefreshPlan {
      *
      * @param periodTicks 正数 tick 周期
      * @return 刷新计划
+     * @throws IllegalArgumentException 周期不是正数时抛出
      */
     public static RefreshPlan every(int periodTicks) {
-        if (periodTicks <= 0) {
+        if (periodTicks <= 0)
             throw new IllegalArgumentException("periodTicks must be positive");
-        }
+
         return new RefreshPlan(new int[]{periodTicks});
     }
 
@@ -49,9 +56,11 @@ public final class RefreshPlan {
      * @return 去重后的组合计划
      */
     public RefreshPlan or(@NotNull RefreshPlan other) {
+        // 空计划与任何计划组合都等价于另一方, 直接复用实例
         if (this.periods.length == 0) return other;
         if (other.periods.length == 0) return this;
 
+        // 合并去重两个计划的周期, 结果与任一输入相同时复用该实例, 避免等价计划产生新对象
         int[] merged = IntStream.concat(Arrays.stream(this.periods), Arrays.stream(other.periods))
                 .distinct()
                 .sorted()
@@ -68,7 +77,7 @@ public final class RefreshPlan {
      * @return 任一周期在当前 tick 到期时返回 true
      */
     public boolean isDue(long currentTick) {
-        for (int period : periods) {
+        for (int period : this.periods) {
             if (Math.floorMod(currentTick, period) == 0) {
                 return true;
             }
@@ -82,7 +91,7 @@ public final class RefreshPlan {
      * @return 没有周期时返回 true
      */
     public boolean isEmpty() {
-        return periods.length == 0;
+        return this.periods.length == 0;
     }
 
     @Override
@@ -92,11 +101,11 @@ public final class RefreshPlan {
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(periods);
+        return Arrays.hashCode(this.periods);
     }
 
     @Override
     public String toString() {
-        return "RefreshPlan" + Arrays.toString(periods);
+        return "RefreshPlan" + Arrays.toString(this.periods);
     }
 }

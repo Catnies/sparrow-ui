@@ -48,7 +48,6 @@ import java.util.zip.GZIPOutputStream;
  */
 final class VirtualInventoryCodec {
     private static final int FORMAT = 1; // 信封格式版本
-
     private static final DynamicOps<Object> REGISTRY_OPS; // 带注册表上下文的 ops, 原版 ItemStack Codec 编解码需要
 
     static {
@@ -195,7 +194,6 @@ final class VirtualInventoryCodec {
             // 读取该槽的裸 NBT.
             byte[] nbt = new byte[length];
             items.readFully(nbt);
-
             // 解码物品, 无法识别的内容统一归为解码失败.
             ItemStack decoded;
             try {
@@ -205,7 +203,6 @@ final class VirtualInventoryCodec {
             } catch (RuntimeException exception) {
                 throw new InventoryDecodeException("slot " + slot + " holds an item that could not be decoded", exception);
             }
-
             // 校验解码结果, 位图声明的非空槽不得解出空物品.
             if (ItemUtils.isNullOrEmpty(decoded)) {
                 throw new InventoryDecodeException("slot " + slot + " is masked as filled but decoded to an empty item");
@@ -240,7 +237,6 @@ final class VirtualInventoryCodec {
         } catch (IOException exception) {
             throw new UncheckedIOException("failed to read item NBT", exception);
         }
-
         // 升级旧版本数据, 使其与当前 DataVersion 一致.
         if (dataVersion < VersionHelper.WORLD_VERSION) {
             Dynamic<Object> outdated = new Dynamic<>(NbtOpsProxy.INSTANCE.getINSTANCE(), tag);
@@ -248,7 +244,6 @@ final class VirtualInventoryCodec {
                     .update(ReferencesProxy.INSTANCE.getITEM_STACK(), outdated, dataVersion, VersionHelper.WORLD_VERSION)
                     .getValue();
         }
-
         // 解析为原版物品, 并包装为 Bukkit 物品.
         Object decoded = ItemStackProxy.INSTANCE.getCODEC()
                 .parse(REGISTRY_OPS, tag)

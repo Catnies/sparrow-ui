@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.item;
 import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,23 +15,32 @@ import java.util.function.BiConsumer;
  * ItemProvider 可以根据渲染上下文生成不同结果, 但该 Item 本身不持有主动变化和刷新的权利.
  */
 public final class StaticItem implements Item {
-    private final ItemProvider itemProvider;
+    private final ItemProvider itemProvider; // 显示提供器
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler; // null 表示不处理点击
     private final BiConsumer<? super Item, ? super BundleSelect> bundleSelectHandler; // null 表示不处理 Bundle 选择
 
     /**
-     * 创建只持有显示来源的静态 Item.
+     * 创建以固定物品堆显示、无交互处理器的静态 Item.
      *
-     * @param itemProvider 显示来源
+     * @param itemStack 固定显示的物品堆
+     */
+    public StaticItem(@NotNull ItemStack itemStack) {
+        this(ItemProvider.constant(itemStack), null);
+    }
+
+    /**
+     * 创建只持有显示来源、无交互处理器的静态 Item.
+     *
+     * @param itemProvider 显示提供器
      */
     public StaticItem(@NotNull ItemProvider itemProvider) {
         this(itemProvider, null);
     }
 
     /**
-     * 创建带点击处理器的静态 Item.
+     * 创建带点击处理器、无 Bundle 选择处理器的静态 Item.
      *
-     * @param itemProvider 显示来源
+     * @param itemProvider 显示提供器
      * @param clickHandler 点击处理器, 可为 {@code null}
      */
     public StaticItem(
@@ -43,7 +53,7 @@ public final class StaticItem implements Item {
     /**
      * 创建带完整交互处理器的静态 Item.
      *
-     * @param itemProvider 显示来源
+     * @param itemProvider 显示提供器
      * @param clickHandler 点击处理器, 可为 {@code null}
      * @param bundleSelectHandler Bundle 选择处理器, 可为 {@code null}
      */
@@ -57,11 +67,19 @@ public final class StaticItem implements Item {
         this.bundleSelectHandler = bundleSelectHandler;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public ItemProvider getItemProvider() {
-        return itemProvider;
+        return this.itemProvider;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>未配置点击处理器时不产生任何效果.
+     */
     @Override
     public void handleClick(ItemClick click) {
         if (this.clickHandler != null) {
@@ -69,6 +87,11 @@ public final class StaticItem implements Item {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>未配置 Bundle 选择处理器时不产生任何效果.
+     */
     @Override
     public void handleBundleSelect(BundleSelect select) {
         if (this.bundleSelectHandler != null) {
