@@ -105,6 +105,11 @@ public interface Window {
      */
     void updateTitle();
 
+    /**
+     * 当前菜单标题, 也就是最近一次提交的标题快照.
+     *
+     * @return 当前标题
+     */
     @NotNull Component title();
 
     /**
@@ -140,6 +145,11 @@ public interface Window {
      */
     void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
 
+    /**
+     * 当前打开处理器列表的快照.
+     *
+     * @return 不可变的处理器列表
+     */
     @Unmodifiable
     @NotNull List<Runnable> getOpenHandlers();
 
@@ -164,6 +174,11 @@ public interface Window {
      */
     void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers);
 
+    /**
+     * 当前打开处理器列表的快照.
+     *
+     * @return 不可变的处理器列表
+     */
     @Unmodifiable
     @NotNull List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers();
 
@@ -189,6 +204,11 @@ public interface Window {
      */
     void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers);
 
+    /**
+     * 当前容器外点击处理器列表的快照.
+     *
+     * @return 不可变的处理器列表
+     */
     @Unmodifiable
     @NotNull List<Consumer<ClickEvent>> getOutsideClickHandlers();
 
@@ -233,24 +253,29 @@ public interface Window {
     int getClientWindowState();
 
     /**
-     * 替换客户端确认窗口状态时依次执行的处理器列表.
+     * 替换客户端 Pong 确认窗口状态时依次执行的处理器列表.
      *
      * @param handlers 新处理器列表
      */
     void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers);
 
+    /**
+     * 当前客户端 Pong 确认窗口状态的处理器列表的快照.
+     *
+     * @return 不可变的处理器列表
+     */
     @Unmodifiable
     @NotNull List<Consumer<Integer>> getWindowStateChangeHandlers();
 
     /**
-     * 在现有窗口状态确认处理器末尾追加一个处理器.
+     * 在现有客户端 Pong 确认窗口状态处理器末尾追加一个处理器.
      *
      * @param handler 状态确认处理器
      */
     void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
-     * 移除一个与给定对象相等的窗口状态确认处理器.
+     * 移除一个与给定对象相等的客户端 Pong 确认窗口状态处理器.
      *
      * @param handler 要移除的状态确认处理器
      */
@@ -264,6 +289,11 @@ public interface Window {
      */
     void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer);
 
+    /**
+     * 当前光标显示转换器.
+     *
+     * @return 光标显示转换器
+     */
     @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer();
 
     /**
@@ -279,8 +309,18 @@ public interface Window {
      */
     void notifyUpdateAll();
 
+    /**
+     * 此 Window 的所属玩家.
+     *
+     * @return 查看者
+     */
     @NotNull Player viewer();
 
+    /**
+     * Window 当前是否打开.
+     *
+     * @return 是否打开
+     */
     boolean isOpen();
 
     /**

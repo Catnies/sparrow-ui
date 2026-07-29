@@ -71,7 +71,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setLevel(level);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Merchant Window level"
@@ -92,7 +92,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setProgress(progress);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Merchant Window progress"
@@ -110,7 +110,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                     MerchantMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setRestockMessageEnabled(enabled);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Merchant Window restock message"
@@ -144,7 +144,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         }
         this.trades = trades;
         if (menuHandle != null) {
-            this.notifySynchronize();
+            this.notifyUpdateMenu();
         }
 
         // 客户端会保留选择索引, 列表缩短后重开同一界面以清除可能悬空的索引
@@ -213,7 +213,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     void tick(ScheduledTask task) {
         MerchantMenuHandle menuHandle = this.menuHandle();
         if (menuHandle != null && menuHandle.tickOffers()) {
-            this.notifySynchronize();
+            this.notifyUpdateMenu();
         }
         super.tick(task);
     }
@@ -238,7 +238,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
         // 客户端在发包前已尝试把付款槽物品搬回背包, 即使索引随后被拒绝也必须恢复完整容器
         menuHandle.invalidateClientContents();
-        this.notifySynchronize();
+        this.notifyUpdateMenu();
 
         // available 只影响展示, 当前快照中的任意合法索引都允许触发选择
         List<MerchantWindow.Trade> snapshot = this.trades;

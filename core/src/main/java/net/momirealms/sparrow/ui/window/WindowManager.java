@@ -82,7 +82,7 @@ public final class WindowManager implements Listener {
                 window,
                 () -> this.openNow(window),
                 () -> {
-                    window.retire();
+                    window.retireSession();
                     this.active.remove(window.viewer().getUniqueId(), window);
                     return Window.OpenResult.VIEWER_UNAVAILABLE;
                 }
@@ -108,7 +108,7 @@ public final class WindowManager implements Listener {
         AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         boolean replaceWindow = previous != null && previous != window;
         try {
-            window.openOnEntity(this.generations.getAndIncrement(), replaceWindow);
+            window.openOnViewerEntity(this.generations.getAndIncrement(), replaceWindow);
         } catch (ViewerUnavailableException ignored) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -116,14 +116,14 @@ public final class WindowManager implements Listener {
         this.active.put(viewer.getUniqueId(), window);
         if (replaceWindow) {
             try {
-                previous.closeOnEntity(InventoryCloseEvent.Reason.OPEN_NEW);
+                previous.closeOnViewerEntity(InventoryCloseEvent.Reason.OPEN_NEW);
             } catch (RuntimeException | Error throwable) {
                 this.report("Failed to clean up replaced Window", throwable);
             }
         }
         if (this.shutdown.get()) {
             this.active.remove(viewer.getUniqueId(), window);
-            window.closeOnEntity(InventoryCloseEvent.Reason.PLUGIN);
+            window.closeOnViewerEntity(InventoryCloseEvent.Reason.PLUGIN);
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
         window.fireOpenHandlers();
@@ -158,7 +158,7 @@ public final class WindowManager implements Listener {
                 window,
                 () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN),
                 () -> {
-                    boolean wasOpen = window.retire();
+                    boolean wasOpen = window.retireSession();
                     this.active.remove(window.viewer().getUniqueId(), window);
                     return wasOpen ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED;
                 }
@@ -174,7 +174,7 @@ public final class WindowManager implements Listener {
             return Window.CloseResult.ALREADY_CLOSED;
         }
         this.active.remove(window.viewer().getUniqueId(), window);
-        window.closeOnEntity(reason);
+        window.closeOnViewerEntity(reason);
         return Window.CloseResult.CLOSED;
     }
 
@@ -249,7 +249,7 @@ public final class WindowManager implements Listener {
     private void handleInventoryClose(InventoryCloseEvent event) {
         if (event.getPlayer() instanceof Player player) {
             AbstractWindow<?> window = this.active.get(player.getUniqueId());
-            if (window != null && window.owns(event.getView())) {
+            if (window != null && window.ownsInventoryView(event.getView())) {
                 PlayerCommandLane lane = this.lane(window.viewer());
                 this.reportFailure(
                         lane.submitDeferred(
@@ -261,7 +261,7 @@ public final class WindowManager implements Listener {
                                     return null;
                                 },
                                 () -> {
-                                    window.retire();
+                                    window.retireSession();
                                     return null;
                                 }
                         ),
@@ -288,7 +288,7 @@ public final class WindowManager implements Listener {
                             return null;
                         },
                         () -> {
-                            window.retire();
+                            window.retireSession();
                             return null;
                         }
                 ),
@@ -305,7 +305,7 @@ public final class WindowManager implements Listener {
         this.lanes.remove(playerId);
         AbstractWindow<?> window = this.active.remove(playerId);
         if (window != null) {
-            window.retire();
+            window.retireSession();
         }
     }
 
@@ -317,7 +317,7 @@ public final class WindowManager implements Listener {
             return;
         }
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
-            window.retire();
+            window.retireSession();
         }
         this.active.clear();
         for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {

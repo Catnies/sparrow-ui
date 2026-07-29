@@ -171,12 +171,10 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
 
     @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
-        Object clientItem;
-        if (rawSlot == INPUT_SLOT && item.isEmpty()) {
-            clientItem = PLACEHOLDER;
-        } else {
-            clientItem = super.toClientItem(rawSlot, item);
-        }
+        // 强制输入槽物品不为空, 至少需要一个占位物品以支持配方界面.
+        Object clientItem = rawSlot == INPUT_SLOT && item.isEmpty()
+                ? PLACEHOLDER
+                : super.toClientItem(rawSlot, item);
         if (rawSlot == INPUT_SLOT) {
             this.clientInput = ItemStackProxy.INSTANCE.copy(clientItem);
         } else if (rawSlot == RESULT_SLOT) {

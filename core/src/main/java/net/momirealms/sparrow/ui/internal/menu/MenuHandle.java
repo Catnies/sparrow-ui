@@ -11,55 +11,56 @@ import java.util.BitSet;
 import java.util.List;
 
 /**
- * Window 引擎与 Paper/NMS 菜单实现之间的窄边界.
+ * Window 底层菜单的处理器, 每个打开中的 Window 对应一个实现实例.
+ * <p>实现负责把客户端看到的远端镜像维护成服务端的权威状态.
  */
 @ApiStatus.Internal
 public interface MenuHandle extends AutoCloseable {
 
     /**
-     * 在一次同步中的 真实光标物品 和 可视光标物品 的快照.
+     * 光标物品快照
      *
-     * @param actual 菜单真实持有的光标快照
-     * @param visual 仅发送给客户端的可视光标快照
+     * @param actual 服务端菜单真实持有的光标物品快照
+     * @param visual 客户端侧显示的光标物品快照
      */
     record CursorSnapshot(@NotNull ItemStack actual, @NotNull ItemStack visual) {
     }
 
     /**
-     * 在打开菜单前准备真实光标转移.
+     * 在打开菜单之前, 把玩家光标上真实拿着的物品接管过来.
      *
-     * <p>替换 Window 时从旧代理菜单转移；否则先完成当前原版菜单的关闭生命周期，
-     * 再从玩家库存菜单转移。实现应在新代理接管活动菜单时才清空来源；打开失败时
-     * {@link #close(InventoryCloseEvent.Reason)} 必须把已经取得的光标归还来源菜单。</p>
+     * <p>如果是在替换同一个玩家的 Window, 就从旧菜单手里接; 否则先让当前打开的原版菜单
+     * 走完正常的关闭流程, 再从玩家背包菜单接. 在新菜单真正接管之前, 实现不能清空来源菜单;
+     * 如果打开失败, {@link #close(InventoryCloseEvent.Reason)} 要负责把已经拿走的光标物品还回去.
      *
      * @param replacingWindow 是否正在替换同一玩家的 Window
      */
     void prepareOpen(boolean replacingWindow);
 
     /**
-     * 打开菜单并发送初始完整状态.
+     * 打开菜单, 把初始的完整界面状态发给客户端.
      *
-     * <p>槽位数组只在调用期间有效, 实现不得修改或保留数组引用. 每个物品已经是 Window 独占的
-     * 稳定快照, 实现可以在同步比较期间直接读取或解包；任何需要跨越本次调用继续存活的状态
-     * （包括异步编码的数据包）都必须在返回前取得独立快照.</p>
+     * <p>传进来的槽位数组只在这次调用期间有效, 实现不可改也不可持有.
+     * <p>数组里每个物品都是 Window 独占的稳定快照, 异步发出的数据包要拷一份.
      *
      * @param title 初始标题
      * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
-     * @param cursor 同步使用的真实光标与可视投影
+     * @param cursor 本次同步要用的真实光标与可视光标
      */
     void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * 将远端容器镜像同步到当前服务端权威状态.
+     * 将服务端的权威数据和状态同步给客户端.
      *
-     * <p>实现检查 dirty 槽位和此前收到的客户端预测. {@code forceFull} 为真时忽略增量候选并
-     * 发送完整状态. 数组和位图只在调用期间有效, 实现不得修改或保留其引用. 槽位与光标物品
-     * 已经是 Window 独占的稳定快照, 可以直接用于同步比较；异步数据包必须持有自己的快照.</p>
+     * <p>实现只检查 dirty 标记的槽位和之前收到的客户端预测;
+     * 若 {@code forceFull} 为 true 时直接发一份完整状态.
+     * <p>数组和位图只在本次调用期间有效, 实现不可改也不可持有.
+     * 槽位和光标物品都是 Window 独占的稳定快照, 异步发出的数据包要拷一份.
      *
      * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
-     * @param dirtySlots 本轮可能变化的槽位
-     * @param cursor 同步使用的真实光标与可视投影
-     * @param cursorDirty 是否需要核对光标
+     * @param dirtySlots 这一轮可能变过的槽位
+     * @param cursor 本次同步要用的真实光标与可视光标
+     * @param cursorDirty 这一轮是否需要核对光标
      * @param forceFull 是否强制发送完整状态
      */
     void synchronize(
@@ -71,32 +72,32 @@ public interface MenuHandle extends AutoCloseable {
     );
 
     /**
-     * 用重新打开界面和完整状态更新客户端标题.
-     *
-     * <p>参数所有权与 {@link #open(Component, ItemStack[], CursorSnapshot)} 相同.</p>
+     * 更新玩家所打开的 Window 的标题.
+     * 实现方式是让客户端重新打开一次界面, 并附上完整状态.
      *
      * @param title 新标题
      * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
-     * @param cursor 同步使用的真实光标与可视投影
+     * @param cursor 本次同步要用的真实光标与可视光标
      */
-    void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
+    void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * 向客户端发送用于 Window 状态确认的协议 Ping.
+     * todo: 检查是否必须, 能否继续收窄.
+     * 给客户端发一个协议 Ping, 用来确认 Window 的某个状态已经被客户端收到并处理.
      *
      * @param id Ping 标识
      */
     void sendPing(int id);
 
     /**
-     * 清理菜单资源.
+     * 关闭菜单并释放相关资源.
      *
      * @param reason 关闭原因
      */
     void close(@NotNull InventoryCloseEvent.Reason reason);
 
     /**
-     * 以插件主动关闭方式释放菜单.
+     * 以"插件主动关闭"的原因关闭菜单.
      */
     @Override
     default void close() {
@@ -104,77 +105,75 @@ public interface MenuHandle extends AutoCloseable {
     }
 
     /**
-     * 玩家实体调度器已 retired 时只释放不需要访问玩家状态的资源.
+     * 玩家的实体调度器已经注销时调用.
+     * 这时不能再碰玩家状态, 只释放那些不依赖玩家的资源.
      */
     void retire();
 
     /**
-     * 校验交互所属会话和 state id, 并吸收其中非权威的客户端预测.
+     * 检查这个交互是不是发给当前会话、当前 state id 的,
+     * 顺便把数据包内的客户端预测数据收下来.
      *
-     * @param interaction 待校验的交互
-     * @return 交互属于当前协议状态时返回 {@code true}
+     * @param interaction 待检查的交互
+     * @return 交互属于当前协议状态时返回 true
      */
     boolean accepts(@NotNull MenuInput.Common.Interaction interaction);
 
     /**
-     * 按接收顺序处理至多指定数量的当前会话输入.
+     * 按收到的先后顺序, 从缓冲区取出最多 limit 条入站消息.
      *
-     * @param limit 本次最多移除的输入数量
-     * @return 不可变的领域输入列表
+     * @param limit 本次最多取出的输入数量
+     * @return 取出的不可变输入列表
      */
     @NotNull
     List<MenuInput> drainInputs(int limit);
 
     /**
-     * 返回入站消息缓冲区是否已经溢出.
+     * 返回入站消息缓冲区有没有溢出, 防止恶意大量数据包攻击,
+     * 入站消息在超过一定数量阈值时会主动关闭 Window.
      *
-     * <p>缓冲、代际筛选和 Netty 线程交接均由菜单 Adapter 管理, Window 只消费当前会话的领域输入.</p>
-     *
-     * @return 入站消息是否曾超过 Adapter 容量
+     * @return 入站消息曾经超过容量阈值时返回 true
      */
     boolean hasInputOverflowed();
 
     /**
-     * 此会话的 Minecraft 容器编号.
-     */
-    int containerId();
-
-    /**
-     * 返回供 Bukkit 事件读取的协议视图.
-     * <p>视图的 {@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 必须返回可由
-     * 事件调用方独立修改的快照, 不得暴露 Window 或菜单持有的权威物品.
+     * 返回给 Bukkit 事件用的 InventoryView.
+     *
+     * <p>事件处理方可能会改从 InventoryView 上读到的物品, 所以 {@link InventoryView#getItem(int)} 和
+     * {@link InventoryView#getCursor()} 返回的是独立快照, 不是 Window 持有的权威物品.
+     *
+     * @return InventoryView
      */
     @NotNull
     InventoryView view();
 
     /**
-     * 客户端当前应回传的容器 state id.
+     * 返回这一会话的 Minecraft 容器编号.
+     *
+     * @return 容器编号
+     */
+    int containerId();
+
+    /**
+     * 返回客户端现在应该回传的容器 state id.
      *
      * @return 当前协议状态编号
      */
     int stateId();
 
     /**
-     * 返回 Paper 玩家物品栏的变更版本.
-     * <p>Window 使用此版本门控底部物品栏扫描. Adapter 无法提供精确版本时可以返回一个
-     * 持续变化的值, 以退化为每 tick 扫描.
+     * 返回菜单真正持有的光标物品快照.
      *
-     * @return 当前玩家物品栏版本
-     */
-    int playerInventoryVersion();
-
-    /**
-     * 返回菜单真实持有的光标快照.
-     *
-     * @return 可由调用方独立修改的真实光标快照
+     * @return 调用方可以随意修改的真实光标快照
      */
     @NotNull
     ItemStack cursor();
 
     /**
-     * 权威覆盖菜单真实持有的光标.
-     * <p>实现取得传入物品的独立快照, 不保留参数引用. 调用方负责随后的光标同步
-     * (脏标记与 synchronize).
+     * 用权威数据整体覆盖菜单真正持有的光标物品.
+     *
+     * <p>实现会拷一份传进来的物品, 不会存参数本身. 覆盖之后的光标同步(打脏标记、
+     * 调 synchronize)由调用方负责.
      *
      * @param cursor 新的真实光标, 空物品表示清空
      */

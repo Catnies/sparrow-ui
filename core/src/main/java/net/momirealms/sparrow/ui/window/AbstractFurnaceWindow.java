@@ -42,7 +42,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
                     FurnaceMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setCookProgress(progress);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update furnace cook progress"
@@ -63,7 +63,7 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
                     FurnaceMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setFuelProgress(progress);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update furnace fuel progress"

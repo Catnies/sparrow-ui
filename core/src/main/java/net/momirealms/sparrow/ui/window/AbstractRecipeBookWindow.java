@@ -16,11 +16,6 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
-/**
- * 工作台与炉类 Window 共用的配方书命令和选择发布实现.
- *
- * @param <M> 具体配方书菜单句柄
- */
 abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends AbstractWindow<M> implements RecipeBookWindow {
     private final HandlerList<Consumer<RecipeBookSelect>> recipeSelectHandlers;
 
@@ -115,9 +110,6 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
         );
     }
 
-    /**
-     * 配方书 Window Builder 共用的处理器快照实现.
-     */
     abstract static class BuilderBase<W extends RecipeBookWindow, B extends RecipeBookWindow.Builder<W, B>> extends AbstractWindowBuilder<W, B> implements RecipeBookWindow.Builder<W, B> {
         private List<Consumer<RecipeBookSelect>> recipeSelectHandlers = new ArrayList<>();
 

@@ -20,22 +20,22 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 记录 Window 中一个槽位当前显示的内容.
  *
- * <p>它从根 GUI 的指定槽位出发, 跟随 {@link SlotElement.GuiLink} 进入子 GUI,
- * 直到找到 Item, 库存连接或空槽位. GUI 变化会要求重新解析路径; 最终 Item 变化与
- * 库存事务通知只要求重新渲染当前路径.</p>
+ * <p>它从根 GUI 的指定槽位出发, 跟随 {@link SlotElement.GuiLink} 一层层进入子 GUI,
+ * 直到找到 Item, Inventory连接或空槽位. GUI 变了要重新解析整条路径; 最终 Item 变了或
+ * Inventory 有事务通知, 只需要重新渲染一次.
  *
- * <p>路径解析, 显示, 交互和关闭由玩家实体线程执行.
- * 观察通知可以来自其他线程, 但只会标记 Window 槽位, 不会直接修改路径.</p>
+ * <p>路径解析, 显示, 交互和关闭都在玩家实体线程执行.
+ * 观察通知可以来自其他线程, 但只会给 Window 槽位打脏标记, 不会直接动路径.
  */
 final class DisplayedSlotPath implements AutoCloseable {
-    private final Window window;
-    private final int windowSlot;
-    private final Gui rootGui;
-    private final int rootSlot;
-    private final RenderContext renderContext; // 该 Window 槽位专用的渲染上下文
+    private final Window window;    // 所属 Window
+    private final int windowSlot;   // 本路径服务的 Window 槽位
+    private final Gui rootGui;      // 路径起点的根 GUI
+    private final int rootSlot;     // 路径起点在根 GUI 中的槽位
+    private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
 
-    private PathState current; // 当前已启用的路径快照
-    private volatile boolean closed;
+    private PathState current;          // 当前已启用的路径快照
+    private volatile boolean closed;    // 路径是否已关闭, 关闭后迟到的通知直接忽略
 
     /**
      * 创建并立即解析一个 Window 槽位的显示路径.
@@ -56,6 +56,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             this.resolve();
             this.window.notifyUpdate(windowSlot);
         } catch (RuntimeException | Error throwable) {
+            // 首次解析失败: 关掉已建立的订阅再抛出, 避免泄漏
             try {
                 this.close();
             } catch (RuntimeException | Error closeFailure) {
@@ -66,8 +67,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 重新跟随 GUI 链接并替换当前显示路径.
-     * <p>新路径全部准备成功后才替换旧路径. 任何订阅失败时, 新路径会被关闭, 旧路径继续工作.
+     * 重新跟随 GUI 链接, 建一条新的显示路径替换当前的.
+     * <p>新路径全部准备成功后才替换; 中途任何订阅失败, 新路径直接关掉, 旧路径继续工作.
      */
     void resolve() {
         this.requireOpen();
@@ -75,6 +76,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         try {
             this.prepare(candidate);
         } catch (RuntimeException | Error throwable) {
+            // 准备失败: 关掉候选已建立的部分, 旧路径不受影响
             candidate.retire();
             try {
                 candidate.close();
@@ -84,6 +86,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             throw throwable;
         }
 
+        // 准备成功: 退役旧路径, 候选转正; 准备期间攒下的更新补一个脏标记
         PathState previous = this.current;
         try {
             if (previous != null) {
@@ -99,7 +102,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回最终 Item 的刷新计划. 空槽位返回不主动刷新的计划.
+     * 返回最终 Item 的刷新计划.
+     * 空槽位返回不主动刷新的计划.
      *
      * @return Item 刷新计划
      */
@@ -108,18 +112,21 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 生成该 Window 槽位当前应显示的 ItemStack.
+     * 生成当前槽位应显示的 ItemStack，按以下优先级查找:
+     * <ol>
+     *   <li>若路径终点为 Inventory 连接, 显示对应 Inventory 槽位的真实物品:
+     *       若该槽为空, 回退为 Inventory 的背景</li>
+     *   <li>若路径终点为 Item, 显示该 Item</li>
+     *   <li>若以上均不存在 Item, 回退为最深层 GUI 的背景</li>
+     *   <li>若仍无结果，返回空物品作为最终兜底</li>
+     * </ol>
      *
-     * <p>路径终点是库存连接时显示库存槽的真实物品, 空槽回退背景;
-     * 终点是 Item 时显示 Item, 否则显示路径中最深层 GUI 的背景.
-     * 都没有时返回空物品.</p>
-     *
-     * @return 要显示的 ItemStack
+     * @return 当前槽位应显示的 ItemStack，不会为 {@code null}
      */
     @NotNull ItemStack render() {
         PathState state = this.currentState();
 
-        // 库存连接: 真实物品优先, 空槽回退背景; itemAt 返回的克隆归本槽渲染独占
+        // Inventory 连接: 真实物品优先, 空槽回退背景; itemAt 返回的克隆归本槽渲染独占
         if (state.inventoryLink != null) {
             ItemStack stack = state.inventoryLink.inventory().itemAt(state.inventoryLink.slot());
             if (stack != null) {
@@ -135,7 +142,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 在路径未冻结且有 Item 时转发点击.
+     * 把点击转发给路径终点的 Item.
+     * 路径被冻结或终点不是 Item 时直接忽略.
      *
      * @param click 点击上下文
      */
@@ -147,7 +155,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 在路径未冻结且有 Item 时转发 Bundle 选择.
+     * 把收纳袋选择转发给路径终点的 Item.
+     * 路径被冻结或终点不是 Item 时直接忽略.
      *
      * @param select Bundle 选择上下文
      */
@@ -159,7 +168,10 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回路径终点的库存连接, 终点不是库存时返回 {@code null}.
+     * 返回路径终点的 Inventory 连接,
+     * 终点不是Inventory时返回 null.
+     *
+     * @return Inventory 连接, 没有时为 null
      */
     @org.jetbrains.annotations.Nullable
     SlotElement.InventoryLink inventoryLink() {
@@ -167,7 +179,10 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回路径是否被冻结; 冻结槽不参与点击语义与 Item 分派.
+     * 返回路径是否被冻结;
+     * 冻结槽不参与点击语义与 Item 分派.
+     *
+     * @return 被冻结时返回 true
      */
     boolean frozen() {
         return this.currentState().frozen;
@@ -184,6 +199,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 关闭当前路径并取消所有 GUI 和 Item 订阅.
+     * 重复调用安全.
      */
     @Override
     public void close() {
@@ -201,8 +217,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 从根槽位开始跟随 GuiLink, 并订阅沿途的每个 GUI 槽位和最终 Item.
-     * <p>遇到空槽位或 Item 时停止. 遇到重复 GUI 时说明链接成环, 立即失败.
+     * 从根槽位开始一层层跟随 GuiLink, 并订阅沿途的每个 GUI 槽位和最终 Item.
+     * <p>遇到空槽位或 Item 就停. 遇到重复的 GUI 说明链接成环, 直接失败.
      *
      * @param candidate 正在准备的新路径
      */
@@ -211,17 +227,21 @@ final class DisplayedSlotPath implements AutoCloseable {
         int guiSlot = this.rootSlot;
 
         while (true) {
+            // 链接成环直接失败
             if (candidate.contains(gui)) {
                 throw new IllegalStateException("GUI link cycle detected at depth " + candidate.depth + " for local slot " + guiSlot);
             }
 
+            // 订阅这一层 GUI 的槽位: GUI 的失效通知会要求重建路径
             GuiSlotAttachment attachment = gui.attach(guiSlot, ignoredInvalidation -> candidate.notifyWindows(true));
             candidate.add(gui, attachment);
+            // 记录沿途最深层背景; 任何一层冻结, 整条路径都算冻结
             if (attachment.background() != null) {
                 candidate.background = attachment.background();
             }
             candidate.frozen |= attachment.frozen();
 
+            // 按槽位元素决定走向: GuiLink 继续深入, 其余三种都是终点
             switch (attachment.element()) {
                 case SlotElement.GuiLink link -> {
                     gui = link.gui();
@@ -233,7 +253,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                     return;
                 }
                 case SlotElement.InventoryLink link -> {
-                    // 库存事务的 post 通知只要求重新渲染, 不重建路径; 不按槽过滤 ——
+                    // Inventory 事务的 post 通知只要求重新渲染, 不重建路径; 不按槽过滤 ——
                     // 精确过滤需要跨包解析视图槽域, dirty 是幂等标记, 过度通知只是
                     // 让本槽多渲染一次并读到相同内容
                     candidate.inventoryLink = link;
@@ -248,9 +268,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回当前已解析路径.
-     * GUI 变化后会先重建路径,
-     * Item 变化则继续使用原有挂载状态.
+     * 返回当前路径状态. GUI 结构变过时先重建路径再返回;
+     * Item 变化不用重建, 直接返回现有状态.
      *
      * @return 当前路径状态
      */
@@ -266,6 +285,11 @@ final class DisplayedSlotPath implements AutoCloseable {
         return this.current;
     }
 
+    /**
+     * 确认路径还没关闭.
+     *
+     * @throws IllegalStateException 路径已关闭时抛出
+     */
     private void requireOpen() {
         if (this.closed) {
             throw new IllegalStateException("displayed path is closed");
@@ -283,48 +307,58 @@ final class DisplayedSlotPath implements AutoCloseable {
          * 保存路径的生命周期, 以及尚未处理的刷新要求.
          */
         private enum GateState {
-            PREPARING, // 正在建立订阅, 尚未成为当前路径
-            PREPARING_RENDER_PENDING, // 准备期间收到渲染通知, 启用后标记脏槽位
-            PREPARING_RESOLVE_PENDING, // 准备期间收到结构通知, 启用后需要重建路径
-            ACTIVE, // 当前正在显示的路径
-            ACTIVE_RESOLVE_REQUIRED, // 当前路径收到结构通知, 下次读取前重建
-            RETIRED // 已被替换, 忽略迟到的通知
+            PREPARING,                  // 正在建立订阅, 尚未成为当前路径
+            PREPARING_RENDER_PENDING,   // 准备期间收到渲染通知, 启用后标记脏槽位
+            PREPARING_RESOLVE_PENDING,  // 准备期间收到结构通知, 启用后需要重建路径
+            ACTIVE,                     // 当前正在显示的路径
+            ACTIVE_RESOLVE_REQUIRED,    // 当前路径收到结构通知, 下次读取前重建
+            RETIRED                     // 已被替换, 忽略迟到的通知
         }
 
-        private final Window window;
-        private final int windowSlot;
-        private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING);
+        private final Window window;    // 所属 Window, 用于标记脏槽位
+        private final int windowSlot;   // 本路径服务的 Window 槽位
+        private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING); // 生命周期与待处理通知的门闩, 用 CAS 更新
 
         private Gui[] guis = new Gui[4]; // 从根 GUI 到最深层 GUI
         private GuiSlotAttachment[] guiAttachments = new GuiSlotAttachment[4]; // 与 guis 使用相同下标
-        private int depth;
+        private int depth;               // 路径当前深度, 即 guis 中已使用的层数
 
         // TODO 未来处理, 这里的互斥对象, 是不是有更好的处理办法?
 
-        private Item item;
-        private SlotElement.InventoryLink inventoryLink; // 路径终点的库存连接, 与 item 互斥
-        private Subscription inventorySubscription; // 库存 post 事件的渲染订阅
-        private ItemProvider background; // 沿路径找到的最深层非 null 背景
-        private boolean frozen; // 路径上任何 GUI 冻结时都为 true
+        // Item 部分, 与 Inventory 链接互斥
+        private Item item; // 路径终点的 Item
         private ItemAttachment itemAttachment = ItemAttachment.passive(); // 最终的 Item 的 ItemAttachment
-        private boolean resourcesClosed;
+        // Inventory 链接部分, 与 Item 互斥
+        private SlotElement.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
+        private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
 
+        private ItemProvider background;    // 沿路径找到的最深层非 null 背景
+        private boolean frozen;             // 路径上任何 GUI 冻结时都为 true
+        private boolean resourcesClosed;    // 订阅是否已全部关闭, 保证 close 幂等
+
+        /**
+         * 创建一条还在准备中的候选路径.
+         *
+         * @param window 所属 Window
+         * @param windowSlot 本路径服务的 Window 槽位
+         */
         private PathState(Window window, int windowSlot) {
             this.window = window;
             this.windowSlot = windowSlot;
         }
 
         /**
-         * 处理一次失效通知. 可能由任意线程调用, 只更新标志位和脏标记,
-         * 实际的重建由实体线程在下一次读取路径时执行.
+         * 处理一次失效通知. 任意线程都可能调用, 所以这里只改标志位和脏标记,
+         * 真正的重建由实体线程下次读取路径时再做.
          *
-         * @param resolveRequired 通知是否来自 GUI, 要求重建整条路径;
-         *                        false 表示只来自最终 Item, 重新渲染即可
+         * @param resolveRequired true 表示通知来自 GUI, 要重建整条路径;
+         *                        false 表示只来自最终 Item, 重新渲染就够了
          */
         private void notifyWindows(boolean resolveRequired) {
             while (true) {
                 GateState state = this.gate.get();
                 switch (state) {
+                    // 准备期间收到通知: 先记下来, 启用时一起处理
                     case PREPARING -> {
                         GateState updated = resolveRequired
                                 ? GateState.PREPARING_RESOLVE_PENDING
@@ -333,6 +367,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                             return;
                         }
                     }
+                    // 渲染通知已记录; 结构通知要升级成重建标记
                     case PREPARING_RENDER_PENDING -> {
                         if (!resolveRequired) {
                             return;
@@ -341,9 +376,11 @@ final class DisplayedSlotPath implements AutoCloseable {
                             return;
                         }
                     }
+                    // 重建已记录或路径已注销: 不需要再做任何事
                     case PREPARING_RESOLVE_PENDING, RETIRED -> {
                         return;
                     }
+                    // 当前路径收到结构通知: 标记下次读取前重建; 两种通知都要标脏
                     case ACTIVE -> {
                         if (resolveRequired
                                 && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
@@ -352,6 +389,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                         this.window.notifyUpdate(this.windowSlot);
                         return;
                     }
+                    // 重建已标记, 补一个脏标记即可
                     case ACTIVE_RESOLVE_REQUIRED -> {
                         this.window.notifyUpdate(this.windowSlot);
                         return;
@@ -393,9 +431,9 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 将候选路径变为当前路径, 并返回准备期间是否收到过更新.
+         * 把候选路径转正成当前路径.
          *
-         * @return 准备期间收到过更新时为 true
+         * @return 准备期间收到过更新时返回 true
          */
         private boolean activate() {
             while (true) {
@@ -417,6 +455,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                     }
                     default -> throw new IllegalStateException("only a preparing path can be activated");
                 }
+                // 比较一下在进行转正期间, 有没有其他线程发起修改 gate, 如果有则需要重新解析.
                 if (this.gate.compareAndSet(state, activated)) {
                     return pending;
                 }
@@ -424,31 +463,28 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 返回 GUI 更新是否要求当前路径重新解析.
+         * 返回 GUI 结构变化是否要求这条路径重新解析.
          *
-         * @return 需要重新解析时为 true
+         * @return 需要重新解析时返回 true
          */
         private boolean requiresResolve() {
             return this.gate.get() == GateState.ACTIVE_RESOLVE_REQUIRED;
         }
 
         /**
-         * 把路径标记为已退役, 以后到达的通知将被忽略.
+         * 把路径标记为已注销, 之后迟到的通知直接忽略.
          */
         private void retire() {
             this.gate.getAndSet(GateState.RETIRED);
         }
 
         /**
-         * 尝试关闭路径上的每个订阅, 并清除 Item, 背景和 GUI 引用.
-         *
-         * <p>某个订阅关闭失败时仍会继续关闭其余订阅, 最后再抛出收集到的异常.</p>
+         * 关闭路径上的所有订阅, 并清掉 Item, 背景和 GUI 引用.
+         * <p>某个订阅关闭失败也会继续关其余的, 最后再把收集到的异常抛出来. 重复调用安全.
          */
         @Override
         public void close() {
-            if (this.resourcesClosed) {
-                return;
-            }
+            if (this.resourcesClosed) return;
             this.resourcesClosed = true;
 
             // 先断开自身持有的状态引用, 再调用外部 close

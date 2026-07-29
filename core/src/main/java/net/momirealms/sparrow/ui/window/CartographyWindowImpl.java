@@ -45,7 +45,7 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
                     CartographyMenuHandle menu = this.menuHandle();
                     if (menu != null) {
                         menu.applyPatch(snapshot);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to apply Cartography Window map patch"
@@ -61,7 +61,7 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
                     CartographyMenuHandle menu = this.menuHandle();
                     if (menu != null) {
                         menu.setIcons(snapshot);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Cartography Window map icons"
@@ -83,7 +83,7 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
                     CartographyMenuHandle menu = this.menuHandle();
                     if (menu != null) {
                         menu.resetMap();
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to reset Cartography Window map"
@@ -99,7 +99,7 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
                     CartographyMenuHandle menu = this.menuHandle();
                     if (menu != null) {
                         menu.setView(view);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Cartography Window view"

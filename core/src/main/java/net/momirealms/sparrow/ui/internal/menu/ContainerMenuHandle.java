@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundOpenScreenPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundSetCursorItemPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.InventoryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.PlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.AbstractContainerMenuProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.ContainerSynchronizerProxy;
@@ -38,41 +37,41 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 基于 Paper 容器协议实现的菜单句柄.
- *
- * <p>此实现只在玩家实体线程维护权威远端镜像, 并把需要跨越当前调用的数据包物品冻结为
- * 独立快照. Netty 入站消息由句柄自己的有界队列保序后交回实体线程消费.</p>
+ * 基于 Paper 容器协议实现的菜单处理器.
+ * <p>只在玩家实体线程维护权威的远端镜像(客户端已知状态);
+ * 要跨过当前调用继续存活的数据包物品都会冻结成独立快照.
+ * Netty 线程收到的入站消息先存进自己的有界队列, 再交回实体线程按序消费.
  */
 @SuppressWarnings("UnstableApiUsage")
 class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
-    private static final int INCOMING_CAPACITY = 256; // 单个菜单会话最多暂存的入站消息数
-    private static final int OFF_HAND_SLOT = 45; // 玩家原生 inventory menu 中的副手协议槽位
+    private static final int INCOMING_CAPACITY = 256;
+    private static final int OFF_HAND_SLOT = 45;
 
-    private final PacketListener packets; // 安装入站捕获会话并发送出站协议包
+    private final PacketListener packets;
     private final Player player;
     private final Object serverPlayer;
     private final Object menuType; // NMS MenuType<?>, 决定客户端打开的原版菜单类型
     private final int containerId; // 此次菜单会话独占的容器编号
     private final long generation; // 当前 Window 代际, 用于丢弃迟到的旧会话输入
-    private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY); // Netty 到实体线程的有界 FIFO
+    private final IncomingPacketQueue<MenuInput> incoming = new IncomingPacketQueue<>(INCOMING_CAPACITY); // Netty 到实体线程的有界队列
     private final ProtocolInventoryView view; // 提供给 Bukkit 事件读取和临时写入的协议投影
-    private final Object proxy; // NMS AbstractContainerMenu, 安装到玩家并禁用原版自动同步的生成菜单
+    private final Object proxy; // NMS AbstractContainerMenu, 安装到玩家并禁用原版自动同步的ASM生成实现类菜单
     private final Object[] remoteSlots; // NMS RemoteSlot[], Paper 维护的客户端已知槽位哈希镜像
-    private final Object remoteCursor; // NMS RemoteSlot, Paper 维护的客户端已知光标哈希镜像
+    private final Object remoteCursor;  // NMS RemoteSlot, Paper 维护的客户端已知光标哈希镜像
     private final Object remoteOffHand; // NMS RemoteSlot, 玩家原生 inventory menu 的副手远端镜像
-    private final BitSet predictedSlots = new BitSet(); // 客户端预测声称发生变化的槽位
-    private final BitSet forcedSlots = new BitSet(); // 即使内容相同也必须重发的槽位
-    private final BitSet candidateSlots = new BitSet(); // 复用的本轮增量同步候选集合
-    private final BitSet viewTouchedSlots = new BitSet(); // 复用的 Bukkit 事件视图写入集合
-    private final BitSet changedSlots = new BitSet(); // 复用的本轮已发送或需恢复投影的槽位集合
+    private final BitSet predictedSlots = new BitSet();     // 客户端预测声称发生变化的槽位
+    private final BitSet forcedSlots = new BitSet();        // 即使内容相同也必须重发的槽位
+    private final BitSet candidateSlots = new BitSet();     // 复用的本轮增量同步候选集合
+    private final BitSet viewTouchedSlots = new BitSet();   // 复用的 Bukkit 事件视图写入集合
+    private final BitSet changedSlots = new BitSet();       // 复用的本轮已发送或需恢复投影的槽位集合
     private final Object[] pendingRemoteItems; // NMS ItemStack[], 发送成功前暂存单槽包持有的物品快照
 
     private Object replacedMenu; // NMS AbstractContainerMenu, 光标转移来源与打开失败时的恢复目标
-    private @Nullable PacketListener.Session session; // 当前入站捕获会话, 打开前和关闭后为空
-    private Object actualCarried = ItemStackProxy.EMPTY; // NMS ItemStack, 代理菜单唯一持有的真实光标
-    private boolean predictedCarried; // 客户端预测是否要求重新核对光标
-    private boolean offHandDirty; // 客户端 F 键预测要求无条件重发真实副手
-    private boolean cursorClaimed; // 来源菜单的真实光标是否已经被清空
+    private @Nullable PacketListener.Session session;       // 当前入站捕获会话, 打开前和关闭后为空
+    private Object actualCarried = ItemStackProxy.EMPTY;    // NMS ItemStack, 代理菜单唯一持有的真实光标
+    private boolean predictedCarried;   // 客户端预测是否要求重新核对光标
+    private boolean offHandDirty;       // 客户端 F 键预测要求无条件重发真实副手
+    private boolean cursorClaimed;      // 来源菜单的真实光标是否已经被清空
     private Lifecycle lifecycle = Lifecycle.CREATED; // 菜单会话的生命周期状态
 
     /**
@@ -129,6 +128,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.replacedMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
         this.view = new ProtocolInventoryView(player, upperSize, lowerStart, inventoryType, bukkitMenuType);
         this.proxy = MenuSubclassFactory.create(this.menuType, this.containerId, this);
+        // 给每个协议槽位、光标和副手各建一个远端镜像
         this.remoteSlots = new Object[this.view.countSlots()]; // NMS RemoteSlot[]
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             this.remoteSlots[slot] = this.createRemoteSlot();
@@ -139,7 +139,9 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 先完成其他菜单的原生关闭，再捕获来源菜单中等待转移的真实光标.
+     * {@inheritDoc}
+     *
+     * <p>实现先让其他菜单走完原版关闭流程, 再从来源菜单接管真实光标.
      */
     @Override
     public void prepareOpen(boolean replacingWindow) {
@@ -147,23 +149,26 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             throw new IllegalStateException("menu opening cannot be prepared in state " + this.lifecycle);
         }
 
-        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
-        Object currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer); // NMS AbstractContainerMenu
+        // 替换同类代理菜单时不用先关; 其他情况先让当前菜单走原版关闭流程
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer);   // NMS AbstractContainerMenu
+        Object currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);     // NMS AbstractContainerMenu
         boolean replacingProxy = replacingWindow && currentMenu.getClass() == this.proxy.getClass();
         if (!replacingProxy && currentMenu != inventoryMenu) {
             ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, InventoryCloseEvent.Reason.OPEN_NEW);
             currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
         }
 
+        // 记录来源菜单, 并把它的真实光标接管过来
         this.replacedMenu = currentMenu;
         this.actualCarried = AbstractContainerMenuProxy.INSTANCE.getCarried(currentMenu);
         this.lifecycle = Lifecycle.PREPARED;
     }
 
     /**
-     * 在安装入站捕获会话后替换服务端菜单, 再把打开与完整状态作为同一网络批次排队.
+     * {@inheritDoc}
      *
-     * <p>若写包失败, 必须恢复被替换的菜单并回滚捕获会话, 以免后续包落到失效 Window.</p>
+     * <p>实现先装好入站捕获会话、把服务端活动菜单换成代理菜单, 再把打开包和完整状态
+     * 作为一个网络批次发出. 发不出去就整体回滚: 恢复原菜单、撤销捕获会话、归还光标.
      */
     @Override
     public void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
@@ -173,7 +178,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.checkSlotCount(slots);
 
         // 先冻结完整内容, 使包、远端镜像与 Bukkit 事件视图共享同一份权威输入
-        FullContents full = this.prepareFull(slots, cursor);
+        FullContents full = this.prepareFullContents(slots, cursor);
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
 
         // 先开始捕获入站容器包, 再把服务端活动菜单切换到代理.
@@ -207,7 +212,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 返回菜单活动期间需要屏蔽的原版出站包类型.
+     * 菜单活动期间需要屏蔽的原版出站包类型.
      *
      * @return 不可修改的包类型集合
      */
@@ -217,7 +222,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 在同步候选冻结前准备菜单专属状态.
+     * 在同步的候选槽位定下来之前调用, 子类可以在这里准备菜单专属状态.
      *
      * @param dirtySlots 本轮 dirty 槽位
      * @param forceFull 是否强制完整同步
@@ -240,7 +245,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.checkSlotCount(slots);
         this.prepareSynchronize(dirtySlots, forceFull);
         if (forceFull) {
-            FullContents full = this.prepareFull(slots, cursor);
+            // 强制全量: 冻结完整状态, 发成功后整体提交
+            FullContents full = this.prepareFullContents(slots, cursor);
             ArrayList<Object> outgoing = new ArrayList<>(3); // NMS 客户端数据包列表
             outgoing.add(full.packet());
             outgoing.add(full.offHandPacket());
@@ -254,10 +260,9 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 把菜单专属客户端包和对应的待提交状态加入本轮统一网络批次.
-     * <p>此方法不自行发送数据包或清除 dirty 状态。基类会在整个批次成功排入 Netty
-     * event loop 后调用 {@link #commitPackets()}；{@code forceFull} 为 true 时，
-     * 实现必须加入客户端重建此菜单专属状态所需的完整数据。
+     * 把菜单专属的客户端包加进这一轮统一的网络批次, 并记下对应的待提交状态.
+     * <p>整个批次成功排进 Netty event loop 后, 基类会调 {@link #commitPackets()}.
+     *  {@code forceFull} 为 true 时, 实现要放上客户端重建这部分状态所需的完整数据.
      *
      * @param outgoing 本轮可变数据包列表
      * @param forceFull 是否强制完整同步
@@ -266,17 +271,17 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 提交刚刚成功排入 Netty event loop 的菜单专属同步状态.
-     * <p>实现只应提交 {@link #submitPackets(List, boolean)} 为本轮记录的待提交状态，
-     * 例如清除对应的 dirty 标记或推进远端镜像。此调用表示本地已成功交给网络发送路径，
-     * 并不表示客户端已经收到或处理这些数据包。
+     * 提交刚刚成功排进 Netty event loop 的那一轮菜单专属状态.
+     * <p>实现只应该提交 {@link #submitPackets(List, boolean)} 为本轮记下的东西, 比如清掉
+     * 对应的 dirty 标记、推进远端镜像. 被调到只说明包已经交给网络发送路径, 不代表客户端
+     * 已经收到或处理.
      */
     protected void commitPackets() {
     }
 
     /**
-     * 把权威 Bukkit 物品转换为指定原始槽位的 NMS物品.
-     * 具体菜单可在不改变领域槽位状态的情况下提供协议占位物.
+     * 把权威的 Bukkit 物品转成发给客户端的 NMS 物品.
+     * 子类可以在这里返回协议占位物, 不影响领域槽位里的真实状态.
      *
      * @param rawSlot 原始窗口槽位
      * @param item 权威物品
@@ -287,13 +292,15 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 重发 OpenScreen 和完整内容, 因为客户端没有独立的标题更新包.
+     * {@inheritDoc}
+     *
+     * <p>客户端没有单独更新标题的包, 只能重发 OpenScreen 加完整内容.
      */
     @Override
-    public void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
+    public void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
         this.checkCommitted();
         this.checkSlotCount(slots);
-        FullContents full = this.prepareFull(slots, cursor);
+        FullContents full = this.prepareFullContents(slots, cursor);
         PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
         this.packets.send(this.player, outgoing);
@@ -311,22 +318,25 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 按关闭原因和当前菜单所有权接入 Paper 的容器关闭生命周期.
+     * 按关闭原因和当前菜单的所有权, 接入 Paper 的容器关闭流程.
+     * <p>代理菜单已经不是可用的活动菜单时, 说明 Paper 或替换的新 Window 已经接管了关闭, 直接返回.
+     * 玩家主动关闭和断线不再发关闭包, 只发 Bukkit 事件并执行 doCloseContainer; 其他原因走
+     * 服务端主动关闭. 正常回到玩家背包菜单后, 要重发一次完整状态, 把 Window 留在下部库存里
+     * 的客户端投影清掉.
      *
-     * <p>代理已不再是活动菜单时，Paper 或替换窗口已经接管关闭流程。客户端关闭与断线不再
-     * 发送关闭包，只发布 Bukkit 事件并执行 doCloseContainer；其余原因走服务端主动关闭。
-     * 正常回到玩家库存菜单后重发完整状态，清除 Window 留在下部库存中的客户端投影。</p>
+     * @param reason 关闭原因
      */
     @Override
     public void close(@NotNull InventoryCloseEvent.Reason reason) {
         if (this.lifecycle == Lifecycle.CLOSED) {
             return;
         }
+        // 先标记关闭并停止入站捕获, 重复调用安全
         Lifecycle previous = this.lifecycle;
         this.lifecycle = Lifecycle.CLOSED;
         this.closeSession();
 
-        // 打开尚未提交时, 只需要恢复被替换的原菜单.
+        // 打开还没提交成功, 只需把原菜单换回去、归还光标
         if (previous != Lifecycle.COMMITTED) {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
                 PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
@@ -334,6 +344,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.restorePreparedCursor();
             return;
         }
+        // 活动菜单已经不是代理了, 关闭流程已被别人接管
         if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
             return;
         }
@@ -341,6 +352,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
         Throwable failure = null;
         try {
+            // 玩家关闭/断线只发 Bukkit 事件, 其他原因走服务端主动关闭
             if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
                 CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, reason);
             } else {
@@ -349,6 +361,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         } catch (RuntimeException | Error throwable) {
             failure = throwable;
         }
+        // 事件处理器没把菜单换走时, 兜底执行一次 doCloseContainer
         if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
             try {
                 ServerPlayerProxy.INSTANCE.doCloseContainer(this.serverPlayer);
@@ -356,6 +369,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 failure = ThrowableUtils.combine(failure, throwable);
             }
         }
+        // 回到玩家背包菜单后重发完整状态, 清掉 Window 留下的客户端投影
         if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
             try {
                 AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
@@ -367,7 +381,11 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 在实体调度器停止后释放本地会话, 不再访问玩家或发送网络包.
+     * {@inheritDoc}
+     *
+     * <p>实现只关闭入站捕获会话.
+     *
+     * todo 这个名字应该改改.
      */
     @Override
     public void retire() {
@@ -378,20 +396,26 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 校验客户端操作基于当前 state id 后, 再吸收其非权威预测.
+     * {@inheritDoc}
+     *
+     * <p>F 键换副手会被客户端本地预测, 标记副手需要无条件重发;
+     * 公共校验通过后回调 {@link #handleAcceptedInteraction()} 让子类更新专属状态.
      */
     @Override
     public boolean accepts(@NotNull MenuInput.Common.Interaction interaction) {
         this.checkCommitted();
+        // 容器编号或 state id 对不上, 说明交互不是发给当前会话的
         if (interaction.containerId() != this.containerId) {
             return false;
         }
         if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy)) {
             return false;
         }
+        // F 键换副手会被客户端本地预测, 标记副手需要无条件重发
         if (interaction instanceof MenuInput.Common.Click click && click.clickType() == ClickType.SWAP_OFFHAND) {
             this.offHandDirty = true;
         }
+        // 把客户端声称的变化收进预测集合, 顺便记下光标是否被动过
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
             this.predictedCarried |= prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
         }
@@ -400,7 +424,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 在公共容器交互通过 state id 校验并吸收客户端预测后更新菜单专属状态.
+     * 交互通过校验、预测也收下来之后调用, 子类可以在这里更新菜单专属状态.
      */
     protected void handleAcceptedInteraction() {
     }
@@ -422,34 +446,43 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return this.incoming.hasOverflowed();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int containerId() {
         return this.containerId;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @NotNull
     public InventoryView view() {
         return this.view;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int stateId() {
         return AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy);
     }
 
-    @Override
-    public int playerInventoryVersion() {
-        Object inventory = PlayerProxy.INSTANCE.inventory(this.serverPlayer); // NMS Inventory
-        return InventoryProxy.INSTANCE.timesChanged(inventory);
-    }
-
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @NotNull
     public ItemStack cursor() {
         return ItemUtils.copyOrEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(this.actualCarried));
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void cursor(@NotNull ItemStack cursor) {
         // unwrap 借用底层句柄后复制为独立所有权, 菜单不持有调用方实例
@@ -510,24 +543,32 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 返回已提交菜单关闭时是否应恢复被当前会话覆盖的出站状态.
+     * //todo 方法收束到切石机里去
+     * 判断菜单关闭时, 某个被捕获会话覆盖的出站包类型要不要由当前菜单负责补发恢复.
      *
      * @param packetType 被覆盖的包类型
-     * @return 当前菜单负责恢复时为 true
+     * @return 当前菜单负责恢复时返回 true
      */
     final boolean shouldRestoreOutgoing(@NotNull Class<?> packetType) {
+        // 只有已提交的会话才需要恢复
         if (this.lifecycle != Lifecycle.COMMITTED) {
             return false;
         }
+        // 接替的会话如果自己接管了这类出站包, 当前菜单就不用恢复
         PacketListener.Session currentSession = this.session;
         return currentSession == null || !currentSession.replacementDiscardsOutgoing(packetType);
     }
 
     /**
-     * 构造一次打开或标题刷新所需的完整协议序列.
+     * 组装一次打开或标题刷新要发的完整协议序列.
+     *
+     * @param title 标题
+     * @param full 冻结好的完整状态
+     * @return 按发送顺序排列的数据包列表
      */
     private List<Object> openPackets(Component title, FullContents full) {
         ArrayList<Object> outgoing = new ArrayList<>(4); // NMS 客户端数据包列表
+        // 先打开界面, 再发完整内容和副手
         outgoing.add(ClientboundOpenScreenPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 this.menuType,
@@ -535,14 +576,20 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         ));
         outgoing.add(full.packet());
         outgoing.add(full.offHandPacket());
+        // 子类把菜单专属的包和全量状态附加到同一批次
         this.submitPackets(outgoing, true);
         return outgoing;
     }
 
     /**
-     * 冻结一次完整状态并推进 NMS 菜单 state id.
+     * 把一次完整状态冻结成发送用的快照, 并推进 NMS 菜单的 state id.
+     *
+     * @param slots 权威槽位物品
+     * @param cursor 真实与可视光标
+     * @return 冻结好的完整状态
      */
-    private FullContents prepareFull(ItemStack[] slots, CursorSnapshot cursor) {
+    private FullContents prepareFullContents(ItemStack[] slots, CursorSnapshot cursor) {
+        // 每个槽位都拷一份独立快照, 数据包、远端镜像和事件视图共用这份冻结状态
         ArrayList<Object> items = new ArrayList<>(slots.length); // NMS ItemStack 包快照
         for (int index = 0; index < slots.length; index++) {
             items.add(ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
@@ -563,14 +610,19 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 将一次完整发送提交为新的槽位、光标和菜单专属远端镜像.
+     * 完整状态发出成功后, 把它提交成新的远端镜像: 槽位、光标、副手全部对齐,
+     * 预测和强制标记清零.
+     *
+     * @param full 刚发出去的完整状态
      */
     private void commitFullContents(FullContents full) {
+        // 槽位、光标、副手的远端镜像全部对齐到刚发出去的快照
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
         }
         RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.visualCursor());
         RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(full.offHandPacket()));
+        // 预测、强制重发等标记随全量提交清零
         this.predictedSlots.clear();
         this.predictedCarried = false;
         this.offHandDirty = false;
@@ -579,7 +631,13 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 仅比较 dirty 槽位、客户端预测槽位和可选光标, 并在一个网络批次中提交差异.
+     * 增量同步: 只看脏槽位、客户端预测过的槽位和光标, 把差异凑成一个
+     * 网络批次发出去, 发成功后才提交远端镜像.
+     *
+     * @param slots 权威槽位物品
+     * @param dirtySlots 本轮脏槽位
+     * @param cursor 真实与可视光标
+     * @param cursorDirty 这一轮是否需要核对光标
      */
     private void synchronizeChanges(
             ItemStack[] slots,
@@ -587,6 +645,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             CursorSnapshot cursor,
             boolean cursorDirty
     ) {
+        // 汇总本轮候选: 脏槽位 + 客户端预测 + 强制重发 + 事件视图被写过的槽位
         BitSet candidates = this.candidateSlots;
         candidates.clear();
         candidates.or(dirtySlots);
@@ -602,6 +661,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         changedSlots.clear();
         Object sentOffHand = null; // NMS ItemStack
         try {
+            // 逐槽位和远端镜像比较, 只给真正变了的槽位发单槽包
             for (
                     int slot = candidates.nextSetBit(0);
                     slot >= 0 && slot < slots.length;
@@ -623,6 +683,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 this.pendingRemoteItems[slot] = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
             }
 
+            // 副手: 有脏标记或与远端镜像不一致时重发
             Object offHand = ItemUtils.getPlayerItemStackHandle(this.player, EquipmentSlot.OFF_HAND); // 借用的 NMS ItemStack
             if (this.offHandDirty || !RemoteSlotProxy.INSTANCE.matches(this.remoteOffHand, offHand)) {
                 Object packet = this.createOffHandPacket(offHand);
@@ -630,6 +691,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 sentOffHand = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
             }
 
+            // 光标: 明确脏了、被客户端预测过或被事件视图碰过才核对
             boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
             boolean cursorChanged = false;
             Object sentVisualCursor = ItemStackProxy.EMPTY; // NMS ItemStack
@@ -643,6 +705,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 }
             }
 
+            // 子类把菜单专属的包附加到同一批次
             this.submitPackets(outgoing, false);
 
             if (!outgoing.isEmpty()) {
@@ -664,13 +727,16 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, sentOffHand);
                 this.offHandDirty = false;
             }
+            // 事件视图按本轮实际发送的槽位对齐
             changedSlots.or(this.viewTouchedSlots);
             this.view.apply(slots, changedSlots, cursor.actual(), cursorChanged || viewCursorTouched);
+            // 预测已消化; 强制标记只保留本轮没发出去的
             this.predictedSlots.clear();
             this.predictedCarried = false;
             this.forcedSlots.andNot(changedSlots);
             this.commitPackets();
         } finally {
+            // 清掉复用缓冲, pendingRemoteItems 不能留到下一轮
             for (
                     int slot = changedSlots.nextSetBit(0);
                     slot >= 0;
@@ -686,7 +752,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     /**
      * 向 Paper 的容器同步器注册一个远端槽位并初始化为空,
-     * 使首次比较不会命中任何真实物品.
+     * 这样第一次比较不会把任何真实物品当成"客户端已知".
      *
      * @return NMS RemoteSlot
      */
@@ -697,12 +763,23 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return slot;
     }
 
+    /**
+     * 校验传入的槽位数组长度和菜单协议槽位数一致.
+     *
+     * @param slots 槽位数组
+     * @throws IllegalArgumentException 长度不一致时抛出
+     */
     private void checkSlotCount(ItemStack[] slots) {
         if (slots.length != this.remoteSlots.length) {
             throw new IllegalArgumentException("menu requires " + this.remoteSlots.length + " slots, got " + slots.length);
         }
     }
 
+    /**
+     * 校验菜单处于已提交(打开)状态.
+     *
+     * @throws IllegalStateException 菜单未打开时抛出
+     */
     private void checkCommitted() {
         if (this.lifecycle != Lifecycle.COMMITTED) {
             throw new IllegalStateException("menu is not open");
@@ -735,7 +812,11 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 构造指定副手快照的同步包.
+     * 给指定的副手快照造一个同步包. 副手属于玩家原生的背包菜单,
+     * 所以包要用背包菜单的容器编号和 state id.
+     *
+     * @param offHand 副手快照(NMS ItemStack)
+     * @return 副手同步包
      */
     private Object createOffHandPacket(Object offHand) {
         Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
@@ -752,10 +833,10 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * CREATED 经打开预备进入 PREPARED, 初始批次提交成功进入 COMMITTED, 任意状态关闭后进入 CLOSED.
      */
     private enum Lifecycle {
-        CREATED,
-        PREPARED,
-        COMMITTED,
-        CLOSED
+        CREATED,   // 刚创建, 还没开始打开
+        PREPARED,  // 打开预备完成, 光标已接管
+        COMMITTED, // 初始批次发送成功, 菜单正式打开
+        CLOSED     // 已关闭
     }
 
     /**

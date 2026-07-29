@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.BundleSelect;
 import net.momirealms.sparrow.ui.ClickEvent;
@@ -27,13 +28,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadLocalRandom;
@@ -42,9 +37,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * 各类 Window 共用的生命周期、槽位路由和协议同步引擎.
- * <p>公开状态通过 volatile 快照提供跨线程读取, 菜单、路径和容器状态只在玩家的实体线程访问.
- * 每次打开都会取得新的 generation, 以隔离迟到的协议输入和异步失效通知.
+ * 各类 Window 共用的基类, 负责生命周期、槽位路由和协议同步.
+ * <p>公开状态用 volatile 快照供跨线程读取; 菜单、显示路径和容器状态只在玩家的实体线程访问.
+ * 每次打开都会更新 generation, 迟到的协议输入和异步失效通知会被忽略.
  */
 abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
@@ -75,54 +70,59 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     ) {
     }
 
-    private static final int INCOMING_PER_TICK = 128;
-    private static final int PLAYER_INVENTORY_AUDIT_INTERVAL = 20;
-    private static final long PING_TIMEOUT_MILLIS = 30_000;
-    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet(); // TODO: 优化点, 防止泄露后被意外修改.
+    private static final int INCOMING_PER_TICK = 128;               // 每 tick 最多处理的入站输入数, 防止单个玩家占满实体线程
+    private static final int CURSOR_AUDIT_INTERVAL = 20;            // 光标复核周期(tick), 定期纠正客户端的光标预测
+    private static final long PING_TIMEOUT_MILLIS = 30_000;         // 窗口状态 Ping 的超时时间, 超时未收到 Pong 就丢弃
+    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet();   // 空的 BitSet 脏位槽 TODO: 写个不可变的 BitSet 的工具类包装, 防止泄露后被意外修改.
 
+    // 传入的值和选项
     private final WindowManager manager;
     private final Player viewer;
     private final WindowLayout layout;
-    private final Object dirtyLock = new Object();
-    private final ClickInterpreter clickInterpreter = new ClickInterpreter();
+    private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
+    private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的槽位路由与玩家侧 IO
-    private final RenderContext cursorRenderContext;
-    private final Map<Integer, PendingWindowState> pendingWindowStates = new HashMap<>();
-    private final HandlerList<Runnable> openHandlers;
-    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;
-    private final HandlerList<Consumer<ClickEvent>> outsideClickHandlers;
-    private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;
+    private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
+    private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
+    private final HandlerList<Runnable> openHandlers;   // 打开处理器
+    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
+    private final HandlerList<Consumer<ClickEvent>> outsideClickHandlers;           // 容器外点击处理器
+    private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;         // 窗口状态确认处理器
 
-    private volatile Component title;
-    private volatile Supplier<? extends Component> titleSupplier;
-    private volatile boolean closeable;
-    private volatile boolean open;
-    private volatile long generation;
-    private volatile Supplier<? extends @Nullable Window> fallbackWindow;
-    private volatile int serverWindowState;
-    private volatile int clientWindowState;
-    private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer;
+    // 运行时的状态和缓存
+    private volatile Component title;   // 最近一次提交的标题快照
+    private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
+    private volatile boolean closeable; // 是否接受客户端主动关闭
+    private volatile boolean open;      // Window 是否处于打开状态
+    private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
+    private volatile Supplier<? extends @Nullable Window> fallbackWindow; // 玩家主动关闭后的回退的 Window 来源
+    private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer; // 光标显示转换器
+    private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
+    private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
 
-    private @Nullable M menuHandle;
-    private @Nullable DisplayedSlotPath[] paths;
-    private @Nullable ItemStack[] localSlots;
-    private @Nullable MenuHandle.CursorSnapshot localCursor;
-    private @Nullable ScheduledTask tickTask;
-    private BitSet dirtySlots;
-    private BitSet spareDirtySlots;
-    private long windowTick;
-    private int playerInventoryVersion;
-    private boolean cursorDirty;
-    private boolean forceFull;
-    private boolean menuDirty;
-    private boolean titleDirty;
+    // 仅允许在玩家实体线程访问的状态和缓存
+    private @Nullable M menuHandle;                 // 当前菜单句柄, 关闭时为 null
+    private @Nullable DisplayedSlotPath[] paths;    // 每个窗口槽位的显示路径
+    private @Nullable ItemStack[] localSlots;       // 本地槽位权威快照
+    private @Nullable ScheduledTask tickTask;       // 周期 tick 任务
+    private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照
+    private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
+    private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
+    private long windowTick;        // 本次打开以来的 tick 计数
+    private boolean cursorDirty;    // 光标是否需要重新核对
+    private boolean forceFull;      // 下一次同步是否强制全量
+    private boolean menuDirty;      // 菜单是否有槽位内容之外的待同步状态
+    private boolean titleDirty;     // 标题是否待重开
 
-    AbstractWindow(
-            @NotNull WindowManager manager,
-            @NotNull Player viewer,
-            @NotNull WindowLayout layout,
-            @NotNull Settings settings
-    ) {
+    /**
+     * 根据设置创建 Window.
+     *
+     * @param manager Window 管理器
+     * @param viewer 查看者
+     * @param layout 预编译的窗口布局
+     * @param settings Builder 整理好的行为设置
+     */
+    AbstractWindow(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull WindowLayout layout, @NotNull Settings settings) {
         this.manager = manager;
         this.viewer = viewer;
         this.layout = layout;
@@ -141,18 +141,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorRenderContext = RenderContext.cursor(this);
     }
 
-    @NotNull
-    @Override
-    public CompletionStage<OpenResult> open() {
-        return this.manager.open(this);
-    }
-
-    @NotNull
-    @Override
-    public CompletionStage<CloseResult> close() {
-        return this.manager.close(this);
-    }
-
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier) {
         Objects.requireNonNull(titleSupplier, "titleSupplier");
@@ -165,6 +156,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setTitle(@NotNull Component title) {
         Objects.requireNonNull(title, "title");
@@ -177,17 +171,57 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void updateTitle() {
         this.submit(this::notifyUpdateTitle, "Failed to refresh Window title");
     }
 
+    /**
+     * 更新本地标题快照; 已打开时标记下一次 tick 重开界面换标题.
+     * 连续调用只保留最后一个标题, 避免重复发 OpenScreen 和全量内容包.
+     *
+     * @param title 新标题
+     */
+    void notifyUpdateTitle(Component title) {
+        this.title = title;
+        if (this.open) {
+            this.titleDirty = true;
+        }
+    }
+
+    /**
+     * 重新读一次标题 supplier 并发布到本地快照, 已打开时安排重开标题.
+     */
+    void notifyUpdateTitle() {
+        this.notifyUpdateTitle(this.refreshTitle());
+    }
+
+    /**
+     * 重新读一次标题 supplier 并写进本地快照, supplier 返回 null 时按空标题处理.
+     *
+     * @return 新标题
+     */
+    private Component refreshTitle() {
+        Component component = this.titleSupplier.get();
+        this.title = component != null ? component : Component.empty();
+        return this.title;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public Component title() {
         return this.title;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setCloseable(boolean closeable) {
         this.submit(
@@ -196,6 +230,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
         Objects.requireNonNull(fallbackWindow, "fallbackWindow");
@@ -205,18 +242,27 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
         List<Runnable> copy = List.copyOf(openHandlers);
         this.submit(() -> this.openHandlers.set(copy), "Failed to replace Window open handlers");
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public List<Runnable> getOpenHandlers() {
         return this.openHandlers.snapshot();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void addOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
@@ -225,6 +271,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void removeOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
@@ -233,6 +282,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
         List<Consumer<InventoryCloseEvent.Reason>> copy = MiscUtils.copyConsumers(closeHandlers);
@@ -242,12 +294,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
         return this.closeHandlers.snapshot();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         Consumer<InventoryCloseEvent.Reason> handler = MiscUtils.narrowConsumer(closeHandler);
@@ -257,6 +315,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         this.submit(
@@ -265,6 +326,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers) {
         List<Consumer<ClickEvent>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
@@ -274,12 +338,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public List<Consumer<ClickEvent>> getOutsideClickHandlers() {
         return this.outsideClickHandlers.snapshot();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
         Consumer<ClickEvent> handler = MiscUtils.narrowConsumer(outsideClickHandler);
@@ -289,6 +359,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
         this.submit(
@@ -297,6 +370,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setWindowState(int windowState) {
         this.submit(
@@ -305,6 +381,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void incrementWindowState() {
         this.submit(
@@ -313,16 +392,51 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * 更新服务器窗口状态, 并给客户端发一个独立 Ping.
+     * Ping id 随机生成并暂存状态, 收到同 id 的 Pong 才推进客户端状态快照.
+     *
+     * @param windowState 新的服务器窗口状态
+     */
+    private void updateWindowStateOnEntity(int windowState) {
+        this.serverWindowState = windowState;
+        MenuHandle menu = this.menuHandle;
+        if (!this.open || menu == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        // 顺手清掉超时未确认的待确认状态
+        this.pendingWindowStates.entrySet().removeIf(
+                entry -> now - entry.getValue().createdAtMillis() > PING_TIMEOUT_MILLIS
+        );
+        // 生成一个没被占用的 Ping id
+        int pingId;
+        do {
+            pingId = ThreadLocalRandom.current().nextInt();
+        } while (this.pendingWindowStates.containsKey(pingId));
+        this.pendingWindowStates.put(pingId, new PendingWindowState(windowState, now));
+        menu.sendPing(pingId);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getServerWindowState() {
         return this.serverWindowState;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int getClientWindowState() {
         return this.clientWindowState;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
         List<Consumer<Integer>> copy = MiscUtils.copyConsumers(handlers);
@@ -332,12 +446,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public List<Consumer<Integer>> getWindowStateChangeHandlers() {
         return this.windowStateChangeHandlers.snapshot();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         Consumer<Integer> copied = MiscUtils.narrowConsumer(handler);
@@ -347,6 +467,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         this.submit(
@@ -355,6 +478,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
         Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
@@ -367,12 +493,20 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer() {
         return this.cursorVisualizer;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>超出布局范围的槽位号会被直接忽略.
+     */
     @Override
     public void notifyUpdate(int windowSlot) {
         if (windowSlot < 0 || windowSlot >= this.layout.size()) {
@@ -383,6 +517,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public void notifyUpdateAll() {
         this.submit(
@@ -395,48 +532,83 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    /**
+     * 标记菜单有槽位内容之外的待同步状态 (由具体 Window 类型定义).
+     */
+    protected final void notifyUpdateMenu() {
+        this.menuDirty = true;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public Player viewer() {
         return this.viewer;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isOpen() {
         return this.open;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean isCloseable() {
         return this.closeable;
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public List<Gui> guis() {
         return this.layout.guis();
     }
 
-    @Nullable
+    /**
+     * {@inheritDoc}
+     */
+    @NotNull
     @Override
     public SlotElement.GuiLink guiAt(int windowSlot) {
         return this.layout.guiAt(windowSlot);
     }
 
-    @Nullable
+    /**
+     * {@inheritDoc}
+     */
+    @NotNull
     @Override
     public SlotElement.GuiLink guiAtHotbar(int hotbarSlot) {
-        if (hotbarSlot < 0 || hotbarSlot > 8) {
-            throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
-        }
         return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
     }
 
     /**
-     * 在玩家的实体线程创建菜单、显示路径和初始协议状态.
-     * 所有资源在初始完整包成功排入 Netty event loop 后才发布到字段, 失败时按相反方向回滚.
+     * {@inheritDoc}
      */
-    void openOnEntity(long generation, boolean replacingWindow) {
+    @NotNull
+    @Override
+    public CompletionStage<OpenResult> open() {
+        return this.manager.open(this);
+    }
+
+    /**
+     * 在玩家的实体线程打开 Window: 创建菜单、显示路径和初始协议状态.
+     * 所有资源先放在局部变量里, 等初始完整包成功排入 Netty event loop 后才写进字段;
+     * 中途失败就按相反方向回滚.
+     *
+     * @param generation 本次打开代际
+     * @param replacingWindow 是否正在替换同一玩家的 Window
+     */
+    void openOnViewerEntity(long generation, boolean replacingWindow) {
         // 初始化本次打开的 generation 相关状态
         this.generation = generation;
         this.windowTick = 0;
@@ -452,7 +624,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         this.refreshTitle();
 
-        // 先在局部变量中构建资源, 避免半初始化状态对 tick 可见
+        // 先在局部变量中构建资源, 避免半初始化状态对 tick 任务可见
         M menuHandle = this.createMenuHandle(this.manager.menuFactory(), generation);
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
@@ -460,21 +632,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         try {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
-                switch (this.layout.route(windowSlot)) {
-                    case WindowLayout.Route.GuiRoute route -> {
-                        paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, route.gui(), route.guiSlot());
-                    }
-                    case WindowLayout.Route.PlayerRoute route -> {
-                        localSlots[windowSlot] = ItemUtils.copyOrEmpty(this.viewer.getInventory().getItem(route.inventorySlot()));
-                    }
-                }
+                SlotElement.GuiLink link = this.layout.guiAt(windowSlot);
+                paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, link.gui(), link.slot());
             }
 
+            // build 可以发生在任意线程; 首帧渲染前在 viewer 实体线程刷新实际连接的镜像库存
+            this.refreshLinkedInventories(paths);
             // 构造路径会标记初始 dirty; 全部路径就绪后统一渲染一次, 后续到达的通知留给首个 tick
             this.renderDirtySlots(this.takeDirtySlots(), paths, localSlots);
             this.prepareVirtualContent(menuHandle, localSlots);
 
-            // 先安排周期 tick, 再发送初始完整状态, 两者都成功才发布打开状态
+            // 安排周期 tick, 再发送初始完整状态, 两者都成功才确认发布菜单已打开的状态
             tickTask = this.manager.startTick(this);
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
@@ -488,7 +656,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.localSlots = localSlots;
             this.localCursor = localCursor;
             this.tickTask = tickTask;
-            this.playerInventoryVersion = menuHandle.playerInventoryVersion();
             this.open = true;
             this.cursorDirty = false;
             this.forceFull = false;
@@ -509,69 +676,27 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 为一次打开创建与具体 Window 类型匹配的协议菜单.
+     * 为这次打开创建与 Window 类型对应的协议菜单.
      *
      * @param factory 菜单工厂
      * @param generation 本次打开代际
-     * @return 尚未打开的菜单句柄
+     * @return 尚未打开的菜单底层处理器
      */
     @NotNull
     protected abstract M createMenuHandle(@NotNull MenuFactory factory, long generation);
 
     /**
-     * 把逻辑尾部区域的渲染结果投影到具体菜单状态.
-     * <p>调用发生在玩家实体线程, 初次打开和后续虚拟槽位或全量状态刷新都会执行.
-     * 默认实现不做任何处理.
+     * Window 打开后按列表快照依次运行打开处理器, 单个处理器失败不影响后面的.
+     */
+    void fireOpenHandlers() {
+        this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
+    }
+
+    /**
+     * 执行一次玩家实体 tick
+     * 先限量处理协议输入, 再做周期刷新和批量同步.
      *
-     * @param menuHandle 当前菜单句柄
-     * @param logicalSlots 包含虚拟尾部的完整逻辑槽位快照
-     */
-    protected void prepareVirtualContent(@NotNull M menuHandle, ItemStack @NotNull [] logicalSlots) {
-    }
-
-    /**
-     * 直接把一个逻辑 GUI 槽位交给其当前显示 Item 处理.
-     * <p>此路径不桥接 Bukkit InventoryClickEvent, 冻结、背景和空路径仍由
-     * {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
-     *
-     * @param windowSlot 逻辑 Window 槽位
-     * @param clickType 点击类型
-     */
-    protected final void dispatchItemClick(int windowSlot, @NotNull ClickType clickType) {
-        this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, windowSlot, -1));
-    }
-
-
-    /**
-     * 在玩家的实体线程关闭已打开的 Window.
-     * 先撤销本地可见状态并停掉输入, 再关闭菜单、释放路径、处理 fallback 与关闭回调.
-     */
-    void closeOnEntity(InventoryCloseEvent.Reason reason) {
-        Throwable failure = this.teardownOnEntity(reason);
-        // 只有玩家主动关闭才进入 fallback, 然后通知关闭处理器
-        this.openFallback(reason);
-        this.fireCloseHandlers(reason);
-        ThrowableUtils.throwIfUnchecked(failure);
-    }
-
-    /**
-     * 在调度器退役或插件关闭时回收本地资源.
-     * 此路径不发送客户端关闭包, 也不触发 fallback 或用户关闭处理器.
-     *
-     * @return 退役前是否处于打开状态
-     */
-    boolean retire() {
-        boolean wasOpen = this.open;
-        Throwable failure = this.teardownOnEntity(null);
-        if (failure != null) {
-            this.manager.report("Failed to retire Window session", failure);
-        }
-        return wasOpen;
-    }
-
-    /**
-     * 执行一次玩家实体 tick.
-     * 先有界处理协议输入, 再推进周期刷新、玩家物品栏镜像与批量协议同步.
+     * @param task 触发本次 tick 的调度任务
      */
     void tick(ScheduledTask task) {
         M menuHandle = this.menuHandle;
@@ -579,19 +704,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
 
-        // 我们的PacketHandler在Paper Limiter之前, 所以还是限制一下包速率, 防止恶意攻击.
-        //异常后按 UNKNOWN 原因强制关闭 Window, 关闭失败只上报不再抛出.
+        // PacketHandler 在 Paper 的限流器之前, 所以这里要自己限制包速率, 防止恶意刷包
+        // 溢出后按 UNKNOWN 原因强制关闭 Window;
         if (menuHandle.hasInputOverflowed()) {
-            try {
-                this.manager.report(
-                        "Closing Window because its incoming packet queue overflowed",
-                        new IllegalStateException("incoming packet queue capacity exceeded")
-                );
-                this.manager.closeNow(this, InventoryCloseEvent.Reason.UNKNOWN);
-            } catch (RuntimeException | Error throwable) {
-                this.report("Failed to close Window after a protocol failure", throwable);
-                return;
-            }
+            this.manager.report(
+                    "Closing Window because its incoming packet queue overflowed",
+                    new IllegalStateException("incoming packet queue capacity exceeded")
+            );
+            this.manager.closeNow(this, InventoryCloseEvent.Reason.UNKNOWN);
         }
 
         // 限制每 tick 的输入量, 防止单个玩家耗尽实体线程预算
@@ -612,156 +732,47 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
-        this.refreshLinkedInventories();
-        this.invalidatePeriodicSlots();
-        this.refreshPlayerState();
+        // 刷新连接库存和外部真实状态: 镜像型根库存把被引用容器的外部变更收进来变成 External 事件, 快照型库存什么都不做.
+        // 因为刷新不是点击语义, 所以冻结槽和虚拟槽连接的库存也要同步.
+        this.refreshLinkedInventories(this.paths);
+        // 标脏刷新周期到了的显示路径.
+        for (int windowSlot = 0; windowSlot < this.paths.length; windowSlot++) {
+            DisplayedSlotPath path = this.paths[windowSlot];
+            if (path != null && path.refreshPlan().isDue(this.windowTick)) {
+                this.notifyUpdate(windowSlot);
+            }
+        }
+        // 定时标脏光标物品.
+        if (this.windowTick % CURSOR_AUDIT_INTERVAL == 0) {
+            this.cursorDirty = true;
+        }
         this.flush(false);
     }
 
     /**
-     * 更新本地标题快照, 并在打开状态下标记下一次 tick 重开容器标题.
-     * 多次调用只保留最后一个标题, 避免重复发送 OpenScreen 与全量内容包.
-     */
-    void notifyUpdateTitle(Component title) {
-        this.title = title;
-        if (this.open) {
-            this.titleDirty = true;
-        }
-    }
-
-    /**
-     * 重新求值标题 supplier 并发布到本地快照, 打开状态下安排重开标题.
-     */
-    void notifyUpdateTitle() {
-        this.notifyUpdateTitle(this.refreshTitle());
-    }
-
-    /**
-     * 在打开状态已经提交后按列表快照依次运行打开处理器, 单个处理器失败不会阻止后续处理器.
-     */
-    void fireOpenHandlers() {
-        this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
-    }
-
-    /**
-     * 判断给定 Bukkit 视图是否由当前菜单提供.
+     * 把已经通过 generation 筛选的协议输入分给对应的处理流程.
      *
-     * @param view Bukkit 视图
-     * @return 属于当前菜单时为 true
-     */
-    boolean owns(InventoryView view) {
-        return this.menuHandle != null && this.menuHandle.view() == view;
-    }
-
-    /**
-     * 返回当前菜单的 Bukkit 视图, 菜单未打开时抛出 IllegalStateException.
-     *
-     * @return 菜单视图
-     */
-    InventoryView inventoryView() {
-        if (this.menuHandle == null) {
-            throw new IllegalStateException("Window menu is not open");
-        }
-        return this.menuHandle.view();
-    }
-
-    /**
-     * 将无需向调用者返回结果的具体 Window 命令串行化到玩家的实体线程.
-     * 命令执行或调度失败时统一上报, 玩家实体退役后静默完成.
-     *
-     * @param action 命令
-     * @param failureMessage 失败报告文本
-     */
-    protected final void submit(@NotNull Runnable action, @NotNull String failureMessage) {
-        this.submit(
-                () -> {
-                    action.run();
-                    return null;
-                },
-                () -> null
-        ).exceptionally(throwable -> {
-            this.report(failureMessage, throwable);
-            return null;
-        });
-    }
-
-    /**
-     * 将需要返回结果的具体 Window 命令串行化到玩家的实体线程.
-     *
-     * @param action 玩家仍可调度时执行的操作
-     * @param retiredAction 玩家实体退役后执行的替代操作
-     * @param <T> 命令结果类型
-     * @return 命令完成阶段
-     */
-    @NotNull
-    protected final <T> CompletionStage<T> submit(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
-        return this.manager.submit(this, action, retiredAction);
-    }
-
-    /**
-     * 标记类型化菜单存在不依赖物品槽位的待同步状态.
-     */
-    protected final void notifySynchronize() {
-        this.menuDirty = true;
-    }
-
-    /**
-     * 报告具体 Window 处理器中的异常.
-     *
-     * @param message 错误说明
-     * @param throwable 异常
-     */
-    protected final void report(@NotNull String message, @NotNull Throwable throwable) {
-        this.manager.report(message, throwable);
-    }
-
-    /**
-     * 返回当前已打开的类型化菜单; Window 关闭时返回 null.
-     *
-     * @return 当前菜单
-     */
-    @Nullable
-    protected final M menuHandle() {
-        return this.menuHandle;
-    }
-
-    /**
-     * 返回窗口顶部协议槽位数量.
-     *
-     * @return 顶部槽位数量
-     */
-    protected final int upperSize() {
-        return this.layout.upperSize();
-    }
-
-    /**
-     * 将已通过 generation 筛选的协议输入分派到对应处理流程.
+     * @param input 待分发的协议输入
      */
     private void handleInput(MenuInput input) {
         switch (input) {
-            case MenuInput.Common.Interaction interaction -> this.handleInteraction(interaction);
-            case MenuInput.Common.Close close -> this.handleClose(close);
-            case MenuInput.Common.BundleSelection selection -> this.handleBundleSelection(selection);
-            case MenuInput.Common.Pong pong -> this.handlePong(pong);
-            case MenuInput.WindowSpecific windowSpecific -> this.handleWindowInput(windowSpecific);
+            case MenuInput.Common.Interaction interaction ->    this.handleInteraction(interaction);
+            case MenuInput.Common.Close close ->                this.handleClose(close);
+            case MenuInput.Common.BundleSelection selection ->  this.handleBundleSelection(selection);
+            case MenuInput.Common.Pong pong ->                  this.handlePong(pong);
+            case MenuInput.WindowSpecific windowSpecific ->     this.handleWindowInput(windowSpecific);
         }
     }
 
     /**
-     * 处理只属于具体 Window 类型的协议输入.
-     * 共享生命周期只保证输入顺序和实体线程所有权, 具体语义由对应 Window 实现解释.
+     * 校验交互是否属于当前容器状态, 解释成点击或拖拽后分发给 GUI 或容器外处理器.
+     * 不可信的输入会强制全量恢复; 正常的输入只复核客户端预测碰过的槽位.
      *
-     * @param input Window 专属输入
-     */
-    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
-    }
-
-    /**
-     * 校验容器状态、解释点击或拖拽步骤并分派给 GUI 或容器外处理器.
-     * 不可信输入请求完整恢复, 合法或被 Bukkit 取消的输入只复核客户端预测涉及的槽位.
+     * @param interaction 待处理的交互
      */
     private void handleInteraction(MenuInput.Common.Interaction interaction) {
         M menu = this.menuHandle;
+        // 不属于当前状态的输入: 重置解释器, 强制全量恢复
         if (menu == null || !menu.accepts(interaction)) {
             this.clickInterpreter.reset();
             this.forceFull = true;
@@ -771,63 +782,68 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         ClickInterpreter.Result result = this.clickInterpreter.interpret(interaction, this.layout, this.generation);
         switch (result) {
             case ClickInterpreter.Result.Pending ignoredPending -> {}
-            case ClickInterpreter.Result.Rejected ignoredRejection -> this.forceFull = true;
-            case ClickInterpreter.Result.SingleClick click -> this.handleSingleClick(click, menu);
-            case ClickInterpreter.Result.Drag drag -> this.handleDrag(drag, menu);
+            case ClickInterpreter.Result.Rejected ignoredRejection ->   this.forceFull = true;
+            case ClickInterpreter.Result.SingleClick click ->           this.handleSingleClick(click, menu);
+            case ClickInterpreter.Result.Drag drag ->                   this.handleDrag(drag, menu);
         }
     }
 
     /**
-     * 对已解释的单次点击执行 Bukkit 桥接、重入复验和语义分派.
-     * <p>库存与玩家区域槽位交给点击语义引擎(库存侧为事务, 玩家侧直接执行);
-     * Item 与空槽位保持原有 Item 分派. 语义执行后涉及槽位已被标脏,
-     * 客户端预测由同一 tick 的 flush 以权威状态收敛.
+     * 处理一次已经解释好的单击: 先过 Bukkit 事件, 再复核交互是否被取消, 最后分发.
+     * <p>Inventory 槽位交给点击语义引擎走事务; Item 和空槽位按普通 Item 点击分发.
+     * 语义动过的槽位已经标脏, 客户端的预测会在同一 tick 的 flush 里被权威状态纠正.
+     *
+     * @param click 解释好的单击
+     * @param menu 当前菜单
      */
     private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
+        // 先过 Bukkit 桥接, 插件可能会拦截这次点击
         if (!this.manager.bukkitBridge().allowClick(this, click)) {
             return;
         }
+        // 桥接的事件处理器可能已经关了或重开了 Window, 复核交互还有效
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
-        switch (click.target()) {
-            case ClickInterpreter.Target.GuiTarget(var windowSlot) -> {
-                if (!ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot)) {
-                    this.requirePath(windowSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, windowSlot, click.hotbarButton()));
-                }
+        int rawSlot = click.rawSlot();
+        if (rawSlot != InventoryView.OUTSIDE) {
+            // 库存槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
+            if (!ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), rawSlot)) {
+                this.requirePath(rawSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, rawSlot, click.hotbarButton()));
             }
-            case ClickInterpreter.Target.PlayerTarget(var windowSlot, var ignoredInventorySlot) -> {
-                ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), windowSlot);
-            }
-            case ClickInterpreter.Target.OutsideTarget ignoredOutside -> {
-                ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
-                this.outsideClickHandlers.forEachIsolated(
-                        handler -> handler.accept(event),
-                        "Failed to handle Window outside click",
-                        this.manager::report
-                );
-                // todo: 有必要重新检查isInteractionCurrent吗?
-                if (event.isCancelled() || !this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
-                    return;
-                }
-                ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
-            }
+            return;
         }
+
+        // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
+        ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
+        this.outsideClickHandlers.forEachIsolated(
+                handler -> handler.accept(event),
+                "Failed to handle Window outside click",
+                this.manager::report
+        );
+        if (event.isCancelled() || !this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
+            return;
+        }
+        ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
     }
 
     /**
-     * 对已完成的 QUICK_CRAFT 执行 Bukkit 桥接、重入复验和拖拽分配.
-     * <p>参与的库存槽位构成一个事务, 玩家背包槽位在提交成功后应用;
-     * Item 槽位不参与分配.
+     * 处理一次完成的 QUICK_CRAFT 拖拽: 先过 Bukkit 事件, 复核后按拖拽规则分配.
+     * <p>参与的 Inventory 槽位构成一个事务, Item 槽位不参与分配.
+     *
+     * @param drag 解释好的拖拽
+     * @param menu 当前菜单
      */
     private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
+        // 先过 Bukkit 桥接
         if (!this.manager.bukkitBridge().allowDrag(this, drag.clickType(), drag.slots())) {
             return;
         }
+        // 复核交互仍然有效
         if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
             return;
         }
@@ -835,10 +851,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理客户端关闭包.
-     * 不可关闭的 Window 立即以当前标题和全量内容重新打开, 而非让 Bukkit 外部关闭处理器 veto.
+     * 处理客户端发来的关闭包.
+     * 不允许关闭的 Window 会立刻用当前标题和全量内容重新打开, 而不是交给 Bukkit 的外部关闭处理器否决.
+     *
+     * @param packet 关闭包
      */
     private void handleClose(MenuInput.Common.Close packet) {
+        // 不是当前容器的关闭包, 直接忽略
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
@@ -852,34 +871,35 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理客户端收纳袋选择包.
-     * 选择只转发给 GUI 槽位, 处理后强制完整同步以纠正客户端的本地预测.
+     * 处理客户端的收纳袋选择包.
+     * 选择只转发给 GUI 槽位; 处理后强制全量同步, 纠正客户端的本地预测.
+     *
+     * @param packet 收纳袋选择包
      */
     private void handleBundleSelection(MenuInput.Common.BundleSelection packet) {
         this.clickInterpreter.reset();
+        // 不是当前容器的包, 直接忽略
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
+        // 槽位或选择索引不合法: 强制全量纠正
         if (packet.slot() < 0 || packet.slot() >= this.layout.protocolSize() || packet.selectedIndex() < -1) {
             this.forceFull = true;
             return;
         }
-        if (this.layout.route(packet.slot()) instanceof WindowLayout.Route.GuiRoute) {
-            this.requirePath(packet.slot()).handleBundleSelect(
-                    new BundleSelect(this.viewer, packet.selectedIndex())
-            );
-        }
+        this.requirePath(packet.slot()).handleBundleSelect(new BundleSelect(this.viewer, packet.selectedIndex()));
         this.forceFull = true;
     }
 
     /**
-     * 将客户端 Pong 与待确认的服务器窗口状态关联, 并通知状态确认处理器.
+     * 收到客户端 Pong: 找到对应的待确认窗口状态, 推进客户端状态并通知确认处理器.
+     *
+     * @param packet Pong 包
      */
     private void handlePong(MenuInput.Common.Pong packet) {
         PendingWindowState pending = this.pendingWindowStates.remove(packet.id());
-        if (pending == null) {
-            return;
-        }
+        if (pending == null) return;
+
         this.clientWindowState = pending.state();
         this.windowStateChangeHandlers.forEachIsolated(
                 handler -> handler.accept(this.clientWindowState),
@@ -889,10 +909,32 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 返回指定窗口槽位的显示路径, 槽位没有 GUI 路径时抛出 IllegalStateException.
+     * 处理特殊 Window 类型的协议输入.
+     *
+     * @param input Window 专属输入
+     */
+    protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
+    }
+
+    /**
+     * todo 只有切石机调用, 这个方法能不能直接收束到具体实现里面?
+     * 让某个槽位上当前显示的 Item 直接处理这次点击.
+     * <p>这条路不经过 Bukkit 的 InventoryClickEvent;
+     * 冻结、背景和空路径仍按 {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
+     *
+     * @param windowSlot 逻辑 Window 槽位
+     * @param clickType 点击类型
+     */
+    protected final void dispatchItemClick(int windowSlot, @NotNull ClickType clickType) {
+        this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, windowSlot, -1));
+    }
+
+    /**
+     * 返回指定窗口槽位的显示路径.
      *
      * @param windowSlot 窗口槽位
      * @return 显示路径
+     * @throws IllegalStateException 槽位没有显示路径时抛出
      */
     private DisplayedSlotPath requirePath(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
@@ -903,13 +945,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 确认桥接返回后本次交互仍然有效.
-     * Bukkit 事件处理器可能已关闭或重开 Window, generation、菜单实例和 state id 任一变化都丢弃该交互.
+     * 确认过完 Bukkit 桥接后这次交互还有效.
+     * 事件处理器可能已经把 Window 关了或重开了: generation、菜单实例、state id 任何一个变了,
+     * 这次交互就作废.
      *
      * @param interactionGeneration 交互开始时的 generation
      * @param interactionMenu 交互开始时的菜单
      * @param interactionStateId 交互开始时的 state id
-     * @return 交互仍然有效时为 true
+     * @return 交互仍然有效时返回 true
      */
     private boolean isInteractionCurrent(long interactionGeneration, MenuHandle interactionMenu, int interactionStateId) {
         return this.open
@@ -919,137 +962,32 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 点击语义引擎的交互上下文: 槽位路由查询与光标, 玩家背包的权威读写.
-     * 全部方法只在玩家实体线程被点击处理路径调用.
+     * 对指定路径数组里的连接库存逐一对账, 同一个库存只对账一次.
+     *
+     * @param paths 显示路径, 为 null 时不做任何事
      */
-    private final class SemanticsContext implements ClickSemantics.Context {
-
-        @Override
-        @NotNull
-        public Player viewer() {
-            return AbstractWindow.this.viewer;
-        }
-
-        @Override
-        @Nullable
-        public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
-            if (!(AbstractWindow.this.layout.route(windowSlot) instanceof WindowLayout.Route.GuiRoute)) {
-                return null;
-            }
-            SlotElement.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();
-            return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
-        }
-
-        @Override
-        public boolean frozenAt(int windowSlot) {
-            return AbstractWindow.this.requirePath(windowSlot).frozen();
-        }
-
-        @Override
-        public int lowerSlotAt(int windowSlot) {
-            return AbstractWindow.this.layout.route(windowSlot) instanceof WindowLayout.Route.PlayerRoute(var inventorySlot)
-                    ? inventorySlot
-                    : -1;
-        }
-
-        @Override
-        public boolean hasPlayerInventory() {
-            return AbstractWindow.this.layout.hasPlayerLower();
-        }
-
-        @Override
-        @NotNull
-        public List<Inventory> linkedInventories() {
-            return AbstractWindow.this.collectLinkedInventories();
-        }
-
-        @Override
-        @NotNull
-        public ItemStack cursor() {
-            M menu = AbstractWindow.this.menuHandle;
-            return menu != null ? menu.cursor() : ItemStack.empty();
-        }
-
-        @Override
-        public void cursor(@NotNull ItemStack cursor) {
-            M menu = AbstractWindow.this.menuHandle;
-            if (menu != null) {
-                menu.cursor(cursor);
-            }
-            AbstractWindow.this.cursorDirty = true;
-        }
-
-        @Override
-        @Nullable
-        public ItemStack lowerAt(int inventorySlot) {
-            // 背包 getItem 返回 live 镜像, 防御拷贝后再交给语义计算
-            return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItem(inventorySlot)));
-        }
-
-        @Override
-        public void lowerAt(int inventorySlot, @Nullable ItemStack item) {
-            AbstractWindow.this.viewer.getInventory().setItem(inventorySlot, item);
-
-            // 同步窗口本地快照并标脏, 客户端在本 tick flush 中收到权威确认
-            int windowSlot = AbstractWindow.this.layout.windowSlotOfInventorySlot(inventorySlot);
-            ItemStack[] localSlots = AbstractWindow.this.localSlots;
-            if (localSlots != null) {
-                localSlots[windowSlot] = ItemUtils.copyOrEmpty(item);
-            }
-            AbstractWindow.this.notifyUpdate(windowSlot);
-        }
-
-        @Override
-        @Nullable
-        public ItemStack offhand() {
-            return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItemInOffHand()));
-        }
-
-        @Override
-        public void offhand(@Nullable ItemStack item) {
-            AbstractWindow.this.viewer.getInventory().setItemInOffHand(item);
-        }
-
-        @Override
-        public void drop(@NotNull ItemStack item) {
-            // 走玩家丢弃路径: 触发 PlayerDropItemEvent, 携带投掷归属与原版轨迹
-            AbstractWindow.this.viewer.dropItem(item);
-        }
-
-        @Override
-        public void markDirty(int windowSlot) {
-            AbstractWindow.this.notifyUpdate(windowSlot);
-        }
-    }
-
-    // 按显示顺序收集去重的连接库存作为点击语义的目标域: 排除冻结槽与协议外
-    // (虚拟尾部)槽连接的库存, 冻结的展示库存不得被转移或收集穿透
-    private List<Inventory> collectLinkedInventories() {
-        LinkedHashSet<Inventory> inventories = new LinkedHashSet<>();
-        this.forEachLinkedInventory(true, inventories::add);
-        return List.copyOf(inventories);
-    }
-
-    /**
-     * 驱动全部连接库存与外部真相对账: 镜像型根库存把被引用容器的外部变更
-     * 吸收为 External 事件, 快照型无操作. 每 tick 一次, 先于渲染消费;
-     * 对账不是语义操作, 冻结与虚拟槽的连接同样保持同步.
-     */
-    private void refreshLinkedInventories() {
+    private void refreshLinkedInventories(@Nullable DisplayedSlotPath[] paths) {
         LinkedHashSet<Inventory> seen = new LinkedHashSet<>();
-        this.forEachLinkedInventory(false, inventory -> {
+        this.forEachLinkedInventory(paths, false, inventory -> {
             if (seen.add(inventory)) {
                 inventory.refresh();
             }
         });
     }
 
-    // 遍历显示路径终点的库存连接; semanticOnly 时跳过冻结槽与协议外槽
-    private void forEachLinkedInventory(boolean semanticOnly, Consumer<Inventory> action) {
-        DisplayedSlotPath[] paths = this.paths;
-        if (paths == null) {
-            return;
-        }
+    /**
+     * 遍历指定路径数组终点连接的库存.
+     *
+     * @param paths 显示路径, 为 null 时不做任何事
+     * @param semanticOnly 是否只遍历参与点击语义的库存(跳过冻结槽与协议外槽位)
+     * @param action 对每个库存执行的操作
+     */
+    private void forEachLinkedInventory(
+            @Nullable DisplayedSlotPath[] paths,
+            boolean semanticOnly,
+            @NotNull Consumer<Inventory> action
+    ) {
+        if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
             DisplayedSlotPath path = paths[windowSlot];
             if (path == null) {
@@ -1066,70 +1004,20 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 标记到达刷新周期的显示路径, 由同一 tick 的 flush 统一渲染.
-     */
-    private void invalidatePeriodicSlots() {
-        DisplayedSlotPath[] paths = this.paths;
-        if (paths == null) {
-            return;
-        }
-        for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
-            DisplayedSlotPath path = paths[windowSlot];
-            if (path != null && path.refreshPlan().isDue(this.windowTick)) {
-                this.notifyUpdate(windowSlot);
-            }
-        }
-    }
-
-    /**
-     * 用 NMS 版本门控玩家物品栏扫描, 并低频审计可能绕过版本信号的槽位与光标变化.
-     */
-    private void refreshPlayerState() {
-        MenuHandle menu = this.menuHandle;
-        ItemStack[] localSlots = this.localSlots;
-        if (menu == null || localSlots == null) {
-            return;
-        }
-
-        int currentVersion = menu.playerInventoryVersion();
-        boolean auditDue = this.windowTick % PLAYER_INVENTORY_AUDIT_INTERVAL == 0;
-        if (currentVersion == this.playerInventoryVersion && !auditDue) {
-            return;
-        }
-        this.playerInventoryVersion = currentVersion;
-        if (auditDue) {
-            this.cursorDirty = true;
-        }
-
-        for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
-            if (this.layout.route(windowSlot) instanceof WindowLayout.Route.PlayerRoute(var inventorySlot)) {
-                ItemStack playerItem = this.viewer.getInventory().getItem(inventorySlot);
-                if (!sameItem(localSlots[windowSlot], playerItem)) {
-                    localSlots[windowSlot] = ItemUtils.copyOrEmpty(playerItem);
-                    this.notifyUpdate(windowSlot);
-                }
-            }
-        }
-    }
-
-    /**
-     * 非对称比较本地快照与玩家物品栏现状.
-     * 右侧为 null 表示空槽位, 只有两侧都非空时才比较数量与相似度.
+     * 把逻辑尾部(虚拟)区域的渲染结果写进具体菜单的状态.
+     * <p>需要在玩家实体线程调用, 初次打开和之后的虚拟槽位或全量刷新都会执行.
      *
-     * @param left 本地快照
-     * @param right 当前物品, 可能为 null
-     * @return 两者表示同一物品时为 true
+     * @param menuHandle 当前菜单句柄
+     * @param logicalSlots 包含虚拟尾部的完整逻辑槽位快照
      */
-    private static boolean sameItem(@NotNull ItemStack left, @Nullable ItemStack right) {
-        if (right == null || right.isEmpty()) {
-            return left.isEmpty();
-        }
-        return !left.isEmpty() && left.getAmount() == right.getAmount() && left.isSimilar(right);
+    protected void prepareVirtualContent(@NotNull M menuHandle, ItemStack @NotNull [] logicalSlots) {
     }
 
     /**
-     * 汇总 dirty 槽位、光标和标题变化并交给菜单 Adapter 收敛远端状态.
-     * 标题变化必须走重开窗口和完整内容同步, 发送失败时保留状态以便下一 tick 重试.
+     * 把这一 tick 攒下的脏槽位、光标和标题变化汇总, 交给菜单 Adapter 同步给客户端.
+     * 标题变了必须走重开界面加全量内容; 发送失败时保留脏标记, 下个 tick 重试.
+     *
+     * @param reopenTitle 是否强制以当前标题重开界面
      */
     private void flush(boolean reopenTitle) {
         M menu = this.menuHandle;
@@ -1143,6 +1031,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         BitSet dirty = this.takeDirtySlots();
         this.renderDirtySlots(dirty, paths, localSlots);
 
+        // 虚拟尾部的变化单独投影, 不进协议槽位
         boolean virtualDirty = dirty.nextSetBit(this.layout.protocolSize()) >= 0;
         boolean reopen = reopenTitle || this.titleDirty;
         boolean full = this.forceFull || reopen;
@@ -1151,9 +1040,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         try {
+            // 虚拟槽位或全量刷新时重投虚拟内容
             if (virtualDirty || full) {
                 this.prepareVirtualContent(menu, localSlots);
             }
+            // 虚拟尾部不属于协议, 发送前从脏集合里清掉
             if (virtualDirty) {
                 dirty.clear(this.layout.protocolSize(), dirty.length());
             }
@@ -1163,7 +1054,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 cursor = this.renderCursor(menu.cursor());
             }
             if (reopen) {
-                menu.updateTitle(this.title, protocolSlots, cursor);
+                menu.reopenWithTitle(this.title, protocolSlots, cursor);
             } else {
                 menu.synchronize(protocolSlots, dirty, cursor, this.cursorDirty, full);
             }
@@ -1182,10 +1073,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 取出本批 dirty 槽位并立即清空活动缓冲, 使通知线程可以继续写入下一批.
-     * 返回的是复用缓冲, 调用方只能读取且不能跨 tick 持有.
+     * todo: 真得写个只读BitSet工具类了
+     * 取出这一批脏槽位, 并立刻清空活动缓冲, 让通知线程可以继续写下一批.
+     * 返回的是复用缓冲: 调用方只能读, 不能留着跨 tick 用.
      *
-     * @return 本批 dirty 槽位
+     * @return 本批脏槽位
      */
     private BitSet takeDirtySlots() {
         synchronized (this.dirtyLock) {
@@ -1203,9 +1095,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 把 dirty 槽位集合中的 GUI 槽位渲染进本地快照.
+     * 把脏槽位重新渲染进本地快照, 失败时上报并退回上一份本地快照.
      *
-     * @param dirty 本批 dirty 槽位
+     * @param dirty 本批脏槽位
      * @param paths 显示路径
      * @param localSlots 本地槽位快照
      */
@@ -1217,13 +1109,22 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         ) {
             DisplayedSlotPath path = paths[windowSlot];
             if (path != null) {
-                localSlots[windowSlot] = this.render(path, windowSlot, localSlots[windowSlot]);
+                try {
+                    localSlots[windowSlot] = path.render();
+                } catch (Throwable throwable) {
+                    this.manager.report("Failed to render Window slot " + windowSlot, throwable);
+                    localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemStack.empty() : localSlots[windowSlot];
+                }
             }
         }
     }
 
     /**
-     * 返回菜单协议可见的物理槽位前缀, 普通布局直接复用原数组.
+     * 截取协议可见的物理槽位部分.
+     * 没有虚拟尾部的布局直接复用原数组, 不做拷贝.
+     *
+     * @param logicalSlots 完整逻辑槽位
+     * @return 协议可见的物理槽位数组
      */
     @NotNull
     private ItemStack[] protocolSlots(ItemStack @NotNull [] logicalSlots) {
@@ -1234,25 +1135,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 渲染单个显示路径, 失败时上报并回退到上一份本地快照.
+     * 渲染只给客户端看的光标物品快照.
+     * 可视化器出问题就退回显示真实光标, 显示层的扩展不能把容器同步搞坏.
      *
-     * @param path 显示路径
-     * @param windowSlot 窗口槽位
-     * @param fallback 渲染失败时的回退物品
-     * @return 渲染结果
-     */
-    private ItemStack render(DisplayedSlotPath path, int windowSlot, @Nullable ItemStack fallback) {
-        try {
-            return path.render();
-        } catch (Throwable throwable) {
-            this.manager.report("Failed to render Window slot " + windowSlot, throwable);
-            return fallback == null ? ItemStack.empty() : fallback;
-        }
-    }
-
-    /**
-     * 渲染仅用于协议显示的光标快照.
-     * 可视化器失败时回退到真实光标, 因而显示扩展不会破坏容器同步.
+     * @param actualCursor 真实光标
+     * @return 光标快照
      */
     private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
         ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
@@ -1270,8 +1157,38 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 撤销本次打开的本地可见状态并释放菜单、tick 与显示路径.
-     * reason 为 null 表示调度退役, 不发送客户端关闭包; 否则按该原因走正常菜单关闭.
+     * {@inheritDoc}
+     */
+    @NotNull
+    @Override
+    public CompletionStage<CloseResult> close() {
+        return this.manager.close(this);
+    }
+
+    /**
+     * 在玩家的实体线程关闭已打开的 Window.
+     * 先撤掉本地可见状态并停掉输入, 再关菜单、释放显示路径, 最后处理后备 Window 和关闭回调.
+     *
+     * @param reason 关闭原因
+     */
+    void closeOnViewerEntity(InventoryCloseEvent.Reason reason) {
+        Throwable failure = this.teardownOnEntity(reason);
+        // 只有玩家主动关闭才进入 fallback
+        if (reason == InventoryCloseEvent.Reason.PLAYER) {
+            this.openFallback();
+        }
+        // 执行关闭处理器
+        this.closeHandlers.forEachIsolated(
+                handler -> handler.accept(reason),
+                "Failed to handle Window close",
+                this.manager::report
+        );
+        ThrowableUtils.throwIfUnchecked(failure);
+    }
+
+    /**
+     * 撤掉本次打开的本地可见状态, 释放菜单、tick 任务和显示路径.
+     * reason 为 null 表示调度退役, 不发客户端关闭包; 否则按该原因走正常菜单关闭.
      *
      * @param reason 关闭原因, 退役路径为 null
      * @return 清理过程中的第一个失败, 没有失败时为 null
@@ -1315,13 +1232,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 在玩家主动关闭后解析并请求打开 fallback Window.
-     * Supplier 和打开失败都会被隔离并报告, 不影响本 Window 的清理.
+     * 玩家主动关闭后, 解析并打开后备 Window.
+     * 取 Fallback Window 和打开的异常都只上报, 不影响本 Window 的清理.
      */
-    private void openFallback(InventoryCloseEvent.Reason reason) {
-        if (reason != InventoryCloseEvent.Reason.PLAYER) {
-            return;
-        }
+    private void openFallback() {
         Window fallback;
         try {
             fallback = this.fallbackWindow.get();
@@ -1329,28 +1243,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.manager.report("Failed to resolve Window fallback", throwable);
             return;
         }
-        if (fallback == null) {
-            return;
+
+        if (fallback != null) {
+            fallback.open().exceptionally(throwable -> {
+                this.manager.report("Failed to open Window fallback", throwable);
+                return null;
+            });
         }
-        fallback.open().exceptionally(throwable -> {
-            this.manager.report("Failed to open Window fallback", throwable);
-            return null;
-        });
     }
 
     /**
-     * 按列表快照顺序运行关闭处理器, 单个处理器失败不影响后续处理器.
-     */
-    private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
-        this.closeHandlers.forEachIsolated(
-                handler -> handler.accept(reason),
-                "Failed to handle Window close",
-                this.manager::report
-        );
-    }
-
-    /**
-     * 按相反槽位顺序关闭显示路径, 并把后续关闭异常附加到第一个异常.
+     * 按相反的槽位顺序关闭显示路径, 后续的关闭异常都附加到第一个异常上.
+     *
+     * @param paths 要关闭的显示路径, 为 null 时直接返回已有失败
+     * @param failure 已有的第一个失败, 没有时为 null
+     * @return 合并后的第一个失败, 没有任何失败时为 null
      */
     private static Throwable closePaths(@Nullable DisplayedSlotPath[] paths, @Nullable Throwable failure) {
         if (paths == null) {
@@ -1375,38 +1282,238 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 求值标题 supplier 并写入本地快照, supplier 返回 null 时立即失败.
+     * todo: 插件关闭时不触发用户的关闭处理器? 这不合适吧
+     * 在调度器注销或插件关闭时回收本地资源.
+     * 这条路不发客户端关闭包, 也不触发后备 Window 和用户的关闭处理器.
      *
-     * @return 新标题
+     * @return 退役前是否处于打开状态
      */
-    private Component refreshTitle() {
-        Component component = this.titleSupplier.get();
-        this.title = component != null ? component : Component.empty();
-        return this.title;
+    boolean retireSession() {
+        boolean wasOpen = this.open;
+        Throwable failure = this.teardownOnEntity(null);
+        if (failure != null) {
+            this.manager.report("Failed to retire Window session", failure);
+        }
+        return wasOpen;
     }
 
     /**
-     * 更新服务器窗口状态并发送独立 Ping.
-     * Ping id 随机生成并暂存状态, 收到同 id Pong 后才推进客户端状态快照.
+     * 判断一个 Bukkit InventoryView 是不是当前菜单提供的.
+     *
+     * @param view Bukkit InventoryView
+     * @return 属于当前菜单时返回 true
      */
-    private void updateWindowStateOnEntity(int windowState) {
-        this.serverWindowState = windowState;
-        MenuHandle menu = this.menuHandle;
-        if (!this.open || menu == null) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        this.pendingWindowStates.entrySet().removeIf(
-                entry -> now - entry.getValue().createdAtMillis() > PING_TIMEOUT_MILLIS
-        );
-        int pingId;
-        do {
-            pingId = ThreadLocalRandom.current().nextInt();
-        } while (this.pendingWindowStates.containsKey(pingId));
-        this.pendingWindowStates.put(pingId, new PendingWindowState(windowState, now));
-        menu.sendPing(pingId);
+    boolean ownsInventoryView(InventoryView view) {
+        return this.menuHandle != null && this.menuHandle.view() == view;
     }
 
+    /**
+     * 返回当前菜单的 Bukkit InventoryView.
+     *
+     * @return 菜单视图
+     * @throws IllegalStateException 菜单未打开时抛出
+     */
+    InventoryView inventoryView() {
+        if (this.menuHandle == null) {
+            throw new IllegalStateException("Window menu is not open");
+        }
+        return this.menuHandle.view();
+    }
+
+    /**
+     * 把一个不需要返回结果的命令排到玩家的实体线程执行.
+     * 执行或调度失败会统一上报, 玩家实体不可用后命令会被忽略.
+     *
+     * @param action 要执行的命令
+     * @param failureMessage 失败时的报告文本
+     */
+    protected final void submit(@NotNull Runnable action, @NotNull String failureMessage) {
+        this.submit(
+                () -> {
+                    action.run();
+                    return null;
+                },
+                () -> null
+        ).exceptionally(throwable -> {
+            this.report(failureMessage, throwable);
+            return null;
+        });
+    }
+
+    /**
+     * 把一个需要返回结果的命令排到玩家的实体线程执行.
+     *
+     * @param action 玩家仍可调度时执行的操作
+     * @param retiredAction 玩家实体不可用后执行的替代操作
+     * @param <T> 命令结果类型
+     * @return 命令的完成阶段
+     */
+    @NotNull
+    protected final <T> CompletionStage<T> submit(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
+        return this.manager.submit(this, action, retiredAction);
+    }
+
+    /**
+     * 上报 Window 处理器里的异常.
+     *
+     * @param message 错误说明
+     * @param throwable 异常
+     */
+    protected final void report(@NotNull String message, @NotNull Throwable throwable) {
+        this.manager.report(message, throwable);
+    }
+
+    /**
+     * 返回当前打开着的类型化菜单处理器, Window 关闭时返回 null.
+     *
+     * @return 当前菜单处理器, 未打开时为 null
+     */
+    @Nullable
+    protected final M menuHandle() {
+        return this.menuHandle;
+    }
+
+    /**
+     * 返回窗口顶部容器区域的协议槽位数量.
+     *
+     * @return 顶部槽位数量
+     */
+    protected final int upperSize() {
+        return this.layout.upperSize();
+    }
+
+    /**
+     * 按显示顺序收集去重后的连接库存, 作为点击语义的目标域.
+     * 冻结槽和协议外(虚拟尾部)槽位连接的库存不算在内, 冻结的展示库存不能被转移或收集穿透.
+     *
+     * @return 去重后的连接库存列表
+     */
+    private List<Inventory> collectLinkedInventories() {
+        LinkedHashSet<Inventory> inventories = new LinkedHashSet<>();
+        this.forEachLinkedInventory(this.paths, true, inventories::add);
+        return List.copyOf(inventories);
+    }
+
+    /**
+     * 点击语义引擎的交互上下文: 显示路径、光标与玩家侧库存 IO.
+     * 全部方法只在玩家实体线程被点击处理路径调用.
+     */
+    private final class SemanticsContext implements ClickSemantics.Context {
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @NotNull
+        public Player viewer() {
+            return AbstractWindow.this.viewer;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @Nullable
+        public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
+            SlotElement.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();
+            return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public boolean frozenAt(int windowSlot) {
+            return AbstractWindow.this.requirePath(windowSlot).frozen();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @Nullable
+        public ClickSemantics.LinkedSlot hotbarLink(int hotbarButton) {
+            int windowSlot = AbstractWindow.this.layout.windowSlotAtHotbar(hotbarButton);
+            DisplayedSlotPath path = AbstractWindow.this.requirePath(windowSlot);
+            if (path.frozen()) {
+                return null;
+            }
+            SlotElement.InventoryLink link = path.inventoryLink();
+            return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @NotNull
+        public List<Inventory> linkedInventories() {
+            return AbstractWindow.this.collectLinkedInventories();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @NotNull
+        public ItemStack cursor() {
+            M menu = AbstractWindow.this.menuHandle;
+            return menu != null ? menu.cursor() : ItemStack.empty();
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void cursor(@NotNull ItemStack cursor) {
+            M menu = AbstractWindow.this.menuHandle;
+            if (menu != null) {
+                menu.cursor(cursor);
+            }
+            AbstractWindow.this.cursorDirty = true;
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        @Nullable
+        public ItemStack offhand() {
+            return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItemInOffHand()));
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void offhand(@Nullable ItemStack item) {
+            AbstractWindow.this.viewer.getInventory().setItemInOffHand(item);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void drop(@NotNull ItemStack item) {
+            // 走玩家丢弃路径: 触发 PlayerDropItemEvent, 携带投掷归属与原版轨迹
+            AbstractWindow.this.viewer.dropItem(item);
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        public void markDirty(int windowSlot) {
+            AbstractWindow.this.notifyUpdate(windowSlot);
+        }
+    }
+
+    /**
+     * 等待客户端确认的窗口状态.
+     *
+     * @param state 服务器窗口状态
+     * @param createdAtMillis 创建时间(毫秒), 用于超时清理
+     */
     private record PendingWindowState(int state, long createdAtMillis) {
     }
 }

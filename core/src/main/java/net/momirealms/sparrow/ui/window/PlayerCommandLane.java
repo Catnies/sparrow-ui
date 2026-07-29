@@ -21,8 +21,8 @@ final class PlayerCommandLane {
     private final ArrayDeque<Command<?>> commands = new ArrayDeque<>(); // 待执行命令队列, 仅在锁内访问
 
     private boolean scheduled; // 是否已有实体调度任务待运行, 仅在锁内访问
-    private boolean draining; // 是否有 drain 正在执行, 仅在锁内访问
-    private boolean retired; // 通道是否已注销, 注销后新命令直接走注销路径
+    private boolean draining;  // 是否有 drain 正在执行, 仅在锁内访问
+    private boolean retired;   // 通道是否已注销, 注销后新命令直接走注销路径
 
     /**
      * 为指定玩家创建命令通道.

@@ -117,11 +117,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
             Object clientItem = item.isEmpty()
                     ? ItemStackProxy.INSTANCE.newInstance(ItemsProxy.FILLED_MAP)
                     : ItemStackProxy.INSTANCE.copy(super.toClientItem(rawSlot, item)); // NMS ItemStack
-            ItemStackProxy.INSTANCE.set(
-                    clientItem,
-                    DataComponentsProxy.MAP_ID,
-                    MapIdProxy.INSTANCE.newInstance(this.mapId)
-            );
+            ItemStackProxy.INSTANCE.set(clientItem, DataComponentsProxy.MAP_ID, MapIdProxy.INSTANCE.newInstance(this.mapId));
             if (item.isEmpty()) {
                 ItemUtils.hideTooltips(clientItem);
             }

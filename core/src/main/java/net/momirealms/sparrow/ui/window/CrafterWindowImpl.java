@@ -45,7 +45,7 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
                     CrafterMenuHandle menuHandle = this.menuHandle();
                     if (menuHandle != null) {
                         menuHandle.setSlotDisabled(slot, disabled);
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Crafter Window slot state"
@@ -115,14 +115,14 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
             return;
         }
         if (state.slot() < 0 || state.slot() >= CRAFTING_SLOTS) {
-            this.notifySynchronize();
+            this.notifyUpdateMenu();
             return;
         }
 
         boolean disabled = !state.enabled();
         this.disabledMask = CrafterWindowImpl.withSlotState(this.disabledMask, state.slot(), disabled);
         menuHandle.setSlotDisabled(state.slot(), disabled);
-        this.notifySynchronize();
+        this.notifyUpdateMenu();
 
         this.slotToggleHandlers.forEachIsolated(
                 handler -> handler.accept(state.slot(), disabled),

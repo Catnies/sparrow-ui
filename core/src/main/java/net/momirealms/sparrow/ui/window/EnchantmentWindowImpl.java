@@ -55,7 +55,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
                     next[index] = option;
                     this.options = next;
                     if (menuHandle != null) {
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Enchantment Window option"
@@ -83,7 +83,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
                     }
                     this.enchantmentSeed = seed;
                     if (menuHandle != null) {
-                        this.notifySynchronize();
+                        this.notifyUpdateMenu();
                     }
                 },
                 "Failed to update Enchantment Window seed"

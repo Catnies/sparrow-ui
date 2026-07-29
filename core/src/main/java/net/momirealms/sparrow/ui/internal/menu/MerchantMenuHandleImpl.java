@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
+import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
@@ -19,7 +20,6 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
-import net.kyori.adventure.text.Component;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -30,12 +30,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
@@ -216,11 +211,11 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
      * 标题重开已经携带完整内容, 同样可以提交待处理的选择纠正.
      */
     @Override
-    public void updateTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
+    public void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
         boolean reconcileResult = this.resultReconciliationPending;
         this.resultReconciliationPending = false;
         try {
-            super.updateTitle(title, slots, cursor);
+            super.reopenWithTitle(title, slots, cursor);
             this.selectionReconciliationPending = false;
         } catch (RuntimeException | Error throwable) {
             this.resultReconciliationPending = reconcileResult;

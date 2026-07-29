@@ -34,33 +34,23 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowClick(AbstractWindow<?> window, ClickInterpreter.Result.SingleClick click) {
-        if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
-            return true;
+        if (SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
+            InventoryView view = window.inventoryView();
+            int rawSlot = click.rawSlot();
+            InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
+                    ? InventoryType.SlotType.OUTSIDE
+                    : view.getSlotType(rawSlot);
+            // todo 不能无脑使用InventoryAction.UNKNOWN, 需要引入精确计算, 模拟Paper行为.
+            InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), InventoryAction.UNKNOWN, click.hotbarButton());
+            try {
+                Bukkit.getPluginManager().callEvent(event);
+                return !event.isCancelled();
+            } catch (Throwable throwable) {
+                this.exceptionHandler.accept("Failed to bridge Window click to Bukkit", throwable);
+                return false;
+            }
         }
-        InventoryView view = window.inventoryView();
-        int rawSlot = switch (click.target()) {
-            case ClickInterpreter.Target.GuiTarget target -> target.windowSlot();
-            case ClickInterpreter.Target.PlayerTarget target -> target.windowSlot();
-            case ClickInterpreter.Target.OutsideTarget ignoredTarget -> InventoryView.OUTSIDE;
-        };
-        InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
-                ? InventoryType.SlotType.OUTSIDE
-                : view.getSlotType(rawSlot);
-        InventoryClickEvent event = new InventoryClickEvent(
-                view,
-                slotType,
-                rawSlot,
-                click.clickType(),
-                InventoryAction.UNKNOWN,
-                click.hotbarButton()
-        );
-        try {
-            Bukkit.getPluginManager().callEvent(event);
-            return !event.isCancelled();
-        } catch (Throwable throwable) {
-            this.exceptionHandler.accept("Failed to bridge Window click to Bukkit", throwable);
-            return false;
-        }
+        return true;
     }
 
     /**
@@ -73,30 +63,24 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {
-        if (!SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
-            return true;
+        if (SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
+            InventoryView view = window.inventoryView();
+            ItemStack oldCursor = view.getCursor();
+            LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
+            for (int index = 0; index < slots.size(); index++) {
+                int rawSlot = slots.get(index);
+                ItemStack current = view.getItem(rawSlot);
+                results.put(rawSlot, current == null ? ItemStack.empty() : current);
+            }
+            InventoryDragEvent event = new InventoryDragEvent(view, oldCursor.clone(), oldCursor, clickType == ClickType.RIGHT, results);
+            try {
+                Bukkit.getPluginManager().callEvent(event);
+                return !event.isCancelled();
+            } catch (Throwable throwable) {
+                this.exceptionHandler.accept("Failed to bridge Window drag to Bukkit", throwable);
+                return false;
+            }
         }
-        InventoryView view = window.inventoryView();
-        ItemStack oldCursor = view.getCursor();
-        LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
-        for (int index = 0; index < slots.size(); index++) {
-            int rawSlot = slots.get(index);
-            ItemStack current = view.getItem(rawSlot);
-            results.put(rawSlot, current == null ? ItemStack.empty() : current);
-        }
-        InventoryDragEvent event = new InventoryDragEvent(
-                view,
-                oldCursor.clone(),
-                oldCursor,
-                clickType == ClickType.RIGHT,
-                results
-        );
-        try {
-            Bukkit.getPluginManager().callEvent(event);
-            return !event.isCancelled();
-        } catch (Throwable throwable) {
-            this.exceptionHandler.accept("Failed to bridge Window drag to Bukkit", throwable);
-            return false;
-        }
+        return true;
     }
 }
