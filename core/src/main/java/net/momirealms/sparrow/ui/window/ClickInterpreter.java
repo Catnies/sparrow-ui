@@ -58,6 +58,9 @@ final class ClickInterpreter {
         if (clickType == ClickType.CREATIVE) {
             return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
+        if (clickType == ClickType.NUMBER_KEY && (packet.hotbarButton() < 0 || packet.hotbarButton() > 8)) {
+            return new Result.Rejected(Rejection.INVALID_BUTTON);
+        }
 
         // 槽位要么是容器外, 要么在协议范围内
         int rawSlot = packet.slot();

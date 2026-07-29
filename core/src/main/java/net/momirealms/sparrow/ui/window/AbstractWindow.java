@@ -19,6 +19,7 @@ import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.util.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -797,7 +798,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         long interactionGeneration = this.generation;
         int interactionStateId = menu.stateId();
         // 先过 Bukkit 桥接, 插件可能会拦截这次点击
-        if (!this.manager.bukkitBridge().allowClick(this, click)) {
+        InventoryAction action = ClickSemantics.estimateInventoryAction(this.semanticsContext, click.clickType(), click.hotbarButton(), click.rawSlot());
+        if (!this.manager.bukkitBridge().allowClick(this, click, action)) {
             return;
         }
         // 桥接的事件处理器可能已经关了或重开了 Window, 复核交互还有效

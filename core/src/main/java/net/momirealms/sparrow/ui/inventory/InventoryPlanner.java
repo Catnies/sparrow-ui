@@ -14,17 +14,27 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
 /**
- * 批量操作的纯函数规划器: 在给定快照上产出变更集, 不接触任何锁与事件.
- * <p>快照型库存与视图家族共享同一套算法; simulate 与真实操作共享同一实现,
- * 数量守恒由结构保证. 快照在规划期间不变, 由调用方保证.
+ * 批量操作的"计算器": 在一份规划期间不会变的快照上, 算出每个槽该怎么改, 不碰锁, 也不派发任何事件.
+ * <p>放入, 收集, 移除三套算法对快照型库存和视图家族通用; simulate 试算与真实写入共用
+ * 同一份实现, 规划期间快照保持不变, 由调用方保证.
  */
 final class InventoryPlanner {
 
-    /** 放入规划的产物: 变更集与放不下的余量. */
+    /**
+     * 放入规划的结果.
+     *
+     * @param deltas 每个要改动的槽的变更
+     * @param remaining 规划完仍然放不下的数量
+     */
     record AddPlan(List<SlotDelta> deltas, int remaining) {
     }
 
-    /** 收集与移除规划的产物: 变更集与实际取出的数量. */
+    /**
+     * 收集与移除规划的结果.
+     *
+     * @param deltas 每个要改动的槽的变更
+     * @param taken 实际能取出的总数量
+     */
     record TakePlan(List<SlotDelta> deltas, int taken) {
     }
 
@@ -32,7 +42,15 @@ final class InventoryPlanner {
     }
 
     /**
-     * 批量放入的两遍规划: 先把相似且未满的堆填到有效上限, 再按顺序占用空槽.
+     * 规划一次批量放入: 按给定顺序先走一遍, 把物品合并进相似且没堆满的堆;
+     * 还有剩余再走第二遍, 按同样的顺序占用空槽.
+     * 每个槽最多放多少取 min(槽位上限, 物品自身上限), 上限报 0 的槽(比如不可写的槽)自然被跳过.
+     *
+     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
+     * @param item 要放入的物品
+     * @param order 槽位遍历顺序
+     * @param slotLimit 各槽位的堆叠上限
+     * @return 放入方案与放不下的余量
      */
     @NotNull
     static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit) {
@@ -72,8 +90,46 @@ final class InventoryPlanner {
     }
 
     /**
-     * 批量收集的两遍规划: 先收取非满堆的零头保持满堆完整, 不足再动满堆.
-     * 用 touched 防止同一槽被两遍重复收取.
+     * 规划一次批量移除: 按给定顺序逐槽检查, matcher 看中的物品就扣掉,
+     * 直到凑够数量或者翻完所有槽.
+     *
+     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
+     * @param matcher 判断某个物品该不该移除; 它是调用方代码, 只许接触物品的克隆
+     * @param upTo 最多移除的数量
+     * @param order 槽位遍历顺序
+     * @param includedSlot 槽位过滤器, 返回 {@code false} 的槽不参与; {@code null} 表示不过滤
+     * @return 移除方案与实际能移除的数量
+     */
+    @NotNull
+    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot) {
+        List<SlotDelta> deltas = new ArrayList<>();
+        int taken = 0;
+        for (int i = 0; i < order.size() && taken < upTo; i++) {
+            int slot = order.slotAt(i);
+            @Nullable ItemStack current = snapshot[slot];
+            // matcher 是用户代码, 只允许它接触克隆
+            if (current == null || (includedSlot != null && !includedSlot.test(slot)) || !matcher.test(current.clone())) {
+                continue;
+            }
+            int take = Math.min(current.getAmount(), upTo - taken);
+            deltas.add(new SlotDelta(slot, current, reduced(current, take)));
+            taken += take;
+        }
+        return new TakePlan(deltas, taken);
+    }
+
+    /**
+     * 规划一次批量收集: 按给定顺序先收没堆满的"零头"(让满堆保持完整), 凑不够再动满堆.
+     * <p>touched 标记保证同一个槽只会落入其中一遍, 因此 includedSlot 过滤器对每个槽
+     * 最多被调用一次 —— 调用方可以靠这一点在过滤器里认领跨Inventory共享的物理槽.
+     *
+     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
+     * @param template 物品样板, 只用来判断"像不像", 它自己的数量不影响结果
+     * @param upTo 最多收集的数量
+     * @param order 槽位遍历顺序
+     * @param includedSlot 槽位过滤器, 返回 {@code false} 的槽不参与; {@code null} 表示不过滤
+     * @param slotLimit 各槽位的堆叠上限, 用来判断一个堆满没满
+     * @return 收集方案与实际能收到的数量
      */
     @NotNull
     static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
@@ -107,31 +163,25 @@ final class InventoryPlanner {
     }
 
     /**
-     * 批量移除的规划: 按给定顺序逐槽把 matcher 命中的物品扣减到目标数量.
+     * 算出这个槽对这个物品真正生效的堆叠上限: 槽位上限与物品自身上限取小.
+     *
+     * @param slotLimit 各槽位的堆叠上限
+     * @param slot 槽号
+     * @param item 要放入的物品
+     * @return 有效堆叠上限
      */
-    @NotNull
-    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot) {
-        List<SlotDelta> deltas = new ArrayList<>();
-        int taken = 0;
-        for (int i = 0; i < order.size() && taken < upTo; i++) {
-            int slot = order.slotAt(i);
-            @Nullable ItemStack current = snapshot[slot];
-            // matcher 是用户代码, 只允许它接触克隆
-            if (current == null || (includedSlot != null && !includedSlot.test(slot)) || !matcher.test(current.clone())) {
-                continue;
-            }
-            int take = Math.min(current.getAmount(), upTo - taken);
-            deltas.add(new SlotDelta(slot, current, reduced(current, take)));
-            taken += take;
-        }
-        return new TakePlan(deltas, taken);
-    }
-
-    // 放入类算法的有效上限 = min(槽上限, 物品自身上限)
     private static int effectiveMaxStackSize(IntUnaryOperator slotLimit, int slot, ItemStack item) {
         return Math.min(slotLimit.applyAsInt(slot), item.getMaxStackSize());
     }
 
+    /**
+     * 算出从一个堆里取走若干之后槽位剩下的内容;
+     * 取光了就是空槽({@code null}).
+     *
+     * @param current 槽内现有物品
+     * @param take 要取走的数量
+     * @return 剩余物品的克隆, 取光时为 {@code null}
+     */
     @Nullable
     private static ItemStack reduced(ItemStack current, int take) {
         int left = current.getAmount() - take;

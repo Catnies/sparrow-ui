@@ -31,17 +31,17 @@ final class BukkitInventoryBridge {
      *
      * @param window 目标 Window
      * @param click 已解释的点击
+     * @param action 基于当前 Window 只读状态估计出的操作
      * @return 事件未被取消且桥接无异常时为 true
      */
-    boolean allowClick(AbstractWindow<?> window, ClickInterpreter.Result.SingleClick click) {
+    boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
         if (SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
-            InventoryView view = window.inventoryView();
             int rawSlot = click.rawSlot();
+            InventoryView view = window.inventoryView();
             InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
                     ? InventoryType.SlotType.OUTSIDE
                     : view.getSlotType(rawSlot);
-            // todo 不能无脑使用InventoryAction.UNKNOWN, 需要引入精确计算, 模拟Paper行为.
-            InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), InventoryAction.UNKNOWN, click.hotbarButton());
+            InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), action, click.hotbarButton());
             try {
                 Bukkit.getPluginManager().callEvent(event);
                 return !event.isCancelled();

@@ -17,19 +17,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
- * 库存事务引擎: 以整次事务为单位完成提交.
- * <p>管线为 plan(调用方在快照上规划) → pre(锁外, 可取消) → commit(锁内校验并
- * 交换快照) → post(锁外按提交顺序派发). 跨库存事务按锁序号全序加锁, 保证
- * 全成全败且不会死锁.
+ * Inventory事务引擎: 所有Inventory写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
+ * <p>一笔事务走四步: plan 由调用方先做完(在快照上算好每个槽改成什么) → pre 在不持锁的状态下
+ * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在锁内核对"规划用的快照没被别人改过",
+ * 核对通过才换上新内容 → post 放锁之后把事件按提交顺序派出去. 一笔事务涉及多个Inventory时,
+ * 按每个Inventory创建时领到的固定序号依次加锁, 即便多线程同时跑跨Inventory事务也不会死锁.
  */
 final class InventoryTransactions {
 
     /**
-     * 单个库存的事务参与范围.
+     * Inventory在事务里的参与份额:计划更改槽数据, 规划时看到的快照数据.
      *
-     * @param inventory 参与库存
-     * @param planned plan 阶段读取的快照引用, commit 时以 identity 比对做乐观校验
-     * @param deltas 该库存的槽位变更, 不可变列表
+     * @param inventory 参与的Inventory
+     * @param planned plan 阶段读到的快照引用, commit 时只比引用不比内容,
+     *                引用变了就说明在计划途中有人已经提交了事务
+     * @param deltas 该Inventory的槽位变更, 构造后不可变
      */
     record Scope(
             @NotNull AbstractInventory inventory,
@@ -45,16 +47,17 @@ final class InventoryTransactions {
     }
 
     /**
-     * 提交一次事务; 取消与冲突通过返回值表达, 所有失败路径都保证零变更.
+     * 提交一笔事务: 成功返回 {@link TransactionResult.Committed}, 其余结果都表示零变更.
      *
-     * @param reason 变更原因, 随事件原样传递
-     * @param scopes 参与库存与各自的变更, 同一库存至多出现一次
-     * @param bypassPre 为 {@code true} 时跳过全部 pre 观察者(post 仍然派发)
+     * @param reason 变更原因
+     * @param scopes 参与Inventory与各自要改的槽位; 视图场景下同一根Inventory出现多次是合法的, 内部会合并
+     * @param bypassPre 为 {@code true} 时跳过 pre 阶段的询问, 谁也取消不了这笔事务(post 事件照常派发)
+     * @return 事务结果; 只要不是 Committed, 所有参与Inventory都保持原样
+     * @throws IllegalArgumentException 当事务形状非法时(没有参与Inventory, 某个范围没有变更, 槽号越界, 同一个槽被写两次)
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
-        // 声明序列表负责事件载荷, 兑现"按调用方声明顺序"的公开契约;
-        // 锁序列表只服务于加锁与提交, 两个顺序自此解耦
+        // 声明序列表负责事件载荷, 锁序列表只服务于加锁与提交, 两个顺序自此解耦
         List<Scope> declared = validateAndMerge(scopes);
         List<Scope> ordered = sortByLockOrder(declared);
         List<InventoryDelta> changes = changesOf(declared);
@@ -77,7 +80,7 @@ final class InventoryTransactions {
 
         int locked = 0;
         try {
-            // 按全序逐把加锁, 消除跨库存事务的死锁可能
+            // 按全序逐把加锁, 消除跨Inventory事务的死锁可能
             for (; locked < ordered.size(); locked++) {
                 ordered.get(locked).inventory().writeLock().lock();
             }
@@ -95,7 +98,7 @@ final class InventoryTransactions {
                 return TransactionResult.Unavailable.INSTANCE;
             }
 
-            // 先为全部库存构造新快照再统一交换, 保证越界等编程错误发生时零交换
+            // 先为全部Inventory构造新快照再统一交换, 保证越界等非意料内的异常发生时零交换
             TransactionPostEvent postEvent = new TransactionPostEvent(reason, changes);
             @Nullable ItemStack[][] newStates = new ItemStack[ordered.size()][];
             for (int i = 0; i < ordered.size(); i++) {
@@ -115,8 +118,8 @@ final class InventoryTransactions {
             }
         }
 
-        // 提交后钩子先于 post 派发: 镜像型根在此把变更写回外部真相, 使 post 观察者
-        // 重入写时外部状态已同步; 钩子异常隔离上报, 不影响已提交的事务结果
+        // 提交后先于 post 派发: 镜ReferencingInventory 根在此把变更写回外部容器,
+        // 使 post 观察者重入写时外部状态已同步; 异常隔离上报, 不影响已提交的事务结果
         for (int i = 0; i < ordered.size(); i++) {
             InventoryTransactions.Scope scope = ordered.get(i);
             try {
@@ -133,6 +136,13 @@ final class InventoryTransactions {
         return new TransactionResult.Committed(changes);
     }
 
+    /**
+     * 检查这笔事务的每个参与Inventory此刻是否都允许写入.
+     * <p>它在用户回调前后各被查一次, 因为 pre 观察者的回调可能把容器搬到别的线程, 前后的答案未必一样.
+     *
+     * @param scopes 按加锁顺序排列的参与范围
+     * @return 全部可写返回 {@code true}
+     */
     private static boolean writeAvailable(List<Scope> scopes) {
         for (int i = 0; i < scopes.size(); i++) {
             if (!scopes.get(i).inventory().writeAvailable()) {
@@ -143,11 +153,12 @@ final class InventoryTransactions {
     }
 
     /**
-     * 校验事务形状(非空, 槽号界内), 并合并指向同一根库存的多个范围 —— 视图场景
-     * (共根的两个投影, 源与目标共根)会合法地产生它们. 合并要求各范围持有同一
-     * planned 引用(同线程内两次读取之间无提交时必然成立), 且合并后同一槽位至多
-     * 出现一次; 违反者是调用方缺陷, 立即失败.
-     * <p>返回列表保持声明首现顺序, 事件载荷"按调用方声明顺序"的承诺以它为基准.
+     * 校验事务, 再把指向同一根Inventory的多个范围合并成一个.
+     * <p>返回列表保持声明首现顺序, 用于保障"按调用方声明顺序".
+     *
+     * @param scopes 调用方声明的参与范围
+     * @return 合并后的参与范围, 保持首次出现的声明顺序
+     * @throws IllegalArgumentException 当事务形状非法或存在冲突写入时
      */
     @NotNull
     private static List<Scope> validateAndMerge(List<Scope> scopes) {
@@ -168,7 +179,7 @@ final class InventoryTransactions {
             }
         }
 
-        // 按根库存归并, LinkedHashMap 保住声明首现顺序
+        // 按根Inventory归并, LinkedHashMap 保住声明首现顺序
         LinkedHashMap<AbstractInventory, Scope> mergedByRoot = new LinkedHashMap<>();
         for (int i = 0; i < scopes.size(); i++) {
             Scope scope = scopes.get(i);
@@ -198,7 +209,7 @@ final class InventoryTransactions {
             }
         }
 
-        // 单根库存的物理映射在构造时保证一对一;只有多个根可能跨镜像写入同一个外部槽.
+        // 单根Inventory的物理映射在构造时保证一对一;只有多个根可能跨镜像写入同一个外部槽.
         if (merged.size() > 1) {
             HashSet<SlotKey> seenPhysicalSlots = new HashSet<>();
             for (int i = 0; i < merged.size(); i++) {
@@ -214,7 +225,13 @@ final class InventoryTransactions {
         return merged;
     }
 
-    // 加锁, 乐观校验与快照交换按锁序号全序进行, 与事件载荷的声明顺序解耦
+    /**
+     * 把参与范围按各Inventory的锁序号排成全局唯一的加锁顺序.
+     * <p>加锁, 冲突核对, 换快照都按这个顺序进行; 事件载荷的顺序与此无关, 仍按声明顺序.
+     *
+     * @param declared 按声明顺序排列的参与范围
+     * @return 按锁序号重新排序后的参与范围
+     */
     @NotNull
     private static List<Scope> sortByLockOrder(List<Scope> declared) {
         List<Scope> ordered = new ArrayList<>(declared);
@@ -222,7 +239,12 @@ final class InventoryTransactions {
         return ordered;
     }
 
-    // 事件载荷按调用方声明顺序组装, 与加锁顺序无关
+    /**
+     * 组装事件的变更载荷: 每个参与Inventory一条变更记录, 按调用方声明顺序排列, 与加锁顺序无关.
+     *
+     * @param scopes 按声明顺序排列的参与范围
+     * @return 事件载荷, 不可变列表
+     */
     @NotNull
     private static List<InventoryDelta> changesOf(List<Scope> scopes) {
         List<InventoryDelta> changes = new ArrayList<>(scopes.size());
@@ -233,7 +255,13 @@ final class InventoryTransactions {
         return List.copyOf(changes);
     }
 
-    // 浅拷贝当前快照并落入各槽的 after 实例; 未变更槽与旧快照共享元素, 内部永不变异
+    /**
+     * 把变更落到一张新快照上: 复制当前快照, 再把发生变化的槽位换成新物品.
+     * <p>没动的槽位与旧快照共享同一个物品实例.
+     *
+     * @param scope 单个Inventory的参与范围
+     * @return 应用变更后的新快照
+     */
     private static @Nullable ItemStack @NotNull [] applyDeltas(Scope scope) {
         @Nullable ItemStack[] next = scope.inventory().currentState().clone();
         List<SlotDelta> deltas = scope.deltas();
