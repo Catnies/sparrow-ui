@@ -16,10 +16,7 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.Inventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.MiscUtils;
-import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.util.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -73,7 +70,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private static final int INCOMING_PER_TICK = 128;               // 每 tick 最多处理的入站输入数, 防止单个玩家占满实体线程
     private static final int CURSOR_AUDIT_INTERVAL = 20;            // 光标复核周期(tick), 定期纠正客户端的光标预测
     private static final long PING_TIMEOUT_MILLIS = 30_000;         // 窗口状态 Ping 的超时时间, 超时未收到 Pong 就丢弃
-    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet();   // 空的 BitSet 脏位槽 TODO: 写个不可变的 BitSet 的工具类包装, 防止泄露后被意外修改.
+    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());   // 空的 BitSet 脏位槽.
 
     // 传入的值和选项
     private final WindowManager manager;
@@ -1073,7 +1070,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * todo: 真得写个只读BitSet工具类了
      * 取出这一批脏槽位, 并立刻清空活动缓冲, 让通知线程可以继续写下一批.
      * 返回的是复用缓冲: 调用方只能读, 不能留着跨 tick 用.
      *
