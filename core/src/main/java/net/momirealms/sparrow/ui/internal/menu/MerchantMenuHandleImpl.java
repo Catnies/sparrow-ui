@@ -163,7 +163,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
     @Override
     @NotNull
-    protected ClientboundPacketFilter clientboundPacketFilters() {
+    protected ClientboundPacketFilter clientboundPacketFilter() {
         return MERCHANT_OFFERS_FILTER;
     }
 

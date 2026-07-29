@@ -187,7 +187,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 this.player,
                 this.containerId,
                 input -> this.incoming.offer(this.generation, input),
-                this.clientboundPacketFilters()
+                this.clientboundPacketFilter()
         );
         this.session = openedSession;
         AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, ItemStackProxy.EMPTY);
@@ -220,7 +220,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * @return 要拦下的规则; 不处理时为 null
      */
     @Nullable
-    protected ClientboundPacketFilter clientboundPacketFilters() {
+    protected ClientboundPacketFilter clientboundPacketFilter() {
         return null;
     }
 
@@ -385,11 +385,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         ThrowableUtils.throwIfUnchecked(failure);
         // 在旧容器关闭后, 把没有新菜单接手的客户端内容恢复为原版数据.
         if (releasedProjection != null) {
-            ArrayList<Object> packets = new ArrayList<>();
-            releasedProjection.appendNativeRestore(this.player, packets);
-            if (!packets.isEmpty()) {
-                this.packets.send(this.player, packets);
-            }
+            this.packets.send(this.player, List.of(releasedProjection.createNativeRestorePacket()));
         }
     }
 

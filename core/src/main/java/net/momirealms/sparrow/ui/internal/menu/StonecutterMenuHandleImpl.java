@@ -40,18 +40,13 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
             return ClientboundUpdateRecipesPacketProxy.CLASS.isInstance(packet);
         }
 
+        @Override
         @NotNull
-        @Override
-        public Object stateKey() {
-            return ClientState.SYNCHRONIZED_RECIPES;
-        }
-
-        @Override
-        public void appendNativeRestore(@NotNull Player player, @NotNull List<Object> packets) {
-            packets.add(ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
+        public Object createNativeRestorePacket() {
+            return ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
                     RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(RECIPE_MANAGER),
                     RecipeManagerProxy.INSTANCE.getSynchronizedStonecutterRecipes(RECIPE_MANAGER)
-            ));
+            );
         }
     };
 
@@ -118,7 +113,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
 
     @Override
     @NotNull
-    protected ClientboundPacketFilter clientboundPacketFilters() {
+    protected ClientboundPacketFilter clientboundPacketFilter() {
         return RECIPE_CATALOG_PROJECTION;
     }
 
@@ -204,7 +199,4 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         return SelectableRecipeSingleInputSetProxy.INSTANCE.newInstance(entries);
     }
 
-    private enum ClientState {
-        SYNCHRONIZED_RECIPES
-    }
 }

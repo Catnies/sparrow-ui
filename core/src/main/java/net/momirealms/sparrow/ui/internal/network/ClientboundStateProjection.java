@@ -1,9 +1,7 @@
 package net.momirealms.sparrow.ui.internal.network;
 
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.List;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * 表示某个 Window 临时改写了客户端会一直记住的内容.
@@ -13,22 +11,21 @@ import java.util.List;
 public interface ClientboundStateProjection extends ClientboundPacketFilter {
 
     /**
-     * 给这份客户端内容返回一个稳定的标识.
+     * 判断新 Window 是否复用了当前投影实例.
      *
-     * <p>旧 Window 关闭时, 如果新 Window 返回相等的标识, 说明新 Window 已接手这份内容,
-     * 旧 Window 就不应再把原版数据发回去.
-     *
-     * @return 客户端状态标识
+     * @param successorFilter 新会话声明的拦包规则; 没有新会话时为 null
+     * @return 新会话继续维护当前投影时返回 true
      */
-    @NotNull
-    Object stateKey();
+    default boolean continuedBy(@Nullable ClientboundPacketFilter successorFilter) {
+        return successorFilter == this;
+    }
 
     /**
-     * 把客户端应恢复的原版数据包加入发送列表.
-     * <p>只有没有新 Window 接手这份内容时才会调用. 调用方会在旧菜单关闭后统一发送这些包.
+     * 创建客户端应恢复的原版数据包.
+     * <p>只有新 Window 没有复用当前投影实例时才会调用. 调用方会在旧菜单关闭后发送这个包.
      *
-     * @param player 接收恢复包的玩家
-     * @param packets 本次关闭要发送的数据包列表
+     * @return 恢复客户端状态的原版数据包
      */
-    void appendNativeRestore(@NotNull Player player, @NotNull List<Object> packets);
+    @NotNull
+    Object createNativeRestorePacket();
 }

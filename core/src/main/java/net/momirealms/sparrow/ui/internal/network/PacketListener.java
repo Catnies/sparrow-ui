@@ -119,39 +119,6 @@ public final class PacketListener implements Listener, AutoCloseable {
     }
 
     /**
-     * 找出旧会话离开后需要交还给原版的客户端内容.
-     *
-     * @param filter 旧会话声明的拦包规则; 没有规则时为 null
-     * @param successorFilter 新会话声明的拦包规则; 没有新会话时为 null
-     * @return 新会话没有接手的状态内容; 没有时为 null
-     */
-    @Nullable
-    static ClientboundStateProjection releasedClientboundStateProjection(
-            @Nullable ClientboundPacketFilter filter,
-            @Nullable ClientboundPacketFilter successorFilter
-    ) {
-        if (filter instanceof ClientboundStateProjection projection
-                && !PacketListener.ownsClientboundState(successorFilter, projection.stateKey())) {
-            return projection;
-        }
-        return null;
-    }
-
-    /**
-     * 判断新会话是否还在维护指定的客户端内容.
-     *
-     * @param filter 新会话声明的拦包规则; 没有规则时为 null
-     * @param stateKey 要确认的客户端内容标识
-     * @return 新会话仍负责这份内容时返回 true
-     */
-    private static boolean ownsClientboundState(
-            @Nullable ClientboundPacketFilter filter,
-            @NotNull Object stateKey
-    ) {
-        return filter instanceof ClientboundStateProjection projection && projection.stateKey().equals(stateKey);
-    }
-
-    /**
      * 将一个或多个客户端包切换到玩家连接的 Netty event loop 后发送.
      * <p>多个包会包装为 bundle, 保持窗口状态更新在客户端侧的同一处理批次内.
      *
@@ -389,7 +356,7 @@ public final class PacketListener implements Listener, AutoCloseable {
         /**
          * 找出本会话关闭后需要恢复原版数据的客户端内容.
          *
-         * <p>如果已经有新会话接手同一份内容, 它会继续维持客户端状态, 因而不会出现在结果中.</p>
+         * <p>如果新会话复用了同一个投影实例, 它会继续维持客户端状态, 因而不会出现在结果中.</p>
          *
          * @return 没有被新会话接手的客户端内容; 没有时为 null
          */
@@ -399,7 +366,9 @@ public final class PacketListener implements Listener, AutoCloseable {
             ClientboundPacketFilter successorFilter = successor == null || successor == this
                     ? null
                     : successor.clientboundPacketFilter;
-            return PacketListener.releasedClientboundStateProjection(this.clientboundPacketFilter, successorFilter);
+            return this.clientboundPacketFilter instanceof ClientboundStateProjection projection && !projection.continuedBy(successorFilter)
+                    ? projection
+                    : null;
         }
 
         private @Nullable Object filterOutgoing(Object packet) {
