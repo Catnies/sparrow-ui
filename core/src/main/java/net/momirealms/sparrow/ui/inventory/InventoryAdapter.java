@@ -20,9 +20,10 @@ import java.util.List;
 import java.util.ListIterator;
 
 /**
- * 把 Sparrow {@link Inventory} 尽力适配为 Bukkit 库存接口.
- * <p>写路径一律转为 Sparrow 事务(原因为 {@link UpdateReason.Program}), 线程契约
- * 随被包装库存(快照型任意线程, 引用型写需主线程); 读路径走快照克隆.
+ * 将 UI 操作适配 Bukkit Inventory 接口.
+ * <p>写路径一律转为事务操作 (原因为 {@link UpdateReason.Program}) 线程契约
+ * 随被包装库存: 快照型库存可在任意线程写, 引用型库存当前不可访问时 void 写静默
+ * no-op、add/remove 返回 leftovers；读路径走快照克隆.
  * 与真实容器无关的能力(观看者, 持有者, 位置, 类型)按"无"回答.
  */
 final class InventoryAdapter implements org.bukkit.inventory.Inventory {

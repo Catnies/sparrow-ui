@@ -120,14 +120,21 @@ abstract class AbstractInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         return new PlanContext(planned, deltas -> deltas.isEmpty()
                 ? List.of()
-                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
+                : List.of(new InventoryTransactions.Scope(this, planned, deltas)), ignoredSlot -> true);
     }
 
     @NotNull
     @Override
     PlanContext openPlanForWrite() {
-        this.beforePlan();
-        return this.openPlan();
+        boolean writable = this.prepareWrite();
+        @Nullable ItemStack[] planned = this.currentState();
+        return new PlanContext(
+                planned,
+                deltas -> deltas.isEmpty()
+                        ? List.of()
+                        : List.of(new InventoryTransactions.Scope(this, planned, deltas)),
+                ignoredSlot -> writable
+        );
     }
 
     // 自持数据的根没有外部真相; 镜像型子类覆写为真实对账
@@ -136,9 +143,29 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 根级写前: 任何写入口在读取规划快照之前经过这里, 无论调用来自本库存
-     * 的公开方法还是视图的批量归约. 镜像型实现在此完成线程校验与外部真相同步;
-     * 缺省无操作. simulate 等纯读路径不触发.
+     * 当前线程是否可以访问本根的外部真相. 自持库存恒为可用, 镜像型库存按
+     * 目标 owner 动态判断.
+     */
+    boolean writeAvailable() {
+        return true;
+    }
+
+    /**
+     * 准备一次写规划: 仅在当前线程可访问时触发写前对账.
+     *
+     * @return 本根当前是否可以参与写事务
+     */
+    final boolean prepareWrite() {
+        if (!this.writeAvailable()) {
+            return false;
+        }
+        this.beforePlan();
+        return true;
+    }
+
+    /**
+     * 根级写前对账: 任何写入口在读取规划快照之前经过这里, 无论调用来自本库存
+     * 的公开方法还是视图的批量归约. 缺省无操作, simulate 等纯读路径不触发.
      */
     void beforePlan() {
     }
@@ -164,7 +191,10 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
-        this.beforePlan();
+        Objects.checkIndex(slot, this.size());
+        if (!this.prepareWrite()) {
+            return TransactionResult.Unavailable.INSTANCE;
+        }
         @Nullable ItemStack[] planned = this.currentState();
         SlotDelta delta = new SlotDelta(slot, planned[slot], item);
         return InventoryTransactions.commit(
@@ -183,7 +213,9 @@ abstract class AbstractInventory extends SparrowInventory {
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
-        this.beforePlan();
+        if (!this.prepareWrite()) {
+            return new AddResult(TransactionResult.Unavailable.INSTANCE, input.getAmount());
+        }
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         int amount = input.getAmount();
@@ -211,7 +243,10 @@ abstract class AbstractInventory extends SparrowInventory {
     @Override
     @NotNull
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
-        this.beforePlan();
+        Objects.checkIndex(slot, this.size());
+        if (!this.prepareWrite()) {
+            return TransactionResult.Unavailable.INSTANCE;
+        }
         @Nullable ItemStack[] planned = this.currentState();
         // modifier 收到克隆, 在锁外执行; 其返回值经 SlotDelta 构造再次归一化与克隆
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
@@ -221,7 +256,10 @@ abstract class AbstractInventory extends SparrowInventory {
     @Override
     @NotNull
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
-        this.beforePlan();
+        Objects.checkIndex(slot, this.size());
+        if (!this.prepareWrite()) {
+            return TransactionResult.Unavailable.INSTANCE;
+        }
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         if (current == null || change == 0) {

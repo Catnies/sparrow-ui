@@ -24,15 +24,14 @@ import java.util.function.UnaryOperator;
  * <ul>
  *   <li>空槽唯一表示是 {@code null}, 永不出现 AIR 或数量不大于 0 的实例;</li>
  *   <li>所有读取返回克隆, 修改读出的物品不影响库存;</li>
- *   <li>所有写入经事务管线(plan, pre, commit, post), 事件单位是事务而不是槽.</li>
+ *   <li>所有写入经事务管线(plan, pre, commit, post), 事件单位是事务而不是物品槽.</li>
  * </ul>
- * 读路径无锁: 直接读取当前不可变快照, 任意线程可安全调用.
- * 写操作遇并发冲突统一返回 {@link TransactionResult.Conflicted} 且零变更,
- * 是否重试由调用方决定; 重试时 pre 观察者会再次运行.
+ * 读路径无锁, 直接读取当前不可变快照, 任意线程可安全调用.
+ * 写操作遇并发冲突统一返回 {@link TransactionResult.Conflicted} 且零变更.
+ * ReferencingInventory 当前执行线程无法访问外部目标时返回{@link TransactionResult.Unavailable}.
  */
 public interface Inventory {
-    /** 槽位的默认堆叠上限. 保留超原版堆叠空间, 且为不可变常量. */
-    int DEFAULT_MAX_STACK_SIZE = 99;
+    int DEFAULT_MAX_STACK_SIZE = 99; // 槽位的默认堆叠上限.
 
     /**
      * 槽位数量, 构造后固定.
@@ -40,7 +39,8 @@ public interface Inventory {
     int size();
 
     /**
-     * 读取指定槽位的物品克隆; 空槽返回 {@code null}.
+     * 读取指定槽位的物品克隆;
+     * 空槽返回 {@code null}.
      *
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
@@ -159,19 +159,20 @@ public interface Inventory {
 
     /**
      * 驱动镜像型根库存与其外部真相对账; 快照型库存无操作.
-     * 集成层(如 Window 渲染循环)在主线程每 tick 调用一次, 使被引用容器的
-     * 外部变更以 External 原因进入事件流.
+     * 集成层(如 Window 渲染循环)可以每 tick 调用一次；引用目标当前不可访问时
+     * 实现会静默跳过, 可访问时把外部变更以 External 原因送入事件流.
      */
     void refresh();
 
     /**
      * 把本库存尽力适配为 Bukkit 库存接口, 同一库存恒返回同一适配器实例(Bukkit 侧
      * 可以引用身份关联). 适配器的写路径走 Sparrow 事务(原因为
-     * {@link UpdateReason.Program}), 线程契约随本库存(快照型任意线程, 引用型写需
-     * 主线程); 与真实容器相关的能力(观看者, 持有者, 位置)按"无"回答, 类型恒为 CHEST.
+     * {@link UpdateReason.Program}); 线程契约随被适配库存，引用库存不可访问时
+     * void 写退化为 no-op，add/remove 通过 leftovers 表达失败. 与真实容器相关的
+     * 能力(观看者, 持有者, 位置)按"无"回答, 类型恒为 CHEST.
      */
-    @ApiStatus.Experimental
     @NotNull
+    @ApiStatus.Experimental
     org.bukkit.inventory.Inventory asBukkitInventory();
 
     /**

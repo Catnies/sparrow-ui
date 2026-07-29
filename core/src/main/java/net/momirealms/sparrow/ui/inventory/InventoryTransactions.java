@@ -59,6 +59,11 @@ final class InventoryTransactions {
         List<Scope> ordered = sortByLockOrder(declared);
         List<InventoryDelta> changes = changesOf(declared);
 
+        // 不可访问的外部根在用户回调前拒绝, 不产生 pre/post 或任何镜像变更
+        if (!writeAvailable(ordered)) {
+            return TransactionResult.Unavailable.INSTANCE;
+        }
+
         // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
         if (!bypassPre) {
             TransactionPreEvent preEvent = new TransactionPreEvent(reason, changes);
@@ -83,6 +88,11 @@ final class InventoryTransactions {
                 if (scope.inventory().currentState() != scope.planned()) {
                     return TransactionResult.Conflicted.INSTANCE;
                 }
+            }
+
+            // pre 回调可能移动实体或改变 owner; 在任何新状态构造与交换前重新校验
+            if (!writeAvailable(ordered)) {
+                return TransactionResult.Unavailable.INSTANCE;
             }
 
             // 先为全部库存构造新快照再统一交换, 保证越界等编程错误发生时零交换
@@ -121,6 +131,15 @@ final class InventoryTransactions {
             ordered.get(i).inventory().drainPostEvents();
         }
         return new TransactionResult.Committed(changes);
+    }
+
+    private static boolean writeAvailable(List<Scope> scopes) {
+        for (int i = 0; i < scopes.size(); i++) {
+            if (!scopes.get(i).inventory().writeAvailable()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

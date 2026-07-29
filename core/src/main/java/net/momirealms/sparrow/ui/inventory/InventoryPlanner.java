@@ -110,14 +110,14 @@ final class InventoryPlanner {
      * 批量移除的规划: 按给定顺序逐槽把 matcher 命中的物品扣减到目标数量.
      */
     @NotNull
-    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order) {
+    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot) {
         List<SlotDelta> deltas = new ArrayList<>();
         int taken = 0;
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
             // matcher 是用户代码, 只允许它接触克隆
-            if (current == null || !matcher.test(current.clone())) {
+            if (current == null || (includedSlot != null && !includedSlot.test(slot)) || !matcher.test(current.clone())) {
                 continue;
             }
             int take = Math.min(current.getAmount(), upTo - taken);

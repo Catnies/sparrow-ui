@@ -20,14 +20,14 @@ import java.util.Map;
 /**
  * 把 Window 点击翻译为库存事务与玩家侧变更的语义引擎.
  * <p>每种点击是一个事务: 库存侧变更(可跨多个根库存)经事务管线提交, 全成全败;
- * 光标与玩家背包是玩家实体线程私有状态, 在事务提交成功后无条件应用, 永不失败,
+ * 光标与副手是玩家实体线程私有状态, 在事务提交成功后无条件应用, 永不失败,
  * 因此不存在半点击. 事务被 pre 观察者取消或乐观校验冲突时, 本次点击零变更,
  * 涉及槽位被标脏以纠正客户端预测.
  * <p>库存槽的读取一律发生在 {@code openPlanForWrite} 之后的规划快照上 —— 读取
  * 与乐观校验基准同源, 镜像型库存的对账先于读取完成, 任何插入写(外部容器变更,
  * 异步写者)都会使提交降级为 Conflicted 而不是基于陈旧值的覆盖.
- * <p>代理菜单没有任何原版 Slot, 点击包也不会到达 NMS 逻辑, 因此纯玩家背包内的
- * 操作同样由本引擎执行 —— 它们只触碰玩家侧状态, 不产生库存事务与事件.
+ * <p>代理菜单没有任何原版 Slot, 点击包也不会到达 NMS 逻辑; default lower 通过
+ * viewer storage reference 接入本引擎, 因而纯 lower 操作同样进入库存事务.
  * <p>调用方(Window 层)通过 {@link Context} 提供槽位路由与玩家侧 IO,
  * 本类不持有任何状态, 全部方法在玩家实体线程调用.
  */
@@ -47,7 +47,7 @@ public final class ClickSemantics {
         Player viewer();
 
         /**
-         * 返回窗口槽位连接的库存槽, 未连接库存(Item, 空槽或玩家区域)时返回 {@code null}.
+         * 返回窗口槽位连接的 Inventory 槽位, Item 或空槽返回 {@code null}.
          */
         @Nullable
         LinkedSlot linkAt(int windowSlot);
@@ -58,15 +58,10 @@ public final class ClickSemantics {
         boolean frozenAt(int windowSlot);
 
         /**
-         * 返回窗口槽位映射的玩家背包槽号, 非玩家区域返回 -1.
+         * 返回当前 lower 快捷栏位置可交互的实际库存连接; 非库存元素或冻结路径返回 {@code null}.
          */
-        int lowerSlotAt(int windowSlot);
-
-        /**
-         * 布局是否包含真实玩家背包区域. 为 {@code false} 时(split, merged 布局)
-         * 所有触碰隐藏真实背包的语义分支被禁用.
-         */
-        boolean hasPlayerInventory();
+        @Nullable
+        LinkedSlot hotbarLink(int hotbarButton);
 
         /**
          * 按显示顺序返回参与语义的全部去重库存, 用于快速转移与收集的目标域;
@@ -85,17 +80,6 @@ public final class ClickSemantics {
          * 权威覆盖真实光标.
          */
         void cursor(@NotNull ItemStack cursor);
-
-        /**
-         * 玩家背包槽的物品快照.
-         */
-        @Nullable
-        ItemStack lowerAt(int inventorySlot);
-
-        /**
-         * 权威覆盖玩家背包槽.
-         */
-        void lowerAt(int inventorySlot, @Nullable ItemStack item);
 
         /**
          * 副手物品快照.
@@ -135,44 +119,39 @@ public final class ClickSemantics {
      * 库存语义(Item 或空槽), 调用方按原有 Item 分派处理
      */
     public static boolean handleClick(@NotNull Context context, @NotNull ClickType clickType, int hotbarButton, int windowSlot) {
-        int lowerSlot = context.lowerSlotAt(windowSlot);
-        LinkedSlot link = lowerSlot >= 0 ? null : context.linkAt(windowSlot);
+        LinkedSlot link = context.linkAt(windowSlot);
 
-        if (link == null && lowerSlot < 0) {
+        if (link == null) {
             // Item 或空槽: 只有双击收集与槽位无关, 其余交回 Item 分派
+            // todo 何意味我怎么没看懂, 双击正常Item怎么还触发收集?
             if (clickType == ClickType.DOUBLE_CLICK && !context.cursor().isEmpty()) {
                 collectToCursor(context);
                 return true;
             }
             return false;
         }
-        if (link != null && context.frozenAt(windowSlot)) {
+
+        if (context.frozenAt(windowSlot)) {
             context.markDirty(windowSlot);
             return true;
         }
 
         switch (clickType) {
-            case LEFT -> pickupOrPlace(context, link, lowerSlot, windowSlot, ClickType.LEFT);
-            case RIGHT -> pickupOrPlace(context, link, lowerSlot, windowSlot, ClickType.RIGHT);
-            case SHIFT_LEFT, SHIFT_RIGHT -> {
-                if (link != null) {
-                    shiftFromLink(context, link, windowSlot, clickType);
-                } else {
-                    shiftFromLower(context, lowerSlot, windowSlot, clickType);
-                }
-            }
-            case NUMBER_KEY -> swapWithPlayerSlot(context, link, lowerSlot, windowSlot, hotbarButton, false);
-            case SWAP_OFFHAND -> swapWithPlayerSlot(context, link, lowerSlot, windowSlot, -1, true);
-            case DROP, CONTROL_DROP -> dropFromSlot(context, link, lowerSlot, windowSlot, clickType == ClickType.CONTROL_DROP);
+            case LEFT -> pickupOrPlace(context, link, windowSlot, ClickType.LEFT);
+            case RIGHT -> pickupOrPlace(context, link, windowSlot, ClickType.RIGHT);
+            case SHIFT_LEFT, SHIFT_RIGHT -> shiftFromLink(context, link, windowSlot, clickType);
+            case NUMBER_KEY -> swapWithHotbar(context, link, windowSlot, hotbarButton);
+            case SWAP_OFFHAND -> swapWithOffhand(context, link, windowSlot);
+            case DROP, CONTROL_DROP -> dropFromSlot(context, link, windowSlot, clickType == ClickType.CONTROL_DROP);
             case DOUBLE_CLICK -> {
                 // 原版语义: 光标非空且被点槽为空时才收集
-                if (!context.cursor().isEmpty() && readSlot(context, link, lowerSlot) == null) {
+                if (!context.cursor().isEmpty() && link.inventory().itemAt(link.slot()) == null) {
                     collectToCursor(context);
                 } else {
                     context.markDirty(windowSlot);
                 }
             }
-            case MIDDLE -> creativeClone(context, link, lowerSlot, windowSlot);
+            case MIDDLE -> creativeClone(context, link, windowSlot);
             default -> context.markDirty(windowSlot);
         }
         return true;
@@ -199,8 +178,8 @@ public final class ClickSemantics {
     }
 
     /**
-     * 处理一次已完成的拖拽分配: 全部参与库存槽进入同一个事务, 玩家背包槽在
-     * 提交成功后应用, 余量回到光标. 显示同一物理槽的多个窗口槽只参与一次.
+     * 处理一次已完成的拖拽分配: 全部参与库存槽进入同一个事务, 余量回到光标.
+     * 显示同一物理槽的多个窗口槽只参与一次.
      */
     public static void handleDrag(@NotNull Context context, @NotNull ClickType clickType, @NotNull List<Integer> windowSlots) {
         ItemStack cursor = context.cursor();
@@ -210,41 +189,31 @@ public final class ClickSemantics {
             return;
         }
 
-        // 阶段一: 跨 InventoryLink 与 PlayerRoute 按最终物理槽去重;同一槽同时存在两种表示时
-        // 优先保留 InventoryLink,使写入继续经过事务与 ReferencingInventory 镜像
-        LinkedHashMap<SparrowInventory.SlotKey, DragCandidate> candidates = new LinkedHashMap<>();
+        // 阶段一: 跨 InventoryLink 按最终物理槽去重
+        LinkedHashMap<SparrowInventory.SlotKey, LinkedSlot> candidates = new LinkedHashMap<>();
         for (int i = 0; i < windowSlots.size(); i++) {
             int windowSlot = windowSlots.get(i);
-            int lowerSlot = context.lowerSlotAt(windowSlot);
-            LinkedSlot link = lowerSlot >= 0 ? null : context.linkAt(windowSlot);
-            if (link == null && lowerSlot < 0) {
+            LinkedSlot link = context.linkAt(windowSlot);
+            if (link == null) {
                 continue;
             }
-            if (link != null && context.frozenAt(windowSlot)) {
+            if (context.frozenAt(windowSlot)) {
                 continue;
             }
 
-            SparrowInventory.SlotKey physicalKey = physicalKey(context, link, lowerSlot);
-            DragCandidate previous = candidates.get(physicalKey);
-            if (previous == null || previous.link() == null && link != null) {
-                candidates.put(physicalKey, new DragCandidate(link, lowerSlot));
-            }
+            candidates.putIfAbsent(physicalKey(link), link);
         }
 
         // 阶段二: 按库存分组取得写规划快照 —— 读取全部发生在对账后的快照上
         Map<Inventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
         List<DragTarget> targets = new ArrayList<>(candidates.size());
-        for (DragCandidate candidate : candidates.values()) {
-            LinkedSlot link = candidate.link();
-            int lowerSlot = candidate.lowerSlot();
-            @Nullable ItemStack current;
-            if (link != null) {
-                SparrowInventory inventory = (SparrowInventory) link.inventory();
-                SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
-                current = plan.snapshot()[link.slot()];
-            } else {
-                current = context.lowerAt(lowerSlot);
+        for (LinkedSlot link : candidates.values()) {
+            SparrowInventory inventory = (SparrowInventory) link.inventory();
+            SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
+            if (!plan.writable(link.slot())) {
+                continue;
             }
+            @Nullable ItemStack current = plan.snapshot()[link.slot()];
             if (current != null && !ItemUtils.isSimilar(current, cursor)) {
                 continue;
             }
@@ -252,7 +221,7 @@ public final class ClickSemantics {
             if (capacity <= 0) {
                 continue;
             }
-            targets.add(new DragTarget(link, lowerSlot, current, capacity));
+            targets.add(new DragTarget(link, current, capacity));
         }
         if (targets.isEmpty()) {
             markAllDirty(context, windowSlots);
@@ -270,9 +239,8 @@ public final class ClickSemantics {
             return;
         }
 
-        // 阶段三: 逐槽计算实放量, 库存槽 delta 归入各自规划, 背包写入先累积后应用
+        // 阶段三: 逐槽计算实放量, delta 归入各自规划
         Map<Inventory, List<SlotDelta>> deltasByInventory = new LinkedHashMap<>();
-        List<Runnable> lowerWrites = new ArrayList<>();
         int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
         int placedTotal = 0;
         for (int i = 0; i < targets.size() && budget > 0; i++) {
@@ -282,37 +250,26 @@ public final class ClickSemantics {
                 continue;
             }
             ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
-            if (target.link() != null) {
-                deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
-                        .add(new SlotDelta(target.link().slot(), target.current(), after));
-            } else {
-                int lowerSlot = target.lowerSlot();
-                lowerWrites.add(() -> context.lowerAt(lowerSlot, after));
-            }
+            deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
+                    .add(new SlotDelta(target.link().slot(), target.current(), after));
             if (!creative) {
                 budget -= placed;
                 placedTotal += placed;
             }
         }
 
-        // 库存侧作为一个事务提交; 取消或冲突时整个拖拽零变更
-        if (!deltasByInventory.isEmpty()) {
-            List<InventoryTransactions.Scope> scopes = new ArrayList<>();
-            for (Map.Entry<Inventory, List<SlotDelta>> entry : deltasByInventory.entrySet()) {
-                scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
-            }
-            TransactionResult result = InventoryTransactions.commit(
-                    new UpdateReason.PlayerDrag(context.viewer(), clickType),
-                    scopes,
-                    false
-            );
-            if (!(result instanceof TransactionResult.Committed)) {
-                markAllDirty(context, windowSlots);
-                return;
-            }
+        List<InventoryTransactions.Scope> scopes = new ArrayList<>();
+        for (Map.Entry<Inventory, List<SlotDelta>> entry : deltasByInventory.entrySet()) {
+            scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
         }
-        for (int i = 0; i < lowerWrites.size(); i++) {
-            lowerWrites.get(i).run();
+        TransactionResult result = InventoryTransactions.commit(
+                new UpdateReason.PlayerDrag(context.viewer(), clickType),
+                scopes,
+                false
+        );
+        if (!(result instanceof TransactionResult.Committed)) {
+            markAllDirty(context, windowSlots);
+            return;
         }
         if (creative) {
             context.cursor(ItemStack.empty());
@@ -325,28 +282,13 @@ public final class ClickSemantics {
 
     // ---- 单槽: 拾起, 放入, 合并与交换 ----
 
-    // 左右键的取放语义: 库存槽经规划快照读取并提交事务, 背包槽直接执行
-    private static void pickupOrPlace(Context context, @Nullable LinkedSlot link, int lowerSlot, int windowSlot, ClickType clickType) {
+    // 左右键的取放语义: 库存槽经规划快照读取并提交事务
+    private static void pickupOrPlace(Context context, LinkedSlot link, int windowSlot, ClickType clickType) {
         ItemStack cursor = context.cursor();
-        if (link != null) {
-            applyLinkSemantics(context, reasonOf(context, clickType), link, windowSlot, (current, slotLimit) ->
-                    clickType == ClickType.LEFT
-                            ? computeLeftClick(current, cursor, slotLimit)
-                            : computeRightClick(current, cursor, slotLimit));
-            return;
-        }
-
-        @Nullable ItemStack current = context.lowerAt(lowerSlot);
-        SlotOutcome outcome = clickType == ClickType.LEFT
-                ? computeLeftClick(current, cursor, Integer.MAX_VALUE)
-                : computeRightClick(current, cursor, Integer.MAX_VALUE);
-        if (outcome == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        context.lowerAt(lowerSlot, outcome.slotAfter());
-        context.cursor(outcome.cursorAfter());
-        context.markDirty(windowSlot);
+        applyLinkSemantics(context, reasonOf(context, clickType), link, windowSlot, (current, slotLimit) ->
+                clickType == ClickType.LEFT
+                        ? computeLeftClick(current, cursor, slotLimit)
+                        : computeRightClick(current, cursor, slotLimit));
     }
 
     // 左键: 拾起整堆 / 放入尽可能多 / 相似合并 / 不相似整堆交换(受槽上限门约束)
@@ -408,104 +350,127 @@ public final class ClickSemantics {
         return new SlotOutcome(cursor.clone(), current);
     }
 
-    // 数字键与副手交换: 点击槽与玩家背包槽(或副手)整堆互换; 原版 SWAP 不检查光标.
-    // 超出槽位上限的原版拆分细节以整堆交换近似, 权威写不受上限约束
-    private static void swapWithPlayerSlot(Context context, @Nullable LinkedSlot link, int lowerSlot, int windowSlot, int hotbarButton, boolean offhand) {
-        // 隐藏真实背包的布局下禁用: 不能与玩家看不见的槽位交换
-        if (!context.hasPlayerInventory()) {
+    // 数字键交换: 点击槽与当前 lower 的实际热键槽在同一个库存事务内整堆互换.
+    private static void swapWithHotbar(Context context, LinkedSlot source, int windowSlot, int hotbarButton) {
+        LinkedSlot target = context.hotbarLink(hotbarButton);
+        if (target == null) {
             context.markDirty(windowSlot);
             return;
         }
-        if (lowerSlot >= 0 && !offhand && lowerSlot == hotbarButton) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        @Nullable ItemStack other = offhand ? context.offhand() : context.lowerAt(hotbarButton);
-
-        if (link != null) {
-            UpdateReason reason = reasonOf(context, offhand ? ClickType.SWAP_OFFHAND : ClickType.NUMBER_KEY);
-            SparrowInventory inventory = (SparrowInventory) link.inventory();
-            SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-            @Nullable ItemStack current = plan.snapshot()[link.slot()];
-            if (current == null && other == null) {
-                context.markDirty(windowSlot);
-                return;
-            }
-            TransactionResult result = InventoryTransactions.commit(
-                    reason,
-                    plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, other))),
-                    false
-            );
-            if (result instanceof TransactionResult.Committed) {
-                writePlayerSide(context, hotbarButton, offhand, current);
-            }
+        if (physicalKey(source).equals(physicalKey(target))) {
             context.markDirty(windowSlot);
             return;
         }
 
-        @Nullable ItemStack current = context.lowerAt(lowerSlot);
-        if (current == null && other == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        context.lowerAt(lowerSlot, other);
-        writePlayerSide(context, hotbarButton, offhand, current);
+        swapLinks(reasonOf(context, ClickType.NUMBER_KEY), source, target);
         context.markDirty(windowSlot);
     }
 
-    private static void writePlayerSide(Context context, int hotbarButton, boolean offhand, @Nullable ItemStack item) {
-        if (offhand) {
-            context.offhand(item);
-        } else {
-            context.lowerAt(hotbarButton, item);
+    // 原版 SWAP 不检查光标; 副手不是 storage contents, 在库存事务提交后于同一 owner 线程应用.
+    private static void swapWithOffhand(Context context, LinkedSlot source, int windowSlot) {
+        SparrowInventory inventory = (SparrowInventory) source.inventory();
+        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
+        if (!plan.writable(source.slot())) {
+            context.markDirty(windowSlot);
+            return;
         }
+        @Nullable ItemStack current = plan.snapshot()[source.slot()];
+        @Nullable ItemStack offhand = context.offhand();
+        if (current == null && offhand == null) {
+            context.markDirty(windowSlot);
+            return;
+        }
+        TransactionResult result = InventoryTransactions.commit(
+                reasonOf(context, ClickType.SWAP_OFFHAND),
+                plan.scoper().apply(List.of(new SlotDelta(source.slot(), current, offhand))),
+                false
+        );
+        if (result instanceof TransactionResult.Committed) {
+            context.offhand(current);
+        }
+        context.markDirty(windowSlot);
     }
 
-    // 丢弃: 原版 THROW 要求光标为空; 先扣槽后丢出
-    private static void dropFromSlot(Context context, @Nullable LinkedSlot link, int lowerSlot, int windowSlot, boolean fullStack) {
+    private static void swapLinks(UpdateReason reason, LinkedSlot source, LinkedSlot target) {
+        SparrowInventory sourceInventory = (SparrowInventory) source.inventory();
+        SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
+        if (!sourcePlan.writable(source.slot())) {
+            return;
+        }
+        @Nullable ItemStack sourceItem = sourcePlan.snapshot()[source.slot()];
+
+        if (source.inventory() == target.inventory()) {
+            if (!sourcePlan.writable(target.slot())) {
+                return;
+            }
+            @Nullable ItemStack targetItem = sourcePlan.snapshot()[target.slot()];
+            if (sourceItem == null && targetItem == null) {
+                return;
+            }
+            InventoryTransactions.commit(
+                    reason,
+                    sourcePlan.scoper().apply(List.of(
+                            new SlotDelta(source.slot(), sourceItem, targetItem),
+                            new SlotDelta(target.slot(), targetItem, sourceItem)
+                    )),
+                    false
+            );
+            return;
+        }
+
+        SparrowInventory targetInventory = (SparrowInventory) target.inventory();
+        SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
+        if (!targetPlan.writable(target.slot())) {
+            return;
+        }
+        @Nullable ItemStack targetItem = targetPlan.snapshot()[target.slot()];
+        if (sourceItem == null && targetItem == null) {
+            return;
+        }
+        List<InventoryTransactions.Scope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
+                new SlotDelta(source.slot(), sourceItem, targetItem)
+        )));
+        scopes.addAll(targetPlan.scoper().apply(List.of(
+                new SlotDelta(target.slot(), targetItem, sourceItem)
+        )));
+        InventoryTransactions.commit(reason, scopes, false);
+    }
+
+    // 丢弃: 原版 THROW 要求光标为空; 先经事务扣槽再丢出
+    private static void dropFromSlot(Context context, LinkedSlot link, int windowSlot, boolean fullStack) {
         if (!context.cursor().isEmpty()) {
             context.markDirty(windowSlot);
             return;
         }
 
-        if (link != null) {
-            UpdateReason reason = reasonOf(context, fullStack ? ClickType.CONTROL_DROP : ClickType.DROP);
-            SparrowInventory inventory = (SparrowInventory) link.inventory();
-            SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-            @Nullable ItemStack current = plan.snapshot()[link.slot()];
-            if (current == null) {
-                context.markDirty(windowSlot);
-                return;
-            }
-            int take = fullStack ? current.getAmount() : 1;
-            int left = current.getAmount() - take;
-            TransactionResult result = InventoryTransactions.commit(
-                    reason,
-                    plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
-                    false
-            );
-            if (result instanceof TransactionResult.Committed) {
-                context.drop(ItemUtils.copyWithAmount(current, take));
-            }
+        UpdateReason reason = reasonOf(context, fullStack ? ClickType.CONTROL_DROP : ClickType.DROP);
+        SparrowInventory inventory = (SparrowInventory) link.inventory();
+        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
+        if (!plan.writable(link.slot())) {
             context.markDirty(windowSlot);
             return;
         }
-
-        @Nullable ItemStack current = context.lowerAt(lowerSlot);
+        @Nullable ItemStack current = plan.snapshot()[link.slot()];
         if (current == null) {
             context.markDirty(windowSlot);
             return;
         }
         int take = fullStack ? current.getAmount() : 1;
         int left = current.getAmount() - take;
-        context.lowerAt(lowerSlot, left > 0 ? ItemUtils.copyWithAmount(current, left) : null);
-        context.drop(ItemUtils.copyWithAmount(current, take));
+        TransactionResult result = InventoryTransactions.commit(
+                reason,
+                plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
+                false
+        );
+        if (result instanceof TransactionResult.Committed) {
+            context.drop(ItemUtils.copyWithAmount(current, take));
+        }
         context.markDirty(windowSlot);
     }
 
     // 创造模式中键: 复制整堆到空光标, 槽位不变; 纯读路径, 允许读到镜像的轻微滞后
-    private static void creativeClone(Context context, @Nullable LinkedSlot link, int lowerSlot, int windowSlot) {
-        @Nullable ItemStack current = readSlot(context, link, lowerSlot);
+    private static void creativeClone(Context context, LinkedSlot link, int windowSlot) {
+        @Nullable ItemStack current = link.inventory().itemAt(link.slot());
         if (context.viewer().getGameMode() != GameMode.CREATIVE || !context.cursor().isEmpty() || current == null) {
             context.markDirty(windowSlot);
             return;
@@ -516,7 +481,7 @@ public final class ClickSemantics {
 
     // ---- 快速转移 ----
 
-    // 库存槽 -> 其他连接库存(按 ADD 优先级降序, 有进展即停) -> 玩家背包
+    // 按 ADD 优先级在全部连接库存间转移; source inventory 会从目标域排除
     private static void shiftFromLink(Context context, LinkedSlot link, int windowSlot, ClickType clickType) {
         // 快速空判可基于滞后镜像, 真正的读取在各目标的事务窗口内完成
         if (link.inventory().itemAt(link.slot()) == null) {
@@ -524,7 +489,7 @@ public final class ClickSemantics {
             return;
         }
         UpdateReason reason = reasonOf(context, clickType);
-        SparrowInventory.SlotKey sourceKey = physicalKey(context, link, -1);
+        SparrowInventory.SlotKey sourceKey = physicalKey(link);
 
         for (Inventory target : addTargets(context, link.inventory())) {
             MoveOutcome outcome = moveIntoInventory(reason, link, target, sourceKey);
@@ -532,55 +497,6 @@ public final class ClickSemantics {
                 // 有进展即停; 事务被取消或冲突同样终止本次转移
                 context.markDirty(windowSlot);
                 return;
-            }
-        }
-
-        if (context.hasPlayerInventory()) {
-            moveIntoLower(context, link, reason, sourceKey);
-        }
-        context.markDirty(windowSlot);
-    }
-
-    // 库存槽 -> 玩家背包: 库存扣减经事务, 背包写在提交成功后应用
-    private static void moveIntoLower(Context context, LinkedSlot link, UpdateReason reason, SparrowInventory.SlotKey sourceKey) {
-        SparrowInventory inventory = (SparrowInventory) link.inventory();
-        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
-        if (current == null) {
-            return;
-        }
-        LowerPlacement placement = planLowerPlacement(context, current, sourceKey);
-        if (placement.moved() == 0) {
-            return;
-        }
-        int left = current.getAmount() - placement.moved();
-        TransactionResult result = InventoryTransactions.commit(
-                reason,
-                plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
-                false
-        );
-        if (result instanceof TransactionResult.Committed) {
-            placement.apply();
-        }
-    }
-
-    // 玩家背包槽 -> 连接库存(按 ADD 优先级降序, 有进展即停; 事务被否决即终止)
-    private static void shiftFromLower(Context context, int lowerSlot, int windowSlot, ClickType clickType) {
-        @Nullable ItemStack current = context.lowerAt(lowerSlot);
-        if (current == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        UpdateReason reason = reasonOf(context, clickType);
-        SparrowInventory.SlotKey sourceKey = physicalKey(context, null, lowerSlot);
-
-        for (Inventory target : addTargets(context, null)) {
-            MoveOutcome outcome = moveLowerIntoInventory(context, reason, lowerSlot, current, target, sourceKey);
-            if (outcome == MoveOutcome.REJECTED) {
-                break;
-            }
-            if (outcome == MoveOutcome.MOVED) {
-                break;
             }
         }
         context.markDirty(windowSlot);
@@ -599,6 +515,9 @@ public final class ClickSemantics {
 
         SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
         SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
+        if (!sourcePlan.writable(source.slot())) {
+            return MoveOutcome.REJECTED;
+        }
         @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
         if (current == null) {
             return MoveOutcome.FULL;
@@ -607,7 +526,9 @@ public final class ClickSemantics {
                 targetPlan.snapshot(),
                 current,
                 targetInventory.iterationOrder(OperationCategory.ADD),
-                slot -> targetInventory.physicalKey(slot).equals(sourceKey) ? 0 : targetInventory.slotMaxStackSize(slot)
+                slot -> !targetPlan.writable(slot) || targetInventory.physicalKey(slot).equals(sourceKey)
+                        ? 0
+                        : targetInventory.slotMaxStackSize(slot)
         );
         int moved = current.getAmount() - addPlan.remaining();
         if (moved <= 0) {
@@ -622,46 +543,17 @@ public final class ClickSemantics {
         ));
         List<InventoryTransactions.Scope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
         scopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
-        return InventoryTransactions.commit(reason, scopes, false) instanceof TransactionResult.Committed
-                ? MoveOutcome.MOVED
-                : MoveOutcome.REJECTED;
-    }
-
-    // 玩家背包槽 -> 连接库存:目标规划排除源槽的任何视图别名,提交成功后才扣减玩家侧源槽
-    private static MoveOutcome moveLowerIntoInventory(
-            Context context,
-            UpdateReason reason,
-            int lowerSlot,
-            ItemStack current,
-            Inventory target,
-            SparrowInventory.SlotKey sourceKey
-    ) {
-        SparrowInventory targetInventory = (SparrowInventory) target;
-        SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-        InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
-                targetPlan.snapshot(),
-                current,
-                targetInventory.iterationOrder(OperationCategory.ADD),
-                slot -> targetInventory.physicalKey(slot).equals(sourceKey) ? 0 : targetInventory.slotMaxStackSize(slot)
-        );
-        int moved = current.getAmount() - addPlan.remaining();
-        if (moved <= 0) {
-            return MoveOutcome.FULL;
+        TransactionResult result = InventoryTransactions.commit(reason, scopes, false);
+        if (result instanceof TransactionResult.Committed) {
+            return MoveOutcome.MOVED;
         }
-
-        TransactionResult result = InventoryTransactions.commit(reason, targetPlan.scoper().apply(addPlan.deltas()), false);
-        if (!(result instanceof TransactionResult.Committed)) {
-            return MoveOutcome.REJECTED;
-        }
-        int left = current.getAmount() - moved;
-        context.lowerAt(lowerSlot, left > 0 ? ItemUtils.copyWithAmount(current, left) : null);
-        return MoveOutcome.MOVED;
+        return result == TransactionResult.Unavailable.INSTANCE ? MoveOutcome.FULL : MoveOutcome.REJECTED;
     }
 
     // ---- 双击收集 ----
 
-    // 收集域 = 全部参与库存按 COLLECT 优先级逐库规划、一次提交 + 玩家背包扫尾.
-    // 上下域按最终物理槽去重;事务被否决时玩家背包与光标保持零变更.
+    // 收集域 = 全部参与库存按 COLLECT 优先级逐库规划并一次提交.
+    // 跨域按最终物理槽去重;事务被否决时光标保持零变更.
     private static void collectToCursor(Context context) {
         ItemStack cursor = context.cursor();
         int space = cursor.getMaxStackSize() - cursor.getAmount();
@@ -686,7 +578,7 @@ public final class ClickSemantics {
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    slot -> coveredSlots.add(inventory.physicalKey(slot)),
+                    slot -> plan.writable(slot) && coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
             scopes.addAll(plan.scoper().apply(takePlan.deltas()));
@@ -694,25 +586,6 @@ public final class ClickSemantics {
         }
         if (!scopes.isEmpty() && !(InventoryTransactions.commit(reason, scopes, false) instanceof TransactionResult.Committed)) {
             return;
-        }
-
-        // 玩家背包扫尾: 与背包放置同序(主背包在前), 玩家侧直接写
-        if (context.hasPlayerInventory()) {
-            int[] order = lowerPlacementOrder();
-            for (int i = 0; i < order.length && collected < space; i++) {
-                int inventorySlot = order[i];
-                if (!coveredSlots.add(physicalKey(context, null, inventorySlot))) {
-                    continue;
-                }
-                @Nullable ItemStack stack = context.lowerAt(inventorySlot);
-                if (stack == null || !ItemUtils.isSimilar(stack, cursor)) {
-                    continue;
-                }
-                int take = Math.min(stack.getAmount(), space - collected);
-                int left = stack.getAmount() - take;
-                context.lowerAt(inventorySlot, left > 0 ? ItemUtils.copyWithAmount(stack, left) : null);
-                collected += take;
-            }
         }
 
         if (collected > 0) {
@@ -726,15 +599,14 @@ public final class ClickSemantics {
         return new UpdateReason.PlayerClick(context.viewer(), clickType);
     }
 
-    @Nullable
-    private static ItemStack readSlot(Context context, @Nullable LinkedSlot link, int lowerSlot) {
-        return link != null ? link.inventory().itemAt(link.slot()) : context.lowerAt(lowerSlot);
-    }
-
     // 库存槽的单槽写模板: 规划快照上读取, 计算, 经同一规划提交; 光标在提交成功后应用
     private static void applyLinkSemantics(Context context, UpdateReason reason, LinkedSlot link, int windowSlot, SlotComputation computation) {
         SparrowInventory inventory = (SparrowInventory) link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
+        if (!plan.writable(link.slot())) {
+            context.markDirty(windowSlot);
+            return;
+        }
         @Nullable ItemStack current = plan.snapshot()[link.slot()];
 
         SlotOutcome outcome = computation.compute(current, inventory.slotMaxStackSize(link.slot()));
@@ -753,15 +625,12 @@ public final class ClickSemantics {
         context.markDirty(windowSlot);
     }
 
-    // 槽位有效上限 = min(槽自身上限, 物品自身上限); 玩家背包槽的槽上限视为无限
+    // 槽位有效上限 = min(槽自身上限, 物品自身上限)
     private static int effectiveLimit(int slotLimit, ItemStack item) {
         return Math.min(slotLimit, item.getMaxStackSize());
     }
 
-    private static int effectiveCapacity(@Nullable LinkedSlot link, ItemStack item) {
-        if (link == null) {
-            return item.getMaxStackSize();
-        }
+    private static int effectiveCapacity(LinkedSlot link, ItemStack item) {
         return Math.min(link.inventory().slotMaxStackSize(link.slot()), item.getMaxStackSize());
     }
 
@@ -784,67 +653,8 @@ public final class ClickSemantics {
         return targets;
     }
 
-    // 规划玩家背包的放置: 先合并主背包与热键栏的相似堆, 再占用空槽(主背包 9-35 优先)
-    private static LowerPlacement planLowerPlacement(Context context, ItemStack item, SparrowInventory.SlotKey excludedKey) {
-        List<Runnable> writes = new ArrayList<>();
-        int remaining = item.getAmount();
-
-        int[] order = lowerPlacementOrder();
-        // 第一遍: 合并相似且未满的堆
-        for (int i = 0; i < order.length && remaining > 0; i++) {
-            int inventorySlot = order[i];
-            if (physicalKey(context, null, inventorySlot).equals(excludedKey)) {
-                continue;
-            }
-            @Nullable ItemStack current = context.lowerAt(inventorySlot);
-            if (current == null || !ItemUtils.isSimilar(current, item)) {
-                continue;
-            }
-            int space = item.getMaxStackSize() - current.getAmount();
-            if (space <= 0) {
-                continue;
-            }
-            int moved = Math.min(space, remaining);
-            ItemStack after = ItemUtils.copyWithAmount(current, current.getAmount() + moved);
-            int slot = inventorySlot;
-            writes.add(() -> context.lowerAt(slot, after));
-            remaining -= moved;
-        }
-        // 第二遍: 占用空槽
-        for (int i = 0; i < order.length && remaining > 0; i++) {
-            int inventorySlot = order[i];
-            if (physicalKey(context, null, inventorySlot).equals(excludedKey)) {
-                continue;
-            }
-            if (context.lowerAt(inventorySlot) != null) {
-                continue;
-            }
-            int moved = Math.min(item.getMaxStackSize(), remaining);
-            ItemStack after = ItemUtils.copyWithAmount(item, moved);
-            int slot = inventorySlot;
-            writes.add(() -> context.lowerAt(slot, after));
-            remaining -= moved;
-        }
-        return new LowerPlacement(item.getAmount() - remaining, writes);
-    }
-
-    private static SparrowInventory.SlotKey physicalKey(Context context, @Nullable LinkedSlot link, int lowerSlot) {
-        if (link != null) {
-            return ((SparrowInventory) link.inventory()).physicalKey(link.slot());
-        }
-        return new SparrowInventory.ExternalSlot(context.viewer().getUniqueId(), lowerSlot);
-    }
-
-    // 玩家背包的放置顺序: 主背包 9-35 在前, 热键栏 0-8 在后
-    private static int[] lowerPlacementOrder() {
-        int[] order = new int[36];
-        for (int i = 0; i < 27; i++) {
-            order[i] = i + 9;
-        }
-        for (int i = 0; i < 9; i++) {
-            order[27 + i] = i;
-        }
-        return order;
+    private static SparrowInventory.SlotKey physicalKey(LinkedSlot link) {
+        return ((SparrowInventory) link.inventory()).physicalKey(link.slot());
     }
 
     private static void markAllDirty(Context context, List<Integer> windowSlots) {
@@ -865,19 +675,6 @@ public final class ClickSemantics {
         SlotOutcome compute(@Nullable ItemStack current, int slotLimit);
     }
 
-    private record DragTarget(@Nullable LinkedSlot link, int lowerSlot, @Nullable ItemStack current, int capacity) {
-    }
-
-    private record DragCandidate(@Nullable LinkedSlot link, int lowerSlot) {
-    }
-
-    // 玩家背包放置的延迟应用: 全部写在库存事务提交成功后执行
-    private record LowerPlacement(int moved, List<Runnable> writes) {
-
-        private void apply() {
-            for (int i = 0; i < this.writes.size(); i++) {
-                this.writes.get(i).run();
-            }
-        }
+    private record DragTarget(@NotNull LinkedSlot link, @Nullable ItemStack current, int capacity) {
     }
 }

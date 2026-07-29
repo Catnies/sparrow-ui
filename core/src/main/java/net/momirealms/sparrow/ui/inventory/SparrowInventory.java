@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
@@ -53,7 +54,7 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 多个镜像根或玩家路由共同指向的外部物理槽.
+     * 多个镜像根共同指向的外部物理槽.
      */
     record ExternalSlot(@NotNull Object owner, int slot) implements SlotKey {
     }
@@ -196,7 +197,15 @@ abstract class SparrowInventory implements Inventory {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(context.snapshot(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize);
+        if (!context.anyWritable()) {
+            return new AddResult(TransactionResult.Unavailable.INSTANCE, input.getAmount());
+        }
+        InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
+                context.snapshot(),
+                input,
+                this.iterationOrder(OperationCategory.ADD),
+                slot -> context.writable(slot) ? this.slotMaxStackSize(slot) : 0
+        );
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
@@ -212,7 +221,17 @@ abstract class SparrowInventory implements Inventory {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(context.snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize);
+        if (!context.anyWritable()) {
+            return new CollectResult(TransactionResult.Unavailable.INSTANCE, 0);
+        }
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
+                context.snapshot(),
+                sample,
+                upTo,
+                this.iterationOrder(OperationCategory.COLLECT),
+                context::writable,
+                this::slotMaxStackSize
+        );
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
@@ -227,7 +246,16 @@ abstract class SparrowInventory implements Inventory {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(context.snapshot(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
+        if (!context.anyWritable()) {
+            return new RemoveResult(TransactionResult.Unavailable.INSTANCE, 0);
+        }
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(
+                context.snapshot(),
+                matcher,
+                upTo,
+                this.iterationOrder(OperationCategory.OTHER),
+                context::writable
+        );
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
@@ -303,8 +331,25 @@ abstract class SparrowInventory implements Inventory {
      */
     record PlanContext(
             @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper
+            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper,
+            @NotNull IntPredicate writable
     ) {
+
+        boolean writable(int slot) {
+            return this.writable.test(slot);
+        }
+
+        boolean anyWritable() {
+            if (this.snapshot.length == 0) {
+                return true;
+            }
+            for (int slot = 0; slot < this.snapshot.length; slot++) {
+                if (this.writable(slot)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     /**
@@ -317,7 +362,7 @@ abstract class SparrowInventory implements Inventory {
 
     /**
      * 写路径的规划上下文: 在读取快照前对每个参与根触发一次 {@code beforePlan},
-     * 让镜像型根完成线程校验与外部真相同步.
+     * 让镜像型根完成运行线程校验与外部真相同步.
      */
     @NotNull
     PlanContext openPlanForWrite() {
@@ -329,6 +374,7 @@ abstract class SparrowInventory implements Inventory {
     private PlanContext capturePlan(boolean forWrite) {
         int size = this.size();
         Map<AbstractInventory, @Nullable ItemStack[]> plannedByRoot = new LinkedHashMap<>();
+        Map<AbstractInventory, Boolean> writableByRoot = new LinkedHashMap<>();
         Anchor[] anchors = new Anchor[size];
         @Nullable ItemStack[] logical = new ItemStack[size];
         for (int slot = 0; slot < size; slot++) {
@@ -336,14 +382,16 @@ abstract class SparrowInventory implements Inventory {
             anchors[slot] = anchor;
             @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
                 // 写前钩子先于快照读取: 镜像型根在此对账, 规划才基于最新真相
-                if (forWrite) {
-                    root.beforePlan();
-                }
+                writableByRoot.put(root, !forWrite || root.prepareWrite());
                 return root.currentState();
             });
             logical[slot] = planned[anchor.rootSlot()];
         }
-        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, anchors, logicalDeltas));
+        return new PlanContext(
+                logical,
+                logicalDeltas -> toScopes(plannedByRoot, anchors, logicalDeltas),
+                slot -> writableByRoot.get(anchors[slot].root())
+        );
     }
 
     // 把逻辑槽变更集按根库存分组并映射槽号, 产出跨根事务的参与范围
