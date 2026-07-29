@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.world.inventory;
 
-import net.nyana.reflection.NyanaReflection;
-import net.nyana.reflection.remapper.Remapper;
+import net.momirealms.sparrow.reflection.SReflection;
+import net.momirealms.sparrow.reflection.remapper.Remapper;
 import org.bukkit.inventory.InventoryView;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
@@ -60,7 +60,7 @@ public final class MenuSubclassFactory {
      */
     private static MethodHandle linkConstructor() {
         try {
-            Remapper remapper = NyanaReflection.getRemapper();
+            Remapper remapper = SReflection.getRemapper();
             Class<?> menuClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.inventory.AbstractContainerMenu");
             Class<?> menuTypeClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.inventory.MenuType");
             Class<?> itemStackClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.item.ItemStack");
@@ -68,7 +68,7 @@ public final class MenuSubclassFactory {
             MenuMethods methods = MenuSubclassFactory.resolveMethods(remapper, menuClass, itemStackClass, playerClass);
 
             byte[] bytecode = new MenuClassWriter(menuClass).write(menuTypeClass, methods);
-            MethodHandles.Lookup hiddenLookup = MethodHandles.privateLookupIn(menuClass, NyanaReflection.getLookup())
+            MethodHandles.Lookup hiddenLookup = MethodHandles.privateLookupIn(menuClass, SReflection.getLookup())
                     .defineHiddenClass(bytecode, true, MethodHandles.Lookup.ClassOption.NESTMATE);
             MethodHandle constructor = hiddenLookup.findConstructor(
                     hiddenLookup.lookupClass(),

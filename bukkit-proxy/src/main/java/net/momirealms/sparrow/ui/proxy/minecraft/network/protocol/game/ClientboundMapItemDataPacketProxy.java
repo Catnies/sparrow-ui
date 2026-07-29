@@ -3,10 +3,10 @@ package net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapIdProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapPatchProxy;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.ConstructorInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
-import net.nyana.reflection.proxy.annotation.Type;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
 import java.util.Collection;
 

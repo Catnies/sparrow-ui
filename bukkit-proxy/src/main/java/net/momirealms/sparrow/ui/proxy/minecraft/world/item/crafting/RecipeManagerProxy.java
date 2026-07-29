@@ -2,10 +2,10 @@ package net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.resources.ResourceKeyProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.RecipeDisplayIdProxy;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.MethodInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
-import net.nyana.reflection.proxy.annotation.Type;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
 import java.util.Map;
 import java.util.function.Consumer;

@@ -1,17 +1,17 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.MethodInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ServerboundSelectBundleItemPacket")
 public interface ServerboundSelectBundleItemPacketProxy extends PacketProxy {
     ServerboundSelectBundleItemPacketProxy INSTANCE = ASMProxyFactory.create(
             ServerboundSelectBundleItemPacketProxy.class
     );
-    Class<?> CLASS = NyanaClass.find("net.minecraft.network.protocol.game.ServerboundSelectBundleItemPacket");
+    Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundSelectBundleItemPacket");
 
     @MethodInvoker(name = "slotId")
     int slot(Object target);

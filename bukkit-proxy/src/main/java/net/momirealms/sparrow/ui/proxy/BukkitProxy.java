@@ -2,9 +2,9 @@ package net.momirealms.sparrow.ui.proxy;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import net.nyana.reflection.NyanaReflection;
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.remapper.Remapper;
+import net.momirealms.sparrow.reflection.SReflection;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.remapper.Remapper;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -37,21 +37,21 @@ public final class BukkitProxy {
             return;
         }
 
-        NyanaReflection.setAsmClassPrefix("sparrow_ui");
-        NyanaReflection.setActivePredicate(new MinecraftPredicate(version, patches));
+        SReflection.setAsmClassPrefix("sparrow_ui");
+        SReflection.setActivePredicate(new MinecraftPredicate(version, patches));
         Remapper remapper = BukkitProxy.createFromPaperJar();
         if (remapper != Remapper.noOp()) {
-            NyanaReflection.setRemapper(CraftBukkitRemapper.create(remapper));
+            SReflection.setRemapper(CraftBukkitRemapper.create(remapper));
         }
         BukkitProxy.initialized = true;
     }
 
     private static Remapper createFromPaperJar() {
         // NeoForge 的运行时已经使用 Mojang 命名
-        if (NyanaClass.existsNoRemap("net.neoforged.art.internal.RenamerImpl")) {
+        if (SparrowClass.existsNoRemap("net.neoforged.art.internal.RenamerImpl")) {
             return Remapper.noOp();
         }
-        Class<?> minecraftClass = NyanaClass.find(
+        Class<?> minecraftClass = SparrowClass.find(
                 "net.minecraft.obfuscate.DontObfuscate",
                 "net.minecraft.server.Main"
         );
@@ -80,9 +80,9 @@ public final class BukkitProxy {
             }
             InputStream buffered = input instanceof BufferedInputStream ? input : new BufferedInputStream(input);
             if (BukkitProxy.firstLine(buffered).contains("mojang+yarn")) {
-                return Remapper.loadMappingIo(buffered, "mojang+yarn", "spigot");
+                return Remapper.create(buffered, "mojang+yarn", "spigot");
             }
-            return Remapper.loadMappingIo(buffered, "mojang", "spigot");
+            return Remapper.create(buffered, "mojang", "spigot");
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to read META-INF/mappings/reobf.tiny", exception);
         }

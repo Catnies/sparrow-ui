@@ -1,10 +1,10 @@
 package net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.ConstructorInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
-import net.nyana.reflection.proxy.annotation.Type;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 import org.bukkit.inventory.Inventory;
 
 @ReflectionProxy(name = "org.bukkit.craftbukkit.inventory.CraftInventory")

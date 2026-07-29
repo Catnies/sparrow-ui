@@ -2,8 +2,8 @@ package net.momirealms.sparrow.ui.proxy;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.remapper.Remapper;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.remapper.Remapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,10 +27,10 @@ public final class CraftBukkitRemapper implements Remapper {
         boolean needRemap = true;
 
         // 新版无混淆服务端不再需要版本化 CraftBukkit 包名
-        if (NyanaClass.existsNoRemap("net.neoforged.art.internal.RenamerImpl")) {
+        if (SparrowClass.existsNoRemap("net.neoforged.art.internal.RenamerImpl")) {
             needRemap = false;
         } else {
-            Class<?> minecraftClass = NyanaClass.find("net.minecraft.obfuscate.DontObfuscate", "net.minecraft.server.Main");
+            Class<?> minecraftClass = SparrowClass.find("net.minecraft.obfuscate.DontObfuscate", "net.minecraft.server.Main");
             int major = 0;
             int minor = 0;
 

@@ -1,9 +1,9 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.network.protocol;
 
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
 @ReflectionProxy(name = "net.minecraft.network.protocol.Packet")
 public interface PacketProxy {
-    Class<?> CLASS = NyanaClass.find("net.minecraft.network.protocol.Packet");
+    Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.Packet");
 }

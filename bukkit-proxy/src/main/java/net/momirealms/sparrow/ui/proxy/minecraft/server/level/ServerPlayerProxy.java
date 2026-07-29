@@ -1,17 +1,17 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.server.level;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.PlayerProxy;
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.FieldGetter;
-import net.nyana.reflection.proxy.annotation.MethodInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 
 @ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer")
 public interface ServerPlayerProxy extends PlayerProxy {
     ServerPlayerProxy INSTANCE = ASMProxyFactory.create(ServerPlayerProxy.class);
-    Class<?> CLASS = NyanaClass.find("net.minecraft.server.level.ServerPlayer");
+    Class<?> CLASS = SparrowClass.find("net.minecraft.server.level.ServerPlayer");
 
     @FieldGetter(name = "chunkLoader", activeIf = "has_patch=paper")
     Object getChunkLoader(Object target);

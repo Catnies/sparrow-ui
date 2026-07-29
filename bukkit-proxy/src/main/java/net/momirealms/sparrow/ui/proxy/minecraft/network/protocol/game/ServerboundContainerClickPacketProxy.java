@@ -2,15 +2,15 @@ package net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
-import net.nyana.reflection.clazz.NyanaClass;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.MethodInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
 @ReflectionProxy(name = "net.minecraft.network.protocol.game.ServerboundContainerClickPacket")
 public interface ServerboundContainerClickPacketProxy extends PacketProxy {
     ServerboundContainerClickPacketProxy INSTANCE = ASMProxyFactory.create(ServerboundContainerClickPacketProxy.class);
-    Class<?> CLASS = NyanaClass.find("net.minecraft.network.protocol.game.ServerboundContainerClickPacket");
+    Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundContainerClickPacket");
 
     @MethodInvoker(name = "containerId")
     int containerId(Object target);

@@ -1,10 +1,10 @@
 package net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.player.PlayerProxy;
-import net.nyana.reflection.proxy.ASMProxyFactory;
-import net.nyana.reflection.proxy.annotation.MethodInvoker;
-import net.nyana.reflection.proxy.annotation.ReflectionProxy;
-import net.nyana.reflection.proxy.annotation.Type;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
+import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 
 @ReflectionProxy(name = "org.bukkit.craftbukkit.event.CraftEventFactory")

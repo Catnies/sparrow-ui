@@ -11,10 +11,7 @@ shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
-folia-api = { module = "dev.folia:folia-api", version.ref = "paper-api" }
-nyana-nbt = { module = "net.nyana:nyana-nbt-tag", version = "1.0.0" }
-nyana-nbt-codec = { module = "net.nyana:nyana-nbt-codec", version = "1.0.0" }
-nyana-reflection = { module = "net.nyana:nyana-reflection", version = "1.0.2" }
+sparrow-reflection = { module = "net.momirealms:sparrow-reflection", version = "0.34" }
 netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
 
 asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
