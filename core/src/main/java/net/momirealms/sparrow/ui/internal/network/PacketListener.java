@@ -42,7 +42,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -93,16 +92,21 @@ public final class PacketListener implements Listener, AutoCloseable {
      * @param player 连接所属玩家
      * @param containerId 要捕获的容器编号
      * @param inputSink 接收领域化入站消息的缓冲入口
-     * @param discardedOutgoingTypes 活动期间丢弃的原版出站包类型
+     * @param clientboundPacketFilter 当前 Window 要拦下的原版出站包规则; 不处理时为 null
      * @return 可提交、回滚或关闭的会话
      */
     @NotNull
-    public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink, @NotNull Set<Class<?>> discardedOutgoingTypes) {
+    public Session open(
+            @NotNull Player player,
+            int containerId,
+            @NotNull Consumer<? super MenuInput> inputSink,
+            @Nullable ClientboundPacketFilter clientboundPacketFilter
+    ) {
         this.requireOpen();
         ConnectionHandler handler = this.handlers.computeIfAbsent(player.getUniqueId(), ignored -> this.inject(player));
         while (true) {
             Session previous = handler.active.get();
-            Session session = new Session(handler, previous, containerId, inputSink, discardedOutgoingTypes);
+            Session session = new Session(handler, previous, containerId, inputSink, clientboundPacketFilter);
             if (handler.active.compareAndSet(previous, session)) {
                 return session;
             }
@@ -111,7 +115,40 @@ public final class PacketListener implements Listener, AutoCloseable {
 
     @NotNull
     public Session open(@NotNull Player player, int containerId, @NotNull Consumer<? super MenuInput> inputSink) {
-        return this.open(player, containerId, inputSink, Set.of());
+        return this.open(player, containerId, inputSink, null);
+    }
+
+    /**
+     * 找出旧会话离开后需要交还给原版的客户端内容.
+     *
+     * @param filter 旧会话声明的拦包规则; 没有规则时为 null
+     * @param successorFilter 新会话声明的拦包规则; 没有新会话时为 null
+     * @return 新会话没有接手的状态内容; 没有时为 null
+     */
+    @Nullable
+    static ClientboundStateProjection releasedClientboundStateProjection(
+            @Nullable ClientboundPacketFilter filter,
+            @Nullable ClientboundPacketFilter successorFilter
+    ) {
+        if (filter instanceof ClientboundStateProjection projection
+                && !PacketListener.ownsClientboundState(successorFilter, projection.stateKey())) {
+            return projection;
+        }
+        return null;
+    }
+
+    /**
+     * 判断新会话是否还在维护指定的客户端内容.
+     *
+     * @param filter 新会话声明的拦包规则; 没有规则时为 null
+     * @param stateKey 要确认的客户端内容标识
+     * @return 新会话仍负责这份内容时返回 true
+     */
+    private static boolean ownsClientboundState(
+            @Nullable ClientboundPacketFilter filter,
+            @NotNull Object stateKey
+    ) {
+        return filter instanceof ClientboundStateProjection projection && projection.stateKey().equals(stateKey);
     }
 
     /**
@@ -243,20 +280,20 @@ public final class PacketListener implements Listener, AutoCloseable {
         private final AtomicReference<Session> replaced;
         private final int containerId;
         private final Consumer<? super MenuInput> inputSink;
-        private final Set<Class<?>> discardedOutgoingTypes;
+        private final @Nullable ClientboundPacketFilter clientboundPacketFilter;
 
         private Session(
                 ConnectionHandler owner,
                 Session replaced,
                 int containerId,
                 Consumer<? super MenuInput> inputSink,
-                Set<Class<?>> discardedOutgoingTypes
+                @Nullable ClientboundPacketFilter clientboundPacketFilter
         ) {
             this.owner = owner;
             this.replaced = new AtomicReference<>(replaced);
             this.containerId = containerId;
             this.inputSink = inputSink;
-            this.discardedOutgoingTypes = discardedOutgoingTypes;
+            this.clientboundPacketFilter = clientboundPacketFilter;
         }
 
         /**
@@ -350,24 +387,28 @@ public final class PacketListener implements Listener, AutoCloseable {
         }
 
         /**
-         * 返回当前活动的替代会话是否仍屏蔽指定出站包类型.
+         * 找出本会话关闭后需要恢复原版数据的客户端内容.
          *
-         * @param packetType 要检查的包类型
-         * @return 替代会话仍接管此包时为 true
+         * <p>如果已经有新会话接手同一份内容, 它会继续维持客户端状态, 因而不会出现在结果中.</p>
+         *
+         * @return 没有被新会话接手的客户端内容; 没有时为 null
          */
-        public boolean replacementDiscardsOutgoing(@NotNull Class<?> packetType) {
-            Session current = this.owner.active.get();
-            return current != null && current != this && current.discardedOutgoingTypes.contains(packetType);
+        @Nullable
+        public ClientboundStateProjection releasedClientboundStateProjection() {
+            Session successor = this.owner.active.get();
+            ClientboundPacketFilter successorFilter = successor == null || successor == this
+                    ? null
+                    : successor.clientboundPacketFilter;
+            return PacketListener.releasedClientboundStateProjection(this.clientboundPacketFilter, successorFilter);
         }
 
         private @Nullable Object filterOutgoing(Object packet) {
-            if (this.discardedOutgoingTypes.isEmpty()) {
+            ClientboundPacketFilter filter = this.clientboundPacketFilter;
+            if (filter == null) {
                 return packet;
             }
-            for (Class<?> packetType : this.discardedOutgoingTypes) {
-                if (packetType.isInstance(packet)) {
-                    return null;
-                }
+            if (filter.suppresses(packet)) {
+                return null;
             }
             if (!ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
                 return packet;

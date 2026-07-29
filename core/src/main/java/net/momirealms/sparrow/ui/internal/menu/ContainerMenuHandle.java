@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
+import net.momirealms.sparrow.ui.internal.network.ClientboundStateProjection;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
@@ -34,7 +36,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 基于 Paper 容器协议实现的菜单处理器.
@@ -186,7 +187,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 this.player,
                 this.containerId,
                 input -> this.incoming.offer(this.generation, input),
-                this.discardedClientboundPackets()
+                this.clientboundPacketFilters()
         );
         this.session = openedSession;
         AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, ItemStackProxy.EMPTY);
@@ -212,13 +213,15 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 菜单活动期间需要屏蔽的原版出站包类型.
+     * 列出当前菜单要拦下的原版出站包规则.
      *
-     * @return 不可修改的包类型集合
+     * <p>子类自己发送对应内容时, 应在这里声明规则, 防止原版稍后发来的数据覆盖客户端.</p>
+     *
+     * @return 要拦下的规则; 不处理时为 null
      */
-    @NotNull
-    protected Set<Class<?>> discardedClientboundPackets() {
-        return Set.of();
+    @Nullable
+    protected ClientboundPacketFilter clientboundPacketFilters() {
+        return null;
     }
 
     /**
@@ -319,10 +322,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     /**
      * 按关闭原因和当前菜单的所有权, 接入 Paper 的容器关闭流程.
-     * <p>代理菜单已经不是可用的活动菜单时, 说明 Paper 或替换的新 Window 已经接管了关闭, 直接返回.
-     * 玩家主动关闭和断线不再发关闭包, 只发 Bukkit 事件并执行 doCloseContainer; 其他原因走
-     * 服务端主动关闭. 正常回到玩家背包菜单后, 要重发一次完整状态, 把 Window 留在下部库存里
-     * 的客户端投影清掉.
+     * <p>如果 Paper 或新 Window 已经关闭了原版容器, 这里不再重复关闭. 但旧菜单仍会检查自己
+     * 改写过的客户端内容是否已由新菜单接手; 没人接手时, 在关闭后发回原版数据. 断线时不发包.</p>
      *
      * @param reason 关闭原因
      */
@@ -333,51 +334,63 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         // 先标记关闭并停止入站捕获, 重复调用安全
         Lifecycle previous = this.lifecycle;
+        ClientboundStateProjection releasedProjection = null;
+        if (previous == Lifecycle.COMMITTED && reason != InventoryCloseEvent.Reason.DISCONNECT) {
+            PacketListener.Session currentSession = this.session;
+            if (currentSession != null) {
+                releasedProjection = currentSession.releasedClientboundStateProjection();
+            }
+        }
         this.lifecycle = Lifecycle.CLOSED;
         this.closeSession();
 
+        Throwable failure = null;
         // 打开还没提交成功, 只需把原菜单换回去、归还光标
         if (previous != Lifecycle.COMMITTED) {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
                 PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.replacedMenu);
             }
             this.restorePreparedCursor();
-            return;
         }
         // 活动菜单已经不是代理了, 关闭流程已被别人接管
-        if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) != this.proxy) {
-            return;
-        }
-
-        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
-        Throwable failure = null;
-        try {
-            // 玩家关闭/断线只发 Bukkit 事件, 其他原因走服务端主动关闭
-            if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
-                CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, reason);
-            } else {
-                ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, reason);
-            }
-        } catch (RuntimeException | Error throwable) {
-            failure = throwable;
-        }
-        // 事件处理器没把菜单换走时, 兜底执行一次 doCloseContainer
-        if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+        else if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+            Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
             try {
-                ServerPlayerProxy.INSTANCE.doCloseContainer(this.serverPlayer);
+                // 玩家关闭/断线只发 Bukkit 事件, 其他原因走服务端主动关闭
+                if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
+                    CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, reason);
+                } else {
+                    ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, reason);
+                }
             } catch (RuntimeException | Error throwable) {
-                failure = ThrowableUtils.combine(failure, throwable);
+                failure = throwable;
             }
-        }
-        // 回到玩家背包菜单后重发完整状态, 清掉 Window 留下的客户端投影
-        if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
-            try {
-                AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
-            } catch (RuntimeException | Error throwable) {
-                failure = ThrowableUtils.combine(failure, throwable);
+            // 事件处理器没把菜单换走时, 兜底执行一次 doCloseContainer
+            if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
+                try {
+                    ServerPlayerProxy.INSTANCE.doCloseContainer(this.serverPlayer);
+                } catch (RuntimeException | Error throwable) {
+                    failure = ThrowableUtils.combine(failure, throwable);
+                }
+            }
+            // 回到玩家背包菜单后重发完整状态, 清掉 Window 留下的客户端投影
+            if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
+                try {
+                    AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
+                } catch (RuntimeException | Error throwable) {
+                    failure = ThrowableUtils.combine(failure, throwable);
+                }
             }
         }
         ThrowableUtils.throwIfUnchecked(failure);
+        // 在旧容器关闭后, 把没有新菜单接手的客户端内容恢复为原版数据.
+        if (releasedProjection != null) {
+            ArrayList<Object> packets = new ArrayList<>();
+            releasedProjection.appendNativeRestore(this.player, packets);
+            if (!packets.isEmpty()) {
+                this.packets.send(this.player, packets);
+            }
+        }
     }
 
     /**
@@ -540,23 +553,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      */
     protected final int incrementStateId() {
         return AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy);
-    }
-
-    /**
-     * //todo 方法收束到切石机里去
-     * 判断菜单关闭时, 某个被捕获会话覆盖的出站包类型要不要由当前菜单负责补发恢复.
-     *
-     * @param packetType 被覆盖的包类型
-     * @return 当前菜单负责恢复时返回 true
-     */
-    final boolean shouldRestoreOutgoing(@NotNull Class<?> packetType) {
-        // 只有已提交的会话才需要恢复
-        if (this.lifecycle != Lifecycle.COMMITTED) {
-            return false;
-        }
-        // 接替的会话如果自己接管了这类出站包, 当前菜单就不用恢复
-        PacketListener.Session currentSession = this.session;
-        return currentSession == null || !currentSession.replacementDiscardsOutgoing(packetType);
     }
 
     /**

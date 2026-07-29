@@ -92,6 +92,6 @@ public interface Item {
     default ItemAttachment attach(@NotNull Observer<? super Item> observer) {
         // 默认实现不保存观察者, 但仍提前拒绝 null 以固定契约
         Objects.requireNonNull(observer, "observer");
-        return ItemAttachment.passive();
+        return ItemAttachment.PASSIVE;
     }
 }

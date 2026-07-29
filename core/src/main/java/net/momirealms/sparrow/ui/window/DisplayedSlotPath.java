@@ -327,7 +327,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
         // Item 部分, 与 Inventory 链接互斥
         private Item item; // 路径终点的 Item
-        private ItemAttachment itemAttachment = ItemAttachment.passive(); // 最终的 Item 的 ItemAttachment
+        private ItemAttachment itemAttachment = ItemAttachment.PASSIVE; // 最终的 Item 的 ItemAttachment
         // Inventory 链接部分, 与 Item 互斥
         private SlotElement.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
         private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
@@ -490,7 +490,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             // 先断开自身持有的状态引用, 再调用外部 close
             ItemAttachment previousItemAttachment = this.itemAttachment;
             Subscription previousInventorySubscription = this.inventorySubscription;
-            this.itemAttachment = ItemAttachment.passive();
+            this.itemAttachment = ItemAttachment.PASSIVE;
             this.inventorySubscription = null;
             this.item = null;
             this.inventoryLink = null;

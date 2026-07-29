@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.internal.menu;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
@@ -45,7 +46,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private static final int FIRST_INPUT_SLOT = 0;
     private static final int SECOND_INPUT_SLOT = 1;
     private static final int RESULT_SLOT = 2;
-    private static final Set<Class<?>> DISCARDED_OUTGOING = Set.of(ClientboundMerchantOffersPacketProxy.CLASS);
+    private static final ClientboundPacketFilter MERCHANT_OFFERS_FILTER = ClientboundMerchantOffersPacketProxy.CLASS::isInstance;
 
     private final BiConsumer<? super String, ? super Throwable> reporter;
     private final NamespacedKey markerKey;
@@ -162,8 +163,8 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
     @Override
     @NotNull
-    protected Set<Class<?>> discardedClientboundPackets() {
-        return DISCARDED_OUTGOING;
+    protected ClientboundPacketFilter clientboundPacketFilters() {
+        return MERCHANT_OFFERS_FILTER;
     }
 
     @Override

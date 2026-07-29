@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
  * <p>挂载同时携带主动失效订阅和被动周期刷新计划. Window 在替换显示路径或关闭时必须调用 {@link #close()}.
  */
 public interface ItemAttachment extends AutoCloseable {
-    /** 不携带订阅与刷新计划的共享挂载实例. */
+    /** 不携带订阅(不主动失效)与周期刷新需求的共享挂载实例. */
     ItemAttachment PASSIVE = new ItemAttachment() {
         /**
          * {@inheritDoc}
@@ -25,15 +25,6 @@ public interface ItemAttachment extends AutoCloseable {
         public void close() {
         }
     };
-
-    /**
-     * 获取不主动失效也不需要周期刷新的共享挂载.
-     *
-     * @return 共享的被动挂载实例
-     */
-    static ItemAttachment passive() {
-        return PASSIVE;
-    }
 
     /**
      * 创建携带主动失效订阅与周期刷新计划的挂载, 关闭时会同时关闭订阅.

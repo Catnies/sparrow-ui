@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
+import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
+import net.momirealms.sparrow.ui.internal.network.ClientboundStateProjection;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
@@ -14,10 +16,8 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.*;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.crafting.display.ItemStackSlotDisplayProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -30,11 +30,30 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     private static final int RESULT_SLOT = 1;
     private static final int SELECTED_DATA_SLOT = 0;
     private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier();
-    private static final Set<Class<?>> DISCARDED_OUTGOING = Set.of(ClientboundUpdateRecipesPacketProxy.CLASS);
     private static final Object RECIPE_MANAGER = MinecraftServerProxy.INSTANCE.getRecipeManager(MinecraftServerProxy.INSTANCE.getServer());
     private static final Object ALL_ITEMS = IngredientProxy.INSTANCE.of(
             RegistryProxy.INSTANCE.stream(BuiltInRegistriesProxy.ITEM).filter(item -> item != ItemsProxy.AIR)
     );
+    private static final ClientboundStateProjection RECIPE_CATALOG_PROJECTION = new ClientboundStateProjection() {
+        @Override
+        public boolean suppresses(@NotNull Object packet) {
+            return ClientboundUpdateRecipesPacketProxy.CLASS.isInstance(packet);
+        }
+
+        @NotNull
+        @Override
+        public Object stateKey() {
+            return ClientState.SYNCHRONIZED_RECIPES;
+        }
+
+        @Override
+        public void appendNativeRestore(@NotNull Player player, @NotNull List<Object> packets) {
+            packets.add(ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
+                    RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(RECIPE_MANAGER),
+                    RecipeManagerProxy.INSTANCE.getSynchronizedStonecutterRecipes(RECIPE_MANAGER)
+            ));
+        }
+    };
 
     private List<ItemStack> recipeButtons = List.of();
     private Object clientInput = PLACEHOLDER;
@@ -44,7 +63,6 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     private boolean dataDirty = true;
     private boolean recipeButtonsQueued;
     private boolean dataQueued;
-    private boolean recipeRestoreHandled;
 
     StonecutterMenuHandleImpl(PacketListener packets, Player player, long generation) {
         super(
@@ -99,30 +117,9 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     }
 
     @Override
-    public void close(@NotNull InventoryCloseEvent.Reason reason) {
-        boolean restoreRecipes = false;
-        if (!this.recipeRestoreHandled) {
-            this.recipeRestoreHandled = true;
-            restoreRecipes = reason != InventoryCloseEvent.Reason.DISCONNECT && this.shouldRestoreOutgoing(ClientboundUpdateRecipesPacketProxy.CLASS);
-        }
-
-        try {
-            super.close(reason);
-            if (restoreRecipes) {
-                this.sendClientboundPacket(ClientboundUpdateRecipesPacketProxy.INSTANCE.newInstance(
-                        RecipeManagerProxy.INSTANCE.getSynchronizedItemProperties(RECIPE_MANAGER),
-                        RecipeManagerProxy.INSTANCE.getSynchronizedStonecutterRecipes(RECIPE_MANAGER)
-                ));
-            }
-        } catch (RuntimeException | Error throwable) {
-            ThrowableUtils.throwIfUnchecked(throwable);
-        }
-    }
-
-    @Override
     @NotNull
-    protected Set<Class<?>> discardedClientboundPackets() {
-        return DISCARDED_OUTGOING;
+    protected ClientboundPacketFilter clientboundPacketFilters() {
+        return RECIPE_CATALOG_PROJECTION;
     }
 
     @Override
@@ -205,5 +202,9 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
             entries.add(SelectableRecipeSingleInputEntryProxy.INSTANCE.newInstance(ALL_ITEMS, selectable));
         }
         return SelectableRecipeSingleInputSetProxy.INSTANCE.newInstance(entries);
+    }
+
+    private enum ClientState {
+        SYNCHRONIZED_RECIPES
     }
 }
