@@ -54,7 +54,7 @@ public final class ObscuredInventory extends SparrowInventory {
 
     @Override
     @NotNull
-    Anchor resolveSlot(int slot) {
+    SlotKey.Anchor resolveSlot(int slot) {
         return this.underlying.resolveSlot(this.visibleSlots[slot]);
     }
 

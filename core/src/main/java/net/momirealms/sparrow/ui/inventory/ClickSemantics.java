@@ -190,7 +190,7 @@ public final class ClickSemantics {
         }
 
         // 阶段一: 跨 InventoryLink 按最终物理槽去重
-        LinkedHashMap<SparrowInventory.SlotKey, LinkedSlot> candidates = new LinkedHashMap<>();
+        LinkedHashMap<SlotKey, LinkedSlot> candidates = new LinkedHashMap<>();
         for (int i = 0; i < windowSlots.size(); i++) {
             int windowSlot = windowSlots.get(i);
             LinkedSlot link = context.linkAt(windowSlot);
@@ -489,7 +489,7 @@ public final class ClickSemantics {
             return;
         }
         UpdateReason reason = reasonOf(context, clickType);
-        SparrowInventory.SlotKey sourceKey = physicalKey(link);
+        SlotKey sourceKey = physicalKey(link);
 
         for (Inventory target : addTargets(context, link.inventory())) {
             MoveOutcome outcome = moveIntoInventory(reason, link, target, sourceKey);
@@ -509,7 +509,7 @@ public final class ClickSemantics {
     }
 
     // 源库存槽与目标库存合并为同一个事务: 跨根全成全败, 源槽读取在双方对账后的快照上
-    private static MoveOutcome moveIntoInventory(UpdateReason reason, LinkedSlot source, Inventory target, SparrowInventory.SlotKey sourceKey) {
+    private static MoveOutcome moveIntoInventory(UpdateReason reason, LinkedSlot source, Inventory target, SlotKey sourceKey) {
         SparrowInventory sourceInventory = (SparrowInventory) source.inventory();
         SparrowInventory targetInventory = (SparrowInventory) target;
 
@@ -562,7 +562,7 @@ public final class ClickSemantics {
         }
         UpdateReason reason = reasonOf(context, ClickType.DOUBLE_CLICK);
         int collected = 0;
-        HashSet<SparrowInventory.SlotKey> coveredSlots = new HashSet<>();
+        HashSet<SlotKey> coveredSlots = new HashSet<>();
         List<InventoryTransactions.Scope> scopes = new ArrayList<>();
 
         List<Inventory> domain = new ArrayList<>(context.linkedInventories());
@@ -653,7 +653,7 @@ public final class ClickSemantics {
         return targets;
     }
 
-    private static SparrowInventory.SlotKey physicalKey(LinkedSlot link) {
+    private static SlotKey physicalKey(LinkedSlot link) {
         return ((SparrowInventory) link.inventory()).physicalKey(link.slot());
     }
 

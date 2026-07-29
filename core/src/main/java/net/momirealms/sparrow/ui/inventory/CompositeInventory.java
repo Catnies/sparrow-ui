@@ -71,7 +71,7 @@ public final class CompositeInventory extends SparrowInventory {
 
     @Override
     @NotNull
-    Anchor resolveSlot(int slot) {
+    SlotKey.Anchor resolveSlot(int slot) {
         int index = this.memberIndexOf(slot);
         return this.members[index].resolveSlot(slot - this.memberOffsets[index]);
     }

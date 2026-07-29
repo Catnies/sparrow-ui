@@ -26,59 +26,60 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
- * 全部内建库存的共同骨架: 把任意逻辑槽解析到自持数据的根库存槽.
- * <p>视图家族(拼接, 遮蔽)不自持槽数据, 它们的读写经 {@link #resolveSlot(int)} 归约
- * 到底层 {@link AbstractInventory}; 批量操作在逻辑快照上规划后按根库存拆分事务范围,
- * 由 {@link InventoryTransactions} 以多锁全序保证跨根全成全败.
- * <p>视图不是独立事件源: 订阅即对全部根库存的转发订阅. 跨根事务的事件会按参与根
- * 数量投递多次(同一事件对象), 需要精确一次的观察者以事件对象 identity 判重.
+ * 所有内建Inventory的共同基类: 把"第几个槽"换算到真正存数据的根Inventory槽位.
+ * <p>Inventory分两种角色: 自己持有数据的根Inventory({@link AbstractInventory} 家族), 和不持有数据,
+ * 只把读写转发给根Inventory的视图(拼接, 遮蔽等). 视图的每个逻辑槽最终都落在某个根Inventory的某个槽上,
+ * 这个换算由 {@link #resolveSlot(int)} 完成; 批量操作先在逻辑槽的快照上规划好, 再按根Inventory分组,
+ * 由 {@link InventoryTransactions} 一次性提交 —— 跨多个根Inventory也能保证要么全部生效, 要么全部不生效.
+ * <p>视图自己不产生事件: 在它上面订阅, 实际是转发订阅到它背后的全部根Inventory. 跨根事务的同一个
+ * 事件对象会按参与的根Inventory数量投递多次, 需要"只处理一次"的观察者可以用事件对象的引用相等去重.
  */
 abstract class SparrowInventory implements Inventory {
-    static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作的共享成功结果, 不派发事件
+    static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
 
-    // 三类操作各自的目标排序键, 弱一致配置; null 表示未显式设置, 取值回退 fallbackGuiPriority.
-    // 用 Integer 而不是 int 是因为 0 是合法优先级, 不能拿它当"未设置"的哨兵
+    // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; null 表示没有显式设置, 读取时回退到 fallbackGuiPriority.
+    // 用 Integer 是为了允许 null 值可以被视为 "未设置".
     @Nullable private volatile Integer addGuiPriority;
     @Nullable private volatile Integer collectGuiPriority;
     @Nullable private volatile Integer otherGuiPriority;
-    // 懒加载的稳定适配器单例, Bukkit 侧以引用身份关联库存
+    // 懒加载的 Bukkit 包装实例: Bukkit 侧靠引用相等辨认Inventory, 所以同一Inventory必须恒为同一个实例
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
 
-    sealed interface SlotKey permits Anchor, ExternalSlot {
-    }
-
     /**
-     * 逻辑槽在自持数据根库存中的落点;普通根槽同时以此作为最终物理身份.
-     */
-    record Anchor(@NotNull AbstractInventory root, int rootSlot) implements SlotKey {
-    }
-
-    /**
-     * 多个镜像根共同指向的外部物理槽.
-     */
-    record ExternalSlot(@NotNull Object owner, int slot) implements SlotKey {
-    }
-
-    /**
-     * 把逻辑槽解析到根库存槽; 自持数据的实现返回自身.
+     * 把 Window 的逻辑槽号换算成根 Inventory 里的槽位;
+     * 自己持有数据的实现直接返回自身.
+     *
+     * @param slot 逻辑槽号
+     * @return 该逻辑槽落到的根Inventory槽位
      */
     @NotNull
-    abstract Anchor resolveSlot(int slot);
+    abstract SlotKey.Anchor resolveSlot(int slot);
 
     /**
-     * 把逻辑槽解析到最终物理存储槽.
+     * 把 Window 的逻辑槽号一路换算到最终的真实存储槽.
+     *
+     * @param slot 逻辑槽号
+     * @return 该槽的最终物理身份
      */
     @NotNull
     final SlotKey physicalKey(int slot) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().rootPhysicalKey(anchor);
     }
 
     /**
-     * 按遍历序收集全部去重后的根库存, 用于订阅转发与事务参与者展开.
+     * 按遍历顺序收集本Inventory背后全部去重后的根Inventory,
+     * 服务于订阅转发与跨根Inventory事务展开.
+     *
+     * @param roots 接收结果的集合, 根Inventory按遍历顺序放入
      */
     abstract void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots);
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>显式设置过的类别返回设置值; 没设置的类别返回 {@link #fallbackGuiPriority} 的回退值.
+     */
     @Override
     public int guiPriority(@NotNull OperationCategory category) {
         Integer explicit = switch (category) {
@@ -90,22 +91,22 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 未显式设置优先级时的回退取值.
-     * <p>自持数据的库存没有可委托的对象, 回退为 0; 装饰视图覆写为透传底层取值,
-     * 从而获得"未设置即跟随底层, 设置即遮盖"的语义.
+     * 没有显式设置优先级时使用的回退值.
+     * <p>自己持有数据的Inventory没有可委托的对象, 回退为 0;
+     * 装饰视图覆写此方法改为透传底层Inventory的取值, 从而得到"没设置就跟着底层走, 设置了就盖住底层"的效果.
      *
-     * @param category 操作类型
-     * @return 该操作类别的回退优先级
+     * @param category 操作类别
+     * @return 该类别的回退优先级
      */
     int fallbackGuiPriority(@NotNull OperationCategory category) {
         return 0;
     }
 
     /**
-     * 设置指定操作下选择目标 Inventory 的优先级.
+     * 设置指定类别的操作挑选目标Inventory时使用的优先级, 越大越先被选中.
      *
-     * @param category 操作类型
-     * @param priority 优先级, 越大越先处理.
+     * @param category 操作类别
+     * @param priority 优先级, 越大越优先
      */
     public void guiPriority(@NotNull OperationCategory category, int priority) {
         switch (category) {
@@ -116,9 +117,9 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 设置全部操作下选择目标 Inventory 的优先级.
+     * 一次设置全部三个类别的优先级.
      *
-     * @param priority 优先级, 越大越先处理.
+     * @param priority 优先级, 越大越优先
      */
     public void guiPriority(int priority) {
         this.addGuiPriority = priority;
@@ -127,10 +128,10 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 清除指定操作的显式优先级, 使其恢复回退取值:
-     * 自持库存回到 0, 装饰视图重新透传底层.
+     * 清除指定类别显式设置的优先级, 让它回到回退值:
+     * 自持数据的Inventory回到 0, 装饰视图重新跟随底层Inventory.
      *
-     * @param category 操作类型
+     * @param category 操作类别
      */
     public void clearGuiPriority(@NotNull OperationCategory category) {
         switch (category) {
@@ -140,66 +141,94 @@ abstract class SparrowInventory implements Inventory {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Nullable
     @Override
     public ItemStack itemAt(int slot) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().itemAt(anchor.rootSlot());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int slotMaxStackSize(int slot) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().slotMaxStackSize(anchor.rootSlot());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().setItem(reason, anchor.rootSlot(), item);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().forceSetItem(reason, anchor.rootSlot(), item);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().putItem(reason, anchor.rootSlot(), item);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().modifyItem(reason, anchor.rootSlot(), modifier);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @NotNull
     @Override
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
-        Anchor anchor = this.resolveSlot(slot);
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().changeAmount(reason, anchor.rootSlot(), change);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>本实现先在逻辑槽的快照上算出完整的放置方案, 再作为一次事务整体提交.
+     */
     @NotNull
     @Override
     public AddResult add(@NotNull UpdateReason reason, @NotNull ItemStack item) {
-        // 先克隆再归一化: 隔离调用方并发修改, 且判空结论与后续读取永远一致
+        // 先克隆再判空: "是不是空物品" 的结论和后续读取永远一致
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
+        // 一个可写的根都没有(比如ReferencingInventory当前线程访问不了目标), 整体不可用
         if (!context.anyWritable()) {
             return new AddResult(TransactionResult.Unavailable.INSTANCE, input.getAmount());
         }
+        // 在逻辑快照上规划: 先合并相似的未满堆, 再占空槽; 不可写的槽上限按 0 算
         InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
                 context.snapshot(),
                 input,
@@ -209,10 +238,16 @@ abstract class SparrowInventory implements Inventory {
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
+        // 把逻辑槽变更按根Inventory分组后整体提交; 没提交成功视为一个都没放进去
         TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
         return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>本实现先在逻辑槽的快照上算出完整的收集方案, 再作为一次事务整体提交.
+     */
     @NotNull
     @Override
     public CollectResult collect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
@@ -221,9 +256,11 @@ abstract class SparrowInventory implements Inventory {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
+        // 一个可写的根都没有, 整体不可用
         if (!context.anyWritable()) {
             return new CollectResult(TransactionResult.Unavailable.INSTANCE, 0);
         }
+        // 在逻辑快照上规划: 先收未满堆, 不够再收满堆; 不可写的槽跳过
         InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
                 context.snapshot(),
                 sample,
@@ -235,10 +272,16 @@ abstract class SparrowInventory implements Inventory {
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
+        // 按根分组整体提交; 没提交成功视为一个都没收到
         TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
         return new CollectResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>本实现先在逻辑槽的快照上算出完整的移除方案, 再作为一次事务整体提交.
+     */
     @NotNull
     @Override
     public RemoveResult remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
@@ -246,9 +289,11 @@ abstract class SparrowInventory implements Inventory {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
+        // 一个可写的根都没有, 整体不可用
         if (!context.anyWritable()) {
             return new RemoveResult(TransactionResult.Unavailable.INSTANCE, 0);
         }
+        // 在逻辑快照上规划要动哪些槽; matcher 由规划器在锁外逐个调用
         InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(
                 context.snapshot(),
                 matcher,
@@ -259,10 +304,14 @@ abstract class SparrowInventory implements Inventory {
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
+        // 按根分组整体提交; 没提交成功视为一个都没移除
         TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
         return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int simulateAdd(@NotNull ItemStack item) {
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
@@ -272,6 +321,9 @@ abstract class SparrowInventory implements Inventory {
         return InventoryPlanner.planAdd(this.openPlan().snapshot(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize).remaining();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public int simulateCollect(@NotNull ItemStack template, int upTo) {
         @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
@@ -281,12 +333,20 @@ abstract class SparrowInventory implements Inventory {
         return InventoryPlanner.planCollect(this.openPlan().snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize).taken();
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     public boolean canHold(@NotNull ItemStack item) {
         return this.simulateAdd(item) == 0;
     }
 
-    // 视图的对账驱动: 逐根转发, 镜像型根在其覆写中完成真实对账
+    /**
+     * {@inheritDoc}
+     *
+     * <p>本实现把调用逐根转发下去;
+     * 真正和外部容器同步的工作由 ReferencingInventory 的覆写完成.
+     */
     @Override
     public void refresh() {
         LinkedHashSet<AbstractInventory> roots = new LinkedHashSet<>();
@@ -296,10 +356,15 @@ abstract class SparrowInventory implements Inventory {
         }
     }
 
-    // 双检查锁定懒加载稳定的适配器单例: Bukkit 以 == 或 Map 键关联库存, 每次新建会破坏身份语义.
+    /**
+     * {@inheritDoc}
+     *
+     * <p>包装实例按需懒创建, 用双重检查锁定保证只创建一次.
+     */
     @Override
     @NotNull
     public org.bukkit.inventory.Inventory asBukkitInventory() {
+        // 双重检查锁定: Bukkit 以 == 或 Map 键辨认 Inventory, 每次新建实例都会破坏身份语义
         org.bukkit.inventory.Inventory view = this.bukkitView;
         if (view == null) {
             synchronized (this) {
@@ -313,12 +378,22 @@ abstract class SparrowInventory implements Inventory {
         return view;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>订阅会被转发到背后的全部根Inventory, 任一根上的事务都会通知 observer.
+     */
     @Override
     @NotNull
     public Subscription subscribePreUpdate(@NotNull Observer<? super TransactionPreEvent> observer) {
         return this.subscribeRoots(root -> root.subscribePreUpdate(observer));
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>订阅会被转发到背后的全部根Inventory, 任一根上的事务都会通知 observer.
+     */
     @Override
     @NotNull
     public Subscription subscribePostUpdate(@NotNull Observer<? super TransactionPostEvent> observer) {
@@ -326,34 +401,10 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 一次批量规划的上下文: 逻辑快照与"逻辑变更集 → 事务范围"的拆分函数.
-     * 快照型库存直通自身状态; 视图把逻辑槽逐一解析到根库存并按根分组.
-     */
-    record PlanContext(
-            @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper,
-            @NotNull IntPredicate writable
-    ) {
-
-        boolean writable(int slot) {
-            return this.writable.test(slot);
-        }
-
-        boolean anyWritable() {
-            if (this.snapshot.length == 0) {
-                return true;
-            }
-            for (int slot = 0; slot < this.snapshot.length; slot++) {
-                if (this.writable(slot)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
-
-    /**
-     * 纯读的规划上下文, simulate 等零副作用路径使用; 不触发任何根级写前钩子.
+     * 打开纯读用途的规划上下文: 给 simulate 这类零副作用的路径使用;
+     * 不触发任何根Inventory的写前准备.
+     *
+     * @return 规划上下文
      */
     @NotNull
     PlanContext openPlan() {
@@ -361,27 +412,35 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 写路径的规划上下文: 在读取快照前对每个参与根触发一次 {@code beforePlan},
-     * 让镜像型根完成运行线程校验与外部真相同步.
+     * 打开写路径的规划上下文: 在读快照之前, 先让每个参与的根Inventory做一次写前准备.
+     * (ReferencingInventory 在这个方法完成线程校验和外部内容同步).
+     *
+     * @return 规划上下文
      */
     @NotNull
     PlanContext openPlanForWrite() {
         return this.capturePlan(true);
     }
 
-    // 视图的通用规划: 逐槽解析, 同一根库存在整个事务中只读取一次快照引用,
-    // 保证乐观校验基准与逻辑快照内部一致
+    /**
+     * 为视图采集规划上下文: 逐槽解析到根Inventory并读取快照. 同一个根Inventory在整个事务中
+     * 只读取一次快照引用, 保证之后提交时的校验基准和逻辑快照内部一致.
+     *
+     * @param forWrite 是否用于写路径; 写路径会先触发各根的写前准备
+     * @return 规划上下文
+     */
     private PlanContext capturePlan(boolean forWrite) {
         int size = this.size();
         Map<AbstractInventory, @Nullable ItemStack[]> plannedByRoot = new LinkedHashMap<>();
         Map<AbstractInventory, Boolean> writableByRoot = new LinkedHashMap<>();
-        Anchor[] anchors = new Anchor[size];
+        SlotKey.Anchor[] anchors = new SlotKey.Anchor[size];
         @Nullable ItemStack[] logical = new ItemStack[size];
+        // 逐槽解析: 每个根Inventory只在首次遇到时做一次写前准备并读一次快照
         for (int slot = 0; slot < size; slot++) {
-            Anchor anchor = this.resolveSlot(slot);
+            SlotKey.Anchor anchor = this.resolveSlot(slot);
             anchors[slot] = anchor;
             @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
-                // 写前钩子先于快照读取: 镜像型根在此对账, 规划才基于最新真相
+                // 写前准备先于读取快照: 镜像型根在这里同步外部内容, 规划才基于最新数据
                 writableByRoot.put(root, !forWrite || root.prepareWrite());
                 return root.currentState();
             });
@@ -394,19 +453,28 @@ abstract class SparrowInventory implements Inventory {
         );
     }
 
-    // 把逻辑槽变更集按根库存分组并映射槽号, 产出跨根事务的参与范围
+    /**
+     * 把逻辑槽的变更集按根Inventory分组, 并把槽号换算成根Inventory里的槽号, 产出跨根事务的参与范围.
+     *
+     * @param plannedByRoot 各根Inventory在规划时读取的快照
+     * @param anchors 每个逻辑槽对应的根Inventory槽位
+     * @param logicalDeltas 逻辑槽变更集
+     * @return 按根Inventory分组的事务参与范围
+     */
     private static List<InventoryTransactions.Scope> toScopes(
             Map<AbstractInventory, @Nullable ItemStack[]> plannedByRoot,
-            Anchor[] anchors,
+            SlotKey.Anchor[] anchors,
             List<SlotDelta> logicalDeltas
     ) {
+        // 按根分组, 同时把槽号换算成根Inventory内的槽号
         Map<AbstractInventory, List<SlotDelta>> deltasByRoot = new LinkedHashMap<>();
         for (int i = 0; i < logicalDeltas.size(); i++) {
             SlotDelta delta = logicalDeltas.get(i);
-            Anchor anchor = anchors[delta.slot()];
+            SlotKey.Anchor anchor = anchors[delta.slot()];
             deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.relocatedTo(anchor.rootSlot()));
         }
 
+        // 每个有变更的根Inventory产出一个事务参与范围
         List<InventoryTransactions.Scope> scopes = new ArrayList<>(deltasByRoot.size());
         for (Map.Entry<AbstractInventory, List<SlotDelta>> entry : deltasByRoot.entrySet()) {
             scopes.add(new InventoryTransactions.Scope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
@@ -414,6 +482,13 @@ abstract class SparrowInventory implements Inventory {
         return scopes;
     }
 
+    /**
+     * 把同一个订阅动作应用到所有根Inventory上, 聚合成一个凭证返回.
+     * 中途失败时会把已建立的订阅逆序关掉, 保证全有或全无.
+     *
+     * @param subscriber 对单个根Inventory执行订阅的动作
+     * @return 聚合后的订阅凭证
+     */
     private Subscription subscribeRoots(Function<AbstractInventory, Subscription> subscriber) {
         LinkedHashSet<AbstractInventory> roots = new LinkedHashSet<>();
         this.collectRoots(roots);
@@ -439,20 +514,78 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * 聚合订阅凭证: 一次 close 关闭全部根库存上的转发订阅.
+     * 一次批量规划的上下文: 一张逻辑槽快照, 加上把逻辑槽变更换算成各根Inventory事务范围的函数.
+     * 自持数据的Inventory直接用自己的状态; 视图则把每个逻辑槽逐一解析到根Inventory并按根分组.
+     *
+     * @param snapshot 规划用的逻辑槽快照, 空槽位置为 {@code null}
+     * @param scoper 把逻辑槽变更集拆成各根Inventory事务范围的函数
+     * @param writable 判断某个逻辑槽当前是否可写
+     */
+    record PlanContext(
+            @Nullable ItemStack @NotNull [] snapshot,
+            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper,
+            @NotNull IntPredicate writable
+    ) {
+
+        /**
+         * 判断指定逻辑槽当前是否可写.
+         *
+         * @param slot 逻辑槽号
+         * @return 可写返回 {@code true}
+         */
+        boolean writable(int slot) {
+            return this.writable.test(slot);
+        }
+
+        /**
+         * 判断是否至少有一个逻辑槽可写;
+         * 空快照视为全部可写.
+         *
+         * @return 存在可写槽位返回 {@code true}
+         */
+        boolean anyWritable() {
+            if (this.snapshot.length == 0) {
+                return true;
+            }
+            for (int slot = 0; slot < this.snapshot.length; slot++) {
+                if (this.writable(slot)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * 聚合多个订阅的凭证: 一次 {@link #close()} 关掉全部根Inventory上的转发订阅.
      */
     private static final class CompositeSubscription implements Subscription {
-        private final Subscription[] subscriptions;
+        private final Subscription[] subscriptions; // 各根Inventory上的订阅凭证
 
+        /**
+         * 包装一组已建立的订阅.
+         *
+         * @param subscriptions 各根Inventory上的订阅凭证
+         */
         private CompositeSubscription(Subscription[] subscriptions) {
             this.subscriptions = subscriptions;
         }
 
+        /**
+         * 判断订阅是否已关闭, 以第一个子订阅的状态为代表; 空订阅组视为已关闭.
+         *
+         * @return 已关闭返回 {@code true}
+         */
         @Override
         public boolean isClosed() {
             return this.subscriptions.length == 0 || this.subscriptions[0].isClosed();
         }
 
+        /**
+         * {@inheritDoc}
+         *
+         * <p>逐个关闭所有子订阅.
+         */
         @Override
         public void close() {
             for (int i = 0; i < this.subscriptions.length; i++) {

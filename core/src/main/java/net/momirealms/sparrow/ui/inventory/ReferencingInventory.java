@@ -41,7 +41,7 @@ import java.util.function.UnaryOperator;
 public final class ReferencingInventory extends AbstractInventory {
     private final org.bukkit.inventory.Inventory bukkitInventory;
     private final Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter; // 读取被引用的内容区段
-    private final ExternalSlot[] externalSlots; // 逻辑槽 -> 驻留的最终外部槽身份, 读取与写回共用
+    private final SlotKey.ExternalSlot[] externalSlots; // 逻辑槽 -> 驻留的最终外部槽身份, 读取与写回共用
     private final int bukkitMaxStackSize; // 被引用容器的堆叠上限, 构造时缓存
     private final BooleanSupplier writeAvailable;
     private final @Nullable SlotOrder addOrder; // 玩家 storage 按原版 quick-move 反向遍历
@@ -165,7 +165,7 @@ public final class ReferencingInventory extends AbstractInventory {
 
     @Override
     @NotNull
-    SlotKey rootPhysicalKey(@NotNull Anchor anchor) {
+    SlotKey rootPhysicalKey(@NotNull SlotKey.Anchor anchor) {
         return this.externalSlots[anchor.rootSlot()];
     }
 
@@ -258,10 +258,10 @@ public final class ReferencingInventory extends AbstractInventory {
         return SlotOrder.of(slots);
     }
 
-    private static ExternalSlot[] externalSlots(org.bukkit.inventory.Inventory inventory, SlotOrder slotMapping) {
-        ExternalSlot[] externalSlots = new ExternalSlot[slotMapping.size()];
+    private static SlotKey.ExternalSlot[] externalSlots(org.bukkit.inventory.Inventory inventory, SlotOrder slotMapping) {
+        SlotKey.ExternalSlot[] externalSlots = new SlotKey.ExternalSlot[slotMapping.size()];
         for (int slot = 0; slot < slotMapping.size(); slot++) {
-            externalSlots[slot] = new ExternalSlot(inventory, slotMapping.slotAt(slot));
+            externalSlots[slot] = new SlotKey.ExternalSlot(inventory, slotMapping.slotAt(slot));
         }
         return externalSlots;
     }
