@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.ClickEvent;
+import net.momirealms.sparrow.ui.WindowOutsideClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -198,11 +198,11 @@ public interface Window {
 
     /**
      * 替换容器外点击处理器列表.
-     * 处理器可以取消 {@link ClickEvent} 以阻止该次点击.
+     * 处理器可以取消 {@link WindowOutsideClick} 以阻止该次点击.
      *
      * @param outsideClickHandlers 新处理器列表
      */
-    void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers);
+    void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers);
 
     /**
      * 当前容器外点击处理器列表的快照.
@@ -210,21 +210,21 @@ public interface Window {
      * @return 不可变的处理器列表
      */
     @Unmodifiable
-    @NotNull List<Consumer<ClickEvent>> getOutsideClickHandlers();
+    @NotNull List<Consumer<WindowOutsideClick>> getOutsideClickHandlers();
 
     /**
      * 在现有容器外点击处理器末尾追加一个处理器.
      *
      * @param outsideClickHandler 容器外点击处理器
      */
-    void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+    void addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
     /**
      * 移除一个与给定对象相等的容器外点击处理器.
      *
      * @param outsideClickHandler 要移除的容器外点击处理器
      */
-    void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+    void removeOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
     /**
      * 设置服务器窗口状态, 并在已打开时发送 Ping 等待客户端确认.
@@ -464,7 +464,7 @@ public interface Window {
          * @return 此 Builder
          */
         @NotNull B setOutsideClickHandlers(
-                @NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers
+                @NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers
         );
 
         /**
@@ -473,7 +473,7 @@ public interface Window {
          * @param outsideClickHandler 容器外点击处理器
          * @return 此 Builder
          */
-        @NotNull B addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler);
+        @NotNull B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
         /**
          * 设置玩家主动关闭时要解析的后备 Window.
