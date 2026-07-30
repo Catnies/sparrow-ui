@@ -121,7 +121,7 @@ public final class VirtualInventory extends AbstractInventory {
      * @throws IllegalArgumentException 当上限小于 1 时
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public synchronized void slotMaxStackSize(int slot, int max) {
+    public synchronized void setMaxStackSize(int slot, int max) {
         if (max < 1)
             throw new IllegalArgumentException("max stack size must be at least 1: " + max);
         // 沿用快照惯例: 数组不可变, 改一个槽也是复制整组后换引用, 读者无锁安全.
@@ -139,7 +139,7 @@ public final class VirtualInventory extends AbstractInventory {
      * @param maxes 每个槽位的堆叠上限, 长度必须等于槽位数量
      * @throws IllegalArgumentException 当数组长度与槽位数量不符或任一上限小于 1 时
      */
-    public synchronized void slotMaxStackSizes(int @NotNull [] maxes) {
+    public synchronized void setMaxStackSizes(int @NotNull [] maxes) {
         if (maxes.length != this.size()) {
             throw new IllegalArgumentException("max stack size array length " + maxes.length + " does not match inventory size " + this.size());
         }
@@ -174,7 +174,7 @@ public final class VirtualInventory extends AbstractInventory {
      * @param order 遍历顺序, 尺寸必须等于槽位数量
      * @throws IllegalArgumentException 当顺序尺寸与槽位数量不符时
      */
-    public void iterationOrder(@NotNull OperationCategory category, @NotNull SlotOrder order) {
+    public void setIterationOrder(@NotNull OperationCategory category, @NotNull SlotOrder order) {
         if (order.size() != this.size()) {
             throw new IllegalArgumentException("iteration order size " + order.size() + " does not match inventory size " + this.size());
         }

@@ -10,12 +10,12 @@ import java.util.List;
  * <p>对同一Inventory, 事件到达顺序与提交顺序一致; 派发线程是某个提交者线程,
  * 观察者不得假设特定线程. 本事件永不被抑制: 只要事务提交就一定派发.
  */
-public final class TransactionPostEvent {
+public final class InventoryPostUpdateEvent {
     private final UpdateReason reason;
     private final List<InventoryDelta> changes;
 
     @ApiStatus.Internal
-    public TransactionPostEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
+    public InventoryPostUpdateEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
         this.reason = reason;
         this.changes = changes;
     }

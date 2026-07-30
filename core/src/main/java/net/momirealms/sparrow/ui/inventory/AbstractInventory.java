@@ -5,8 +5,8 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPostEvent;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPreEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
@@ -41,9 +41,9 @@ abstract class AbstractInventory extends SparrowInventory {
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
 
-    private final ObservableDispatcher<TransactionPreEvent> preUpdates = new ObservableDispatcher<>();   // pre  观察者的订阅登记处
-    private final ObservableDispatcher<TransactionPostEvent> postUpdates = new ObservableDispatcher<>(); // post 观察者的订阅登记处
-    private final ConcurrentLinkedQueue<TransactionPostEvent> pendingPostEvents = new ConcurrentLinkedQueue<>(); // 在锁内入队, 队列顺序即提交顺序
+    private final ObservableDispatcher<InventoryPreUpdateEvent> preUpdates = new ObservableDispatcher<>();   // pre  观察者的订阅登记处
+    private final ObservableDispatcher<InventoryPostUpdateEvent> postUpdates = new ObservableDispatcher<>(); // post 观察者的订阅登记处
+    private final ConcurrentLinkedQueue<InventoryPostUpdateEvent> pendingPostEvents = new ConcurrentLinkedQueue<>(); // 在锁内入队, 队列顺序即提交顺序
     private final AtomicBoolean drainingPostEvents = new AtomicBoolean(); // "正在派发"标志, 同一时刻至多一个线程负责派发
 
     private volatile @Nullable ItemStack @NotNull [] state; // 当前的不可变快照, 里面的物品归内部所有
@@ -389,7 +389,7 @@ abstract class AbstractInventory extends SparrowInventory {
      */
     @Override
     @NotNull
-    public Subscription subscribePreUpdate(@NotNull Observer<? super TransactionPreEvent> observer) {
+    public Subscription subscribePreUpdate(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
         return this.preUpdates.subscribe(observer);
     }
 
@@ -398,7 +398,7 @@ abstract class AbstractInventory extends SparrowInventory {
      */
     @Override
     @NotNull
-    public Subscription subscribePostUpdate(@NotNull Observer<? super TransactionPostEvent> observer) {
+    public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
         return this.postUpdates.subscribe(observer);
     }
 
@@ -447,7 +447,7 @@ abstract class AbstractInventory extends SparrowInventory {
      *
      * @param event 提交前事件
      */
-    void publishPreUpdate(@NotNull TransactionPreEvent event) {
+    void publishPreUpdate(@NotNull InventoryPreUpdateEvent event) {
         try {
             this.preUpdates.publish(event);
         } catch (Throwable exception) {
@@ -463,7 +463,7 @@ abstract class AbstractInventory extends SparrowInventory {
      *
      * @param event 提交后事件
      */
-    void enqueuePostEvent(@NotNull TransactionPostEvent event) {
+    void enqueuePostEvent(@NotNull InventoryPostUpdateEvent event) {
         this.pendingPostEvents.add(event);
     }
 
@@ -477,7 +477,7 @@ abstract class AbstractInventory extends SparrowInventory {
         while (this.drainingPostEvents.compareAndSet(false, true)) {
             try {
                 // 抢到标志的线程独占派发: 逐个出队, 单个观察者的异常隔离上报, 不中断整个派发.
-                TransactionPostEvent event;
+                InventoryPostUpdateEvent event;
                 while ((event = this.pendingPostEvents.poll()) != null) {
                     try {
                         this.postUpdates.publish(event);

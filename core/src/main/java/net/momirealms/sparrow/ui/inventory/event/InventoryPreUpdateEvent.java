@@ -7,17 +7,17 @@ import java.util.List;
 
 /**
  * 事务提交前派发的事件, 在任何锁之外运行.
- * <p>载荷是本次事务的完整变更视图(含全部参与Inventory). 调用 {@link #cancel()} 取消的
- * 是整个事务.
+ * <p>载荷是本次事务的完整变更视图(含全部参与Inventory).
+ * 调用 {@link #cancel()} 取消的是整个事务.
  * <p>同一事务被调用方重试时, 本事件会再次派发.
  */
-public final class TransactionPreEvent {
+public final class InventoryPreUpdateEvent {
     private final UpdateReason reason;
     private final List<InventoryDelta> changes;
     private volatile boolean cancelled; // volatile 兜底跨线程误用时的可见性, 正常路径只在派发线程翻转
 
     @ApiStatus.Internal
-    public TransactionPreEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
+    public InventoryPreUpdateEvent(@NotNull UpdateReason reason, @NotNull List<InventoryDelta> changes) {
         this.reason = reason;
         this.changes = changes;
     }

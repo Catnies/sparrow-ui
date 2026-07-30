@@ -2,8 +2,8 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPostEvent;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPreEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
@@ -246,7 +246,7 @@ public interface Inventory {
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
-    Subscription subscribePreUpdate(@NotNull Observer<? super TransactionPreEvent> observer);
+    Subscription subscribePreUpdate(@NotNull Observer<? super InventoryPreUpdateEvent> observer);
 
     /**
      * 订阅事务提交后的事件. 对同一个Inventory, 事件到达的顺序与事务提交的顺序一致;
@@ -256,5 +256,5 @@ public interface Inventory {
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
-    Subscription subscribePostUpdate(@NotNull Observer<? super TransactionPostEvent> observer);
+    Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer);
 }

@@ -155,7 +155,7 @@ public final class CompositeInventory extends SparrowInventory {
      * @param order 遍历顺序, 尺寸必须等于拼接后的总槽数
      * @throws IllegalArgumentException 当顺序尺寸与拼接尺寸不符时
      */
-    public void iterationOrder(@NotNull OperationCategory category, @NotNull SlotOrder order) {
+    public void setIterationOrder(@NotNull OperationCategory category, @NotNull SlotOrder order) {
         if (order.size() != this.size) {
             throw new IllegalArgumentException("iteration order size " + order.size() + " does not match composite size " + this.size);
         }

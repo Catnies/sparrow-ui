@@ -75,7 +75,7 @@ final class InventoryAdapter implements org.bukkit.inventory.Inventory {
         if (this.inventory instanceof VirtualInventory virtualInventory) {
             int[] maxes = new int[virtualInventory.size()];
             Arrays.fill(maxes, size);
-            virtualInventory.slotMaxStackSizes(maxes);
+            virtualInventory.setMaxStackSizes(maxes);
         }
     }
 

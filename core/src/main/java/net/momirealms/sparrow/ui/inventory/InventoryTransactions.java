@@ -3,8 +3,8 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPostEvent;
-import net.momirealms.sparrow.ui.inventory.event.TransactionPreEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -69,7 +69,7 @@ final class InventoryTransactions {
 
         // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
         if (!bypassPre) {
-            TransactionPreEvent preEvent = new TransactionPreEvent(reason, changes);
+            InventoryPreUpdateEvent preEvent = new InventoryPreUpdateEvent(reason, changes);
             for (int i = 0; i < ordered.size(); i++) {
                 ordered.get(i).inventory().publishPreUpdate(preEvent);
             }
@@ -99,7 +99,7 @@ final class InventoryTransactions {
             }
 
             // 先为全部Inventory构造新快照再统一交换, 保证越界等非意料内的异常发生时零交换
-            TransactionPostEvent postEvent = new TransactionPostEvent(reason, changes);
+            InventoryPostUpdateEvent postEvent = new InventoryPostUpdateEvent(reason, changes);
             @Nullable ItemStack[][] newStates = new ItemStack[ordered.size()][];
             for (int i = 0; i < ordered.size(); i++) {
                 newStates[i] = applyDeltas(ordered.get(i));
