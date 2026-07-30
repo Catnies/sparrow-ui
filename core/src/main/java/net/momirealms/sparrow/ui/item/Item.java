@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -13,7 +13,7 @@ import java.util.Objects;
  * Window 最终槽位中显示的 GUI 物品, 组合显示来源与交互行为.
  *
  * <p>显示内容由 {@link ItemProvider} 按渲染上下文生成; 点击与 Bundle 选择通过
- * {@link #handleClick(ItemClick)} 和 {@link #handleBundleSelect(BundleSelect)} 分发.
+ * {@link #handleClick(ItemClick)} 和 {@link #handleBundleSelect(BundleSelectClick)} 分发.
  * 需要主动刷新显示内容的 Item 可以实现 {@link ObservableItem}.
  */
 public interface Item {
@@ -77,7 +77,7 @@ public interface Item {
      *
      * @param select 选择上下文
      */
-    default void handleBundleSelect(BundleSelect select) {
+    default void handleBundleSelect(BundleSelectClick select) {
     }
 
     /**

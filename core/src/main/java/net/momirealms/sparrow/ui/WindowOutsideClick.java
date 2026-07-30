@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
  * Window 外部点击处理器接收的可取消事件.
  * <p>处理器可调用 {@link #setCancelled(boolean)} 拒绝本次点击.
  */
-public final class ClickEvent {
+public final class WindowOutsideClick {
     private final Player player;
     private final ClickType clickType;
     private final int hotbarButton;
@@ -21,7 +21,7 @@ public final class ClickEvent {
      * @param clickType Bukkit 点击类型
      * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
      */
-    public ClickEvent(@NotNull Player player, @NotNull ClickType clickType, int hotbarButton) {
+    public WindowOutsideClick(@NotNull Player player, @NotNull ClickType clickType, int hotbarButton) {
         this.player = player;
         this.clickType = clickType;
         this.hotbarButton = hotbarButton;

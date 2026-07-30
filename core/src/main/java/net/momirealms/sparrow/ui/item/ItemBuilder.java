@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -31,7 +31,7 @@ public final class ItemBuilder {
     private boolean sourceConfigured; // 显示来源是否已完成配置
 
     private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器链
-    private BiConsumer<Item, BundleSelect> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器链
+    private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器链
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
     private RefreshPlan explicitRefreshPlan = RefreshPlan.none();   // 显式配置的周期刷新计划
     private long throttleIntervalMillis;        // <= 0 表示未启用节流
@@ -225,7 +225,7 @@ public final class ItemBuilder {
      * @param selectHandler 选择处理器
      * @return 此构建器
      */
-    public ItemBuilder addBundleSelectHandler(@NotNull Consumer<? super BundleSelect> selectHandler) {
+    public ItemBuilder addBundleSelectHandler(@NotNull Consumer<? super BundleSelectClick> selectHandler) {
         return this.addBundleSelectHandler((ignoredItem, select) -> selectHandler.accept(select));
     }
 
@@ -235,7 +235,7 @@ public final class ItemBuilder {
      * @param selectHandler 同时接收物品和选择事件的处理器
      * @return 此构建器
      */
-    public ItemBuilder addBundleSelectHandler(@NotNull BiConsumer<? super Item, ? super BundleSelect> selectHandler) {
+    public ItemBuilder addBundleSelectHandler(@NotNull BiConsumer<? super Item, ? super BundleSelectClick> selectHandler) {
         this.bundleHandler = this.bundleHandler.andThen(selectHandler);
         return this;
     }

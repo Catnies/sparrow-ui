@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
@@ -25,7 +25,7 @@ final class ConfiguredItem implements ObservableItem {
     private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与自带刷新计划
     private final RefreshPlan refreshPlan; // 显示来源自带计划与显式计划合并后的周期刷新计划
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler;     // 点击处理器链
-    private final BiConsumer<? super Item, ? super BundleSelect> bundleHandler; // Bundle 选择处理器链
+    private final BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler; // Bundle 选择处理器链
     private final boolean updateOnClick; // 点击成功后是否主动失效
     @Nullable private final ThrottleConfig throttleConfig; // null 表示未启用节流
     @Nullable private final Map<Player, Long> throttleTimestamps; // 仅启用节流时非空: 玩家 -> 上次接受点击的毫秒时间
@@ -45,7 +45,7 @@ final class ConfiguredItem implements ObservableItem {
             @NotNull ItemBuilder.DisplayFactory displayFactory,
             @NotNull RefreshPlan explicitRefreshPlan,
             @NotNull BiConsumer<? super Item, ? super ItemClick> clickHandler,
-            @NotNull BiConsumer<? super Item, ? super BundleSelect> bundleHandler,
+            @NotNull BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler,
             boolean updateOnClick,
             @Nullable ThrottleConfig throttleConfig
     ) {
@@ -116,7 +116,7 @@ final class ConfiguredItem implements ObservableItem {
      * {@inheritDoc}
      */
     @Override
-    public void handleBundleSelect(@NotNull BundleSelect select) {
+    public void handleBundleSelect(@NotNull BundleSelectClick select) {
         this.bundleHandler.accept(this, select);
     }
 

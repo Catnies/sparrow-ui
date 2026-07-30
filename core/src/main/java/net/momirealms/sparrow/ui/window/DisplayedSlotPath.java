@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
@@ -161,7 +161,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      *
      * @param select Bundle 选择上下文
      */
-    void handleBundleSelect(@NotNull BundleSelect select) {
+    void handleBundleSelect(@NotNull BundleSelectClick select) {
         PathState state = this.currentState();
         if (state.frozen) {
             return;

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
@@ -449,7 +449,7 @@ public final class ClickSemantics {
      * 向被InventoryLink直接连接的逻辑Inventory派发Bundle选择事件.
      */
     @ApiStatus.Internal
-    public static void dispatchBundleSelectEvent(@NotNull Inventory inventory, int slot, @NotNull BundleSelect select) {
+    public static void dispatchBundleSelectEvent(@NotNull Inventory inventory, int slot, @NotNull BundleSelectClick select) {
         ((SparrowInventory) inventory).publishBundleSelect(
                 new InventoryBundleSelectEvent(inventory, slot, select.player(), select.bundleSlot())
         );

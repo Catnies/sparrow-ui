@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.BundleSelectClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
@@ -17,7 +17,7 @@ import java.util.function.BiConsumer;
 public final class StaticItem implements Item {
     private final ItemProvider itemProvider; // 显示提供器
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler; // null 表示不处理点击
-    private final BiConsumer<? super Item, ? super BundleSelect> bundleSelectHandler; // null 表示不处理 Bundle 选择
+    private final BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler; // null 表示不处理 Bundle 选择
 
     /**
      * 创建以固定物品堆显示、无交互处理器的静态 Item.
@@ -60,7 +60,7 @@ public final class StaticItem implements Item {
     public StaticItem(
             @NotNull ItemProvider itemProvider,
             @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler,
-            @Nullable BiConsumer<? super Item, ? super BundleSelect> bundleSelectHandler
+            @Nullable BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler
     ) {
         this.itemProvider = Objects.requireNonNull(itemProvider, "itemProvider");
         this.clickHandler = clickHandler;
@@ -93,7 +93,7 @@ public final class StaticItem implements Item {
      * <p>未配置 Bundle 选择处理器时不产生任何效果.
      */
     @Override
-    public void handleBundleSelect(BundleSelect select) {
+    public void handleBundleSelect(BundleSelectClick select) {
         if (this.bundleSelectHandler != null) {
             this.bundleSelectHandler.accept(this, Objects.requireNonNull(select, "select"));
         }

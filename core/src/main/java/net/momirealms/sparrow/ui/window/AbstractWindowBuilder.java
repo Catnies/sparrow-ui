@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.ClickEvent;
+import net.momirealms.sparrow.ui.WindowOutsideClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
@@ -34,7 +34,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private boolean closeable = true;
     private List<Runnable> openHandlers = new ArrayList<>();
     private List<Consumer<InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
-    private List<Consumer<ClickEvent>> outsideClickHandlers = new ArrayList<>();
+    private List<Consumer<WindowOutsideClick>> outsideClickHandlers = new ArrayList<>();
     private Supplier<? extends @Nullable Window> fallbackWindow = () -> null;
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
@@ -134,7 +134,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull B setOutsideClickHandlers(
-            @NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers
+            @NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers
     ) {
         this.outsideClickHandlers = new ArrayList<>(MiscUtils.copyConsumers(outsideClickHandlers));
         return this.self();
@@ -142,7 +142,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull B addOutsideClickHandler(
-            @NotNull Consumer<? super ClickEvent> outsideClickHandler
+            @NotNull Consumer<? super WindowOutsideClick> outsideClickHandler
     ) {
         this.outsideClickHandlers.add(MiscUtils.narrowConsumer(outsideClickHandler));
         return this.self();

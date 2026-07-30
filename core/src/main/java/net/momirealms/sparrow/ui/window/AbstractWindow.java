@@ -3,8 +3,8 @@ package net.momirealms.sparrow.ui.window;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.BundleSelect;
-import net.momirealms.sparrow.ui.ClickEvent;
+import net.momirealms.sparrow.ui.BundleSelectClick;
+import net.momirealms.sparrow.ui.WindowOutsideClick;
 import net.momirealms.sparrow.ui.ItemClick;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
@@ -64,7 +64,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             boolean closeable,
             @NotNull List<Runnable> openHandlers,
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
-            @NotNull List<Consumer<ClickEvent>> outsideClickHandlers,
+            @NotNull List<Consumer<WindowOutsideClick>> outsideClickHandlers,
             @NotNull Supplier<? extends @Nullable Window> fallbackWindow,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
@@ -89,7 +89,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
-    private final HandlerList<Consumer<ClickEvent>> outsideClickHandlers;           // 容器外点击处理器
+    private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;   // 容器外点击处理器
     private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;         // 窗口状态确认处理器
 
     // 运行时的状态和缓存
@@ -334,8 +334,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * {@inheritDoc}
      */
     @Override
-    public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super ClickEvent>> outsideClickHandlers) {
-        List<Consumer<ClickEvent>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
+    public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers) {
+        List<Consumer<WindowOutsideClick>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
         this.submit(
                 () -> this.outsideClickHandlers.set(copy),
                 "Failed to replace Window outside click handlers"
@@ -347,7 +347,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @NotNull
     @Override
-    public List<Consumer<ClickEvent>> getOutsideClickHandlers() {
+    public List<Consumer<WindowOutsideClick>> getOutsideClickHandlers() {
         return this.outsideClickHandlers.snapshot();
     }
 
@@ -355,8 +355,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * {@inheritDoc}
      */
     @Override
-    public void addOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
-        Consumer<ClickEvent> handler = MiscUtils.narrowConsumer(outsideClickHandler);
+    public void addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
+        Consumer<WindowOutsideClick> handler = MiscUtils.narrowConsumer(outsideClickHandler);
         this.submit(
                 () -> this.outsideClickHandlers.append(handler),
                 "Failed to add Window outside click handler"
@@ -367,7 +367,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * {@inheritDoc}
      */
     @Override
-    public void removeOutsideClickHandler(@NotNull Consumer<? super ClickEvent> outsideClickHandler) {
+    public void removeOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
         this.submit(
                 () -> this.outsideClickHandlers.remove(MiscUtils.narrowConsumer(outsideClickHandler)),
                 "Failed to remove Window outside click handler"
@@ -852,7 +852,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
-        ClickEvent event = new ClickEvent(this.viewer, click.clickType(), click.hotbarButton());
+        WindowOutsideClick event = new WindowOutsideClick(this.viewer, click.clickType(), click.hotbarButton());
         this.outsideClickHandlers.forEachIsolated(
                 handler -> handler.accept(event),
                 "Failed to handle Window outside click",
@@ -923,7 +923,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
         this.updateBundleSelection(packet.slot(), packet.selectedIndex());
-        this.requirePath(packet.slot()).handleBundleSelect(new BundleSelect(this.viewer, packet.selectedIndex()));
+        this.requirePath(packet.slot()).handleBundleSelect(new BundleSelectClick(this.viewer, packet.selectedIndex()));
     }
 
     /**
