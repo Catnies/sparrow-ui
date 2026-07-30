@@ -3,8 +3,6 @@ package net.momirealms.sparrow.ui;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
-
 /**
  * 玩家在 Item 显示的 Bundle 内容中选择槽位的上下文.
  *

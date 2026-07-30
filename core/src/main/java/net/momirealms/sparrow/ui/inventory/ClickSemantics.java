@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
@@ -482,7 +483,7 @@ public final class ClickSemantics {
             scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
         }
         TransactionResult result = InventoryTransactions.commit(
-                new UpdateReason.PlayerDrag(context.viewer(), clickType),
+                new PlayerUpdateReason.Drag(context.viewer(), clickType, List.copyOf(candidates.values())),
                 scopes,
                 false
         );
@@ -510,10 +511,15 @@ public final class ClickSemantics {
      */
     private static void pickupOrPlace(Context context, LinkedSlot link, int windowSlot, ClickType clickType) {
         ItemStack cursor = context.cursor();
-        applyLinkSemantics(context, reasonOf(context, clickType), link, windowSlot, (current, slotLimit) ->
-                clickType == ClickType.LEFT
-                        ? computeLeftClick(current, cursor, slotLimit)
-                        : computeRightClick(current, cursor, slotLimit));
+        applyLinkSemantics(
+                context,
+                new PlayerUpdateReason.Click(context.viewer(), clickType, -1),
+                link,
+                windowSlot,
+                (current, slotLimit) ->
+                    clickType == ClickType.LEFT
+                            ? computeLeftClick(current, cursor, slotLimit)
+                            : computeRightClick(current, cursor, slotLimit));
     }
 
     /**
@@ -621,7 +627,7 @@ public final class ClickSemantics {
             return;
         }
 
-        swapLinks(reasonOf(context, ClickType.NUMBER_KEY), source, target);
+        swapLinks(new PlayerUpdateReason.Click(context.viewer(), ClickType.NUMBER_KEY, hotbarButton), source, target);
         context.markDirty(windowSlot);
     }
 
@@ -648,7 +654,7 @@ public final class ClickSemantics {
             return;
         }
         TransactionResult result = InventoryTransactions.commit(
-                reasonOf(context, ClickType.SWAP_OFFHAND),
+                new PlayerUpdateReason.Click(context.viewer(), ClickType.SWAP_OFFHAND, -1),
                 plan.scoper().apply(List.of(new SlotDelta(source.slot(), current, offhand))),
                 false
         );
@@ -726,7 +732,7 @@ public final class ClickSemantics {
             return;
         }
 
-        UpdateReason reason = reasonOf(context, fullStack ? ClickType.CONTROL_DROP : ClickType.DROP);
+        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), fullStack ? ClickType.CONTROL_DROP : ClickType.DROP, -1);
         SparrowInventory inventory = (SparrowInventory) link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         if (!plan.writable(link.slot())) {
@@ -784,7 +790,7 @@ public final class ClickSemantics {
             context.markDirty(windowSlot);
             return;
         }
-        UpdateReason reason = reasonOf(context, clickType);
+        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
         SlotKey sourceKey = physicalKey(link);
 
         for (Inventory target : addTargets(context, link.inventory())) {
@@ -870,7 +876,7 @@ public final class ClickSemantics {
         if (space <= 0) {
             return;
         }
-        UpdateReason reason = reasonOf(context, ClickType.DOUBLE_CLICK);
+        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.DOUBLE_CLICK, -1);
         int collected = 0;
         HashSet<SlotKey> coveredSlots = new HashSet<>();
         List<InventoryTransactions.Scope> scopes = new ArrayList<>();
@@ -901,17 +907,6 @@ public final class ClickSemantics {
         if (collected > 0) {
             context.cursor(ItemUtils.copyWithAmount(cursor, cursor.getAmount() + collected));
         }
-    }
-
-    /**
-     * 为这次点击构造变更原因, 随事务事件派发给观察者.
-     *
-     * @param context 当前 Window 交互上下文
-     * @param clickType 点击类型
-     * @return 以该玩家与点击类型组成的变更原因
-     */
-    private static UpdateReason reasonOf(Context context, ClickType clickType) {
-        return new UpdateReason.PlayerClick(context.viewer(), clickType);
     }
 
     /**

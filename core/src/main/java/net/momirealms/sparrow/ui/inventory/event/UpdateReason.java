@@ -1,8 +1,5 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
-import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.ClickType;
-import org.jetbrains.annotations.NotNull;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 
 /**
@@ -28,23 +25,5 @@ public interface UpdateReason {
      */
     enum External implements UpdateReason {
         INSTANCE
-    }
-
-    /**
-     * 玩家在 Window 中的一次点击触发的Inventory事务.
-     *
-     * @param viewer 点击的玩家
-     * @param clickType 点击类型
-     */
-    record PlayerClick(@NotNull Player viewer, @NotNull ClickType clickType) implements UpdateReason {
-    }
-
-    /**
-     * 玩家在 Window 中的一次拖拽分配触发的Inventory事务.
-     *
-     * @param viewer 拖拽的玩家
-     * @param clickType 拖拽按键(LEFT 均分, RIGHT 每槽一个, MIDDLE 创造整堆)
-     */
-    record PlayerDrag(@NotNull Player viewer, @NotNull ClickType clickType) implements UpdateReason {
     }
 }

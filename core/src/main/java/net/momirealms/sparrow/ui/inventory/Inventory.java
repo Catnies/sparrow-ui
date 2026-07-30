@@ -89,6 +89,133 @@ public interface Inventory {
     int guiPriority(@NotNull OperationCategory category);
 
     /**
+     * 判断每个槽位是否都装有达到有效堆叠上限的物品.
+     * 有效上限取槽位上限与物品自身上限的较小值.
+     *
+     * @return 全部槽位都满时返回 {@code true}
+     */
+    default boolean isFull() {
+        ItemStack[] snapshot = this.snapshot();
+        for (int i = 0; i < snapshot.length; i++) {
+            ItemStack item = snapshot[i];
+            if (item == null || item.getAmount() < Math.min(this.slotMaxStackSize(i), item.getMaxStackSize())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断Inventory是否没有任何物品.
+     *
+     * @return 全部槽位都为空时返回 {@code true}
+     */
+    default boolean isEmpty() {
+        ItemStack[] snapshot = this.snapshot();
+        for (int i = 0; i < snapshot.length; i++) {
+            if (snapshot[i] != null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断Inventory是否至少有一个空槽.
+     *
+     * @return 存在空槽时返回 {@code true}
+     */
+    default boolean hasEmptySlot() {
+        ItemStack[] snapshot = this.snapshot();
+        for (int i = 0; i < snapshot.length; i++) {
+            if (snapshot[i] == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断是否存在 matcher 选中的物品.
+     * matcher 收到的是独立快照中的物品克隆, 改动它不会影响Inventory.
+     *
+     * @param matcher 判断物品是否符合条件的函数
+     * @return 至少有一个物品符合条件时返回 {@code true}
+     */
+    default boolean contains(@NotNull Predicate<? super ItemStack> matcher) {
+        ItemStack[] snapshot = this.snapshot();
+        for (int i = 0; i < snapshot.length; i++) {
+            ItemStack item = snapshot[i];
+            if (item != null && matcher.test(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断是否存在与 template 相似的物品堆, 不比较数量.
+     *
+     * @param template 用于相似判断的物品样板
+     * @return 至少有一个相似物品堆时返回 {@code true}
+     */
+    default boolean containsSimilar(@NotNull ItemStack template) {
+        return this.contains(item -> item.isSimilar(template));
+    }
+
+    /**
+     * 统计 matcher 选中的物品堆数量, 不累加堆内物品数量.
+     * matcher 收到的是独立快照中的物品克隆, 改动它不会影响Inventory.
+     *
+     * @param matcher 判断物品是否符合条件的函数
+     * @return 符合条件的非空槽数量
+     */
+    default int count(@NotNull Predicate<? super ItemStack> matcher) {
+        ItemStack[] snapshot = this.snapshot();
+        int count = 0;
+        for (int i = 0; i < snapshot.length; i++) {
+            ItemStack item = snapshot[i];
+            if (item != null && matcher.test(item)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 统计与 template 相似的物品堆数量, 不比较也不累加数量.
+     *
+     * @param template 用于相似判断的物品样板
+     * @return 相似物品堆所在的非空槽数量
+     */
+    default int countSimilar(@NotNull ItemStack template) {
+        return this.count(item -> item.isSimilar(template));
+    }
+
+    /**
+     * 判断指定槽位是否装有物品.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @return 槽位非空时返回 {@code true}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default boolean hasItem(int slot) {
+        return this.itemAt(slot) != null;
+    }
+
+    /**
+     * 返回指定槽位内的物品数量, 空槽返回 0.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @return 槽内物品数量, 空槽为 0
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default int itemAmount(int slot) {
+        ItemStack item = this.itemAt(slot);
+        return item == null ? 0 : item.getAmount();
+    }
+
+    /**
      * 权威写入单个槽位: 覆盖为给定物品({@code null} 清空), 不受堆叠上限约束.
      * 权威写恒定产生事务与事件, 即使新值与当前值相等也不做无变更抑制.
      *
