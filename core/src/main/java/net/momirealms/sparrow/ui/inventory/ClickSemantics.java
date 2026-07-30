@@ -7,7 +7,14 @@ import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsMutableProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -243,6 +250,9 @@ public final class ClickSemantics {
         if (cursor.isEmpty()) {
             return InventoryAction.PICKUP_ALL;
         }
+        if (ItemUtils.isBundle(current)) {
+            return outcome.cursorAfter().isEmpty() ? InventoryAction.PLACE_ALL_INTO_BUNDLE : InventoryAction.PLACE_SOME_INTO_BUNDLE;
+        }
         if (current == null) {
             return InventoryAction.PLACE_ALL;
         }
@@ -266,6 +276,20 @@ public final class ClickSemantics {
      */
     @NotNull
     private static InventoryAction estimateRightClick(LinkedSlot link, ItemStack cursor, @Nullable ItemStack current) {
+        if (ItemUtils.isBundle(current)) {
+            if (cursor.isEmpty()) {
+                Object contents = DataComponentHolderProxy.INSTANCE.component(
+                        ItemUtils.getItemStackHandle(current),
+                        DataComponentsProxy.BUNDLE_CONTENTS
+                );
+                return contents != null && !BundleContentsProxy.INSTANCE.isEmpty(contents)
+                        ? InventoryAction.PICKUP_FROM_BUNDLE
+                        : InventoryAction.NOTHING;
+            }
+            return current.equals(cursor) || computeSwap(current, cursor, link.inventory().slotMaxStackSize(link.slot())) == null
+                    ? InventoryAction.NOTHING
+                    : InventoryAction.SWAP_WITH_CURSOR;
+        }
         SlotOutcome outcome = computeRightClick(current, cursor, link.inventory().slotMaxStackSize(link.slot()));
         if (outcome == null) {
             return InventoryAction.NOTHING;
@@ -337,6 +361,32 @@ public final class ClickSemantics {
      * 与Inventory无关, 交给调用方按原有的 Item 分派处理
      */
     public static boolean handleClick(@NotNull Context context, @NotNull ClickType clickType, int hotbarButton, int windowSlot) {
+        return handleClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {});
+    }
+
+    /**
+     * 处理带 Window 本地 Bundle 选择状态的单击.
+     * 选择快照只参与空光标右键 Bundle; 其他点击仍走普通语义.
+     *
+     * @param context 当前 Window 交互上下文
+     * @param clickType 已解析的点击类型
+     * @param hotbarButton NUMBER_KEY 的热键编号, 其他点击传 {@code -1}
+     * @param windowSlot 窗口原始槽号
+     * @param observedBundle 记录选择时客户端看到的 Bundle, 没有选择时为 {@code null}
+     * @param selectedIndex 记录的 Bundle 内部索引, 没有选择时为 {@code -1}
+     * @param afterCommit 右键事务提交后清理 Window 选择状态的回调
+     * @return 语义已接管返回 {@code true}; {@code false} 表示交给 Item 分派
+     */
+    @ApiStatus.Internal
+    public static boolean handleClick(
+            @NotNull Context context,
+            @NotNull ClickType clickType,
+            int hotbarButton,
+            int windowSlot,
+            @Nullable ItemStack observedBundle,
+            int selectedIndex,
+            @NotNull Runnable afterCommit
+    ) {
         LinkedSlot link = context.linkAt(windowSlot);
 
         if (link == null) {
@@ -356,7 +406,7 @@ public final class ClickSemantics {
 
         switch (clickType) {
             case LEFT -> pickupOrPlace(context, link, windowSlot, ClickType.LEFT);
-            case RIGHT -> pickupOrPlace(context, link, windowSlot, ClickType.RIGHT);
+            case RIGHT -> pickupOrPlace(context, link, windowSlot, ClickType.RIGHT, observedBundle, selectedIndex, afterCommit);
             case SHIFT_LEFT, SHIFT_RIGHT -> shiftFromLink(context, link, windowSlot, clickType);
             case NUMBER_KEY -> swapWithHotbar(context, link, windowSlot, hotbarButton);
             case SWAP_OFFHAND -> swapWithOffhand(context, link, windowSlot);
@@ -543,6 +593,22 @@ public final class ClickSemantics {
      * @param clickType 左键还是右键
      */
     private static void pickupOrPlace(Context context, LinkedSlot link, int windowSlot, ClickType clickType) {
+        pickupOrPlace(context, link, windowSlot, clickType, null, -1, () -> {
+        });
+    }
+
+    /**
+     * 带 Bundle 选择快照的左右键取放入口.
+     */
+    private static void pickupOrPlace(
+            Context context,
+            LinkedSlot link,
+            int windowSlot,
+            ClickType clickType,
+            @Nullable ItemStack observedBundle,
+            int selectedIndex,
+            Runnable afterCommit
+    ) {
         ItemStack cursor = context.cursor();
         applyLinkSemantics(
                 context,
@@ -552,13 +618,14 @@ public final class ClickSemantics {
                 (current, slotLimit) ->
                     clickType == ClickType.LEFT
                             ? computeLeftClick(current, cursor, slotLimit)
-                            : computeRightClick(current, cursor, slotLimit));
+                            : computeRightClick(current, cursor, slotLimit, observedBundle, selectedIndex),
+                afterCommit);
     }
 
     /**
      * 算出左键点击后槽位与光标各自的新内容.
-     * <p>四种情形: 光标空手就把整堆拿起来; 槽空就把光标物品尽量放进去; 两边相似就合并;
-     * 两边不一样就整堆交换 (交换受槽位上限约束, 放不下就是无操作).
+     * <p>光标持物且槽内是 Bundle 时优先尝试插入, 放不进去不交换;
+     * 其余情形仍是拿起整堆、放入空槽、合并或交换.
      *
      * @param current 槽内现有物品, 空槽为 {@code null}
      * @param cursor 当前光标物品
@@ -569,6 +636,9 @@ public final class ClickSemantics {
     private static SlotOutcome computeLeftClick(@Nullable ItemStack current, ItemStack cursor, int slotLimit) {
         if (cursor.isEmpty()) {
             return current == null ? null : new SlotOutcome(null, current);
+        }
+        if (ItemUtils.isBundle(current)) {
+            return computeBundleInsertion(current, cursor);
         }
         if (current == null) {
             int placeable = Math.min(effectiveLimit(slotLimit, cursor), cursor.getAmount());
@@ -600,6 +670,57 @@ public final class ClickSemantics {
      */
     @Nullable
     private static SlotOutcome computeRightClick(@Nullable ItemStack current, ItemStack cursor, int slotLimit) {
+        return computeRightClick(current, cursor, slotLimit, null, -1);
+    }
+
+    /**
+     * 算出带 Window 本地 Bundle 选择状态的右键结果.
+     * 空光标尝试取出内部物品; 持物光标直接与 Bundle 交换.
+     */
+    @Nullable
+    private static SlotOutcome computeRightClick(
+            @Nullable ItemStack current,
+            ItemStack cursor,
+            int slotLimit,
+            @Nullable ItemStack observedBundle,
+            int selectedIndex
+    ) {
+        if (ItemUtils.isBundle(current)) {
+            if (!cursor.isEmpty()) {
+                return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
+            }
+            ItemStack bundleAfter = current.clone();
+            Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+            Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
+            if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
+                return null;
+            }
+            int takeIndex = observedBundle != null
+                    && observedBundle.equals(current)
+                    && selectedIndex >= 0
+                    && selectedIndex < BundleContentsProxy.INSTANCE.size(contents)
+                    ? selectedIndex
+                    : 0;
+            Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+            int previousSelection = VersionHelper.isOrAbove26_1()
+                    ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)
+                    : BundleContentsProxy.INSTANCE.selectedItem(contents);
+            if (previousSelection >= 0) {
+                BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, previousSelection);
+            }
+            BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, takeIndex);
+            Object takenHandle = BundleContentsMutableProxy.INSTANCE.removeOne(mutableContents);
+            ItemStackProxy.INSTANCE.set(
+                    bundleHandle,
+                    DataComponentsProxy.BUNDLE_CONTENTS,
+                    BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
+            );
+            ItemStack taken = CraftItemStackProxy.INSTANCE.asCraftMirror(takenHandle).clone();
+            if (taken.isEmpty()) {
+                return null;
+            }
+            return new SlotOutcome(bundleAfter, taken);
+        }
         if (cursor.isEmpty()) {
             if (current == null) {
                 return null;
@@ -621,6 +742,36 @@ public final class ClickSemantics {
             return new SlotOutcome(ItemUtils.copyWithAmount(current, current.getAmount() + 1), remainderOf(cursor, 1));
         }
         return computeSwap(current, cursor, slotLimit);
+    }
+
+    /**
+     * 使用原版 BundleContents 规则把光标物品尽量插入 Bundle.
+     * 两个 Bukkit 快照都先克隆, 原版算法只会修改克隆及其 Data Component.
+     *
+     * @param current 槽内 Bundle
+     * @param cursor 光标物品
+     * @return 插入后的槽位与光标; 完全放不进去时为 {@code null}
+     */
+    @Nullable
+    private static SlotOutcome computeBundleInsertion(ItemStack current, ItemStack cursor) {
+        ItemStack bundleAfter = current.clone();
+        ItemStack cursorAfter = cursor.clone();
+        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
+        if (contents == null) {
+            return null;
+        }
+        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(cursorAfter));
+        if (inserted == 0) {
+            return null;
+        }
+        ItemStackProxy.INSTANCE.set(
+                bundleHandle,
+                DataComponentsProxy.BUNDLE_CONTENTS,
+                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
+        );
+        return new SlotOutcome(bundleAfter, cursorAfter.isEmpty() ? ItemStack.empty() : cursorAfter);
     }
 
     /**
@@ -952,7 +1103,14 @@ public final class ClickSemantics {
      * @param windowSlot 被点的窗口槽, 仅用于标脏
      * @param computation 左键或右键的具体算法
      */
-    private static void applyLinkSemantics(Context context, UpdateReason reason, LinkedSlot link, int windowSlot, SlotComputation computation) {
+    private static void applyLinkSemantics(
+            Context context,
+            UpdateReason reason,
+            LinkedSlot link,
+            int windowSlot,
+            SlotComputation computation,
+            Runnable afterCommit
+    ) {
         SparrowInventory inventory = (SparrowInventory) link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         if (!plan.writable(link.slot())) {
@@ -973,6 +1131,7 @@ public final class ClickSemantics {
         );
         if (result instanceof TransactionResult.Committed) {
             context.cursor(outcome.cursorAfter());
+            afterCommit.run();
         }
         context.markDirty(windowSlot);
     }

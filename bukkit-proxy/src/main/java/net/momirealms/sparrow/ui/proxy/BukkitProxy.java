@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * 在代理接口首次解析前配置 nyana-reflection 的版本条件和 Paper 映射.
+ * 在代理接口首次解析前配置 sparrow-reflection 的版本条件和 Paper 映射.
  */
 public final class BukkitProxy {
     public static final int INSTALLATION_VERSION = 1;

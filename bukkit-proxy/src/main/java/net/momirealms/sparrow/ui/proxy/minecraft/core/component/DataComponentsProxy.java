@@ -11,6 +11,7 @@ public interface DataComponentsProxy {
     Object TOOLTIP_DISPLAY = INSTANCE.TOOLTIP_DISPLAY();
     Object ITEM_MODEL = INSTANCE.ITEM_MODEL();
     Object MAP_ID = INSTANCE.MAP_ID();
+    Object BUNDLE_CONTENTS = INSTANCE.BUNDLE_CONTENTS();
 
     @FieldGetter(name = "CUSTOM_NAME", isStatic = true)
     Object CUSTOM_NAME();
@@ -23,4 +24,7 @@ public interface DataComponentsProxy {
 
     @FieldGetter(name = "MAP_ID", isStatic = true)
     Object MAP_ID();
+
+    @FieldGetter(name = "BUNDLE_CONTENTS", isStatic = true)
+    Object BUNDLE_CONTENTS();
 }

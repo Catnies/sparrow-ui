@@ -16,6 +16,9 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.Inventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -81,6 +84,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的槽位路由与玩家侧 IO
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
+    private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按窗口原始槽隔离
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
@@ -124,6 +128,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.manager = manager;
         this.viewer = viewer;
         this.layout = layout;
+        this.bundleSelections = new BundleSelectionState[layout.protocolSize()];
         this.title = Component.empty();
         this.titleSupplier = settings.titleSupplier();
         this.closeable = settings.closeable();
@@ -615,6 +620,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.menuDirty = true;
         this.titleDirty = false;
         this.clickInterpreter.reset();
+        Arrays.fill(this.bundleSelections, null);
         this.pendingWindowStates.clear();
         synchronized (this.dirtyLock) {
             this.dirtySlots.clear();
@@ -829,7 +835,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 }
             }
             // Inventory 槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
-            if (!ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), rawSlot)) {
+            BundleSelectionState bundleSelection = this.bundleSelections[rawSlot];
+            if (!ClickSemantics.handleClick(
+                    this.semanticsContext,
+                    click.clickType(),
+                    click.hotbarButton(),
+                    rawSlot,
+                    bundleSelection == null ? null : bundleSelection.observedBundle(),
+                    bundleSelection == null ? -1 : bundleSelection.selectedIndex(),
+                    () -> this.bundleSelections[rawSlot] = null
+            )) {
                 path.handleClick(new ItemClick(click.clickType(), this.viewer, this, rawSlot, click.hotbarButton()));
             }
             return;
@@ -891,7 +906,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 处理客户端的收纳袋选择包.
-     * 选择只转发给 GUI 槽位; 处理后强制全量同步, 纠正客户端的本地预测.
+     * 选择只转发给 GUI 槽位, 不同步客户端已经维护的本地选择状态.
      *
      * @param packet 收纳袋选择包
      */
@@ -906,8 +921,40 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.forceFull = true;
             return;
         }
+        this.updateBundleSelection(packet.slot(), packet.selectedIndex());
         this.requirePath(packet.slot()).handleBundleSelect(new BundleSelect(this.viewer, packet.selectedIndex()));
-        this.forceFull = true;
+    }
+
+    /**
+     * 记录客户端在某个原始槽看到的 Bundle 与实际选择.
+     * 重复选择同一项、取消选择或越界索引都按原版规则清除.
+     *
+     * @param rawSlot Bundle 所在的原始槽
+     * @param requestedIndex 客户端请求切换到的内部索引
+     */
+    private void updateBundleSelection(int rawSlot, int requestedIndex) {
+        ItemStack[] localSlots = this.localSlots;
+        if (localSlots == null) {
+            return;
+        }
+        ItemStack bundle = localSlots[rawSlot];
+        if (!ItemUtils.isBundle(bundle)) {
+            this.bundleSelections[rawSlot] = null;
+            return;
+        }
+        Object contents = DataComponentHolderProxy.INSTANCE.component(
+                ItemUtils.getItemStackHandle(bundle),
+                DataComponentsProxy.BUNDLE_CONTENTS
+        );
+        BundleSelectionState previous = this.bundleSelections[rawSlot];
+        if (contents == null
+                || requestedIndex < 0
+                || requestedIndex >= BundleContentsProxy.INSTANCE.size(contents)
+                || previous != null && previous.selectedIndex() == requestedIndex && previous.observedBundle().equals(bundle)) {
+            this.bundleSelections[rawSlot] = null;
+            return;
+        }
+        this.bundleSelections[rawSlot] = new BundleSelectionState(bundle.clone(), requestedIndex);
     }
 
     /**
@@ -1128,7 +1175,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             DisplayedSlotPath path = paths[windowSlot];
             if (path != null) {
                 try {
-                    localSlots[windowSlot] = path.render();
+                    ItemStack rendered = path.render();
+                    if (windowSlot < this.bundleSelections.length) {
+                        BundleSelectionState selection = this.bundleSelections[windowSlot];
+                        if (selection != null && !selection.observedBundle().equals(rendered)) {
+                            this.bundleSelections[windowSlot] = null;
+                        }
+                    }
+                    localSlots[windowSlot] = rendered;
                 } catch (Throwable throwable) {
                     this.manager.report("Failed to render Window slot " + windowSlot, throwable);
                     localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemStack.empty() : localSlots[windowSlot];
@@ -1217,6 +1271,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.open = false;
         this.generation++;
         this.clickInterpreter.reset();
+        Arrays.fill(this.bundleSelections, null);
 
         ScheduledTask previousTickTask = this.tickTask;
         M previousMenu = this.menuHandle;
@@ -1533,5 +1588,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param createdAtMillis 创建时间(毫秒), 用于超时清理
      */
     private record PendingWindowState(int state, long createdAtMillis) {
+    }
+
+    /**
+     * 客户端本地 Bundle 选择及其对应的显示快照.
+     *
+     * @param observedBundle 选择发生时该原始槽显示的 Bundle
+     * @param selectedIndex Bundle 内部选择索引
+     */
+    private record BundleSelectionState(@NotNull ItemStack observedBundle, int selectedIndex) {
     }
 }

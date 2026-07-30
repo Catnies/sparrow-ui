@@ -39,6 +39,9 @@ public interface ItemStackProxy {
     @MethodInvoker(name = "getComponents")
     Object getComponents(Object target);
 
+    @MethodInvoker(name = "getItem")
+    Object getItem(Object target);
+
     @MethodInvoker(name = "getItemHolder", activeIf = "!min_version=26.1")
     Object getItemHolder(Object target);
 

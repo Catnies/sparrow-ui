@@ -27,6 +27,6 @@ dependencies {
 tasks.shadowJar {
     archiveClassifier = ""
     archiveFileName = "proxy.jarinjar"
-    relocate("net.momirealms.sparrow.reflection", "net.nyana.sparrow.ui.libraries.reflection")
-    relocate("org.objectweb.asm", "net.nyana.sparrow.ui.libraries.asm")
+    relocate("net.momirealms.sparrow.reflection", "net.momirealms.sparrow.ui.libraries.reflection")
+    relocate("org.objectweb.asm", "net.momirealms.sparrow.ui.libraries.asm")
 }
