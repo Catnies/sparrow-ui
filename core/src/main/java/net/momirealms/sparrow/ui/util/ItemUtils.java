@@ -62,11 +62,8 @@ public final class ItemUtils {
         return a != null && b != null && a.isSimilar(b);
     }
 
-    public static boolean isBundle(@Nullable ItemStack item) {
-        if (item == null || item.isEmpty()) {
-            return false;
-        }
-        return ItemStackProxy.INSTANCE.getItem(ItemUtils.getItemStackHandle(item)) == ItemsProxy.BUNDLE;
+    public static boolean isType(@Nullable ItemStack itemStack, @NotNull Object item) {
+        return !isNullOrEmpty(itemStack) && ItemStackProxy.INSTANCE.getItem(ItemUtils.getItemStackHandle(itemStack)) == item;
     }
 
     // 新建一份以屏障作为Material的不可见物品.

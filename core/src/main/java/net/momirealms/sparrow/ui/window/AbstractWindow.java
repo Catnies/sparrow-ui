@@ -18,6 +18,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.*;
 import org.bukkit.entity.Player;
@@ -938,7 +939,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
         ItemStack bundle = localSlots[rawSlot];
-        if (!ItemUtils.isBundle(bundle)) {
+        if (!ItemUtils.isType(bundle, ItemsProxy.BUNDLE)) {
             this.bundleSelections[rawSlot] = null;
             return;
         }

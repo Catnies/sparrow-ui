@@ -11,6 +11,7 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemSta
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsMutableProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -250,7 +251,7 @@ public final class ClickSemantics {
         if (cursor.isEmpty()) {
             return InventoryAction.PICKUP_ALL;
         }
-        if (ItemUtils.isBundle(current)) {
+        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             return outcome.cursorAfter().isEmpty() ? InventoryAction.PLACE_ALL_INTO_BUNDLE : InventoryAction.PLACE_SOME_INTO_BUNDLE;
         }
         if (current == null) {
@@ -276,7 +277,7 @@ public final class ClickSemantics {
      */
     @NotNull
     private static InventoryAction estimateRightClick(LinkedSlot link, ItemStack cursor, @Nullable ItemStack current) {
-        if (ItemUtils.isBundle(current)) {
+        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             if (cursor.isEmpty()) {
                 Object contents = DataComponentHolderProxy.INSTANCE.component(
                         ItemUtils.getItemStackHandle(current),
@@ -637,7 +638,7 @@ public final class ClickSemantics {
         if (cursor.isEmpty()) {
             return current == null ? null : new SlotOutcome(null, current);
         }
-        if (ItemUtils.isBundle(current)) {
+        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             return computeBundleInsertion(current, cursor);
         }
         if (current == null) {
@@ -685,7 +686,7 @@ public final class ClickSemantics {
             @Nullable ItemStack observedBundle,
             int selectedIndex
     ) {
-        if (ItemUtils.isBundle(current)) {
+        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             if (!cursor.isEmpty()) {
                 return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
             }
