@@ -43,11 +43,8 @@ public final class BukkitProxyInstaller {
     public static void setUp() {
         try {
             ClassLoader minecraftClassLoader = Bukkit.class.getClassLoader();
-            // 从内嵌资源读出代理 Jar
             byte[] archive = BukkitProxyInstaller.readProxyArchive();
-            // 追加到 Minecraft 类路径, 使代理接口与实现可被解析
             BukkitProxyInstaller.appendToMinecraftClassPath(minecraftClassLoader, archive);
-            // 调用代理引导入口完成初始化
             Class<?> bootstrapClass = ReflectionUtils.getClazz(PROXY_BOOTSTRAP);
             ReflectionUtils.getStaticMethod(bootstrapClass, 0).invoke(null, VersionHelper.MINECRAFT_VERSION.version(), VersionHelper.getPatches());
         } catch (Throwable e) {
@@ -55,16 +52,10 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 读取内嵌的代理 Jar 字节.
-     *
-     * @return 代理 Jar 的完整字节
-     * @throws IllegalStateException 资源缺失或读取失败时抛出
-     */
+    // 读取内嵌的代理 Jar 字节.
     private static byte[] readProxyArchive() {
         ClassLoader libraryClassLoader = BukkitProxyInstaller.class.getClassLoader();
         try (InputStream input = libraryClassLoader.getResourceAsStream(BukkitProxyInstaller.PROXY_ARCHIVE)) {
-            // 资源随插件 Jar 一起打包, 缺失意味着构建产物损坏
             if (input == null) {
                 throw new IllegalStateException(
                         "Missing embedded resource " + BukkitProxyInstaller.PROXY_ARCHIVE
@@ -79,13 +70,7 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 把代理 Jar 以只读内存 URL 的形式追加到 Minecraft 类路径.
-     *
-     * @param minecraftClassLoader Minecraft 共享类加载器
-     * @param archive 代理 Jar 字节
-     * @throws IllegalStateException 追加失败时抛出
-     */
+    // 把代理 Jar 以只读内存 URL 的形式追加到 Minecraft 类路径.
     private static void appendToMinecraftClassPath(ClassLoader minecraftClassLoader, byte[] archive) {
         try {
             URL archiveUrl = new URL(null, "sparrow-memory:/", new ArchiveUrlStreamHandler(BukkitProxyInstaller.readArchiveEntries(archive)));
@@ -95,13 +80,7 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 把代理 Jar 的全部条目读成条目名到字节的映射.
-     *
-     * @param archive 代理 Jar 字节
-     * @return 条目名到条目字节的不可变映射
-     * @throws IllegalStateException 读取失败或 Jar 为空时抛出
-     */
+    // 把代理 Jar 的全部条目读成条目名到字节的映射.
     private static Map<String, byte[]> readArchiveEntries(byte[] archive) {
         HashMap<String, byte[]> entries = new HashMap<>();
         try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(archive))) {
@@ -119,13 +98,7 @@ public final class BukkitProxyInstaller {
         return Map.copyOf(entries);
     }
 
-    /**
-     * 判断指定类加载器能否解析某个类, 不触发类初始化.
-     *
-     * @param classLoader 要检查的类加载器
-     * @param className 全限定类名
-     * @return 类存在且可链接时为 true
-     */
+    // 判断指定类加载器能否解析某个类, 不触发类初始化.
     private static boolean classExists(ClassLoader classLoader, String className) {
         try {
             Class.forName(className, false, classLoader);
@@ -136,9 +109,7 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 将内层 Jar 条目作为只读 URL 资源暴露给 URLClassLoader.
-     */
+    // 将内层 Jar 条目作为只读 URL 资源暴露给 URLClassLoader.
     private static final class ArchiveUrlStreamHandler extends URLStreamHandler {
         private final Map<String, byte[]> entries; // 条目名到条目字节
 
@@ -152,18 +123,11 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 为单个内层 Jar 条目提供独立输入流.
-     */
+    // 为单个内层 Jar 条目提供独立输入流.
     private static final class ArchiveUrlConnection extends URLConnection {
         private final byte[] content; // 条目字节, 条目不存在时为 null
 
-        /**
-         * 创建指向单个条目的连接. URL 路径去掉前导斜杠即为条目名.
-         *
-         * @param url 条目 URL
-         * @param entries 条目名到条目字节的映射
-         */
+        // 创建指向单个条目的连接. URL 路径去掉前导斜杠即为条目名.
         private ArchiveUrlConnection(URL url, Map<String, byte[]> entries) {
             super(url);
             String path = url.getPath();
@@ -196,9 +160,7 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    /**
-     * 持有 URLClassLoader.addURL 的全权限句柄.
-     */
+    // 持有 URLClassLoader.addURL 的全权限句柄.
     @SuppressWarnings({"removal", "deprecation"})
     private static final class ClassPathAccess {
         private static final MethodHandle ADD_URL = ClassPathAccess.createAddUrlHandle(); // URLClassLoader.addURL 的全权限句柄
@@ -206,12 +168,7 @@ public final class BukkitProxyInstaller {
         private ClassPathAccess() {
         }
 
-        /**
-         * 创建 URLClassLoader.addURL 的 MethodHandle.
-         *
-         * @return addURL 句柄
-         * @throws ExceptionInInitializerError 获取 Unsafe 或查找方法失败时抛出
-         */
+        // 创建 URLClassLoader.addURL 的 MethodHandle.
         private static MethodHandle createAddUrlHandle() {
             try {
                 Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");

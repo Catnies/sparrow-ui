@@ -35,7 +35,7 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
-        if (SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
+        if (SparrowUI.getInstance().fireBukkitInventoryEvents()) {
             int rawSlot = click.rawSlot();
             InventoryView view = window.inventoryView();
             InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
@@ -63,7 +63,7 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {
-        if (SparrowUI.getInstance().isFireBukkitInventoryEvents()) {
+        if (SparrowUI.getInstance().fireBukkitInventoryEvents()) {
             InventoryView view = window.inventoryView();
             ItemStack oldCursor = view.getCursor();
             LinkedHashMap<Integer, ItemStack> results = new LinkedHashMap<>();
