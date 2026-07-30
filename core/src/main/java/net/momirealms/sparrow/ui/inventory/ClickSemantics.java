@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.BundleSelect;
+import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -11,6 +14,7 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -369,6 +373,35 @@ public final class ClickSemantics {
             default -> context.markDirty(windowSlot);
         }
         return true;
+    }
+
+    /**
+     * 在事务规划前向被InventoryLink直接连接的逻辑Inventory派发点击事件.
+     *
+     * @return 事件没有被取消时返回 {@code true}
+     */
+    @ApiStatus.Internal
+    public static boolean dispatchClickEvent(
+            @NotNull Inventory inventory,
+            int slot,
+            @NotNull Player player,
+            @NotNull ClickType clickType,
+            int hotbarButton,
+            @NotNull InventoryAction action
+    ) {
+        InventoryClickEvent event = new InventoryClickEvent(inventory, slot, player, clickType, hotbarButton, action);
+        ((SparrowInventory) inventory).publishClick(event);
+        return !event.cancelled();
+    }
+
+    /**
+     * 向被InventoryLink直接连接的逻辑Inventory派发Bundle选择事件.
+     */
+    @ApiStatus.Internal
+    public static void dispatchBundleSelectEvent(@NotNull Inventory inventory, int slot, @NotNull BundleSelect select) {
+        ((SparrowInventory) inventory).publishBundleSelect(
+                new InventoryBundleSelectEvent(inventory, slot, select.player(), select.bundleSlot())
+        );
     }
 
     /**

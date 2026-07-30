@@ -2,6 +2,8 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -15,6 +17,8 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
@@ -329,6 +333,24 @@ public interface Inventory {
     int simulateAdd(@NotNull ItemStack item);
 
     /**
+     * 在同一份规划快照上按参数顺序连续试算放入多个物品.
+     *
+     * @param items 要试算的物品
+     * @return 与参数顺序一致的剩余数量数组
+     */
+    default int[] simulateAdd(ItemStack @NotNull ... items) {
+        return this.simulateAdd(Arrays.asList(items));
+    }
+
+    /**
+     * 在同一份规划快照上按列表顺序连续试算放入多个物品.
+     *
+     * @param items 要试算的物品
+     * @return 与列表顺序一致的剩余数量数组
+     */
+    int[] simulateAdd(@NotNull List<? extends ItemStack> items);
+
+    /**
      * 试算 {@link #collect}: 假如现在收集, 能收集到多少数量.
      *
      * @param template 物品样板, 只参与相似判断
@@ -344,6 +366,38 @@ public interface Inventory {
      * @return 能完整装下返回 {@code true}
      */
     boolean canHold(@NotNull ItemStack item);
+
+    /**
+     * 判断Inventory能不能按参数顺序完整装下全部物品.
+     *
+     * @param items 要检查的物品
+     * @return 全部能装下返回 {@code true}
+     */
+    default boolean canHold(ItemStack @NotNull ... items) {
+        int[] remaining = this.simulateAdd(items);
+        for (int i = 0; i < remaining.length; i++) {
+            if (remaining[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断Inventory能不能按列表顺序完整装下全部物品.
+     *
+     * @param items 要检查的物品
+     * @return 全部能装下返回 {@code true}
+     */
+    default boolean canHold(@NotNull List<? extends ItemStack> items) {
+        int[] remaining = this.simulateAdd(items);
+        for (int i = 0; i < remaining.length; i++) {
+            if (remaining[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     /**
      * 让ReferencingInventory与外部最新内容同步一次; 自己持有数据的Inventory调用它没有效果.
@@ -364,6 +418,27 @@ public interface Inventory {
     @NotNull
     @ApiStatus.Experimental
     org.bukkit.inventory.Inventory asBukkitInventory();
+
+    /**
+     * 订阅玩家点击本Inventory连接槽的事件. 事件在事务规划之前派发, 即使点击最终
+     * 不产生槽位变化也会到达; 取消事件会阻止本次Inventory点击进入规划与提交.
+     * 订阅只属于当前逻辑Inventory实例, 不向底层或视图传播.
+     *
+     * @param observer 事件处理器
+     * @return 订阅凭证, 关闭后不再接收事件
+     */
+    @NotNull
+    Subscription subscribeClick(@NotNull Observer<? super InventoryClickEvent> observer);
+
+    /**
+     * 订阅玩家在本Inventory连接槽中的Bundle选择事件.
+     * 订阅只属于当前逻辑Inventory实例, 不向底层或视图传播.
+     *
+     * @param observer 事件处理器
+     * @return 订阅凭证, 关闭后不再接收事件
+     */
+    @NotNull
+    Subscription subscribeBundleSelect(@NotNull Observer<? super InventoryBundleSelectEvent> observer);
 
     /**
      * 订阅事务提交前的事件, 处理器可以取消整个事务.

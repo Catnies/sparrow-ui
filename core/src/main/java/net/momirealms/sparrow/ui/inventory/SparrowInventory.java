@@ -2,9 +2,12 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
+import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
@@ -31,8 +34,8 @@ import java.util.function.UnaryOperator;
  * 只把读写转发给根Inventory的视图(拼接, 遮蔽等). 视图的每个逻辑槽最终都落在某个根Inventory的某个槽上,
  * 这个换算由 {@link #resolveSlot(int)} 完成; 批量操作先在逻辑槽的快照上规划好, 再按根Inventory分组,
  * 由 {@link InventoryTransactions} 一次性提交 —— 跨多个根Inventory也能保证要么全部生效, 要么全部不生效.
- * <p>视图自己不产生事件: 在它上面订阅, 实际是转发订阅到它背后的全部根Inventory. 跨根事务的同一个
- * 事件对象会按参与的根Inventory数量投递多次, 需要"只处理一次"的观察者可以用事件对象的引用相等去重.
+ * <p>事务事件由根Inventory产生: 在视图上订阅会转发到背后的全部根. Window交互事件则属于
+ * 被InventoryLink直接连接的逻辑Inventory实例, 不向根或外层视图传播.
  */
 abstract class SparrowInventory implements Inventory {
     static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
@@ -42,6 +45,8 @@ abstract class SparrowInventory implements Inventory {
     @Nullable private volatile Integer addGuiPriority;
     @Nullable private volatile Integer collectGuiPriority;
     @Nullable private volatile Integer otherGuiPriority;
+    private final ObservableDispatcher<InventoryClickEvent> clickEvents = new ObservableDispatcher<>();
+    private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     // 懒加载的 Bukkit 包装实例: Bukkit 侧靠引用相等辨认Inventory, 所以同一Inventory必须恒为同一个实例
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
 
@@ -325,6 +330,32 @@ abstract class SparrowInventory implements Inventory {
      * {@inheritDoc}
      */
     @Override
+    public int[] simulateAdd(@NotNull List<? extends ItemStack> items) {
+        @Nullable ItemStack[] working = this.openPlan().snapshot().clone();
+        int[] remaining = new int[items.size()];
+        int index = 0;
+        for (ItemStack item : items) {
+            @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+            if (input == null) {
+                index++;
+                continue;
+            }
+            InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize);
+            remaining[index] = plan.remaining();
+            List<SlotDelta> deltas = plan.deltas();
+            for (int j = 0; j < deltas.size(); j++) {
+                SlotDelta delta = deltas.get(j);
+                working[delta.slot()] = delta.after();
+            }
+            index++;
+        }
+        return remaining;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public int simulateCollect(@NotNull ItemStack template, int upTo) {
         @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
         if (sample == null || upTo <= 0) {
@@ -376,6 +407,38 @@ abstract class SparrowInventory implements Inventory {
             }
         }
         return view;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public Subscription subscribeClick(@NotNull Observer<? super InventoryClickEvent> observer) {
+        return this.clickEvents.subscribe(observer);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @NotNull
+    public Subscription subscribeBundleSelect(@NotNull Observer<? super InventoryBundleSelectEvent> observer) {
+        return this.bundleSelectEvents.subscribe(observer);
+    }
+
+    /**
+     * 向当前逻辑Inventory的观察者派发一次点击.
+     */
+    void publishClick(@NotNull InventoryClickEvent event) {
+        this.clickEvents.publish(event);
+    }
+
+    /**
+     * 向当前逻辑Inventory的观察者派发一次Bundle选择.
+     */
+    void publishBundleSelect(@NotNull InventoryBundleSelectEvent event) {
+        this.bundleSelectEvents.publish(event);
     }
 
     /**

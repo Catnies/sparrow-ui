@@ -808,9 +808,29 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         int rawSlot = click.rawSlot();
         if (rawSlot != InventoryView.OUTSIDE) {
-            // 库存槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
+            DisplayedSlotPath path = this.requirePath(rawSlot);
+            SlotElement.InventoryLink inventoryLink = path.inventoryLink();
+            if (inventoryLink != null && !path.frozen()) {
+                InventoryAction currentAction = ClickSemantics.estimateInventoryAction(this.semanticsContext, click.clickType(), click.hotbarButton(), rawSlot);
+                boolean allowed = ClickSemantics.dispatchClickEvent(
+                        inventoryLink.inventory(),
+                        inventoryLink.slot(),
+                        this.viewer,
+                        click.clickType(),
+                        click.hotbarButton(),
+                        currentAction
+                );
+                if (!allowed) {
+                    this.forceFull = true;
+                    return;
+                }
+                if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
+                    return;
+                }
+            }
+            // Inventory 槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
             if (!ClickSemantics.handleClick(this.semanticsContext, click.clickType(), click.hotbarButton(), rawSlot)) {
-                this.requirePath(rawSlot).handleClick(new ItemClick(click.clickType(), this.viewer, this, rawSlot, click.hotbarButton()));
+                path.handleClick(new ItemClick(click.clickType(), this.viewer, this, rawSlot, click.hotbarButton()));
             }
             return;
         }

@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
 import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.RefreshPlan;
@@ -162,7 +163,12 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     void handleBundleSelect(@NotNull BundleSelect select) {
         PathState state = this.currentState();
-        if (!state.frozen && state.item != null) {
+        if (state.frozen) {
+            return;
+        }
+        if (state.inventoryLink != null) {
+            ClickSemantics.dispatchBundleSelectEvent(state.inventoryLink.inventory(), state.inventoryLink.slot(), select);
+        } else if (state.item != null) {
             state.item.handleBundleSelect(select);
         }
     }
