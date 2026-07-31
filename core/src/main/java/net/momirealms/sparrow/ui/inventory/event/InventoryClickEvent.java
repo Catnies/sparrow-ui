@@ -7,18 +7,14 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 玩家点击Window中的Inventory连接槽时派发的独立事件.
- * <p>本事件先于事务规划, 因此没有槽位变化的点击同样会派发.
- */
 public final class InventoryClickEvent {
-    private final Inventory inventory;
-    private final int slot;
-    private final Player player;
-    private final ClickType clickType;
-    private final int hotbarButton;
-    private final InventoryAction action;
-    private volatile boolean cancelled;
+    private final Inventory inventory;      // 被点击的 Inventory
+    private final int slot;                 // 被点击的 Slot
+    private final Player player;            // 点击的玩家
+    private final ClickType clickType;      // 点击类型
+    private final int hotbarButton;         // {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
+    private final InventoryAction action;   // 点击的 InventoryAction
+    private volatile boolean cancelled;     // 是否被取消
 
     @ApiStatus.Internal
     public InventoryClickEvent(

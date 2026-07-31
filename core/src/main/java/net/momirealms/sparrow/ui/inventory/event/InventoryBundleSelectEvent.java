@@ -5,7 +5,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 玩家在Window中的Inventory连接槽里选择Bundle内部物品时派发的事件.
+ * 在 Window 中的 Inventory 槽里选择 Bundle 内部物品时派发的事件.
  *
  * @param inventory 包含Bundle的逻辑Inventory
  * @param slot Bundle所在的逻辑槽

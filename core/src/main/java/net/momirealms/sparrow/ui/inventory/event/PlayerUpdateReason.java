@@ -7,9 +7,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-/**
- * 玩家与Window交互触发的Inventory变更原因.
- */
 public interface PlayerUpdateReason extends UpdateReason {
 
     /**
