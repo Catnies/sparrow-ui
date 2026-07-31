@@ -124,7 +124,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         return new PlanContext(planned, deltas -> deltas.isEmpty()
                 ? List.of()
-                : List.of(new InventoryTransactions.Scope(this, planned, deltas)), ignoredSlot -> true);
+                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
     }
 
     /**
@@ -135,15 +135,11 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     @NotNull
     @Override
     PlanContext openPlanForWrite() {
-        boolean writable = this.prepareWrite();
+        this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
-        return new PlanContext(
-                planned,
-                deltas -> deltas.isEmpty()
-                        ? List.of()
-                        : List.of(new InventoryTransactions.Scope(this, planned, deltas)),
-                ignoredSlot -> writable
-        );
+        return new PlanContext(planned, deltas -> deltas.isEmpty()
+                ? List.of()
+                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
     }
 
     @Override
@@ -151,38 +147,17 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 判断当前线程能不能访问本Inventory背后的真实数据. 自持数据的Inventory永远可用;
-     * ReferencingInventory 按目标容器的持有者动态判断.
-     *
-     * @return 可访问返回 {@code true}
-     */
-    boolean writeAvailable() {
-        return true;
-    }
-
-    /**
-     * 为一次写规划做准备: 先确认当前线程可访问, 再触发写前同步.
-     *
-     * @return 本根当前能不能参与写事务
-     */
-    final boolean prepareWrite() {
-        if (!this.writeAvailable()) {
-            return false;
-        }
-        this.beforePlan();
-        return true;
-    }
-
-    /**
+     * 为一次写规划做准备, 触发写前同步.
      * 任何写入口在读规划快照之前都会经过这里, simulate 等纯读路径不会触发.
      */
-    void beforePlan() {
+    void prepareWrite() {
     }
 
     /**
      * 事务提交成功之后, post 事件派发之前, 对每个参与的根携带它的槽位变更调用一次.
      * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
-     * 保证观察者在事件里重入写入时外部状态已经同步;
+     * 保证观察者在事件里重入写入时外部状态已经同步. 此方法抛出的异常会直接传播,
+     * 此时镜像状态已经提交;
      *
      * @param deltas 本次事务在该根上的槽位变更
      */
@@ -212,9 +187,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
      */
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
         Objects.checkIndex(slot, this.size());
-        if (!this.prepareWrite()) {
-            return TransactionResult.Unavailable.INSTANCE;
-        }
+        this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
         SlotDelta delta = new SlotDelta(slot, planned[slot], item);
         return InventoryTransactions.commit(
@@ -233,9 +206,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
-        if (!this.prepareWrite()) {
-            return new AddResult(TransactionResult.Unavailable.INSTANCE, input.getAmount());
-        }
+        this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         int amount = input.getAmount();
@@ -264,9 +235,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     @NotNull
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
         Objects.checkIndex(slot, this.size());
-        if (!this.prepareWrite()) {
-            return TransactionResult.Unavailable.INSTANCE;
-        }
+        this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
         // modifier 收到克隆, 在锁外执行; 其返回值经 SlotDelta 构造再次归一化与克隆
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
@@ -277,9 +246,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     @NotNull
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
         Objects.checkIndex(slot, this.size());
-        if (!this.prepareWrite()) {
-            return TransactionResult.Unavailable.INSTANCE;
-        }
+        this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
         @Nullable ItemStack current = planned[slot];
         if (current == null || change == 0) {

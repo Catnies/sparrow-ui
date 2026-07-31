@@ -102,9 +102,6 @@ final class ClickExecutor {
         for (ClickSemantics.LinkedSlot link : candidates.values()) {
             SparrowInventory inventory = link.inventory();
             SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
-            if (!plan.writable(link.slot())) {
-                continue;
-            }
             @Nullable ItemStack current = plan.snapshot()[link.slot()];
             if (current != null && !ItemUtils.isSimilar(current, cursor)) {
                 continue;
@@ -204,10 +201,6 @@ final class ClickExecutor {
         ItemStack cursor = context.cursor();
         SparrowInventory inventory = link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        if (!plan.writable(link.slot())) {
-            context.markDirty(windowSlot);
-            return;
-        }
         @Nullable ItemStack current = plan.snapshot()[link.slot()];
         ClickSlotRules.Outcome outcome = clickType == ClickType.LEFT
                 ? ClickSlotRules.computeLeftClick(current, cursor, inventory.slotMaxStackSize(link.slot()))
@@ -264,10 +257,6 @@ final class ClickExecutor {
     ) {
         SparrowInventory inventory = source.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        if (!plan.writable(source.slot())) {
-            context.markDirty(windowSlot);
-            return;
-        }
         @Nullable ItemStack current = plan.snapshot()[source.slot()];
         @Nullable ItemStack offhand = context.offhand();
         if (current == null && offhand == null) {
@@ -293,15 +282,9 @@ final class ClickExecutor {
     ) {
         SparrowInventory sourceInventory = source.inventory();
         SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
-        if (!sourcePlan.writable(source.slot())) {
-            return;
-        }
         @Nullable ItemStack sourceItem = sourcePlan.snapshot()[source.slot()];
 
         if (source.inventory() == target.inventory()) {
-            if (!sourcePlan.writable(target.slot())) {
-                return;
-            }
             @Nullable ItemStack targetItem = sourcePlan.snapshot()[target.slot()];
             if (sourceItem == null && targetItem == null) {
                 return;
@@ -319,9 +302,6 @@ final class ClickExecutor {
 
         SparrowInventory targetInventory = target.inventory();
         SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-        if (!targetPlan.writable(target.slot())) {
-            return;
-        }
         @Nullable ItemStack targetItem = targetPlan.snapshot()[target.slot()];
         if (sourceItem == null && targetItem == null) {
             return;
@@ -350,10 +330,6 @@ final class ClickExecutor {
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), fullStack ? ClickType.CONTROL_DROP : ClickType.DROP, -1);
         SparrowInventory inventory = link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        if (!plan.writable(link.slot())) {
-            context.markDirty(windowSlot);
-            return;
-        }
         @Nullable ItemStack current = plan.snapshot()[link.slot()];
         if (current == null) {
             context.markDirty(windowSlot);
@@ -414,7 +390,7 @@ final class ClickExecutor {
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    slot -> plan.writable(slot) && coveredSlots.add(inventory.physicalKey(slot)),
+                    slot -> coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
             scopes.addAll(plan.scoper().apply(takePlan.deltas()));
@@ -460,27 +436,21 @@ final class ClickExecutor {
     private static MoveOutcome moveIntoInventory(
             UpdateReason reason,
             ClickSemantics.LinkedSlot source,
-            SparrowInventory target,
+            SparrowInventory targetInventory,
             SlotKey sourceKey
     ) {
         SparrowInventory sourceInventory = source.inventory();
-        SparrowInventory targetInventory = target;
-
         SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
         SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-        if (!sourcePlan.writable(source.slot())) {
-            return MoveOutcome.REJECTED;
-        }
         @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
-        if (current == null) {
-            return MoveOutcome.FULL;
-        }
-        // 上限报 0 的槽在规划里等于隐身: 不可写的槽, 以及与源槽是同一物理槽的目标槽
+        if (current == null) return MoveOutcome.FULL;
+
+        // 与源槽是同一物理槽的目标槽上限报 0, 在规划里等于隐身
         InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
                 targetPlan.snapshot(),
                 current,
                 targetInventory.iterationOrder(OperationCategory.ADD),
-                slot -> !targetPlan.writable(slot) || targetInventory.physicalKey(slot).equals(sourceKey)
+                slot -> targetInventory.physicalKey(slot).equals(sourceKey)
                         ? 0
                         : targetInventory.slotMaxStackSize(slot)
         );
@@ -501,7 +471,7 @@ final class ClickExecutor {
         if (result instanceof TransactionResult.Committed) {
             return MoveOutcome.MOVED;
         }
-        return result == TransactionResult.Unavailable.INSTANCE ? MoveOutcome.FULL : MoveOutcome.REJECTED;
+        return MoveOutcome.REJECTED;
     }
 
     // 快速转移的候选目标

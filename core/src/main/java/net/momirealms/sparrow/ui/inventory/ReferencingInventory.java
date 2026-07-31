@@ -6,41 +6,37 @@ import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.VersionHelper;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.block.DoubleChest;
-import org.bukkit.entity.Entity;
 import org.bukkit.inventory.*;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
  * 引用真实 Bukkit 容器的 Inventory 实现: 容器是真实数据的所在地, 本类只维护它的一份镜像快照.
- * <p>构造时只读取一次初始内容, 不限制调用线程. 读操作走镜像, 任何线程都安全, 但内容可能
- * 滞后于容器, 要等下一次同步才更新. 普通 Paper 上不做线程判断; Folia 上按容器实际 owner
- * 动态判断: 当前线程访问不了时 refresh 安静跳过, 写事务返回 {@link TransactionResult.Unavailable},
- * 回到 owner 线程后同一个实例恢复读写.
- * <p>写路径靠两个根级钩子接入事务流程: {@code beforePlan} 在任何写入口读取规划快照之前
+ * <p><strong>线程安全由调用方负责.</strong> 工厂构造、{@link #refresh()} 与所有写操作都会直接访问
+ * 被引用的 Bukkit 容器. 调用方必须保证当前执行上下文可以合法访问该容器, 且同一笔事务里的所有
+ * ReferencingInventory 都能在该上下文访问. 本类不判断平台或容器 owner, 不调度到 owner 线程,
+ * 也不提供只读回退. 平台抛出的线程访问异常会沿调用栈传播; 异常可能发生在 Sparrow 镜像已经提交
+ * 或 Bukkit 容器已经部分写入之后, 因此不能根据异常推断本次操作为零变更.
+ * <p>读操作只读取镜像, 不访问 Bukkit 容器, 但内容可能滞后于容器, 要等下一次同步才更新.
+ * <p>写路径靠两个函数接入事务流程: {@code prepareWrite} 在任何写入口读取规划快照之前
  * 同步容器内容, {@code afterCommit} 在提交成功后, post 事件派发前把变更写回容器.
  * 外部世界(漏斗, 其他插件)对容器的直接修改在同步时被发现, 以 {@link UpdateReason.External}
  * 原因只派发 post 事件.
- * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册
- * 调度任务, 也不会主动切到 owner 线程, 阻塞等待或拆分跨 owner 的事务.
+ * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册调度任务.
  */
+@ApiStatus.Experimental
 public final class ReferencingInventory extends RootInventory {
     private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 真实数据所在地
     private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
     private final SlotKey.ExternalSlot[] externalSlots; // 逻辑槽 -> 容器里的真实槽位, 同步与写回共用
     private final int bukkitMaxStackSize;           // 容器的堆叠上限, 构造时缓存
-    private final BooleanSupplier writeAvailable;   // 当前线程能否访问容器的动态判断
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
     /**
@@ -50,7 +46,6 @@ public final class ReferencingInventory extends RootInventory {
      * @param contentsGetter 从容器读取被引用区段的函数
      * @param initialMirror 初始镜像内容, 已按逻辑槽序排列并归一化
      * @param slotMapping 逻辑槽到容器槽位的映射
-     * @param writeAvailable 当前线程能否访问容器的动态判断
      * @param addOrder ADD 类别的遍历顺序, {@code null} 回退自然顺序
      */
     private ReferencingInventory(
@@ -58,7 +53,6 @@ public final class ReferencingInventory extends RootInventory {
             Function<Inventory, @Nullable ItemStack[]> contentsGetter,
             @Nullable ItemStack[] initialMirror,
             SlotOrder slotMapping,
-            BooleanSupplier writeAvailable,
             @Nullable SlotOrder addOrder
     ) {
         super(initialMirror);
@@ -66,7 +60,6 @@ public final class ReferencingInventory extends RootInventory {
         this.contentsGetter = contentsGetter;
         this.externalSlots = externalSlots(bukkitInventory, slotMapping);
         this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
-        this.writeAvailable = writeAvailable;
         this.addOrder = addOrder;
     }
 
@@ -106,36 +99,11 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 创建 ReferencingInventory, 线程判断按当前服务端是否 Folia 自动推导.
-     *
-     * @param inventory 被引用的 Bukkit 容器
-     * @param contentsGetter 从容器读取被引用区段的函数
-     * @param slotReorder 逻辑槽到真实槽的重排函数, 恒等表示不重排
-     * @param reverseAddOrder 是否给 ADD 类别使用反向遍历顺序
-     * @return ReferencingInventory
-     */
-    private static ReferencingInventory create(
-            Inventory inventory,
-            Function<Inventory, @Nullable ItemStack[]> contentsGetter,
-            UnaryOperator<int[]> slotReorder,
-            boolean reverseAddOrder
-    ) {
-        return create(
-                inventory,
-                contentsGetter,
-                slotReorder,
-                () -> currentThreadCanWrite(inventory, VersionHelper.isFolia()),
-                reverseAddOrder
-        );
-    }
-
-    /**
      * 创建 ReferencingInventory.
      *
      * @param inventory 被引用的 Bukkit 容器
      * @param contentsGetter 从容器读取被引用区段的函数
      * @param slotReorder 逻辑槽到真实槽的重排函数
-     * @param writeAvailable 当前线程能否访问容器的动态判断
      * @param reverseAddOrder 是否给 ADD 类别使用反向遍历顺序
      * @return ReferencingInventory
      * @throws IllegalArgumentException 当重排后的映射尺寸与内容尺寸不符时
@@ -144,7 +112,6 @@ public final class ReferencingInventory extends RootInventory {
             Inventory inventory,
             Function<Inventory, @Nullable ItemStack[]> contentsGetter,
             UnaryOperator<int[]> slotReorder,
-            BooleanSupplier writeAvailable,
             boolean reverseAddOrder
     ) {
         @Nullable ItemStack[] raw = contentsGetter.apply(inventory);
@@ -158,7 +125,6 @@ public final class ReferencingInventory extends RootInventory {
                 contentsGetter,
                 readLogicalContents(raw, slotMapping),
                 slotMapping,
-                writeAvailable,
                 addOrder
         );
     }
@@ -178,9 +144,6 @@ public final class ReferencingInventory extends RootInventory {
      */
     @Override
     public void refresh() {
-        if (!this.writeAvailable()) {
-            return;
-        }
         this.reconcileFromBukkit();
     }
 
@@ -222,25 +185,10 @@ public final class ReferencingInventory extends RootInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>委托给构造时注入的动态判断;
-     * 判断过程抛出 {@link IllegalStateException} 时按不可访问处理.
-     */
-    @Override
-    boolean writeAvailable() {
-        try {
-            return this.writeAvailable.getAsBoolean();
-        } catch (IllegalStateException ignored) {
-            return false;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     *
      * <p>先把容器最新内容同步进镜像, 规划才基于最新数据.
      */
     @Override
-    void beforePlan() {
+    void prepareWrite() {
         this.reconcileFromBukkit();
     }
 
@@ -260,7 +208,7 @@ public final class ReferencingInventory extends RootInventory {
 
     /**
      * 把容器当前内容和镜像逐槽对比, 差异槽以 External 原因提交进镜像(绕过 pre, 只派发 post).
-     * owner 线程会串行化运行期访问, 因此提交被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
+     * 调用方保证运行期访问被正确串行化, 因此提交被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
      */
     private void reconcileFromBukkit() {
         // 逐槽对比: 比较阶段直接拿容器读出的引用, 不做深克隆 —— 绝大多数 tick 没有外部变更,
@@ -283,16 +231,12 @@ public final class ReferencingInventory extends RootInventory {
             return;
         }
 
-        // 提交前可访问性变了就放弃这次同步, 等下一次
         TransactionResult result = InventoryTransactions.commit(
                 UpdateReason.External.INSTANCE,
                 List.of(new InventoryTransactions.Scope(this, mirror, deltas)),
                 true
         );
-        if (result == TransactionResult.Unavailable.INSTANCE) {
-            return;
-        }
-        // 冲突在 owner 线程串行访问下不该发生, 视为调用边界被破坏并上报
+        // 冲突在调用方保证的串行访问下不该发生, 视为调用边界被破坏并上报
         if (!(result instanceof TransactionResult.Committed)) {
             SparrowUI.getInstance().handleException(
                     "Failed to reconcile ReferencingInventory mirror",
@@ -351,64 +295,12 @@ public final class ReferencingInventory extends RootInventory {
      * @param slotMapping 逻辑槽到容器槽位的映射
      * @return 每个逻辑槽的最终物理身份
      */
-    private static SlotKey.ExternalSlot[] externalSlots(org.bukkit.inventory.Inventory inventory, SlotOrder slotMapping) {
+    private static SlotKey.ExternalSlot[] externalSlots(Inventory inventory, SlotOrder slotMapping) {
         SlotKey.ExternalSlot[] externalSlots = new SlotKey.ExternalSlot[slotMapping.size()];
         for (int slot = 0; slot < slotMapping.size(); slot++) {
             externalSlots[slot] = new SlotKey.ExternalSlot(inventory, slotMapping.slotAt(slot));
         }
         return externalSlots;
-    }
-
-    /**
-     * 判断当前线程能否写入容器:
-     * 非 Folia 恒可写, Folia 要求当前线程拥有容器所在的区域.
-     *
-     * @param inventory 被引用的容器
-     * @param folia 当前服务端是否 Folia
-     * @return 可写返回 {@code true}
-     */
-    static boolean currentThreadCanWrite(org.bukkit.inventory.Inventory inventory, boolean folia) {
-        if (!folia) return true;
-        return currentThreadOwns(inventory);
-    }
-
-    /**
-     * 推导容器的归属并判断当前线程是否拥有它: 大箱子要两侧都要拥有, 实体与方块按区域归属判断,
-     * 都没有归属时退化为按容器位置判断, 位置也拿不到就只认主线程.
-     *
-     * @param inventory 被引用的容器
-     * @return 当前线程拥有容器返回 {@code true}
-     */
-    private static boolean currentThreadOwns(org.bukkit.inventory.Inventory inventory) {
-        InventoryHolder holder = inventory.getHolder(false); // todo 这个方法好像本身就会访问目标线程, 然后爆炸
-        if (holder instanceof DoubleChest doubleChest) {
-            return currentThreadOwnsHolder(doubleChest.getLeftSide(false))
-                    && currentThreadOwnsHolder(doubleChest.getRightSide(false));
-        }
-        if (holder instanceof Entity entity) {
-            return Bukkit.isOwnedByCurrentRegion(entity);
-        }
-        if (holder instanceof BlockInventoryHolder blockHolder) {
-            return Bukkit.isOwnedByCurrentRegion(blockHolder.getBlock());
-        }
-        Location location = inventory.getLocation();
-        return location != null ? Bukkit.isOwnedByCurrentRegion(location) : Bukkit.isPrimaryThread();
-    }
-
-    /**
-     * 判断当前线程是否拥有单个持有者(实体或方块).
-     *
-     * @param holder 容器持有者, 可为 {@code null}
-     * @return 当前线程拥有该持有者返回 {@code true}
-     */
-    private static boolean currentThreadOwnsHolder(@Nullable InventoryHolder holder) {
-        if (holder instanceof Entity entity) {
-            return Bukkit.isOwnedByCurrentRegion(entity);
-        }
-        if (holder instanceof BlockInventoryHolder blockHolder) {
-            return Bukkit.isOwnedByCurrentRegion(blockHolder.getBlock());
-        }
-        return false;
     }
 
     /**

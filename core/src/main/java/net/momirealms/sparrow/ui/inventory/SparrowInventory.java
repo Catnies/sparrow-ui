@@ -29,7 +29,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
@@ -422,16 +421,12 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        // 一个可写的根都没有(比如ReferencingInventory当前线程访问不了目标), 整体不可用
-        if (!context.anyWritable()) {
-            return new AddResult(TransactionResult.Unavailable.INSTANCE, input.getAmount());
-        }
-        // 在逻辑快照上规划: 先合并相似的未满堆, 再占空槽; 不可写的槽上限按 0 算
+        // 在逻辑快照上规划: 先合并相似的未满堆, 再占空槽
         InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
                 context.snapshot(),
                 input,
                 this.iterationOrder(OperationCategory.ADD),
-                slot -> context.writable(slot) ? this.slotMaxStackSize(slot) : 0
+                this::slotMaxStackSize
         );
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
@@ -457,17 +452,13 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        // 一个可写的根都没有, 整体不可用
-        if (!context.anyWritable()) {
-            return new CollectResult(TransactionResult.Unavailable.INSTANCE, 0);
-        }
-        // 在逻辑快照上规划: 先收未满堆, 不够再收满堆; 不可写的槽跳过
+        // 在逻辑快照上规划: 先收未满堆, 不够再收满堆
         InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
                 context.snapshot(),
                 sample,
                 upTo,
                 this.iterationOrder(OperationCategory.COLLECT),
-                context::writable,
+                null,
                 this::slotMaxStackSize
         );
         if (plan.deltas().isEmpty()) {
@@ -493,18 +484,8 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
         PlanContext context = this.openPlanForWrite();
-        // 一个可写的根都没有, 整体不可用
-        if (!context.anyWritable()) {
-            return new RemoveResult(TransactionResult.Unavailable.INSTANCE, 0);
-        }
         // 在逻辑快照上规划要动哪些槽; matcher 由规划器在锁外逐个调用
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(
-                context.snapshot(),
-                matcher,
-                upTo,
-                this.iterationOrder(OperationCategory.OTHER),
-                context::writable
-        );
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(context.snapshot(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
@@ -626,7 +607,8 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * 让 ReferencingInventory 同步最新内容.
      * 自己持有数据的 RootInventory 调用它没有效果;
      * 视图会把调用转发给背后的全部 RootInventory .
-     * 外部容器当前不可访问时会静默跳过.
+     * ReferencingInventory 的调用方必须保证当前线程可以访问外部容器;
+     * 平台拒绝访问时异常会直接传播.
      */
     public void refresh() {
         LinkedHashSet<RootInventory> roots = new LinkedHashSet<>();
@@ -733,7 +715,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
 
     /**
      * 打开写路径的规划上下文: 在读快照之前, 先让每个参与的 RootInventory 做一次写前准备.
-     * (ReferencingInventory 在这个方法完成线程校验和外部内容同步).
+     * (ReferencingInventory 在这个方法完成外部内容同步).
      *
      * @return 规划上下文
      */
@@ -753,7 +735,6 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     private PlanContext capturePlan(boolean forWrite) {
         int size = this.size();
         Map<RootInventory, @Nullable ItemStack[]> plannedByRoot = new LinkedHashMap<>();
-        Map<RootInventory, Boolean> writableByRoot = new LinkedHashMap<>();
         SlotKey.Anchor[] anchors = new SlotKey.Anchor[size];
         @Nullable ItemStack[] logical = new ItemStack[size];
         // 逐槽解析: 每个  RootInventory 只在首次遇到时做一次写前准备并读一次快照
@@ -762,16 +743,12 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
             anchors[slot] = anchor;
             @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
                 // 写前准备先于读取快照: 镜像型根在这里同步外部内容, 规划才基于最新数据
-                writableByRoot.put(root, !forWrite || root.prepareWrite());
+                if (forWrite) root.prepareWrite();
                 return root.currentState();
             });
             logical[slot] = planned[anchor.rootSlot()];
         }
-        return new PlanContext(
-                logical,
-                logicalDeltas -> toScopes(plannedByRoot, anchors, logicalDeltas),
-                slot -> writableByRoot.get(anchors[slot].root())
-        );
+        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, anchors, logicalDeltas));
     }
 
     /**
@@ -835,40 +812,11 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      *
      * @param snapshot 规划用的逻辑槽快照, 空槽位置为 {@code null}
      * @param scoper 把逻辑槽变更集拆成各  RootInventory 事务范围的函数
-     * @param writable 判断某个逻辑槽当前是否可写
      */
     record PlanContext(
             @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper,
-            @NotNull IntPredicate writable
+            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper
     ) {
-
-        /**
-         * 判断指定逻辑槽当前是否可写.
-         *
-         * @param slot 逻辑槽号
-         * @return 可写返回 {@code true}
-         */
-        boolean writable(int slot) {
-            return this.writable.test(slot);
-        }
-
-        /**
-         * 判断是否至少有一个逻辑槽可写;
-         *
-         * @return 存在可写槽位返回 {@code true}
-         */
-        boolean anyWritable() {
-            if (this.snapshot.length == 0) {
-                return true;
-            }
-            for (int slot = 0; slot < this.snapshot.length; slot++) {
-                if (this.writable(slot)) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 
     /**

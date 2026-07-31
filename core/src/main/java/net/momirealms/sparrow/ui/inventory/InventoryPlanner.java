@@ -21,7 +21,7 @@ final class InventoryPlanner {
     /**
      * 规划一次批量放入: 按给定顺序先走一遍, 把物品合并进相似且没堆满的堆;
      * 还有剩余再走第二遍, 按同样的顺序占用空槽.
-     * 每个槽最多放多少取 min(槽位上限, 物品自身上限), 上限报 0 的槽(比如不可写的槽)自然被跳过.
+     * 每个槽最多放多少取 min(槽位上限, 物品自身上限), 上限报 0 的槽(比如被调用方禁用的槽)自然被跳过.
      *
      * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
      * @param item 要放入的物品
@@ -71,21 +71,20 @@ final class InventoryPlanner {
      * 直到凑够数量或者翻完所有槽.
      *
      * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
-     * @param matcher 判断某个物品该不该移除; 它是调用方代码, 只许接触物品的克隆
-     * @param upTo 最多移除的数量
-     * @param order 槽位遍历顺序
-     * @param includedSlot 槽位过滤器, 返回 {@code false} 的槽不参与; {@code null} 表示不过滤
+     * @param matcher  判断某个物品该不该移除; 它是调用方代码, 只许接触物品的克隆
+     * @param upTo     最多移除的数量
+     * @param order    槽位遍历顺序
      * @return 移除方案与实际能移除的数量
      */
     @NotNull
-    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot) {
+    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order) {
         List<SlotDelta> deltas = new ArrayList<>();
         int taken = 0;
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
             // matcher 是用户代码, 只允许它接触克隆
-            if (current == null || (includedSlot != null && !includedSlot.test(slot)) || !matcher.test(current.clone())) {
+            if (current == null || !matcher.test(current.clone())) {
                 continue;
             }
             int take = Math.min(current.getAmount(), upTo - taken);

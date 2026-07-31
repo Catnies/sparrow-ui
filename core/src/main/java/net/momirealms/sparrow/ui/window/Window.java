@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
@@ -557,6 +558,8 @@ public interface Window {
 
         /**
          * 使用已设置的查看者创建 Window.
+         * <p>若未显式设置 lower GUI, 此调用会同步读取查看者的 Bukkit 背包来创建
+         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
          *
          * @return 新的未打开 Window
          * @throws IllegalStateException 未设置查看者时抛出
@@ -565,6 +568,8 @@ public interface Window {
 
         /**
          * 为指定查看者创建 Window.
+         * <p>若未显式设置 lower GUI, 此调用会同步读取查看者的 Bukkit 背包来创建
+         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
          *
          * @param viewer 查看者
          * @return 新的未打开 Window
@@ -573,6 +578,7 @@ public interface Window {
 
         /**
          * 为指定查看者创建并请求打开 Window.
+         * <p>此方法先同步调用 {@link #build(Player)}, 因而同样受其 Bukkit 背包线程约束.
          *
          * @param viewer 查看者
          * @return 打开请求的提交结果

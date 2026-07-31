@@ -36,13 +36,4 @@ public sealed interface TransactionResult {
         INSTANCE
     }
 
-    /**
-     * 事务失败:
-     * 当前线程无法跨线程访问目标容器.
-     * <p>典型场景是 Folia 上操作 {@link ReferencingInventory}: 被引用的容器归另一个区域线程管,
-     * 跨线程写真实容器是不被允许的, 此时Inventory临时退化为只读视图, 等执行回到容器所属的线程, 就能正常读写了.
-     */
-    enum Unavailable implements TransactionResult {
-        INSTANCE
-    }
 }

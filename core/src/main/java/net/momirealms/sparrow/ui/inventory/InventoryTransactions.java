@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
@@ -54,6 +53,8 @@ final class InventoryTransactions {
      * @param bypassPre 为 {@code true} 时跳过 pre 阶段的询问, 谁也取消不了这笔事务(post 事件照常派发)
      * @return 事务结果; 只要不是 Committed, 所有参与Inventory都保持原样
      * @throws IllegalArgumentException 当事务形状非法时(没有参与Inventory, 某个范围没有变更, 槽号越界, 同一个槽被写两次)
+     * @throws RuntimeException 当提交后的根钩子失败时; 此时镜像状态已经提交, 异常不表示零变更
+     * @throws Error 当提交后的根钩子失败时; 此时镜像状态已经提交, 异常不表示零变更
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
@@ -61,11 +62,6 @@ final class InventoryTransactions {
         List<Scope> declared = validateAndMerge(scopes);
         List<Scope> ordered = sortByLockOrder(declared);
         List<InventoryDelta> changes = changesOf(declared);
-
-        // 不可访问的外部根在用户回调前拒绝, 不产生 pre/post 或任何镜像变更
-        if (!writeAvailable(ordered)) {
-            return TransactionResult.Unavailable.INSTANCE;
-        }
 
         // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
         if (!bypassPre) {
@@ -93,11 +89,6 @@ final class InventoryTransactions {
                 }
             }
 
-            // pre 回调可能移动实体或改变 owner; 在任何新状态构造与交换前重新校验
-            if (!writeAvailable(ordered)) {
-                return TransactionResult.Unavailable.INSTANCE;
-            }
-
             // 先为全部Inventory构造新快照再统一交换, 保证越界等非意料内的异常发生时零交换
             InventoryPostUpdateEvent postEvent = new InventoryPostUpdateEvent(reason, changes);
             @Nullable ItemStack[][] newStates = new ItemStack[ordered.size()][];
@@ -118,32 +109,20 @@ final class InventoryTransactions {
             }
         }
 
-        // 提交后先于 post 派发: 镜ReferencingInventory 根在此把变更写回外部容器,
-        // 使 post 观察者重入写时外部状态已同步; 异常隔离上报, 不影响已提交的事务结果
-        for (int i = 0; i < ordered.size(); i++) {
-            InventoryTransactions.Scope scope = ordered.get(i);
-            try {
+        // 提交后先于 post 派发: ReferencingInventory 根在此把变更写回外部容器,
+        // 使 post 观察者重入写时外部状态已同步. 异常直接传播, finally 仍会排空已经入队的 post.
+        try {
+            for (int i = 0; i < ordered.size(); i++) {
+                InventoryTransactions.Scope scope = ordered.get(i);
                 scope.inventory().afterCommit(scope.deltas());
-            } catch (Throwable exception) {
-                SparrowUI.getInstance().handleException("Failed to run Inventory after-commit hook", exception);
             }
-        }
-
-        // post 阶段: 锁外排水, 观察者异常已在排水路径内隔离
-        for (int i = 0; i < ordered.size(); i++) {
-            ordered.get(i).inventory().drainPostEvents();
+        } finally {
+            // post 阶段: 锁外排水, 观察者异常在排水路径内隔离.
+            for (int i = 0; i < ordered.size(); i++) {
+                ordered.get(i).inventory().drainPostEvents();
+            }
         }
         return new TransactionResult.Committed(changes);
-    }
-
-    // 检查这笔事务的每个参与Inventory此刻是否都允许写入.
-    private static boolean writeAvailable(List<Scope> scopes) {
-        for (int i = 0; i < scopes.size(); i++) {
-            if (!scopes.get(i).inventory().writeAvailable()) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
