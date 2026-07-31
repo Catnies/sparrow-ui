@@ -5,7 +5,6 @@ import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.internal.menu.RecipeBookMenuHandle;
 import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -50,7 +49,7 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
 
     @Override
     public final void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers) {
-        List<Consumer<RecipeBookSelectClick>> copy = MiscUtils.copyConsumers(handlers);
+        List<Consumer<RecipeBookSelectClick>> copy = HandlerList.copyConsumers(handlers);
         this.submit(
                 () -> this.recipeSelectHandlers.set(copy),
                 "Failed to replace RecipeBook Window recipe selection handlers"
@@ -65,7 +64,7 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
 
     @Override
     public final void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler) {
-        Consumer<RecipeBookSelectClick> copied = MiscUtils.narrowConsumer(handler);
+        Consumer<RecipeBookSelectClick> copied = HandlerList.narrowConsumer(handler);
         this.submit(
                 () -> this.recipeSelectHandlers.append(copied),
                 "Failed to add RecipeBook Window recipe selection handler"
@@ -75,7 +74,7 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
     @Override
     public final void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler) {
         this.submit(
-                () -> this.recipeSelectHandlers.remove(MiscUtils.narrowConsumer(handler)),
+                () -> this.recipeSelectHandlers.remove(HandlerList.narrowConsumer(handler)),
                 "Failed to remove RecipeBook Window recipe selection handler"
         );
     }
@@ -125,14 +124,14 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
         @Override
         @NotNull
         public final B setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers) {
-            this.recipeSelectHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
+            this.recipeSelectHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
             return this.self();
         }
 
         @Override
         @NotNull
         public final B addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler) {
-            this.recipeSelectHandlers.add(MiscUtils.narrowConsumer(handler));
+            this.recipeSelectHandlers.add(HandlerList.narrowConsumer(handler));
             return this.self();
         }
 

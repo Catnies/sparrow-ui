@@ -291,7 +291,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
-        List<Consumer<InventoryCloseEvent.Reason>> copy = MiscUtils.copyConsumers(closeHandlers);
+        List<Consumer<InventoryCloseEvent.Reason>> copy = HandlerList.copyConsumers(closeHandlers);
         this.submit(
                 () -> this.closeHandlers.set(copy),
                 "Failed to replace Window close handlers"
@@ -312,7 +312,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
-        Consumer<InventoryCloseEvent.Reason> handler = MiscUtils.narrowConsumer(closeHandler);
+        Consumer<InventoryCloseEvent.Reason> handler = HandlerList.narrowConsumer(closeHandler);
         this.submit(
                 () -> this.closeHandlers.append(handler),
                 "Failed to add Window close handler"
@@ -325,7 +325,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         this.submit(
-                () -> this.closeHandlers.remove(MiscUtils.narrowConsumer(closeHandler)),
+                () -> this.closeHandlers.remove(HandlerList.narrowConsumer(closeHandler)),
                 "Failed to remove Window close handler"
         );
     }
@@ -335,7 +335,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers) {
-        List<Consumer<WindowOutsideClick>> copy = MiscUtils.copyConsumers(outsideClickHandlers);
+        List<Consumer<WindowOutsideClick>> copy = HandlerList.copyConsumers(outsideClickHandlers);
         this.submit(
                 () -> this.outsideClickHandlers.set(copy),
                 "Failed to replace Window outside click handlers"
@@ -356,7 +356,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
-        Consumer<WindowOutsideClick> handler = MiscUtils.narrowConsumer(outsideClickHandler);
+        Consumer<WindowOutsideClick> handler = HandlerList.narrowConsumer(outsideClickHandler);
         this.submit(
                 () -> this.outsideClickHandlers.append(handler),
                 "Failed to add Window outside click handler"
@@ -369,7 +369,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
         this.submit(
-                () -> this.outsideClickHandlers.remove(MiscUtils.narrowConsumer(outsideClickHandler)),
+                () -> this.outsideClickHandlers.remove(HandlerList.narrowConsumer(outsideClickHandler)),
                 "Failed to remove Window outside click handler"
         );
     }
@@ -443,7 +443,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
-        List<Consumer<Integer>> copy = MiscUtils.copyConsumers(handlers);
+        List<Consumer<Integer>> copy = HandlerList.copyConsumers(handlers);
         this.submit(
                 () -> this.windowStateChangeHandlers.set(copy),
                 "Failed to replace Window state handlers"
@@ -464,7 +464,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     @Override
     public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
-        Consumer<Integer> copied = MiscUtils.narrowConsumer(handler);
+        Consumer<Integer> copied = HandlerList.narrowConsumer(handler);
         this.submit(
                 () -> this.windowStateChangeHandlers.append(copied),
                 "Failed to add Window state handler"
@@ -477,7 +477,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         this.submit(
-                () -> this.windowStateChangeHandlers.remove(MiscUtils.narrowConsumer(handler)),
+                () -> this.windowStateChangeHandlers.remove(HandlerList.narrowConsumer(handler)),
                 "Failed to remove Window state handler"
         );
     }

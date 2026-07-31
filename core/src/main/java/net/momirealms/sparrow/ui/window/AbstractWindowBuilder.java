@@ -7,7 +7,7 @@ import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.util.MiscUtils;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
@@ -120,7 +120,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     public final @NotNull B setCloseHandlers(
             @NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers
     ) {
-        this.closeHandlers = new ArrayList<>(MiscUtils.copyConsumers(closeHandlers));
+        this.closeHandlers = new ArrayList<>(HandlerList.copyConsumers(closeHandlers));
         return this.self();
     }
 
@@ -128,7 +128,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     public final @NotNull B addCloseHandler(
             @NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler
     ) {
-        this.closeHandlers.add(MiscUtils.narrowConsumer(closeHandler));
+        this.closeHandlers.add(HandlerList.narrowConsumer(closeHandler));
         return this.self();
     }
 
@@ -136,7 +136,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     public final @NotNull B setOutsideClickHandlers(
             @NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers
     ) {
-        this.outsideClickHandlers = new ArrayList<>(MiscUtils.copyConsumers(outsideClickHandlers));
+        this.outsideClickHandlers = new ArrayList<>(HandlerList.copyConsumers(outsideClickHandlers));
         return this.self();
     }
 
@@ -144,7 +144,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     public final @NotNull B addOutsideClickHandler(
             @NotNull Consumer<? super WindowOutsideClick> outsideClickHandler
     ) {
-        this.outsideClickHandlers.add(MiscUtils.narrowConsumer(outsideClickHandler));
+        this.outsideClickHandlers.add(HandlerList.narrowConsumer(outsideClickHandler));
         return this.self();
     }
 
@@ -164,13 +164,13 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     public final @NotNull B setWindowStateChangeHandlers(
             @NotNull List<? extends Consumer<? super Integer>> handlers
     ) {
-        this.windowStateChangeHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
+        this.windowStateChangeHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
         return this.self();
     }
 
     @Override
     public final @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
-        this.windowStateChangeHandlers.add(MiscUtils.narrowConsumer(handler));
+        this.windowStateChangeHandlers.add(HandlerList.narrowConsumer(handler));
         return this.self();
     }
 

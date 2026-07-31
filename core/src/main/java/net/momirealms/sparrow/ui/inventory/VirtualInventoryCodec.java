@@ -13,7 +13,6 @@ import net.momirealms.sparrow.ui.proxy.minecraft.util.datafix.DataFixersProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.util.datafix.fixes.ReferencesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.MiscUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -79,7 +78,7 @@ final class VirtualInventoryCodec {
             envelope.writeByte(FORMAT);
             envelope.writeInt(VersionHelper.WORLD_VERSION);
             envelope.writeInt(items.length);
-            envelope.write(MiscUtils.buildMask(items));
+            envelope.write(VirtualInventoryCodec.buildMask(items));
             envelope.flush();
 
             // 物品区整体压缩, 每个非空槽只写长度和裸 NBT
@@ -249,6 +248,22 @@ final class VirtualInventoryCodec {
                 .parse(REGISTRY_OPS, tag)
                 .getOrThrow();
         return CraftItemStackProxy.INSTANCE.asCraftMirror(decoded);
+    }
+
+    /**
+     * 按槽位是否非空构建位图, 每个字节从低位到高位对应连续八个槽位.
+     *
+     * @param items 库存快照
+     * @return 长度为 {@code ceil(items.length / 8)} 的位图
+     */
+    private static byte @NotNull [] buildMask(@Nullable ItemStack @NotNull [] items) {
+        byte[] mask = new byte[Math.ceilDiv(items.length, 8)];
+        for (int slot = 0; slot < items.length; slot++) {
+            if (items[slot] != null) {
+                mask[slot >> 3] |= (byte) (1 << (slot & 7));
+            }
+        }
+        return mask;
     }
 
     /**

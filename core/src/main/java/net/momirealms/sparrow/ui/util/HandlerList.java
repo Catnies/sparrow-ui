@@ -16,8 +16,8 @@ import java.util.function.Consumer;
 public final class HandlerList<T> {
     private volatile List<T> handlers; // 当前生效的处理器列表, 增删时整体替换
 
-    public HandlerList(@NotNull List<T> handlers) {
-        this.handlers = handlers;
+    public HandlerList(@NotNull List<? extends T> handlers) {
+        this.handlers = List.copyOf(handlers);
     }
 
     /**
@@ -36,8 +36,8 @@ public final class HandlerList<T> {
      *
      * @param handlers 新的处理器列表
      */
-    public void set(@NotNull List<T> handlers) {
-        this.handlers = handlers;
+    public void set(@NotNull List<? extends T> handlers) {
+        this.handlers = List.copyOf(handlers);
     }
 
     /**
@@ -46,11 +46,10 @@ public final class HandlerList<T> {
      * @param handler 待追加的处理器
      */
     public void append(@NotNull T handler) {
-//        ArrayList<T> copy = new ArrayList<>(this.handlers.size() + 1);
-//        copy.addAll(this.handlers);
-//        copy.add(handler);
-//        this.handlers = List.copyOf(copy);
-        this.handlers = MiscUtils.append(this.handlers, handler);
+        ArrayList<T> copy = new ArrayList<>(this.handlers.size() + 1);
+        copy.addAll(this.handlers);
+        copy.add(handler);
+        this.handlers = List.copyOf(copy);
     }
 
     /**
@@ -59,7 +58,9 @@ public final class HandlerList<T> {
      * @param handler 待移除的处理器
      */
     public void remove(@NotNull T handler) {
-        this.handlers = MiscUtils.remove(this.handlers, handler);
+        ArrayList<T> copy = new ArrayList<>(this.handlers);
+        copy.remove(handler);
+        this.handlers = List.copyOf(copy);
     }
 
     /**
@@ -83,5 +84,61 @@ public final class HandlerList<T> {
                 reporter.accept(failureMessage, throwable);
             }
         }
+    }
+
+    /**
+     * 将接受 {@code ? super T} 的消费者窄化为 {@code Consumer<T>}.
+     *
+     * @param consumer 待窄化的消费者
+     * @param <T> 消费者接受的参数类型
+     * @return 窄化后的消费者, 与原消费者为同一实例
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> Consumer<T> narrowConsumer(Consumer<? super T> consumer) {
+        return (Consumer<T>) consumer;
+    }
+
+    /**
+     * 将通配符类型的消费者列表复制为不可变的 {@code Consumer<T>} 列表.
+     *
+     * @param consumers 原消费者列表
+     * @param <T> 消费者接受的参数类型
+     * @return 窄化后的不可变消费者列表
+     */
+    public static <T> List<Consumer<T>> copyConsumers(List<? extends Consumer<? super T>> consumers) {
+        ArrayList<Consumer<T>> copy = new ArrayList<>(consumers.size());
+        for (int index = 0; index < consumers.size(); index++) {
+            copy.add(narrowConsumer(consumers.get(index)));
+        }
+        return List.copyOf(copy);
+    }
+
+    /**
+     * 将接受 {@code ? super T} 与 {@code ? super U} 的双参数消费者窄化为 {@code BiConsumer<T, U>}.
+     *
+     * @param consumer 待窄化的双参数消费者
+     * @param <T> 第一个参数类型
+     * @param <U> 第二个参数类型
+     * @return 窄化后的双参数消费者, 与原消费者为同一实例
+     */
+    @SuppressWarnings("unchecked")
+    public static <T, U> BiConsumer<T, U> narrowBiConsumer(BiConsumer<? super T, ? super U> consumer) {
+        return (BiConsumer<T, U>) consumer;
+    }
+
+    /**
+     * 将通配符类型的双参数消费者列表复制为不可变的 {@code BiConsumer<T, U>} 列表.
+     *
+     * @param consumers 原双参数消费者列表
+     * @param <T> 第一个参数类型
+     * @param <U> 第二个参数类型
+     * @return 窄化后的不可变双参数消费者列表
+     */
+    public static <T, U> List<BiConsumer<T, U>> copyBiConsumers(List<? extends BiConsumer<? super T, ? super U>> consumers) {
+        ArrayList<BiConsumer<T, U>> copy = new ArrayList<>(consumers.size());
+        for (int index = 0; index < consumers.size(); index++) {
+            copy.add(narrowBiConsumer(consumers.get(index)));
+        }
+        return List.copyOf(copy);
     }
 }

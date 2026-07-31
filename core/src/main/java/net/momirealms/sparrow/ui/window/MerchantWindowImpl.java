@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.internal.menu.MerchantMenuHandle;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.MiscUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.entity.Player;
@@ -157,7 +156,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelection>> handlers) {
-        List<Consumer<MerchantTradeSelection>> copy = MiscUtils.copyConsumers(handlers);
+        List<Consumer<MerchantTradeSelection>> copy = HandlerList.copyConsumers(handlers);
         this.submit(
                 () -> this.tradeSelectionHandlers.set(copy),
                 "Failed to replace Merchant Window trade selection handlers"
@@ -166,7 +165,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
-        Consumer<MerchantTradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+        Consumer<MerchantTradeSelection> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.tradeSelectionHandlers.append(copied),
                 "Failed to add Merchant Window trade selection handler"
@@ -175,7 +174,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     @Override
     public void removeTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
-        Consumer<MerchantTradeSelection> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+        Consumer<MerchantTradeSelection> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.tradeSelectionHandlers.remove(copied),
                 "Failed to remove Merchant Window trade selection handler"
@@ -515,7 +514,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         public MerchantWindow.Builder setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelection>> handlers) {
-            this.tradeSelectionHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
+            this.tradeSelectionHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
             return this;
         }
 
@@ -523,7 +522,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @NotNull
         public MerchantWindow.Builder addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelection> handler) {
             this.tradeSelectionHandlers.add(
-                    MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"))
+                    HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"))
             );
             return this;
         }

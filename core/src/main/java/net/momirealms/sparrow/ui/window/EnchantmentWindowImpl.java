@@ -7,7 +7,6 @@ import net.momirealms.sparrow.ui.internal.menu.EnchantmentMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -99,7 +98,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     public void setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
-        List<Consumer<EnchantSelectClick>> copy = MiscUtils.copyConsumers(handlers);
+        List<Consumer<EnchantSelectClick>> copy = HandlerList.copyConsumers(handlers);
         this.submit(
                 () -> this.enchantSelectionHandlers.set(copy),
                 "Failed to replace Enchantment Window selection handlers"
@@ -114,7 +113,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     public void addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
-        Consumer<EnchantSelectClick> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+        Consumer<EnchantSelectClick> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.enchantSelectionHandlers.append(copied),
                 "Failed to add Enchantment Window selection handler"
@@ -123,7 +122,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     public void removeEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
-        Consumer<EnchantSelectClick> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
+        Consumer<EnchantSelectClick> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
                 () -> this.enchantSelectionHandlers.remove(copied),
                 "Failed to remove Enchantment Window selection handler"
@@ -230,14 +229,14 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         @Override
         @NotNull
         public EnchantmentWindow.Builder setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
-            this.enchantSelectionHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
+            this.enchantSelectionHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
             return this;
         }
 
         @Override
         @NotNull
         public EnchantmentWindow.Builder addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
-            this.enchantSelectionHandlers.add(MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler")));
+            this.enchantSelectionHandlers.add(HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler")));
             return this;
         }
 
