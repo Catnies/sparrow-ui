@@ -269,7 +269,7 @@ public final class ItemBuilder {
                 ? new ConfiguredItem.ThrottleConfig(this.throttleIntervalMillis, this.throttleHandler)
                 : null;
         ObservableItem item = new ConfiguredItem(
-                this.source.displayFactory(SparrowUI.getInstance()::handleException),
+                this.source.displayFactory(),
                 this.explicitRefreshPlan,
                 this.clickHandler,
                 this.bundleHandler,
@@ -353,8 +353,8 @@ public final class ItemBuilder {
          * @param exceptionHandler 解析与失效失败的异常处理器
          * @return 显示来源工厂
          */
-        static DisplayFactory asyncOnce(ItemProvider placeholder, AsyncLoader loader, BiConsumer<? super String, ? super Throwable> exceptionHandler) {
-            return invalidator -> new DisplaySource.AsyncOnceDisplaySource(placeholder, loader, invalidator, exceptionHandler);
+        static DisplayFactory asyncOnce(ItemProvider placeholder, AsyncLoader loader) {
+            return invalidator -> new DisplaySource.AsyncOnceDisplaySource(placeholder, loader, invalidator);
         }
     }
 
@@ -463,7 +463,6 @@ public final class ItemBuilder {
         final class AsyncOnceDisplaySource implements DisplaySource {
             private final AtomicReference<AsyncLoader> pendingLoader; // 挂起的加载器, 取出后置 null 保证只加载一次
             private final Runnable invalidator; // 加载完成后通知 Window 失效的回调
-            private final BiConsumer<? super String, ? super Throwable> exceptionHandler; // 解析与失效失败的异常处理器
 
             private volatile ItemProvider currentProvider; // 当前渲染使用的提供器, 初始为占位内容, 加载完成后替换
             private final ItemProvider renderingProvider = context -> this.currentProvider.provide(context); // 始终委托当前提供器的渲染入口
@@ -474,13 +473,11 @@ public final class ItemBuilder {
              * @param placeholder 加载完成前的占位提供器
              * @param loader 异步加载器
              * @param invalidator 加载完成后通知 Window 失效的回调
-             * @param exceptionHandler 解析与失效失败的异常处理器
              */
-            AsyncOnceDisplaySource(ItemProvider placeholder, AsyncLoader loader, Runnable invalidator, BiConsumer<? super String, ? super Throwable> exceptionHandler) {
+            AsyncOnceDisplaySource(ItemProvider placeholder, AsyncLoader loader, Runnable invalidator) {
                 this.currentProvider = Objects.requireNonNull(placeholder, "placeholder");
                 this.pendingLoader = new AtomicReference<>(Objects.requireNonNull(loader, "loader"));
                 this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
-                this.exceptionHandler = Objects.requireNonNull(exceptionHandler, "exceptionHandler");
             }
 
             /**
@@ -560,7 +557,7 @@ public final class ItemBuilder {
          * @param exceptionHandler 异步来源使用的异常处理器
          * @return 显示来源工厂
          */
-        DisplayFactory displayFactory(BiConsumer<? super String, ? super Throwable> exceptionHandler);
+        DisplayFactory displayFactory();
 
         /**
          * 固定或上下文来源声明.
@@ -573,7 +570,7 @@ public final class ItemBuilder {
              * {@inheritDoc}
              */
             @Override
-            public DisplayFactory displayFactory(BiConsumer<? super String, ? super Throwable> exceptionHandler) {
+            public DisplayFactory displayFactory() {
                 return DisplayFactory.fixed(this.provider);
             }
         }
@@ -591,7 +588,7 @@ public final class ItemBuilder {
              * {@inheritDoc}
              */
             @Override
-            public DisplayFactory displayFactory(BiConsumer<? super String, ? super Throwable> exceptionHandler) {
+            public DisplayFactory displayFactory() {
                 return DisplayFactory.cycling(this.periodTicks, this.frames, this.tickSource);
             }
         }
@@ -608,8 +605,8 @@ public final class ItemBuilder {
              * {@inheritDoc}
              */
             @Override
-            public DisplayFactory displayFactory(BiConsumer<? super String, ? super Throwable> exceptionHandler) {
-                return DisplayFactory.asyncOnce(this.placeholder, this.loader, exceptionHandler);
+            public DisplayFactory displayFactory() {
+                return DisplayFactory.asyncOnce(this.placeholder, this.loader);
             }
         }
     }
