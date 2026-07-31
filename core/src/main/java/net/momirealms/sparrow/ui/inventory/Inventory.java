@@ -407,13 +407,11 @@ public interface Inventory {
     void refresh();
 
     /**
-     * 把本Inventory包装成 Bukkit Inventory 接口, 方便接入只认 Bukkit API 的插件; 同一个 Inventory 永远
-     * 返回同一个包装实例, Bukkit 侧可以用引用相等(==)辨认是不是同一个Inventory.
-     * 通过包装实例写入会走 Sparrow 的事务流程(原因记为 {@link UpdateReason.Program});
-     * 线程约定和被包装的Inventory一致: ReferencingInventory 访问不了目标时, 无返回值的写操作会被吞掉,
-     * add/remove 则通过 leftovers 表达"没放进去". 与真实容器绑定的信息(观看者, 持有者, 位置)一律回答"无", 类型固定为 CHEST.
+     * 把本Inventory包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例,
+     * CraftInventory 背后的 NMS Container 直接代理本 Inventory, 槽位写入会走 Sparrow 的事务流程
+     * 与真实容器绑定的信息(观看者, 持有者, 位置)一律回答"无", 类型固定为 CHEST.
      *
-     * @return Bukkit 视角的 Inventory 包装实例
+     * @return Bukkit 视角的 CraftInventory 包装实例
      */
     @NotNull
     @ApiStatus.Experimental

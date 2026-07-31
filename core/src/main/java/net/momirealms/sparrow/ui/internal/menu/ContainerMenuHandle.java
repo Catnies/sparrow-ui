@@ -37,12 +37,6 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 
-/**
- * 基于 Paper 容器协议实现的菜单处理器.
- * <p>只在玩家实体线程维护权威的远端镜像(客户端已知状态);
- * 要跨过当前调用继续存活的数据包物品都会冻结成独立快照.
- * Netty 线程收到的入站消息先存进自己的有界队列, 再交回实体线程按序消费.
- */
 @SuppressWarnings("UnstableApiUsage")
 class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final int INCOMING_CAPACITY = 256;
@@ -75,17 +69,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private boolean cursorClaimed;      // 来源菜单的真实光标是否已经被清空
     private Lifecycle lifecycle = Lifecycle.CREATED; // 菜单会话的生命周期状态
 
-    /**
-     * 创建玩家物品栏紧接顶部容器的菜单句柄.
-     *
-     * @param packets 协议包收发器
-     * @param player 查看者
-     * @param menuType NMS MenuType
-     * @param inventoryType Bukkit 容器类型
-     * @param bukkitMenuType Bukkit 菜单类型
-     * @param upperSize 顶部容器槽位数
-     * @param generation 当前 Window 代际
-     */
     ContainerMenuHandle(
             PacketListener packets,
             Player player,
@@ -98,18 +81,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this(packets, player, menuType, inventoryType, bukkitMenuType, upperSize, upperSize, generation);
     }
 
-    /**
-     * 创建指定玩家物品栏起始槽位的菜单句柄.
-     *
-     * @param packets 协议包收发器
-     * @param player 查看者
-     * @param menuType NMS MenuType
-     * @param inventoryType Bukkit 容器类型
-     * @param bukkitMenuType Bukkit 菜单类型
-     * @param upperSize 顶部容器槽位数
-     * @param lowerStart 玩家物品栏在原始槽位序列中的起始位置
-     * @param generation 当前 Window 代际
-     */
     ContainerMenuHandle(
             PacketListener packets,
             Player player,
@@ -139,11 +110,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>实现先让其他菜单走完原版关闭流程, 再从来源菜单接管真实光标.
-     */
+    // 让其他菜单走完原版关闭流程, 再从来源菜单接管真实光标.
     @Override
     public void prepareOpen(boolean replacingWindow) {
         if (this.lifecycle != Lifecycle.CREATED) {
@@ -233,9 +200,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void synchronize(
             ItemStack @NotNull [] slots,
@@ -311,9 +275,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.view.initialize(slots, cursor.actual(), title);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void sendPing(int id) {
         this.checkCommitted();
@@ -342,9 +303,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             }
         }
         this.lifecycle = Lifecycle.CLOSED;
-        this.closeSession();
-
-        Throwable failure = null;
+        Throwable failure = ThrowableUtils.captureUnchecked(null, this::closeSession);
         // 打开还没提交成功, 只需把原菜单换回去、归还光标
         if (previous != Lifecycle.COMMITTED) {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
@@ -363,7 +322,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                     ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, reason);
                 }
             } catch (RuntimeException | Error throwable) {
-                failure = throwable;
+                failure = ThrowableUtils.combine(failure, throwable);
             }
             // 事件处理器没把菜单换走时, 兜底执行一次 doCloseContainer
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
@@ -404,12 +363,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>F 键换副手会被客户端本地预测, 标记副手需要无条件重发;
-     * 公共校验通过后回调 {@link #handleAcceptedInteraction()} 让子类更新专属状态.
-     */
     @Override
     public boolean accepts(@NotNull MenuInput.Common.Interaction interaction) {
         this.checkCommitted();
@@ -428,6 +381,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
             this.predictedCarried |= prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
         }
+        // 公共校验通过后回调 {@link #handleAcceptedInteraction()} 让子类更新专属状态.
         this.handleAcceptedInteraction();
         return true;
     }
@@ -438,60 +392,39 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     protected void handleAcceptedInteraction() {
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public List<MenuInput> drainInputs(int limit) {
         return this.incoming.drain(this.generation, limit);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean hasInputOverflowed() {
         return this.incoming.hasOverflowed();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int containerId() {
         return this.containerId;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public InventoryView view() {
         return this.view;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int stateId() {
         return AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public ItemStack cursor() {
         return ItemUtils.copyOrEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(this.actualCarried));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void cursor(@NotNull ItemStack cursor) {
         // unwrap 借用底层句柄后复制为独立所有权, 菜单不持有调用方实例
@@ -500,25 +433,16 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 : ItemStackProxy.INSTANCE.copy(ItemUtils.getItemStackHandle(cursor));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public Object carried() {
         return this.actualCarried;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void carried(Object item) {
         this.actualCarried = item;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public Object emptyItem() {
         return ItemStackProxy.EMPTY;

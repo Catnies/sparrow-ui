@@ -13,9 +13,11 @@ import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -389,12 +391,15 @@ abstract class SparrowInventory implements Inventory {
     }
 
     /**
-     * {@inheritDoc}
+     * 把 SparrowInventory 包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例.
+     * CraftInventory 背后的 NMS Container 直接代理本 Inventory, 槽位写入会走 Sparrow 的事务流程.
+     * 与真实容器绑定的信息(观看者, 持有者, 位置) 一律为 "Null", 类型固定为 CHEST.
      *
-     * <p>包装实例按需懒创建, 用双重检查锁定保证只创建一次.
+     * @return CraftInventory
      */
-    @Override
     @NotNull
+    @Override
+    @ApiStatus.Experimental
     public org.bukkit.inventory.Inventory asBukkitInventory() {
         // 双重检查锁定: Bukkit 以 == 或 Map 键辨认 Inventory, 每次新建实例都会破坏身份语义
         org.bukkit.inventory.Inventory view = this.bukkitView;
@@ -402,7 +407,7 @@ abstract class SparrowInventory implements Inventory {
             synchronized (this) {
                 view = this.bukkitView;
                 if (view == null) {
-                    view = new InventoryAdapter(this);
+                    view = CraftInventoryFactory.create(new InventoryContainerHandler(this));
                     this.bukkitView = view;
                 }
             }
