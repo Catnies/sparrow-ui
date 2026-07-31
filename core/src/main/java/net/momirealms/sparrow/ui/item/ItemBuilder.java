@@ -20,12 +20,6 @@ import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
-/**
- * 通过一份声明式配置构建 Item.
- *
- * <p>显示来源只能配置一次；fixed/contextual、cycling 和 async-once 互斥.
- * Builder 始终构建内部 {@link ConfiguredItem}，简单静态 Item 由 {@link Item#simple(ItemProvider)} 创建.</p>
- */
 public final class ItemBuilder {
     private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
@@ -255,7 +249,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 构建具备主动通知能力的 Item，并依次执行所有修改器.
+     * 构建具备主动通知能力的 Item.
      *
      * @return 构建完成的 ObservableItem
      * @throws IllegalStateException 添加了节流处理器但没有启用节流
@@ -269,7 +263,7 @@ public final class ItemBuilder {
                 ? new ConfiguredItem.ThrottleConfig(this.throttleIntervalMillis, this.throttleHandler)
                 : null;
         ObservableItem item = new ConfiguredItem(
-                this.source.displayFactory(),
+                this.source,
                 this.explicitRefreshPlan,
                 this.clickHandler,
                 this.bundleHandler,
@@ -281,12 +275,7 @@ public final class ItemBuilder {
         return item;
     }
 
-    /**
-     * 写入显示来源声明, 并保证只配置一次.
-     *
-     * @param source 新的显示来源声明
-     * @throws IllegalStateException 显示来源已配置过时抛出
-     */
+    // 写入显示来源声明, 并保证只配置一次.
     private void setSource(SourceSpec source) {
         if (this.sourceConfigured)
             throw new IllegalStateException("display source has already been configured");
@@ -297,159 +286,69 @@ public final class ItemBuilder {
     /**
      * 创建此 Item 唯一一次异步解析阶段.
      * 调用方负责调度实际工作, 此方法自身不得阻塞调用线程.
+     * 启动异步解析并返回结果阶段. 实现必须自行选择执行器, 不得阻塞调用线程.
      */
     @FunctionalInterface
     public interface AsyncLoader {
-
-        /**
-         * 启动异步解析并返回结果阶段. 实现必须自行选择执行器, 不得阻塞调用线程.
-         *
-         * @return 解析结果阶段
-         */
         CompletionStage<? extends ItemProvider> load();
     }
 
-    /**
-     * 为单个 Item 创建显示来源的工厂, 每次构建 Item 时调用一次.
-     */
-    @FunctionalInterface
-    interface DisplayFactory {
-
-        /**
-         * 为指定失效回调创建显示来源.
-         *
-         * @param invalidator Item 主动失效时通知 Window 的回调
-         * @return 显示来源
-         */
-        DisplaySource create(Runnable invalidator);
-
-        /**
-         * 创建固定显示来源工厂.
-         *
-         * @param provider 固定提供器
-         * @return 显示来源工厂
-         */
-        static DisplayFactory fixed(@NotNull ItemProvider provider) {
-            return ignoredItem -> new DisplaySource.FixedDisplaySource(provider);
-        }
-
-        /**
-         * 创建按 tick 周期轮换多帧的显示来源工厂.
-         *
-         * @param periodTicks 帧切换周期
-         * @param frames 轮换帧列表
-         * @param tickSource 当前 tick 来源
-         * @return 显示来源工厂
-         */
-        static DisplayFactory cycling(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) {
-            return ignoredItem -> new DisplaySource.CyclingDisplaySource(periodTicks, frames, tickSource);
-        }
-
-        /**
-         * 创建只在第一次挂载时异步解析一次的显示来源工厂.
-         *
-         * @param placeholder 加载完成前的占位提供器
-         * @param loader 异步加载器
-         * @param exceptionHandler 解析与失效失败的异常处理器
-         * @return 显示来源工厂
-         */
-        static DisplayFactory asyncOnce(ItemProvider placeholder, AsyncLoader loader) {
-            return invalidator -> new DisplaySource.AsyncOnceDisplaySource(placeholder, loader, invalidator);
-        }
-    }
-
-    /**
-     * Item 的显示来源, 决定每次渲染使用的提供器以及自身需要的周期刷新计划.
-     */
+    //  Item 的显示来源, 决定每次渲染使用的提供器以及自身需要的周期刷新计划.
     sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.CyclingDisplaySource, DisplaySource.AsyncOnceDisplaySource {
 
-        /**
-         * 获取当前渲染使用的提供器.
-         *
-         * @return 渲染提供器
-         */
+        // 获取当前渲染使用的提供器.
         ItemProvider provider();
 
-        /**
-         * 获取此来源自身要求的周期刷新计划. 默认永不到期.
-         *
-         * @return 周期刷新计划
-         */
+        // 获取此来源自身要求的周期刷新计划. 默认永不到期.
         default RefreshPlan refreshPlan() {
             return RefreshPlan.none();
         }
 
-        /**
-         * Item 挂载到槽位时的回调. 默认无操作.
-         */
+        // Item 挂载到槽位时的回调. 默认无操作.
         default void onAttached() {
         }
 
-        /**
-         * 固定不变的显示来源.
-         *
-         * @param provider 固定提供器, 不得为 null
-         */
+
+
+        // 固定不变的显示来源
         record FixedDisplaySource(@NotNull ItemProvider provider) implements DisplaySource {
             public FixedDisplaySource {
                 Objects.requireNonNull(provider, "provider");
             }
         }
 
-        /**
-         * 按 tick 周期轮换多帧的显示来源.
-         */
+
+
+        // 按 tick 周期轮换多帧的显示来源.
         final class CyclingDisplaySource implements DisplaySource {
             private final List<ItemProvider> frames;    // 轮换帧列表, 至少两帧
             private final LongSupplier tickSource;      // 当前 tick 来源
             private final int periodTicks; // 帧切换周期
             private final ItemProvider renderingProvider; // 按当前帧委托渲染的提供器
 
-            /**
-             * 创建轮换显示来源.
-             *
-             * @param periodTicks 帧切换周期, 必须为正
-             * @param frames 轮换帧列表, 至少两帧
-             * @param tickSource 当前 tick 来源
-             * @throws IllegalArgumentException 周期不是正数或帧数不足两帧时抛出
-             */
             CyclingDisplaySource(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) {
-                if (periodTicks <= 0) {
+                if (periodTicks <= 0)
                     throw new IllegalArgumentException("periodTicks must be positive");
-                }
                 this.frames = List.copyOf(Objects.requireNonNull(frames, "frames"));
-                if (this.frames.size() < 2) {
+                if (this.frames.size() < 2)
                     throw new IllegalArgumentException("cycling display requires at least two frames");
-                }
                 this.tickSource = Objects.requireNonNull(tickSource, "tickSource");
                 this.periodTicks = periodTicks;
                 // 渲染入口按当前 tick 实时选择帧, 无需额外状态
                 this.renderingProvider = context -> this.frames.get(this.frameIndex()).provide(context);
             }
 
-            /**
-             * {@inheritDoc}
-             */
             @Override
             public ItemProvider provider() {
                 return this.renderingProvider;
             }
 
-            /**
-             * {@inheritDoc}
-             *
-             * <p>轮换来源按帧切换周期到期.</p>
-             */
             @Override
             public RefreshPlan refreshPlan() {
                 return RefreshPlan.every(this.periodTicks);
             }
 
-            /**
-             * 计算当前 tick 对应的帧下标.
-             *
-             * @return 合法帧下标
-             */
+            // 计算当前 tick 对应的帧下标.
             private int frameIndex() {
                 // floorDiv/floorMod 保证 tick 为负时帧序号仍落在合法下标内
                 long frame = Math.floorDiv(this.tickSource.getAsLong(), this.periodTicks);
@@ -457,14 +356,14 @@ public final class ItemBuilder {
             }
         }
 
-        /**
-         * 第一次挂载时异步解析一次、之后复用结果的显示来源.
-         */
-        final class AsyncOnceDisplaySource implements DisplaySource {
-            private final AtomicReference<AsyncLoader> pendingLoader; // 挂起的加载器, 取出后置 null 保证只加载一次
-            private final Runnable invalidator; // 加载完成后通知 Window 失效的回调
 
-            private volatile ItemProvider currentProvider; // 当前渲染使用的提供器, 初始为占位内容, 加载完成后替换
+
+        // 第一次挂载时异步解析一次、之后复用结果的显示来源.
+        final class AsyncOnceDisplaySource implements DisplaySource {
+            private final AtomicReference<AsyncLoader> pendingLoader;   // 挂起的加载器, 取出后置 null 保证只加载一次
+            private final Runnable invalidator;                         // 加载完成后通知 Window 失效的回调
+
+            private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 加载完成后替换
             private final ItemProvider renderingProvider = context -> this.currentProvider.provide(context); // 始终委托当前提供器的渲染入口
 
             /**
@@ -480,19 +379,12 @@ public final class ItemBuilder {
                 this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
             }
 
-            /**
-             * {@inheritDoc}
-             */
             @Override
             public ItemProvider provider() {
                 return this.renderingProvider;
             }
 
-            /**
-             * {@inheritDoc}
-             *
-             * <p>仅第一次挂载真正提交加载, 后续挂载直接复用结果.
-             */
+            // 仅第一次挂载真正提交加载, 后续直接复用结果.
             @Override
             public void onAttached() {
                 // 取出并清空挂起的加载器, 保证同一 Item 多次挂载也只执行一次加载
@@ -531,12 +423,7 @@ public final class ItemBuilder {
                 });
             }
 
-            /**
-             * 解开 CompletionException 包装, 优先返回真实原因.
-             *
-             * @param throwable 异步阶段抛出的异常
-             * @return 真实原因或原异常
-             */
+            // 解开 CompletionException 包装, 优先返回真实原因.
             private static Throwable unwrap(Throwable throwable) {
                 return throwable instanceof CompletionException completionException
                         && completionException.getCause() != null
@@ -546,67 +433,49 @@ public final class ItemBuilder {
         }
     }
 
-    /**
-     * 构建器阶段的显示来源声明, 在 {@link #build()} 时转换为 {@link DisplayFactory}.
-     */
-    private sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.CyclingSpec, SourceSpec.AsyncSpec {
+
+
+    // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
+    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.CyclingSpec, SourceSpec.AsyncSpec {
 
         /**
-         * 转换为显示来源工厂.
+         * 为一个新 Item 创建显示来源.
          *
-         * @param exceptionHandler 异步来源使用的异常处理器
-         * @return 显示来源工厂
+         * @param invalidator Item 主动失效时通知 Window 的回调
+         * @return 此 Item 独占的显示来源
          */
-        DisplayFactory displayFactory();
+        DisplaySource create(Runnable invalidator);
 
-        /**
-         * 固定或上下文来源声明.
-         *
-         * @param provider 显示提供器
-         */
+
+
+        // 固定或上下文来源声明
         record ProviderSpec(ItemProvider provider) implements SourceSpec {
 
-            /**
-             * {@inheritDoc}
-             */
             @Override
-            public DisplayFactory displayFactory() {
-                return DisplayFactory.fixed(this.provider);
+            public DisplaySource create(Runnable invalidator) {
+                return new DisplaySource.FixedDisplaySource(this.provider);
             }
         }
 
-        /**
-         * 轮换来源声明.
-         *
-         * @param periodTicks 帧切换周期
-         * @param frames 轮换帧列表
-         * @param tickSource 当前 tick 来源
-         */
+
+
+        // 轮换来源声明
         record CyclingSpec(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) implements SourceSpec {
 
-            /**
-             * {@inheritDoc}
-             */
             @Override
-            public DisplayFactory displayFactory() {
-                return DisplayFactory.cycling(this.periodTicks, this.frames, this.tickSource);
+            public DisplaySource create(Runnable invalidator) {
+                return new DisplaySource.CyclingDisplaySource(this.periodTicks, this.frames, this.tickSource);
             }
         }
 
-        /**
-         * 异步一次性来源声明.
-         *
-         * @param placeholder 加载完成前的占位提供器
-         * @param loader 异步加载器
-         */
+
+
+        // 异步一次性来源声明
         record AsyncSpec(ItemProvider placeholder, AsyncLoader loader) implements SourceSpec {
 
-            /**
-             * {@inheritDoc}
-             */
             @Override
-            public DisplayFactory displayFactory() {
-                return DisplayFactory.asyncOnce(this.placeholder, this.loader);
+            public DisplaySource create(Runnable invalidator) {
+                return new DisplaySource.AsyncOnceDisplaySource(this.placeholder, this.loader, invalidator);
             }
         }
     }
