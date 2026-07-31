@@ -54,18 +54,6 @@ public final class MiscUtils {
     }
 
     /**
-     * 从列表中移除指定消费者, 返回新的不可变列表, 原列表不会被修改.
-     *
-     * @param values 原列表
-     * @param value 待移除的消费者
-     * @param <T> 消费者接受的参数类型
-     * @return 移除消费者后的不可变列表
-     */
-    public static <T> List<Consumer<T>> removeConsumer(List<Consumer<T>> values, Consumer<? super T> value) {
-        return remove(values, narrowConsumer(value));
-    }
-
-    /**
      * 将通配符类型的消费者列表复制为不可变的 {@code Consumer<T>} 列表.
      *
      * @param consumers 原消费者列表
@@ -92,19 +80,6 @@ public final class MiscUtils {
     @SuppressWarnings("unchecked")
     public static <T, U> BiConsumer<T, U> narrowBiConsumer(BiConsumer<? super T, ? super U> consumer) {
         return (BiConsumer<T, U>) consumer;
-    }
-
-    /**
-     * 从列表中移除指定的双参数消费者, 返回新的不可变列表, 原列表不会被修改.
-     *
-     * @param values 原列表
-     * @param value 待移除的双参数消费者
-     * @param <T> 第一个参数类型
-     * @param <U> 第二个参数类型
-     * @return 移除消费者后的不可变列表
-     */
-    public static <T, U> List<BiConsumer<T, U>> removeBiConsumer(List<BiConsumer<T, U>> values, BiConsumer<? super T, ? super U> value) {
-        return remove(values, narrowBiConsumer(value));
     }
 
     /**

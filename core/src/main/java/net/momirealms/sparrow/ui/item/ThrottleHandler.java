@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemClick;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;

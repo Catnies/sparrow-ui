@@ -1,6 +1,7 @@
-package net.momirealms.sparrow.ui.window;
+package net.momirealms.sparrow.ui.click;
 
 import net.kyori.adventure.key.Key;
+import net.momirealms.sparrow.ui.window.RecipeBookWindow;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,7 +14,7 @@ import org.jetbrains.annotations.NotNull;
  * @param recipeId 配方资源标识符
  * @param makeAll 客户端是否请求尽可能多地制作
  */
-public record RecipeBookSelect(
+public record RecipeBookSelectClick(
         @NotNull Player player,
         @NotNull RecipeBookWindow window,
         @NotNull Key recipeId,

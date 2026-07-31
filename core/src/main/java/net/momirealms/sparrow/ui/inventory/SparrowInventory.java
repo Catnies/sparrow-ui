@@ -14,6 +14,7 @@ import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -565,11 +566,7 @@ abstract class SparrowInventory implements Inventory {
         } catch (RuntimeException | Error throwable) {
             // 全有或全无: 中途失败时逆序关闭已建立的根订阅, 调用方无从关闭未返回的凭证
             for (int i = subscribed - 1; i >= 0; i--) {
-                try {
-                    subscriptions[i].close();
-                } catch (RuntimeException | Error closeFailure) {
-                    throwable.addSuppressed(closeFailure);
-                }
+                ThrowableUtils.captureUnchecked(throwable, subscriptions[i]::close);
             }
             throw throwable;
         }

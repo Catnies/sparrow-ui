@@ -1,12 +1,13 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.click.EnchantSelectClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.EnchantmentMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.QuadConsumer;
+import net.momirealms.sparrow.ui.util.MiscUtils;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -14,11 +15,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> implements EnchantmentWindow {
     private static final int OPTION_COUNT = 3; // 原版附魔台固定提供三个按钮
 
-    private final HandlerList<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers; // 按注册顺序分发的选择处理器
+    private final HandlerList<Consumer<EnchantSelectClick>> enchantSelectionHandlers; // 按注册顺序分发的选择处理器
     private volatile EnchantOption[] options; // 最近在实体线程发布的写时复制选项快照
     private volatile int enchantmentSeed;     // 最近在实体线程应用的客户端符文种子
 
@@ -29,7 +31,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             @NotNull AbstractWindow.Settings settings,
             EnchantOption @NotNull [] options,
             int enchantmentSeed,
-            @NotNull List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers
+            @NotNull List<Consumer<EnchantSelectClick>> enchantSelectionHandlers
     ) {
         super(manager, viewer, layout, settings);
         this.options = options.clone();
@@ -96,10 +98,8 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
     }
 
     @Override
-    public void setEnchantSelectionHandlers(
-            @NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers
-    ) {
-        List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> copy = List.copyOf(handlers);
+    public void setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
+        List<Consumer<EnchantSelectClick>> copy = MiscUtils.copyConsumers(handlers);
         this.submit(
                 () -> this.enchantSelectionHandlers.set(copy),
                 "Failed to replace Enchantment Window selection handlers"
@@ -108,24 +108,24 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     @NotNull
-    public List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> getEnchantSelectionHandlers() {
+    public List<Consumer<EnchantSelectClick>> getEnchantSelectionHandlers() {
         return this.enchantSelectionHandlers.snapshot();
     }
 
     @Override
-    public void addEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
-        Objects.requireNonNull(handler, "handler");
+    public void addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+        Consumer<EnchantSelectClick> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
-                () -> this.enchantSelectionHandlers.append(handler),
+                () -> this.enchantSelectionHandlers.append(copied),
                 "Failed to add Enchantment Window selection handler"
         );
     }
 
     @Override
-    public void removeEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
-        Objects.requireNonNull(handler, "handler");
+    public void removeEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+        Consumer<EnchantSelectClick> copied = MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
-                () -> this.enchantSelectionHandlers.remove(handler),
+                () -> this.enchantSelectionHandlers.remove(copied),
                 "Failed to remove Enchantment Window selection handler"
         );
     }
@@ -159,8 +159,9 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             return;
         }
         // 捕获按钮对应的非空选项, 后续处理器重入不会改变本轮参数
+        EnchantSelectClick click = new EnchantSelectClick(this.viewer(), this, button, option);
         this.enchantSelectionHandlers.forEachIsolated(
-                handler -> handler.accept(this.viewer(), this, button, option),
+                handler -> handler.accept(click),
                 "Failed to handle Enchantment Window selection",
                 this::report
         );
@@ -183,7 +184,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         private @Nullable Gui lowerGui;
         private EnchantOption[] options = new EnchantOption[OPTION_COUNT]; // 三个初始按钮, null 表示禁用
         private int enchantmentSeed;
-        private List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> enchantSelectionHandlers = new ArrayList<>();
+        private List<Consumer<EnchantSelectClick>> enchantSelectionHandlers = new ArrayList<>();
 
         BuilderImpl() {
         }
@@ -228,15 +229,15 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder setEnchantSelectionHandlers(@NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers) {
-            this.enchantSelectionHandlers = new ArrayList<>(List.copyOf(handlers));
+        public EnchantmentWindow.Builder setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
+            this.enchantSelectionHandlers = new ArrayList<>(MiscUtils.copyConsumers(handlers));
             return this;
         }
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder addEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler) {
-            this.enchantSelectionHandlers.add(Objects.requireNonNull(handler, "handler"));
+        public EnchantmentWindow.Builder addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+            this.enchantSelectionHandlers.add(MiscUtils.narrowConsumer(Objects.requireNonNull(handler, "handler")));
             return this;
         }
 

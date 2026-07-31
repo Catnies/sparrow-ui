@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.BundleSelectClick;
-import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.click.ItemClick;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
@@ -12,6 +12,7 @@ import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.RefreshPlan;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -58,11 +59,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             this.window.notifyUpdate(windowSlot);
         } catch (RuntimeException | Error throwable) {
             // 首次解析失败: 关掉已建立的订阅再抛出, 避免泄漏
-            try {
-                this.close();
-            } catch (RuntimeException | Error closeFailure) {
-                throwable.addSuppressed(closeFailure);
-            }
+            ThrowableUtils.captureUnchecked(throwable, this::close);
             throw throwable;
         }
     }
@@ -79,11 +76,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         } catch (RuntimeException | Error throwable) {
             // 准备失败: 关掉候选已建立的部分, 旧路径不受影响
             candidate.retire();
-            try {
-                candidate.close();
-            } catch (RuntimeException | Error closeFailure) {
-                throwable.addSuppressed(closeFailure);
-            }
+            ThrowableUtils.captureUnchecked(throwable, candidate::close);
             throw throwable;
         }
 
@@ -502,23 +495,10 @@ final class DisplayedSlotPath implements AutoCloseable {
             this.inventoryLink = null;
             this.background = null;
 
-            Throwable failure = null;
-            try {
-                previousItemAttachment.close();
-            } catch (RuntimeException | Error throwable) {
-                failure = throwable;
-            }
+            Throwable failure = ThrowableUtils.captureUnchecked(null, previousItemAttachment::close);
 
             if (previousInventorySubscription != null) {
-                try {
-                    previousInventorySubscription.close();
-                } catch (RuntimeException | Error throwable) {
-                    if (failure == null) {
-                        failure = throwable;
-                    } else {
-                        failure.addSuppressed(throwable);
-                    }
-                }
+                failure = ThrowableUtils.captureUnchecked(failure, previousInventorySubscription::close);
             }
 
             // 从最深层 GUI 向根 GUI 逆序取消订阅
@@ -526,24 +506,11 @@ final class DisplayedSlotPath implements AutoCloseable {
                 GuiSlotAttachment guiAttachment = this.guiAttachments[index];
                 this.guiAttachments[index] = null;
                 this.guis[index] = null;
-                try {
-                    guiAttachment.close();
-                } catch (RuntimeException | Error throwable) {
-                    if (failure == null) {
-                        failure = throwable;
-                    } else {
-                        failure.addSuppressed(throwable);
-                    }
-                }
+                failure = ThrowableUtils.captureUnchecked(failure, guiAttachment::close);
             }
             this.depth = 0;
 
-            if (failure instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            if (failure instanceof Error error) {
-                throw error;
-            }
+            ThrowableUtils.throwIfUnchecked(failure);
         }
     }
 }

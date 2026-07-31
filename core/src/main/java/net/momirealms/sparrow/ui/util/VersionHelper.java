@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.ui.util;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,8 +46,11 @@ public final class VersionHelper {
             if (inputStream == null) {
                 throw new IOException("Failed to load version.json");
             }
-            JsonObject json = GsonHelper.parseJsonToJsonObject(new String(inputStream.readAllBytes(), StandardCharsets.UTF_8));
-            WORLD_VERSION = GsonHelper.getAsInt(json.get("world_version"), -1);
+            JsonObject json = JsonParser.parseString(
+                    new String(inputStream.readAllBytes(), StandardCharsets.UTF_8)
+            ).getAsJsonObject();
+            JsonElement worldVersion = json.get("world_version");
+            WORLD_VERSION = worldVersion == null || worldVersion.isJsonNull() ? -1 : worldVersion.getAsInt();
             if (WORLD_VERSION == -1) {
                 throw new IllegalStateException("Failed to get world_version from version.json");
             }

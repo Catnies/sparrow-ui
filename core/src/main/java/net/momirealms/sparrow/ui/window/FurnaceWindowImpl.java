@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
 import net.momirealms.sparrow.ui.internal.menu.FurnaceMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import org.bukkit.entity.Player;
@@ -14,7 +15,7 @@ final class FurnaceWindowImpl extends AbstractFurnaceWindow implements FurnaceWi
             @NotNull Player viewer,
             @NotNull WindowLayout layout,
             @NotNull AbstractWindow.Settings settings,
-            @NotNull List<Consumer<RecipeBookSelect>> recipeSelectHandlers,
+            @NotNull List<Consumer<RecipeBookSelectClick>> recipeSelectHandlers,
             double cookProgress,
             double fuelProgress
     ) {
@@ -53,7 +54,7 @@ final class FurnaceWindowImpl extends AbstractFurnaceWindow implements FurnaceWi
                 @NotNull Player viewer,
                 @NotNull WindowLayout layout,
                 @NotNull AbstractWindow.Settings settings,
-                @NotNull List<Consumer<RecipeBookSelect>> recipeSelectHandlers,
+                @NotNull List<Consumer<RecipeBookSelectClick>> recipeSelectHandlers,
                 double cookProgress,
                 double fuelProgress
         ) {

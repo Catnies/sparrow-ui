@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.BundleSelectClick;
+import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;

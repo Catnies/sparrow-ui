@@ -3,7 +3,7 @@ package net.momirealms.sparrow.ui.internal;
 import net.momirealms.sparrow.ui.Observable;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.util.ExceptionCollector;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,9 +30,9 @@ public final class ObservableDispatcher<T> implements Observable<T> {
      * @param update 更新数据
      */
     public void publish(T update) {
-        ExceptionCollector<RuntimeException> collector = new ExceptionCollector<>(RuntimeException.class);
+        RuntimeException failure = null;
 
-        for (Entry<T> entry : entries) {
+        for (Entry<T> entry : this.entries) {
             Observer<? super T> observer = entry.observer();
             if (observer == null) {
                 continue;
@@ -41,19 +41,21 @@ public final class ObservableDispatcher<T> implements Observable<T> {
             try {
                 observer.onUpdate(update);
             } catch (RuntimeException exception) {
-                collector.add(exception);
+                failure = ThrowableUtils.combine(failure, exception);
             }
         }
 
-        collector.throwIfPresent();
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     public int subscriptionCount() {
-        return entries.size();
+        return this.entries.size();
     }
 
     private void remove(Entry<T> entry) {
-        entries.remove(entry);
+        this.entries.remove(entry);
     }
 
     private static final class Entry<T> implements Subscription {
@@ -71,13 +73,13 @@ public final class ObservableDispatcher<T> implements Observable<T> {
 
         @Override
         public boolean isClosed() {
-            return observer.get() == null;
+            return this.observer.get() == null;
         }
 
         @Override
         public void close() {
-            if (observer.getAndSet(null) != null) {
-                owner.remove(this);
+            if (this.observer.getAndSet(null) != null) {
+                this.owner.remove(this);
             }
         }
     }

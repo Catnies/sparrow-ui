@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactoryImpl;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -264,7 +265,7 @@ public final class WindowManager implements Listener {
             this.exceptionHandler.accept(message, throwable);
         } catch (Throwable reportingFailure) {
             if (reportingFailure != throwable) {
-                throwable.addSuppressed(reportingFailure);
+                ThrowableUtils.combine(throwable, reportingFailure);
             }
         }
     }

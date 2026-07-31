@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.BundleSelectClick;
-import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.click.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;

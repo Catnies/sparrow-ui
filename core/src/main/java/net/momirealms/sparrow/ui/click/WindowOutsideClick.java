@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui;
+package net.momirealms.sparrow.ui.click;
 
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;

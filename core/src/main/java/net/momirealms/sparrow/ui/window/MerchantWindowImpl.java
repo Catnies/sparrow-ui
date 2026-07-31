@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;

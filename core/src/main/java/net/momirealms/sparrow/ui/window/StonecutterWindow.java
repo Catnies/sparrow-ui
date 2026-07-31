@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.gui.Gui;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import net.momirealms.sparrow.ui.ItemClick;
 
 public interface StonecutterWindow extends Window {
 

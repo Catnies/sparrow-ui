@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -429,12 +430,7 @@ abstract non-sealed class AbstractGui implements Gui {
             try {
                 observer.onUpdate(this);
             } catch (RuntimeException exception) {
-                // 保留第一个异常, 后续异常作为 suppressed 附加
-                if (failure == null) {
-                    failure = exception;
-                } else {
-                    failure.addSuppressed(exception);
-                }
+                failure = ThrowableUtils.combine(failure, exception);
             }
         }
         return failure;

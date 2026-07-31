@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
@@ -18,7 +19,7 @@ final class CraftingWindowImpl extends AbstractRecipeBookWindow<RecipeBookMenuHa
             @NotNull Player viewer,
             @NotNull WindowLayout layout,
             @NotNull AbstractWindow.Settings settings,
-            @NotNull List<Consumer<RecipeBookSelect>> recipeSelectHandlers
+            @NotNull List<Consumer<RecipeBookSelectClick>> recipeSelectHandlers
     ) {
         super(manager, viewer, layout, settings, recipeSelectHandlers);
     }

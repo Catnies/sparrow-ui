@@ -152,15 +152,7 @@ public final class PacketListener implements Listener, AutoCloseable {
         }
         Throwable failure = null;
         for (ConnectionHandler handler : List.copyOf(this.handlers.values())) {
-            try {
-                this.remove(handler);
-            } catch (RuntimeException | Error throwable) {
-                if (failure == null) {
-                    failure = throwable;
-                } else {
-                    failure.addSuppressed(throwable);
-                }
-            }
+            failure = ThrowableUtils.captureUnchecked(failure, () -> this.remove(handler));
         }
         this.handlers.clear();
         ThrowableUtils.throwIfUnchecked(failure);

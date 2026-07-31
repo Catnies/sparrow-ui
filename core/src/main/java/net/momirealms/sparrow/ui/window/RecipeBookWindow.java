@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.key.Key;
+import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -27,7 +28,7 @@ public interface RecipeBookWindow extends Window {
      *
      * @param handlers 新处理器列表
      */
-    void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelect>> handlers);
+    void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers);
 
     /**
      * 返回配方选择处理器快照.
@@ -36,21 +37,21 @@ public interface RecipeBookWindow extends Window {
      */
     @NotNull
     @Unmodifiable
-    List<Consumer<RecipeBookSelect>> getRecipeSelectHandlers();
+    List<Consumer<RecipeBookSelectClick>> getRecipeSelectHandlers();
 
     /**
      * 在现有配方选择处理器末尾追加一个处理器.
      *
      * @param handler 要添加的处理器
      */
-    void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler);
+    void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
 
     /**
      * 移除一个与给定对象相等的配方选择处理器.
      *
      * @param handler 要移除的处理器
      */
-    void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler);
+    void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
 
     /**
      * 配方书 Window 共用的类型化 Builder Interface.
@@ -67,7 +68,7 @@ public interface RecipeBookWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        B setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelect>> handlers);
+        B setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers);
 
         /**
          * 追加一个初始配方选择处理器.
@@ -76,6 +77,6 @@ public interface RecipeBookWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        B addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelect> handler);
+        B addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
     }
 }

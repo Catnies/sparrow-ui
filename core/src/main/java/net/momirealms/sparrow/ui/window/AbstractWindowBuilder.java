@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.WindowOutsideClick;
+import net.momirealms.sparrow.ui.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;

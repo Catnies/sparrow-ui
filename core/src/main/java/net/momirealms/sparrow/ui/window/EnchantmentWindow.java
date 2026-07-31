@@ -1,14 +1,14 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.click.EnchantSelectClick;
 import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.util.QuadConsumer;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public interface EnchantmentWindow extends Window {
 
@@ -54,11 +54,11 @@ public interface EnchantmentWindow extends Window {
     int getEnchantmentSeed();
 
     /**
-     * 替换选择处理器. 每个处理器依次接收玩家、Window、选项索引和点击时的选项快照.
+     * 替换选择处理器.
      *
      * @param handlers 新处理器列表
      */
-    void setEnchantSelectionHandlers(@NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers);
+    void setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers);
 
     /**
      * 返回当前选择处理器快照.
@@ -67,21 +67,21 @@ public interface EnchantmentWindow extends Window {
      */
     @NotNull
     @Unmodifiable
-    List<QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> getEnchantSelectionHandlers();
+    List<Consumer<EnchantSelectClick>> getEnchantSelectionHandlers();
 
     /**
-     * 追加选择处理器. 处理器依次接收玩家、Window、选项索引和点击时的选项快照.
+     * 追加选择处理器.
      *
      * @param handler 新处理器
      */
-    void addEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler);
+    void addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
      * 移除首个匹配的选择处理器.
      *
      * @param handler 待移除的处理器
      */
-    void removeEnchantSelectionHandler(@NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler);
+    void removeEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
      * 一个附魔按钮的客户端展示数据.
@@ -136,25 +136,25 @@ public interface EnchantmentWindow extends Window {
         Builder setEnchantmentSeed(int seed);
 
         /**
-         * 替换初始选择处理器. 每个处理器依次接收玩家、Window、选项索引和点击时的选项快照.
+         * 替换初始选择处理器.
          *
          * @param handlers 新处理器列表
          * @return 此 Builder
          */
         @NotNull
         Builder setEnchantSelectionHandlers(
-                @NotNull List<? extends QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption>> handlers
+                @NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers
         );
 
         /**
-         * 追加初始选择处理器. 处理器依次接收玩家、Window、选项索引和点击时的选项快照.
+         * 追加初始选择处理器.
          *
          * @param handler 新处理器
          * @return 此 Builder
          */
         @NotNull
         Builder addEnchantSelectionHandler(
-                @NotNull QuadConsumer<Player, EnchantmentWindow, Integer, EnchantOption> handler
+                @NotNull Consumer<? super EnchantSelectClick> handler
         );
 
         /**

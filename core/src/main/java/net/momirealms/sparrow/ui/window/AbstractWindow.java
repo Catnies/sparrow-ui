@@ -3,9 +3,9 @@ package net.momirealms.sparrow.ui.window;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.BundleSelectClick;
-import net.momirealms.sparrow.ui.WindowOutsideClick;
-import net.momirealms.sparrow.ui.ItemClick;
+import net.momirealms.sparrow.ui.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.click.WindowOutsideClick;
+import net.momirealms.sparrow.ui.click.ItemClick;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -675,7 +675,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     menuHandle.retire();
                 }
             } catch (RuntimeException | Error closeFailure) {
-                throwable.addSuppressed(closeFailure);
+                ThrowableUtils.combine(throwable, closeFailure);
             }
             closePaths(paths, throwable);
             throw throwable;

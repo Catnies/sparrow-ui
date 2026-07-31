@@ -14,15 +14,33 @@ public final class ThrowableUtils {
      *
      * @param first 当前主异常, 或 {@code null}
      * @param next 要合并的新异常
+     * @param <T> 异常类型
      * @return 非空主异常
      */
     @NotNull
-    public static Throwable combine(@Nullable Throwable first, @NotNull Throwable next) {
+    public static <T extends Throwable> T combine(@Nullable T first, @NotNull T next) {
         if (first == null) {
             return next;
         }
         first.addSuppressed(next);
         return first;
+    }
+
+    /**
+     * 执行一个只会抛出非受检异常的清理动作, 并把失败聚合到已有异常.
+     *
+     * @param failure 当前主异常, 或 {@code null}
+     * @param action 清理动作
+     * @return 聚合后的主异常, 没有失败时为 {@code null}
+     */
+    @Nullable
+    public static Throwable captureUnchecked(@Nullable Throwable failure, @NotNull Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException | Error throwable) {
+            return combine(failure, throwable);
+        }
+        return failure;
     }
 
     /**
@@ -68,20 +86,6 @@ public final class ThrowableUtils {
     @SuppressWarnings("unchecked")
     public static <E extends Throwable> E sneakyThrow(Throwable t) throws E {
         throw (E) t;
-    }
-
-    /**
-     * 执行一个任务, 如果发送了异常则接续到传入的异常里.
-     *
-     * @param task 执行的任务
-     * @param throwable 被接续的异常
-     */
-    public static void runCatchAddSuppressed(@NotNull Runnable task, @NotNull Throwable throwable) {
-        try {
-            task.run();
-        } catch (Throwable t) {
-            throwable.addSuppressed(t);
-        }
     }
 
     /**
