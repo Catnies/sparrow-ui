@@ -16,6 +16,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -34,7 +36,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private boolean closeable = true;
     private List<Runnable> openHandlers = new ArrayList<>();
     private List<Consumer<InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
-    private List<Consumer<WindowOutsideClick>> outsideClickHandlers = new ArrayList<>();
+    private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
     private Supplier<? extends @Nullable Window> fallbackWindow = () -> null;
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
@@ -133,19 +135,27 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     @Override
-    public final @NotNull B setOutsideClickHandlers(
-            @NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers
+    @NotNull
+    public final B setOutsideClickHandlers(
+            @NotNull List<? extends BiConsumer<? super W, ? super WindowOutsideClick>> outsideClickHandlers
     ) {
-        this.outsideClickHandlers = new ArrayList<>(HandlerList.copyConsumers(outsideClickHandlers));
+        this.outsideClickHandlers = new ArrayList<>(HandlerList.copyBiConsumers(outsideClickHandlers));
         return this.self();
     }
 
     @Override
-    public final @NotNull B addOutsideClickHandler(
-            @NotNull Consumer<? super WindowOutsideClick> outsideClickHandler
+    @NotNull
+    public final B addOutsideClickHandler(
+            @NotNull BiConsumer<? super W, ? super WindowOutsideClick> outsideClickHandler
     ) {
-        this.outsideClickHandlers.add(HandlerList.narrowConsumer(outsideClickHandler));
+        this.outsideClickHandlers.add(HandlerList.narrowBiConsumer(outsideClickHandler));
         return this.self();
+    }
+
+    @Override
+    @NotNull
+    public final B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
+        return this.addOutsideClickHandler((ignoredWindow, click) -> outsideClickHandler.accept(click));
     }
 
     @Override
@@ -204,7 +214,10 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull W build(@NotNull Player viewer) {
-        W window = this.createWindow(viewer, this.settings());
+        // 构造期间先让处理器持有本次 build 的引用容器, Window 完成创建后再发布精确的 W
+        AtomicReference<W> windowReference = new AtomicReference<>();
+        W window = this.createWindow(viewer, this.settings(windowReference));
+        windowReference.set(window);
         for (int index = 0; index < this.modifiers.size(); index++) {
             this.modifiers.get(index).accept(window);
         }
@@ -233,15 +246,21 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     /**
      * 冻结本次 build 使用的公共设置.
      *
+     * @param windowReference Window 创建后写入的本次 build 引用
      * @return 独立的不可变设置快照
      */
-    private AbstractWindow.Settings settings() {
+    private AbstractWindow.Settings settings(@NotNull AtomicReference<W> windowReference) {
+        List<Consumer<WindowOutsideClick>> boundOutsideClickHandlers = new ArrayList<>(this.outsideClickHandlers.size());
+        for (int index = 0; index < this.outsideClickHandlers.size(); index++) {
+            BiConsumer<W, WindowOutsideClick> handler = this.outsideClickHandlers.get(index);
+            boundOutsideClickHandlers.add(click -> handler.accept(windowReference.get(), click));
+        }
         return new AbstractWindow.Settings(
                 this.titleSupplier,
                 this.closeable,
                 List.copyOf(this.openHandlers),
                 List.copyOf(this.closeHandlers),
-                List.copyOf(this.outsideClickHandlers),
+                List.copyOf(boundOutsideClickHandlers),
                 this.fallbackWindow,
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),

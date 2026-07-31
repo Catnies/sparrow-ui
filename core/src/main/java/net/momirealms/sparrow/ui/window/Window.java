@@ -15,6 +15,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -459,22 +460,35 @@ public interface Window {
         @NotNull B addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
 
         /**
-         * 替换容器外点击处理器列表.
+         * 替换容器外点击处理器列表. 每个处理器同时接收本 Builder 创建的具体 Window.
          *
          * @param outsideClickHandlers 容器外点击处理器
          * @return 此 Builder
          */
-        @NotNull B setOutsideClickHandlers(
-                @NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers
+        @NotNull
+        B setOutsideClickHandlers(
+                @NotNull List<? extends BiConsumer<? super W, ? super WindowOutsideClick>> outsideClickHandlers
         );
 
         /**
-         * 追加一个容器外点击处理器.
+         * 追加一个容器外点击处理器. 处理器同时接收本 Builder 创建的具体 Window.
          *
          * @param outsideClickHandler 容器外点击处理器
          * @return 此 Builder
          */
-        @NotNull B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
+        @NotNull
+        default B addOutsideClickHandler(@NotNull BiConsumer<? super W, ? super WindowOutsideClick> outsideClickHandler) {
+            return this.addModifier(window -> window.addOutsideClickHandler(click -> outsideClickHandler.accept(window, click)));
+        }
+
+        /**
+         * 追加一个只接收点击上下文的容器外点击处理器.
+         *
+         * @param outsideClickHandler 容器外点击处理器
+         * @return 此 Builder
+         */
+        @NotNull
+        B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
         /**
          * 设置玩家主动关闭时要解析的后备 Window.
@@ -482,9 +496,7 @@ public interface Window {
          * @param fallbackWindow 后备 Window 来源
          * @return 此 Builder
          */
-        @NotNull B setFallbackWindow(
-                @NotNull Supplier<? extends @Nullable Window> fallbackWindow
-        );
+        @NotNull B setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
 
         /**
          * 设置玩家主动关闭时要打开的固定后备 Window.
