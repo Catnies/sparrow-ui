@@ -40,14 +40,11 @@ import java.util.function.Supplier;
 
 /**
  * 各类 Window 共用的基类, 负责生命周期、槽位路由和协议同步.
- * <p>公开状态用 volatile 快照供跨线程读取; 菜单、显示路径和容器状态只在玩家的实体线程访问.
- * 每次打开都会更新 generation, 迟到的协议输入和异步失效通知会被忽略.
+ * <p>每次打开都会更新 generation, 迟到的协议输入和异步失效通知会被忽略.
  */
 abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * Builder 交给共享生命周期构造器的不可变设置快照.
-     *
-     * <p>此类型只保存所有 Window 都具备的行为设置, 不描述菜单协议或槽位布局.</p>
      *
      * @param titleSupplier 动态标题来源
      * @param closeable 是否接受客户端主动关闭
@@ -145,9 +142,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorRenderContext = RenderContext.cursor(this);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier) {
         Objects.requireNonNull(titleSupplier, "titleSupplier");
@@ -160,9 +154,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setTitle(@NotNull Component title) {
         Objects.requireNonNull(title, "title");
@@ -175,9 +166,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void updateTitle() {
         this.submit(this::notifyUpdateTitle, "Failed to refresh Window title");
@@ -214,18 +202,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.title;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public Component title() {
         return this.title;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setCloseable(boolean closeable) {
         this.submit(
@@ -234,9 +216,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
         Objects.requireNonNull(fallbackWindow, "fallbackWindow");
@@ -246,27 +225,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
         List<Runnable> copy = List.copyOf(openHandlers);
         this.submit(() -> this.openHandlers.set(copy), "Failed to replace Window open handlers");
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public List<Runnable> getOpenHandlers() {
         return this.openHandlers.snapshot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
@@ -275,9 +245,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeOpenHandler(@NotNull Runnable openHandler) {
         this.submit(
@@ -286,9 +253,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
         List<Consumer<InventoryCloseEvent.Reason>> copy = HandlerList.copyConsumers(closeHandlers);
@@ -298,18 +262,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
         return this.closeHandlers.snapshot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         Consumer<InventoryCloseEvent.Reason> handler = HandlerList.narrowConsumer(closeHandler);
@@ -319,9 +277,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
         this.submit(
@@ -330,9 +285,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers) {
         List<Consumer<WindowOutsideClick>> copy = HandlerList.copyConsumers(outsideClickHandlers);
@@ -342,18 +294,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public List<Consumer<WindowOutsideClick>> getOutsideClickHandlers() {
         return this.outsideClickHandlers.snapshot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
         Consumer<WindowOutsideClick> handler = HandlerList.narrowConsumer(outsideClickHandler);
@@ -363,9 +309,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler) {
         this.submit(
@@ -374,9 +317,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setWindowState(int windowState) {
         this.submit(
@@ -385,9 +325,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void incrementWindowState() {
         this.submit(
@@ -422,25 +359,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         menu.sendPing(pingId);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int getServerWindowState() {
         return this.serverWindowState;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int getClientWindowState() {
         return this.clientWindowState;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers) {
         List<Consumer<Integer>> copy = HandlerList.copyConsumers(handlers);
@@ -450,18 +378,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public List<Consumer<Integer>> getWindowStateChangeHandlers() {
         return this.windowStateChangeHandlers.snapshot();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         Consumer<Integer> copied = HandlerList.narrowConsumer(handler);
@@ -471,9 +393,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler) {
         this.submit(
@@ -482,9 +401,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
         Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
@@ -497,20 +413,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer() {
         return this.cursorVisualizer;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>超出布局范围的槽位号会被直接忽略.
-     */
     @Override
     public void notifyUpdate(int windowSlot) {
         if (windowSlot < 0 || windowSlot >= this.layout.size()) {
@@ -521,9 +429,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public void notifyUpdateAll() {
         this.submit(
@@ -541,61 +446,40 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.menuDirty = true;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public Player viewer() {
         return this.viewer;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isOpen() {
         return this.open;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public boolean isCloseable() {
         return this.closeable;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public List<Gui> guis() {
         return this.layout.guis();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public SlotElement.GuiLink guiAt(int windowSlot) {
         return this.layout.guiAt(windowSlot);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public SlotElement.GuiLink guiAtHotbar(int hotbarSlot) {
         return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public CompletionStage<OpenResult> open() {
@@ -686,7 +570,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     protected abstract M createMenuHandle(@NotNull MenuFactory factory, long generation);
 
-    // 运行打开处理器, 单个处理器失败不影响后面的.
+    // 运行打开处理器.
     void fireOpenHandlers() {
         this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
     }
@@ -1023,7 +907,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 对指定路径数组里的连接库存逐一对账, 同一个库存只对账一次.
+     * 对指定路径数组里的连接Inventory逐一刷新, 同一个Inventory只刷新一次.
      *
      * @param paths 显示路径, 为 null 时不做任何事
      */
@@ -1037,11 +921,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 遍历指定路径数组终点连接的库存.
+     * 遍历指定路径数组终点连接的 Inventory.
      *
      * @param paths 显示路径, 为 null 时不做任何事
-     * @param semanticOnly 是否只遍历参与点击语义的库存(跳过冻结槽与协议外槽位)
-     * @param action 对每个库存执行的操作
+     * @param semanticOnly 是否只遍历参与点击的Inventory (跳过冻结槽与协议外槽位)
+     * @param action 对每个Inventory执行的操作
      */
     private void forEachLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
@@ -1064,22 +948,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 把逻辑尾部(虚拟)区域的渲染结果写进具体菜单的状态.
-     * <p>需要在玩家实体线程调用, 初次打开和之后的虚拟槽位或全量刷新都会执行.
-     *
-     * @param menuHandle 当前菜单句柄
-     * @param logicalSlots 包含虚拟尾部的完整逻辑槽位快照
-     */
+    // 把虚拟区域的渲染结果写进具体菜单的状态.
     protected void prepareVirtualContent(@NotNull M menuHandle, ItemStack @NotNull [] logicalSlots) {
     }
 
-    /**
-     * 把这一 tick 攒下的脏槽位、光标和标题变化汇总, 交给菜单 Adapter 同步给客户端.
-     * 标题变了必须走重开界面加全量内容; 发送失败时保留脏标记, 下个 tick 重试.
-     *
-     * @param reopenTitle 是否强制以当前标题重开界面
-     */
+    // 把脏槽位、光标和标题变化汇总, 交给菜单处理器同步给客户端.
     private void flush(boolean reopenTitle) {
         M menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
@@ -1133,12 +1006,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 取出这一批脏槽位, 并立刻清空活动缓冲, 让通知线程可以继续写下一批.
-     * 返回的是复用缓冲: 调用方只能读, 不能留着跨 tick 用.
-     *
-     * @return 本批脏槽位
-     */
+    // 取出脏槽位, 并立刻清空缓冲, 让通知线程可以继续写下一批.
     private BitSet takeDirtySlots() {
         synchronized (this.dirtyLock) {
             if (this.dirtySlots.isEmpty()) {
@@ -1154,13 +1022,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 把脏槽位重新渲染进本地快照, 失败时上报并退回上一份本地快照.
-     *
-     * @param dirty 本批脏槽位
-     * @param paths 显示路径
-     * @param localSlots 本地槽位快照
-     */
+    // 把脏槽位重新渲染进本地快照, 失败时上报并退回上一份本地快照.
     private void renderDirtySlots(BitSet dirty, DisplayedSlotPath[] paths, ItemStack[] localSlots) {
         for (
                 int windowSlot = dirty.nextSetBit(0);
@@ -1186,13 +1048,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 截取协议可见的物理槽位部分.
-     * 没有虚拟尾部的布局直接复用原数组, 不做拷贝.
-     *
-     * @param logicalSlots 完整逻辑槽位
-     * @return 协议可见的物理槽位数组
-     */
+    // 截取容器数据包所需的可见的物理槽位部分.
     @NotNull
     private ItemStack[] protocolSlots(ItemStack @NotNull [] logicalSlots) {
         if (logicalSlots.length == this.layout.protocolSize()) {
@@ -1201,13 +1057,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return Arrays.copyOf(logicalSlots, this.layout.protocolSize());
     }
 
-    /**
-     * 渲染只给客户端看的光标物品快照.
-     * 可视化器出问题就退回显示真实光标, 显示层的扩展不能把容器同步搞坏.
-     *
-     * @param actualCursor 真实光标
-     * @return 光标快照
-     */
+    // 渲染只给客户端看的光标物品快照, 如失败回退到真实光标.
     private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
         ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
         try {
@@ -1223,22 +1073,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public CompletionStage<CloseResult> close() {
         return this.manager.close(this);
     }
 
-    /**
-     * 在玩家的实体线程关闭已打开的 Window.
-     * 先撤掉本地可见状态并停掉输入, 再关菜单、释放显示路径, 最后处理后备 Window 和关闭回调.
-     *
-     * @param reason 关闭原因
-     * @return 是否关闭了一个打开的 Window
-     */
+    // 关闭已打开的 Window.
     boolean closeOnViewerEntity(InventoryCloseEvent.Reason reason) {
         if (!this.open) return false;
 
@@ -1253,8 +1094,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 服务器已经接管玩家容器关闭流程后, 只回收 Window 的本地资源并通知关闭处理器.
-     * 该路径不再次主动关闭容器, 也不触发后备 Window.
+     * 服务器已经接管关闭流程后, 只回收 Window 的本地资源并通知关闭处理器.
+     * 该路径不再次主动关闭容器, 也不触发 Fallback Window.
      *
      * @param reason Bukkit 容器关闭原因
      * @return 是否关闭了一个打开的 Window
@@ -1268,13 +1109,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return true;
     }
 
-    /**
-     * 撤掉本次打开的本地可见状态, 释放菜单、tick 任务和显示路径.
-     * reason 为 null 表示容器关闭已由平台接管或调度退役, 不再发客户端关闭操作.
-     *
-     * @param reason 关闭原因, 本地退役路径为 null
-     * @return 清理过程中的第一个失败, 没有失败时为 null
-     */
+    // 关闭本次打开的菜单, 并清理菜单、tick 任务和显示路径.
+    // reason 为 null 表示容器关闭已由 Paper 或 调度器注销任务 接管.
     @Nullable
     private Throwable teardownOnEntity(@Nullable InventoryCloseEvent.Reason reason) {
         // 使后续输入与 tick 立即失效
@@ -1318,11 +1154,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return closePaths(previousPaths, failure);
     }
 
-    /**
-     * 依次通知关闭处理器, 单个处理器失败不影响后续处理器.
-     *
-     * @param reason 关闭原因
-     */
+    // 运行关闭处理器.
     private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
         this.closeHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
@@ -1331,10 +1163,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * 玩家主动关闭后, 解析并打开后备 Window.
-     * 取 Fallback Window 和打开的异常都只上报, 不影响本 Window 的清理.
-     */
+    // 玩家主动关闭后, 解析并打开后备 Window.
     private void openFallback() {
         try {
             Window fallback = this.fallbackWindow.get();
@@ -1347,31 +1176,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         } catch (Throwable throwable) {
             this.manager.report("Failed to resolve or open Window fallback", throwable);
         }
-    }
-
-    /**
-     * 按相反的槽位顺序关闭显示路径, 后续的关闭异常都附加到第一个异常上.
-     *
-     * @param paths 要关闭的显示路径, 为 null 时直接返回已有失败
-     * @param failure 已有的第一个失败, 没有时为 null
-     * @return 合并后的第一个失败, 没有任何失败时为 null
-     */
-    private static Throwable closePaths(@Nullable DisplayedSlotPath[] paths, @Nullable Throwable failure) {
-        if (paths == null) {
-            return failure;
-        }
-        for (int index = paths.length - 1; index >= 0; index--) {
-            DisplayedSlotPath path = paths[index];
-            if (path == null) {
-                continue;
-            }
-            try {
-                path.close();
-            } catch (Throwable throwable) {
-                failure = ThrowableUtils.combine(failure, throwable);
-            }
-        }
-        return failure;
     }
 
     // 调度器意外退役时回收本地资源, 不发客户端关闭包, 也不调用用户关闭处理器.
@@ -1440,40 +1244,27 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.manager.submit(this, action, retiredAction);
     }
 
-    /**
-     * 上报 Window 处理器里的异常.
-     *
-     * @param message 错误说明
-     * @param throwable 异常
-     */
+    // 上报 Window 处理器里的异常
     protected final void report(@NotNull String message, @NotNull Throwable throwable) {
         this.manager.report(message, throwable);
     }
 
-    /**
-     * 返回当前打开着的类型化菜单处理器, Window 关闭时返回 null.
-     *
-     * @return 当前菜单处理器, 未打开时为 null
-     */
+    // 当前打开着的类型化菜单处理器
     @Nullable
     protected final M menuHandle() {
         return this.menuHandle;
     }
 
-    /**
-     * 返回窗口顶部容器区域的协议槽位数量.
-     *
-     * @return 顶部槽位数量
-     */
+    // 窗口顶部容器区域的协议槽位数量
     protected final int upperSize() {
         return this.layout.upperSize();
     }
 
     /**
-     * 按显示顺序收集去重后的连接库存, 作为点击语义的目标域.
-     * 冻结槽和协议外(虚拟尾部)槽位连接的库存不算在内, 冻结的展示库存不能被转移或收集穿透.
+     * 按显示顺序收集去重后的连接Inventory, 作为点击语义的目标域.
+     * 冻结槽和协议外(虚拟尾部)槽位连接的Inventory不算在内, 冻结的展示Inventory不能被转移或收集穿透.
      *
-     * @return 去重后的连接库存列表
+     * @return 去重后的连接Inventory
      */
     private List<Inventory> collectLinkedInventories() {
         LinkedHashSet<Inventory> inventories = new LinkedHashSet<>();
@@ -1481,24 +1272,36 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return List.copyOf(inventories);
     }
 
+    // 按相反的槽位顺序关闭 DisplayedSlotPath.
+    private static Throwable closePaths(@Nullable DisplayedSlotPath[] paths, @Nullable Throwable failure) {
+        if (paths == null) {
+            return failure;
+        }
+        for (int index = paths.length - 1; index >= 0; index--) {
+            DisplayedSlotPath path = paths[index];
+            if (path == null) {
+                continue;
+            }
+            try {
+                path.close();
+            } catch (Throwable throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
+            }
+        }
+        return failure;
+    }
+
     /**
-     * 点击语义引擎的交互上下文: 显示路径、光标与玩家侧库存 IO.
-     * 全部方法只在玩家实体线程被点击处理路径调用.
+     * ClickSemantics 的交互上下文
      */
     private final class SemanticsContext implements ClickSemantics.Context {
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public Player viewer() {
             return AbstractWindow.this.viewer;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @Nullable
         public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
@@ -1506,17 +1309,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public boolean frozenAt(int windowSlot) {
             return AbstractWindow.this.requirePath(windowSlot).frozen();
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @Nullable
         public ClickSemantics.LinkedSlot hotbarLink(int hotbarButton) {
@@ -1529,18 +1326,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public List<Inventory> linkedInventories() {
             return AbstractWindow.this.collectLinkedInventories();
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @NotNull
         public ItemStack cursor() {
@@ -1548,9 +1339,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return menu != null ? menu.cursor() : ItemStack.empty();
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void cursor(@NotNull ItemStack cursor) {
             M menu = AbstractWindow.this.menuHandle;
@@ -1560,35 +1348,22 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             AbstractWindow.this.cursorDirty = true;
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         @Nullable
         public ItemStack offhand() {
             return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItemInOffHand()));
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void offhand(@Nullable ItemStack item) {
             AbstractWindow.this.viewer.getInventory().setItemInOffHand(item);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void drop(@NotNull ItemStack item) {
-            // 走玩家丢弃路径: 触发 PlayerDropItemEvent, 携带投掷归属与原版轨迹
             AbstractWindow.this.viewer.dropItem(item);
         }
 
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void markDirty(int windowSlot) {
             AbstractWindow.this.notifyUpdate(windowSlot);
