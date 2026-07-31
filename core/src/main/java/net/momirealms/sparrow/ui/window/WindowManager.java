@@ -81,11 +81,7 @@ public final class WindowManager implements Listener {
         return this.submit(
                 window,
                 () -> this.openNow(window),
-                () -> {
-                    window.retireSession();
-                    this.active.remove(window.viewer().getUniqueId(), window);
-                    return Window.OpenResult.VIEWER_UNAVAILABLE;
-                }
+                () -> Window.OpenResult.VIEWER_UNAVAILABLE
         );
     }
 
@@ -143,7 +139,17 @@ public final class WindowManager implements Listener {
             return null;
         }
         PlayerCommandLane lane = this.lane(window.viewer());
-        return this.scheduler.entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
+        ScheduledTask task;
+        try {
+            task = this.scheduler.entity().runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
+        } catch (RuntimeException | Error throwable) {
+            lane.fail(throwable);
+            throw throwable;
+        }
+        if (task == null) {
+            lane.retire();
+        }
+        return task;
     }
 
     /**
@@ -154,28 +160,22 @@ public final class WindowManager implements Listener {
      */
     @NotNull
     CompletionStage<Window.CloseResult> close(AbstractWindow<?> window) {
+        boolean wasOpen = window.isOpen();
         return this.submit(
                 window,
                 () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN),
-                () -> {
-                    boolean wasOpen = window.retireSession();
-                    this.active.remove(window.viewer().getUniqueId(), window);
-                    return wasOpen ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED;
-                }
+                () -> wasOpen ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED
         );
     }
 
-    /**
-     * 在玩家实体线程关闭 Window 并先移除 active 映射.
-     * 该顺序允许关闭回调或 fallback 立即打开新的 Window.
-     */
+    // 在玩家实体线程关闭 Window 并移除 active 映射.
     Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        if (!window.isOpen()) {
-            return Window.CloseResult.ALREADY_CLOSED;
-        }
+        if (!window.isOpen()) return Window.CloseResult.ALREADY_CLOSED;
+
         this.active.remove(window.viewer().getUniqueId(), window);
-        window.closeOnViewerEntity(reason);
-        return Window.CloseResult.CLOSED;
+        return window.closeOnViewerEntity(reason)
+                ? Window.CloseResult.CLOSED
+                : Window.CloseResult.ALREADY_CLOSED;
     }
 
     /**
@@ -202,6 +202,7 @@ public final class WindowManager implements Listener {
 
     /**
      * 返回玩家的命令通道, 不存在时创建并注册退役回调.
+     * 同 UUID 的旧 Player 通道先被退役, 其迟到回调不能移除新通道.
      * Shutdown 与新通道创建竞争时, 立即退役刚创建的通道.
      *
      * @param player 玩家
@@ -209,10 +210,30 @@ public final class WindowManager implements Listener {
      */
     private PlayerCommandLane lane(Player player) {
         UUID playerId = player.getUniqueId();
-        PlayerCommandLane lane = this.lanes.computeIfAbsent(
-                playerId,
-                ignoredPlayerId -> new PlayerCommandLane(player, this.scheduler, () -> this.retire(playerId))
-        );
+        PlayerCommandLane lane;
+        while (true) {
+            PlayerCommandLane current = this.lanes.get(playerId);
+            if (current != null) {
+                if (current.belongsTo(player)) {
+                    lane = current;
+                    break;
+                }
+                if (this.lanes.remove(playerId, current)) {
+                    current.retire();
+                }
+                continue;
+            }
+
+            PlayerCommandLane candidate = new PlayerCommandLane(
+                    player,
+                    this.scheduler,
+                    retiredLane -> this.retire(playerId, player, retiredLane)
+            );
+            if (this.lanes.putIfAbsent(playerId, candidate) == null) {
+                lane = candidate;
+                break;
+            }
+        }
         if (this.shutdown.get() && this.lanes.remove(playerId, lane)) {
             lane.retire();
         }
@@ -239,85 +260,106 @@ public final class WindowManager implements Listener {
      * @param throwable 异常
      */
     void report(String message, Throwable throwable) {
-        this.exceptionHandler.accept(message, throwable);
-    }
-
-    /**
-     * Bukkit 观测到容器关闭时, 若 View 属于某个活动 Window 则按外部关闭处理.
-     */
-    @EventHandler(priority = EventPriority.HIGHEST)
-    private void handleInventoryClose(InventoryCloseEvent event) {
-        if (event.getPlayer() instanceof Player player) {
-            AbstractWindow<?> window = this.active.get(player.getUniqueId());
-            if (window != null && window.ownsInventoryView(event.getView())) {
-                PlayerCommandLane lane = this.lane(window.viewer());
-                this.reportFailure(
-                        lane.submitDeferred(
-                                () -> {
-                                    if (!window.isOpen()) {
-                                        return null;
-                                    }
-                                    this.closeNow(window, event.getReason());
-                                    return null;
-                                },
-                                () -> {
-                                    window.retireSession();
-                                    return null;
-                                }
-                        ),
-                        "Failed to process external Window close"
-                );
+        try {
+            this.exceptionHandler.accept(message, throwable);
+        } catch (Throwable reportingFailure) {
+            if (reportingFailure != throwable) {
+                throwable.addSuppressed(reportingFailure);
             }
         }
     }
 
     /**
-     * 玩家退出时在其实体线程按 DISCONNECT 关闭活动 Window, 无法调度则直接退役.
+     * Bukkit 观测到容器关闭时, 若 View 属于某个活动 Window 则按外部关闭处理.
+     * 断线关闭已经由服务器接管, 事件返回后会继续完成容器生命周期, 因此必须在事件内同步通知 handler;
+     * 其他原因仍延后到下一实体 tick, 保留 close handler 打开新 Window 的既有能力.
      */
+    @EventHandler(priority = EventPriority.HIGHEST)
+    private void handleInventoryClose(InventoryCloseEvent event) {
+        if (event.getPlayer() instanceof Player player) {
+            AbstractWindow<?> window = this.active.get(player.getUniqueId());
+            if (window == null || !window.ownsInventoryView(event.getView())) {
+                return;
+            }
+
+            if (event.getReason() == InventoryCloseEvent.Reason.DISCONNECT) {
+                if (this.active.remove(player.getUniqueId(), window)) {
+                    try {
+                        window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
+                    } catch (RuntimeException | Error throwable) {
+                        this.report("Failed to process disconnected Window close", throwable);
+                    }
+                }
+                return;
+            }
+
+            PlayerCommandLane lane = this.lane(window.viewer());
+            this.reportFailure(
+                    lane.submitDeferred(
+                            () -> {
+                                this.closeNow(window, event.getReason());
+                                return null;
+                            },
+                            () -> null
+                    ),
+                    "Failed to process external Window close"
+            );
+        }
+    }
+
+    // 玩家退出事件是 DISCONNECT 关闭事件的同步兜底, 随后注销对应 Player 实例的 lane.
     @EventHandler(priority = EventPriority.MONITOR)
     private void handleQuit(PlayerQuitEvent event) {
-        AbstractWindow<?> window = this.active.get(event.getPlayer().getUniqueId());
-        if (window == null) {
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        AbstractWindow<?> window = this.active.get(playerId);
+        if (window != null && window.viewer() == player && this.active.remove(playerId, window)) {
+            try {
+                window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
+            } catch (RuntimeException | Error throwable) {
+                this.report("Failed to close Window after player quit", throwable);
+            }
+        }
+
+        PlayerCommandLane lane = this.lanes.get(playerId);
+        if (lane != null && lane.belongsTo(player)) {
+            lane.retire();
+        }
+    }
+
+    // 正常断线应已由 InventoryCloseEvent 清理 Window; 若此处仍有打开 Window, 只本地注销并警告 handler 未执行.
+    private void retire(UUID playerId, Player player, PlayerCommandLane lane) {
+        this.lanes.remove(playerId, lane);
+        AbstractWindow<?> window = this.active.get(playerId);
+        if (window == null
+                || window.viewer() != player
+                || !this.active.remove(playerId, window)) {
             return;
         }
-        this.reportFailure(
-                this.submit(
-                        window,
-                        () -> {
-                            this.closeNow(window, InventoryCloseEvent.Reason.DISCONNECT);
-                            return null;
-                        },
-                        () -> {
-                            window.retireSession();
-                            return null;
-                        }
-                ),
-                "Failed to close Window after player quit"
+
+        boolean wasOpen = window.retireSession();
+        if (!wasOpen) {
+            return;
+        }
+        this.report(
+                "Window entity scheduler retired before close handlers ran"
+                        + " [player=" + playerId
+                        + ", window=" + window.getClass().getName() + "]",
+                new IllegalStateException("viewer entity scheduler retired before InventoryCloseEvent")
         );
     }
 
-    /**
-     * 玩家实体退役时回收其命令通道与活动 Window.
-     *
-     * @param playerId 玩家 id
-     */
-    private void retire(UUID playerId) {
-        this.lanes.remove(playerId);
-        AbstractWindow<?> window = this.active.remove(playerId);
-        if (window != null) {
-            window.retireSession();
-        }
-    }
-
-    /**
-     * 在插件禁用时清理所有本地资源并移除连接 handler.
-     */
+    // 在插件禁用时直接按 PLUGIN 原因关闭所有活动 Window.
     public void shutdown() {
         if (!this.shutdown.compareAndSet(false, true)) {
             return;
         }
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
-            window.retireSession();
+            try {
+                this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
+            } catch (RuntimeException | Error throwable) {
+                this.report("Failed to close Window during shutdown", throwable);
+            }
         }
         this.active.clear();
         for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {
@@ -365,7 +407,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回创建协议菜单的工厂.
+     * 返回创建菜单处理器的工厂.
      *
      * @return 菜单工厂
      */

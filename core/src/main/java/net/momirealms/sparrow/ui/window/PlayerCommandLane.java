@@ -9,32 +9,27 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 
-/**
- * 将任意线程提交的 Window 命令线性化到一个玩家的实体线程.
- * 同一时刻最多一个 drain 在运行, 因而生命周期、渲染与协议状态不会跨线程交错.
- */
 final class PlayerCommandLane {
     private final Player player;
     private final WindowScheduler scheduler;
-    private final Runnable retiredHandler; // 通道注销后在异步线程执行的收尾操作
+    private final Consumer<PlayerCommandLane> retiredHandler;           // 通道注销后的收尾操作
     private final ArrayDeque<Command<?>> commands = new ArrayDeque<>(); // 待执行命令队列, 仅在锁内访问
 
     private boolean scheduled; // 是否已有实体调度任务待运行, 仅在锁内访问
     private boolean draining;  // 是否有 drain 正在执行, 仅在锁内访问
     private boolean retired;   // 通道是否已注销, 注销后新命令直接走注销路径
 
-    /**
-     * 为指定玩家创建命令通道.
-     *
-     * @param player 通道服务的玩家
-     * @param scheduler Window 调度入口
-     * @param retiredHandler 通道退役后在异步线程执行的收尾操作
-     */
-    PlayerCommandLane(Player player, WindowScheduler scheduler, Runnable retiredHandler) {
+    PlayerCommandLane(Player player, WindowScheduler scheduler, Consumer<PlayerCommandLane> retiredHandler) {
         this.player = player;
         this.scheduler = scheduler;
         this.retiredHandler = retiredHandler;
+    }
+
+    // 判断通道是否属于同一个 Player 实例
+    boolean belongsTo(@NotNull Player player) {
+        return this.player == player;
     }
 
     /**
@@ -51,8 +46,8 @@ final class PlayerCommandLane {
     }
 
     /**
-     * 提交必须在后续实体 tick 执行的命令.
-     * 用于 Bukkit 回调等不能在当前调用栈内递归改变 Window 生命周期的场景.
+     * 提交必须在后续 Entity tick 执行的命令.
+     * 用于 Bukkit 回调等不能在当前改变 Window 生命周期的场景.
      *
      * @param action 玩家仍可调度时执行的操作
      * @param retiredAction 玩家实体退役后执行的替代操作
@@ -128,9 +123,24 @@ final class PlayerCommandLane {
             this.scheduled = false;
             pending = this.takePending();
         }
-        // 待执行命令按注销路径完成, 收尾操作转到异步线程
+        this.retiredHandler.accept(this);
         this.completeRetired(pending);
-        this.scheduler.async().runNow(this.retiredHandler);
+    }
+
+    /**
+     * 在异步线程按注销路径完成给定命令.
+     *
+     * @param pending 要完成的命令
+     */
+    private void completeRetired(List<Command<?>> pending) {
+        if (pending.isEmpty()) {
+            return;
+        }
+        this.scheduler.async().runNow(() -> {
+            for (int index = 0; index < pending.size(); index++) {
+                pending.get(index).retire();
+            }
+        });
     }
 
     /**
@@ -138,7 +148,7 @@ final class PlayerCommandLane {
      *
      * @param failure 调度失败原因
      */
-    private void fail(Throwable failure) {
+    void fail(@NotNull Throwable failure) {
         List<Command<?>> pending;
         synchronized (this) {
             // 已注销时失败不再需要传播
@@ -150,12 +160,12 @@ final class PlayerCommandLane {
             pending = this.takePending();
         }
         // 统一转到异步线程完成异常, 避免在调度器调用栈里触发调用方回调
+        this.retiredHandler.accept(this);
         this.scheduler.async().runNow(() -> {
             for (int index = 0; index < pending.size(); index++) {
                 pending.get(index).fail(failure);
             }
         });
-        this.scheduler.async().runNow(this.retiredHandler);
     }
 
     /**
@@ -218,81 +228,41 @@ final class PlayerCommandLane {
         return List.copyOf(pending);
     }
 
-    /**
-     * 在异步线程按注销路径完成给定命令.
-     *
-     * @param pending 要完成的命令
-     */
-    private void completeRetired(List<Command<?>> pending) {
-        if (pending.isEmpty()) return;
-        this.scheduler.async().runNow(() -> {
-            for (int index = 0; index < pending.size(); index++) {
-                pending.get(index).retire();
-            }
-        });
-    }
-
-    /**
-     * 队列中的一次命令及其正常、注销两种完成路径.
-     */
+    // 队列中的一次命令
     private static final class Command<T> {
-        private final Callable<T> action; // 正常执行路径
-        private final Callable<T> retiredAction; // 实体不可用后的替代路径
+        private final Callable<T> action; // 正常命令
+        private final Callable<T> retiredAction; // 实体不可用后的替代命令
         private final CompletableFuture<T> completion = new CompletableFuture<>(); // 命令结果
 
-        /**
-         * 创建命令.
-         *
-         * @param action 正常执行路径
-         * @param retiredAction 实体退役后的替代路径
-         */
         private Command(Callable<T> action, Callable<T> retiredAction) {
             this.action = action;
             this.retiredAction = retiredAction;
         }
 
-        /**
-         * 返回命令结果的只读完成阶段.
-         *
-         * @return 完成阶段
-         */
+        // 返回命令结果的只读完成阶段.
         private CompletionStage<T> stage() {
             return this.completion.minimalCompletionStage();
         }
 
-        /**
-         * 按正常路径执行并完成结果.
-         */
+        // 按正常命令执行并完成结果
         private void run() {
             this.complete(this.action);
         }
 
-        /**
-         * 按退役路径执行并完成结果.
-         */
+        // 按实体不可用路径执行并完成结果
         private void retire() {
             this.complete(this.retiredAction);
         }
 
-        /**
-         * 以异常完成命令结果.
-         *
-         * @param throwable 失败原因
-         */
+        // 以异常完成命令结果
         private void fail(Throwable throwable) {
             this.completion.completeExceptionally(throwable);
         }
 
-        /**
-         * 执行给定路径并把结果写入完成阶段.
-         *
-         * @param callable 要执行的操作
-         */
         private void complete(Callable<T> callable) {
             try {
                 this.completion.complete(callable.call());
             } catch (Throwable throwable) {
-                // 操作失败只影响该命令的完成阶段, 不影响通道中其他命令
                 this.completion.completeExceptionally(throwable);
             }
         }

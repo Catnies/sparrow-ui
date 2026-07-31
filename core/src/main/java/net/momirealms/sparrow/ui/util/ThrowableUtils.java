@@ -71,6 +71,20 @@ public final class ThrowableUtils {
     }
 
     /**
+     * 执行一个任务, 如果发送了异常则接续到传入的异常里.
+     *
+     * @param task 执行的任务
+     * @param throwable 被接续的异常
+     */
+    public static void runCatchAddSuppressed(@NotNull Runnable task, @NotNull Throwable throwable) {
+        try {
+            task.run();
+        } catch (Throwable t) {
+            throwable.addSuppressed(t);
+        }
+    }
+
+    /**
      * 函数式接口, 表示一个不接受参数且返回结果的提供者, 在执行过程中可能抛出异常.
      * 
      * @param <T> 提供者返回的结果类型

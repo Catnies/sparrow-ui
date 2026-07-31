@@ -536,9 +536,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * 标记菜单有槽位内容之外的待同步状态 (由具体 Window 类型定义).
-     */
+    // 标记菜单有槽位内容之外的待同步状态, 例如切石机同步配方 (由具体 Window 类型定义).
     protected final void notifyUpdateMenu() {
         this.menuDirty = true;
     }
@@ -605,9 +603,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 在玩家的实体线程打开 Window: 创建菜单、显示路径和初始协议状态.
-     * 所有资源先放在局部变量里, 等初始完整包成功排入 Netty event loop 后才写进字段;
-     * 中途失败就按相反方向回滚.
+     * 在玩家的实体线程打开 Window, 中途失败就按相反方向回滚.
      *
      * @param generation 本次打开代际
      * @param replacingWindow 是否正在替换同一玩家的 Window
@@ -634,6 +630,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
         ScheduledTask tickTask = null;
+        boolean menuOpening = false;
 
         try {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
@@ -652,6 +649,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (tickTask == null) {
                 throw new ViewerUnavailableException();
             }
+            menuOpening = true;
             menuHandle.prepareOpen(replacingWindow);
             MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
             menuHandle.open(this.title, this.protocolSlots(localSlots), localCursor);
@@ -671,7 +669,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 tickTask.cancel();
             }
             try {
-                menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
+                if (menuOpening) {
+                    menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
+                } else {
+                    menuHandle.retire();
+                }
             } catch (RuntimeException | Error closeFailure) {
                 throwable.addSuppressed(closeFailure);
             }
@@ -680,19 +682,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 为这次打开创建与 Window 类型对应的协议菜单.
-     *
-     * @param factory 菜单工厂
-     * @param generation 本次打开代际
-     * @return 尚未打开的菜单底层处理器
-     */
+    // 创建与 Window 类型对应的菜单处理器.
     @NotNull
     protected abstract M createMenuHandle(@NotNull MenuFactory factory, long generation);
 
-    /**
-     * Window 打开后按列表快照依次运行打开处理器, 单个处理器失败不影响后面的.
-     */
+    // 运行打开处理器, 单个处理器失败不影响后面的.
     void fireOpenHandlers() {
         this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
     }
@@ -1243,27 +1237,42 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 先撤掉本地可见状态并停掉输入, 再关菜单、释放显示路径, 最后处理后备 Window 和关闭回调.
      *
      * @param reason 关闭原因
+     * @return 是否关闭了一个打开的 Window
      */
-    void closeOnViewerEntity(InventoryCloseEvent.Reason reason) {
+    boolean closeOnViewerEntity(InventoryCloseEvent.Reason reason) {
+        if (!this.open) return false;
+
         Throwable failure = this.teardownOnEntity(reason);
         // 只有玩家主动关闭才进入 fallback
         if (reason == InventoryCloseEvent.Reason.PLAYER) {
             this.openFallback();
         }
-        // 执行关闭处理器
-        this.closeHandlers.forEachIsolated(
-                handler -> handler.accept(reason),
-                "Failed to handle Window close",
-                this.manager::report
-        );
+        this.fireCloseHandlers(reason);
         ThrowableUtils.throwIfUnchecked(failure);
+        return true;
+    }
+
+    /**
+     * 服务器已经接管玩家容器关闭流程后, 只回收 Window 的本地资源并通知关闭处理器.
+     * 该路径不再次主动关闭容器, 也不触发后备 Window.
+     *
+     * @param reason Bukkit 容器关闭原因
+     * @return 是否关闭了一个打开的 Window
+     */
+    boolean closeAfterInventoryEvent(InventoryCloseEvent.Reason reason) {
+        if (!this.open) return false;
+
+        Throwable failure = this.teardownOnEntity(null);
+        this.fireCloseHandlers(reason);
+        ThrowableUtils.throwIfUnchecked(failure);
+        return true;
     }
 
     /**
      * 撤掉本次打开的本地可见状态, 释放菜单、tick 任务和显示路径.
-     * reason 为 null 表示调度退役, 不发客户端关闭包; 否则按该原因走正常菜单关闭.
+     * reason 为 null 表示容器关闭已由平台接管或调度退役, 不再发客户端关闭操作.
      *
-     * @param reason 关闭原因, 退役路径为 null
+     * @param reason 关闭原因, 本地退役路径为 null
      * @return 清理过程中的第一个失败, 没有失败时为 null
      */
     @Nullable
@@ -1286,10 +1295,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.titleDirty = false;
         this.pendingWindowStates.clear();
 
-        // 资源关闭应尽量完整执行, 最后才把第一个失败交给调用方
+        // 单项清理失败不能阻止剩余资源释放或关闭处理器
         Throwable failure = null;
         if (previousTickTask != null) {
-            previousTickTask.cancel();
+            try {
+                previousTickTask.cancel();
+            } catch (Throwable throwable) {
+                failure = throwable;
+            }
         }
         if (previousMenu != null) {
             try {
@@ -1298,11 +1311,24 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 } else {
                     previousMenu.close(reason);
                 }
-            } catch (RuntimeException | Error throwable) {
-                failure = throwable;
+            } catch (Throwable throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
             }
         }
         return closePaths(previousPaths, failure);
+    }
+
+    /**
+     * 依次通知关闭处理器, 单个处理器失败不影响后续处理器.
+     *
+     * @param reason 关闭原因
+     */
+    private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
+        this.closeHandlers.forEachIsolated(
+                handler -> handler.accept(reason),
+                "Failed to handle Window close",
+                this.manager::report
+        );
     }
 
     /**
@@ -1310,19 +1336,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 取 Fallback Window 和打开的异常都只上报, 不影响本 Window 的清理.
      */
     private void openFallback() {
-        Window fallback;
         try {
-            fallback = this.fallbackWindow.get();
+            Window fallback = this.fallbackWindow.get();
+            if (fallback != null) {
+                fallback.open().exceptionally(throwable -> {
+                    this.manager.report("Failed to open Window fallback", throwable);
+                    return null;
+                });
+            }
         } catch (Throwable throwable) {
-            this.manager.report("Failed to resolve Window fallback", throwable);
-            return;
-        }
-
-        if (fallback != null) {
-            fallback.open().exceptionally(throwable -> {
-                this.manager.report("Failed to open Window fallback", throwable);
-                return null;
-            });
+            this.manager.report("Failed to resolve or open Window fallback", throwable);
         }
     }
 
@@ -1344,24 +1367,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             try {
                 path.close();
-            } catch (RuntimeException | Error throwable) {
-                if (failure == null) {
-                    failure = throwable;
-                } else {
-                    failure.addSuppressed(throwable);
-                }
+            } catch (Throwable throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
             }
         }
         return failure;
     }
 
-    /**
-     * todo: 插件关闭时不触发用户的关闭处理器? 这不合适吧
-     * 在调度器注销或插件关闭时回收本地资源.
-     * 这条路不发客户端关闭包, 也不触发后备 Window 和用户的关闭处理器.
-     *
-     * @return 退役前是否处于打开状态
-     */
+    // 调度器意外退役时回收本地资源, 不发客户端关闭包, 也不调用用户关闭处理器.
     boolean retireSession() {
         boolean wasOpen = this.open;
         Throwable failure = this.teardownOnEntity(null);
