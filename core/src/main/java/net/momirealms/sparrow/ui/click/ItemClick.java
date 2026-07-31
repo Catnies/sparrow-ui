@@ -6,7 +6,7 @@ import org.bukkit.event.inventory.ClickType;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 一次物品点击的上下文
+ * 一次物品点击的上下文.
  *
  * @param clickType 点击类型
  * @param player 点击玩家

@@ -4,10 +4,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Window 外部点击处理器接收的可取消事件.
- * <p>处理器可调用 {@link #setCancelled(boolean)} 拒绝本次点击.
- */
 public final class WindowOutsideClick {
     private final Player player;
     private final ClickType clickType;
@@ -15,7 +11,7 @@ public final class WindowOutsideClick {
     private boolean cancelled;
 
     /**
-     * 创建一次已映射的点击事件.
+     * Window 外部点击处理器接收的可取消事件.
      *
      * @param player 发起点击的玩家
      * @param clickType Bukkit 点击类型

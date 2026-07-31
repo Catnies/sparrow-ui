@@ -15,9 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-/**
- * 把已映射的协议交互发布为 Bukkit 事件.
- */
 final class BukkitInventoryBridge {
     private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
 
