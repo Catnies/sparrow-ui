@@ -6,17 +6,12 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Function;
 
-/**
- * 为单个渲染上下文生成归调用方所有的 {@link ItemStack} 快照.
- *
- * <p>返回的物品堆仅归调用方所有. 实现不得返回可变模板, 也不得返回与其他渲染操作共享的物品堆.</p>
- */
 @FunctionalInterface
 public interface ItemProvider {
     ItemProvider EMPTY = ignoredContext -> ItemUtils.copyOrEmpty(null); // 始终提供空物品堆的共享提供器
 
     /**
-     * 基于模板的防御性副本创建固定提供器.
+     * 基于模板的固定提供器.
      *
      * @param template 模板物品堆
      * @return 提供器

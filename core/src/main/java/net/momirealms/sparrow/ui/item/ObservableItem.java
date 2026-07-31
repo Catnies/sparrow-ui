@@ -4,7 +4,7 @@ package net.momirealms.sparrow.ui.item;
  * 允许调用方通知当前显示结果已经失效的 Item.
  *
  * <p>观察关系由 {@link Item#attach(net.momirealms.sparrow.ui.Observer)} 管理,
- * 此 Interface 只暴露主动通知能力.</p>
+ * 此接口只暴露主动通知能力.
  */
 public interface ObservableItem extends Item {
 

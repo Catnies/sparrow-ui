@@ -4,12 +4,6 @@ import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 单次物品渲染操作的只读上下文.
- *
- * <p>普通上下文指向 Window 的最终槽位. {@link #cursor(Window)} 表示客户端光标,
- * 其 {@link #windowSlot()} 固定为 {@code -1}.</p>
- */
 public final class RenderContext {
     private final Player player;  // 查看者, 取自所属 Window
     private final Window window;  // 所属 Window
@@ -20,7 +14,6 @@ public final class RenderContext {
      *
      * @param window 所属 Window
      * @param windowSlot 最终槽位编号, 必须非负
-     * @throws IllegalArgumentException 槽位编号为负数时抛出
      */
     public RenderContext(@NotNull Window window, int windowSlot) {
         this(window, windowSlot, false);
@@ -39,12 +32,10 @@ public final class RenderContext {
 
     /**
      * 创建渲染上下文.
-     * 只有光标上下文允许槽位编号为 -1.
      *
      * @param window 所属 Window
      * @param windowSlot 最终槽位编号; 光标上下文固定为 -1
      * @param cursor 是否表示客户端光标
-     * @throws IllegalArgumentException 非光标上下文且槽位编号为负时抛出
      */
     private RenderContext(@NotNull Window window, int windowSlot, boolean cursor) {
         // 普通槽位必须非负, 只有光标上下文允许使用 -1

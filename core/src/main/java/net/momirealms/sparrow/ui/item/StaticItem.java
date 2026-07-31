@@ -10,10 +10,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 
-/**
- * 不会主动更新的 Item.
- * ItemProvider 可以根据渲染上下文生成不同结果, 但该 Item 本身不持有主动变化和刷新的权利.
- */
 public final class StaticItem implements Item {
     private final ItemProvider itemProvider; // 显示提供器
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler; // null 表示不处理点击
@@ -67,19 +63,11 @@ public final class StaticItem implements Item {
         this.bundleSelectHandler = bundleSelectHandler;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public ItemProvider getItemProvider() {
         return this.itemProvider;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>未配置点击处理器时不产生任何效果.
-     */
     @Override
     public void handleClick(ItemClick click) {
         if (this.clickHandler != null) {
@@ -87,11 +75,6 @@ public final class StaticItem implements Item {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>未配置 Bundle 选择处理器时不产生任何效果.
-     */
     @Override
     public void handleBundleSelect(BundleSelectClick select) {
         if (this.bundleSelectHandler != null) {
