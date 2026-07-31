@@ -99,11 +99,6 @@ public final class VirtualInventory extends RootInventory {
         return this.uuid;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>逐槽配置过的上限优先生效, 没配置的槽回退默认值.
-     */
     @Override
     public int slotMaxStackSize(int slot) {
         int[] maxes = this.slotMaxStackSizes;
@@ -151,11 +146,6 @@ public final class VirtualInventory extends RootInventory {
         this.slotMaxStackSizes = copy;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>显式设置过的类别返回设置值, 没设置的回退自然顺序.
-     */
     @Override
     @NotNull
     public SlotOrder iterationOrder(@NotNull OperationCategory category) {
@@ -185,13 +175,7 @@ public final class VirtualInventory extends RootInventory {
         }
     }
 
-    /**
-     * 校验尺寸不为负数.
-     *
-     * @param size 槽位数量
-     * @return 原样返回的尺寸
-     * @throws IllegalArgumentException 当尺寸为负数时
-     */
+    // 校验尺寸不为负数
     private static int requireNonNegativeSize(int size) {
         if (size < 0) {
             throw new IllegalArgumentException("inventory size must not be negative: " + size);
@@ -199,12 +183,7 @@ public final class VirtualInventory extends RootInventory {
         return size;
     }
 
-    /**
-     * 创建填满默认堆叠上限的数组.
-     *
-     * @param size 槽位数量
-     * @return 填满 {@link #DEFAULT_MAX_STACK_SIZE} 的数组
-     */
+    // 创建填满默认堆叠上限的数组
     private static int[] filledWithDefault(int size) {
         int[] maxes = new int[size];
         Arrays.fill(maxes, DEFAULT_MAX_STACK_SIZE);

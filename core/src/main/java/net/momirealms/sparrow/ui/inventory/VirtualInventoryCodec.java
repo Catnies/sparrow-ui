@@ -60,9 +60,9 @@ final class VirtualInventoryCodec {
     }
 
     /**
-     * 把库存的一致性快照编码为字节数组.
+     * 把 VirtualInventory 的快照编码为字节数组.
      *
-     * @param inventory 待编码的库存
+     * @param inventory 待编码的 VirtualInventory
      * @return 编码后的字节数组, 布局见类级说明
      * @throws UncheckedIOException 当底层流写出失败时
      */
@@ -99,11 +99,11 @@ final class VirtualInventoryCodec {
     }
 
     /**
-     * 从字节数组恢复完整库存, 任何格式畸形都在产出库存前拒绝.
+     * 从字节数组恢复完整 VirtualInventory, 任何格式畸形都在产出 VirtualInventory 前拒绝.
      * <p>此入口不限制物品区解压体积或 NBT 堆用量, 调用方负责控制输入来源与资源边界.
      *
-     * @param bytes 完整的库存字节数据
-     * @return 恢复出的库存
+     * @param bytes 完整的 VirtualInventory 字节数据
+     * @return 恢复出的 VirtualInventory
      * @throws InventoryDecodeException 当数据被截断或畸形时
      */
     @NotNull
@@ -146,7 +146,7 @@ final class VirtualInventoryCodec {
     }
 
     /**
-     * 使用原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩由库存信封统一承担.
+     * 使用原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩由 VirtualInventory 信封统一承担.
      *
      * @param item 待编码的物品
      * @return 物品的裸 NBT 字节
@@ -253,7 +253,7 @@ final class VirtualInventoryCodec {
     /**
      * 按槽位是否非空构建位图, 每个字节从低位到高位对应连续八个槽位.
      *
-     * @param items 库存快照
+     * @param items 物品快照
      * @return 长度为 {@code ceil(items.length / 8)} 的位图
      */
     private static byte @NotNull [] buildMask(@Nullable ItemStack @NotNull [] items) {

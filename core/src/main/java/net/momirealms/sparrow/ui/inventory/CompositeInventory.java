@@ -12,18 +12,13 @@ import java.util.List;
 
 /**
  * 把多个 Inventory 按声明顺序拼接成一个逻辑 Inventory 的视图, 自己不持有槽数据.
- * <p>跨成员的批量操作是一次事务: 按根 Inventory 的锁序号排定加锁顺序, 要么全部生效,
- * 要么全部不生效. 单槽操作直接委托给命中的成员.
- * 成员组成在构造后固定; 展开到根 Inventory 槽后不允许任何重叠.
- * <p>本视图不是独立事件源: 订阅等于转发订阅全部根 Inventory (见基类契约).
- * 遍历顺序缺省是"各成员自己的顺序按声明序拼接", 也可以显式覆盖成逻辑槽域的顺序.
  */
 public final class CompositeInventory extends SparrowInventory {
     private final SparrowInventory[] members;   // 按声明序排列的成员, 构造后固定
     private final int[] memberOffsets;          // memberOffsets[i] = 成员 i 的逻辑槽起点
     private final int size;                     // 全部成员槽位数之和, 即逻辑槽总数
 
-    private volatile @Nullable SlotOrder addOrder; // 显式覆盖的逻辑槽顺序, null 回退成员拼接
+    private volatile @Nullable SlotOrder addOrder;
     private volatile @Nullable SlotOrder collectOrder;
     private volatile @Nullable SlotOrder otherOrder;
 
@@ -66,21 +61,11 @@ public final class CompositeInventory extends SparrowInventory {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>返回全部成员槽位数之和.
-     */
     @Override
     public int size() {
         return this.size;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>先定位逻辑槽属于哪个成员, 减去偏移后委托该成员换算.
-     */
     @Override
     @NotNull
     SlotKey.Anchor resolveSlot(int slot) {
@@ -88,11 +73,6 @@ public final class CompositeInventory extends SparrowInventory {
         return this.members[index].resolveSlot(slot - this.memberOffsets[index]);
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>逐个成员收集, 靠 Set 去重(同一个根被多个成员引用时只出现一次).
-     */
     @Override
     void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         for (int i = 0; i < this.members.length; i++) {
@@ -103,7 +83,7 @@ public final class CompositeInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>逐成员快照后拼接: 每个成员内部是一致的, 跨成员不承诺同一时刻.
+     * <p>逐成员快照后拼接: 跨成员不承诺同一时刻.
      */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
@@ -115,14 +95,8 @@ public final class CompositeInventory extends SparrowInventory {
         return combined;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>显式设置过的类别直接返回覆盖顺序;
-     * 没设置的类别把各成员自己的顺序映射到逻辑槽域, 按声明序拼接.
-     */
-    @Override
     @NotNull
+    @Override
     public SlotOrder iterationOrder(@NotNull OperationCategory category) {
         SlotOrder explicit = switch (category) {
             case ADD -> this.addOrder;

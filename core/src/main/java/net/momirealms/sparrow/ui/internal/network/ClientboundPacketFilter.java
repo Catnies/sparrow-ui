@@ -2,10 +2,6 @@ package net.momirealms.sparrow.ui.internal.network;
 
 import org.jetbrains.annotations.NotNull;
 
-/**
- * ClientboundPacket 过滤器,
- * 代表在菜单会话期间过滤发出的数据包.
- */
 @FunctionalInterface
 public interface ClientboundPacketFilter {
 

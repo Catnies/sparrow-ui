@@ -21,12 +21,12 @@ import java.util.List;
  * <p>一笔事务走四步: plan 由调用方先做完(在快照上算好每个槽改成什么) → pre 在不持锁的状态下
  * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在锁内核对"规划用的快照没被别人改过",
  * 核对通过才换上新内容 → post 放锁之后把事件按提交顺序派出去. 一笔事务涉及多个Inventory时,
- * 按每个Inventory创建时领到的固定序号依次加锁, 即便多线程同时跑跨Inventory事务也不会死锁.
+ * 按每个 Inventory 创建时领到的固定序号依次加锁, 即便多线程同时跑跨 Inventory 事务也不会死锁.
  */
 final class InventoryTransactions {
 
     /**
-     * Inventory在事务里的参与份额:计划更改槽数据, 规划时看到的快照数据.
+     * Inventory在事务里的参与份额: 计划更改槽数据, 规划时看到的快照数据.
      *
      * @param inventory 参与的Inventory
      * @param planned plan 阶段读到的快照引用, commit 时只比引用不比内容,
@@ -136,13 +136,7 @@ final class InventoryTransactions {
         return new TransactionResult.Committed(changes);
     }
 
-    /**
-     * 检查这笔事务的每个参与Inventory此刻是否都允许写入.
-     * <p>它在用户回调前后各被查一次, 因为 pre 观察者的回调可能把容器搬到别的线程, 前后的答案未必一样.
-     *
-     * @param scopes 按加锁顺序排列的参与范围
-     * @return 全部可写返回 {@code true}
-     */
+    // 检查这笔事务的每个参与Inventory此刻是否都允许写入.
     private static boolean writeAvailable(List<Scope> scopes) {
         for (int i = 0; i < scopes.size(); i++) {
             if (!scopes.get(i).inventory().writeAvailable()) {
@@ -153,8 +147,7 @@ final class InventoryTransactions {
     }
 
     /**
-     * 校验事务, 再把指向同一根Inventory的多个范围合并成一个.
-     * <p>返回列表保持声明首现顺序, 用于保障"按调用方声明顺序".
+     * 校验事务, 再把指向同一根 Inventory 的多个范围合并成一个.
      *
      * @param scopes 调用方声明的参与范围
      * @return 合并后的参与范围, 保持首次出现的声明顺序
@@ -226,7 +219,7 @@ final class InventoryTransactions {
     }
 
     /**
-     * 把参与范围按各Inventory的锁序号排成全局唯一的加锁顺序.
+     * 把参与范围按各 Inventory 的锁序号排成全局唯一的加锁顺序.
      * <p>加锁, 冲突核对, 换快照都按这个顺序进行; 事件载荷的顺序与此无关, 仍按声明顺序.
      *
      * @param declared 按声明顺序排列的参与范围
@@ -239,12 +232,7 @@ final class InventoryTransactions {
         return ordered;
     }
 
-    /**
-     * 组装事件的变更载荷: 每个参与Inventory一条变更记录, 按调用方声明顺序排列, 与加锁顺序无关.
-     *
-     * @param scopes 按声明顺序排列的参与范围
-     * @return 事件载荷, 不可变列表
-     */
+    // 每个参与 Inventory 一条变更记录, 按调用方声明顺序排列.
     @NotNull
     private static List<InventoryDelta> changesOf(List<Scope> scopes) {
         List<InventoryDelta> changes = new ArrayList<>(scopes.size());
@@ -255,13 +243,7 @@ final class InventoryTransactions {
         return List.copyOf(changes);
     }
 
-    /**
-     * 把变更落到一张新快照上: 复制当前快照, 再把发生变化的槽位换成新物品.
-     * <p>没动的槽位与旧快照共享同一个物品实例.
-     *
-     * @param scope 单个Inventory的参与范围
-     * @return 应用变更后的新快照
-     */
+    // 把变更落到一张新快照上, 复制当前快照, 再把发生变化的槽位换成新物品.
     private static @Nullable ItemStack @NotNull [] applyDeltas(Scope scope) {
         @Nullable ItemStack[] next = scope.inventory().currentState().clone();
         List<SlotDelta> deltas = scope.deltas();

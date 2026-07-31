@@ -10,11 +10,9 @@ import java.util.LinkedHashSet;
 import java.util.function.IntPredicate;
 
 /**
- * 隐藏部分槽位的 Inventory 视图: 可见槽按底层槽顺序压缩成连续的逻辑槽号, 自己不持有槽数据.
+ * 隐藏部分槽位的 Inventory: 可见槽按底层槽顺序压缩成连续的逻辑槽号, 自己不持有槽数据.
  * <p>读写通过逻辑槽与底层槽的双向映射委托给底层; 批量操作只在可见槽上规划, 被遮住的槽
- * 既放不进去也收不出来. 丢弃视图对底层没有任何影响.
- * <p>本视图不是独立事件源: 订阅等于转发订阅底层的根 Inventory, 能观察到根 Inventory 的
- * 全部事务(包括被遮槽的变更). 遍历顺序取底层顺序中可见槽的部分.
+ * 既放不进去也收不出来.
  */
 public final class ObscuredInventory extends SparrowInventory {
     private final SparrowInventory underlying; // 被装饰的底层 Inventory
@@ -44,32 +42,17 @@ public final class ObscuredInventory extends SparrowInventory {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>只数可见槽.
-     */
     @Override
     public int size() {
         return this.visibleSlots.length;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>先查出逻辑槽对应的底层槽, 再委托底层换算.
-     */
     @Override
     @NotNull
     SlotKey.Anchor resolveSlot(int slot) {
         return this.underlying.resolveSlot(this.visibleSlots[slot]);
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>根全部来自底层.
-     */
     @Override
     void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         this.underlying.collectRoots(roots);
@@ -113,8 +96,7 @@ public final class ObscuredInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>透传底层取值, 得到"没设置就跟着底层走, 设置了就盖住底层"的效果;
-     * 三态存储与覆盖判定都在基类完成.
+     * <p>没设置就跟着底层走, 设置了就盖住底层设置.
      */
     @Override
     int fallbackGuiPriority(@NotNull OperationCategory category) {

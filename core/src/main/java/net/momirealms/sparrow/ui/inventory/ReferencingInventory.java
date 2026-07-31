@@ -11,10 +11,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Entity;
-import org.bukkit.inventory.BlockInventoryHolder;
-import org.bukkit.inventory.InventoryHolder;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,8 +36,8 @@ import java.util.function.UnaryOperator;
  * 调度任务, 也不会主动切到 owner 线程, 阻塞等待或拆分跨 owner 的事务.
  */
 public final class ReferencingInventory extends RootInventory {
-    private final org.bukkit.inventory.Inventory bukkitInventory; // 被引用的 Bukkit 容器, 真实数据所在地
-    private final Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
+    private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 真实数据所在地
+    private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
     private final SlotKey.ExternalSlot[] externalSlots; // 逻辑槽 -> 容器里的真实槽位, 同步与写回共用
     private final int bukkitMaxStackSize;           // 容器的堆叠上限, 构造时缓存
     private final BooleanSupplier writeAvailable;   // 当前线程能否访问容器的动态判断
@@ -57,8 +54,8 @@ public final class ReferencingInventory extends RootInventory {
      * @param addOrder ADD 类别的遍历顺序, {@code null} 回退自然顺序
      */
     private ReferencingInventory(
-            org.bukkit.inventory.Inventory bukkitInventory,
-            Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter,
+            Inventory bukkitInventory,
+            Function<Inventory, @Nullable ItemStack[]> contentsGetter,
             @Nullable ItemStack[] initialMirror,
             SlotOrder slotMapping,
             BooleanSupplier writeAvailable,
@@ -80,8 +77,8 @@ public final class ReferencingInventory extends RootInventory {
      * @return ReferencingInventory
      */
     @NotNull
-    public static ReferencingInventory fromContents(@NotNull org.bukkit.inventory.Inventory inventory) {
-        return create(inventory, org.bukkit.inventory.Inventory::getContents, UnaryOperator.identity(), false);
+    public static ReferencingInventory fromContents(@NotNull Inventory inventory) {
+        return create(inventory, Inventory::getContents, UnaryOperator.identity(), false);
     }
 
     /**
@@ -91,8 +88,8 @@ public final class ReferencingInventory extends RootInventory {
      * @return ReferencingInventory
      */
     @NotNull
-    public static ReferencingInventory fromStorageContents(@NotNull org.bukkit.inventory.Inventory inventory) {
-        return create(inventory, org.bukkit.inventory.Inventory::getStorageContents, UnaryOperator.identity(), false);
+    public static ReferencingInventory fromStorageContents(@NotNull Inventory inventory) {
+        return create(inventory, Inventory::getStorageContents, UnaryOperator.identity(), false);
     }
 
     /**
@@ -105,7 +102,7 @@ public final class ReferencingInventory extends RootInventory {
      */
     @NotNull
     public static ReferencingInventory fromPlayerStorageContents(@NotNull PlayerInventory inventory) {
-        return create(inventory, org.bukkit.inventory.Inventory::getStorageContents, ReferencingInventory::reorderPlayerStorage, true);
+        return create(inventory, Inventory::getStorageContents, ReferencingInventory::reorderPlayerStorage, true);
     }
 
     /**
@@ -118,8 +115,8 @@ public final class ReferencingInventory extends RootInventory {
      * @return ReferencingInventory
      */
     private static ReferencingInventory create(
-            org.bukkit.inventory.Inventory inventory,
-            Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter,
+            Inventory inventory,
+            Function<Inventory, @Nullable ItemStack[]> contentsGetter,
             UnaryOperator<int[]> slotReorder,
             boolean reverseAddOrder
     ) {
@@ -144,8 +141,8 @@ public final class ReferencingInventory extends RootInventory {
      * @throws IllegalArgumentException 当重排后的映射尺寸与内容尺寸不符时
      */
     static ReferencingInventory create(
-            org.bukkit.inventory.Inventory inventory,
-            Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter,
+            Inventory inventory,
+            Function<Inventory, @Nullable ItemStack[]> contentsGetter,
             UnaryOperator<int[]> slotReorder,
             BooleanSupplier writeAvailable,
             boolean reverseAddOrder
@@ -172,7 +169,7 @@ public final class ReferencingInventory extends RootInventory {
      * @return 被引用的容器
      */
     @NotNull
-    public org.bukkit.inventory.Inventory referencedInventory() {
+    public Inventory referencedInventory() {
         return this.bukkitInventory;
     }
 
