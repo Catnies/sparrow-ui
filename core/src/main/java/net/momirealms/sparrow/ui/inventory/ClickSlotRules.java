@@ -28,6 +28,9 @@ final class ClickSlotRules {
         if (cursor.isEmpty()) {
             return current == null ? null : new Outcome(null, current);
         }
+        if (current != null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+            return computeInsertionIntoCursorBundle(current, cursor);
+        }
         if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             return computeBundleInsertion(current, cursor);
         }
@@ -68,6 +71,9 @@ final class ClickSlotRules {
             @Nullable ItemStack observedBundle,
             int selectedIndex
     ) {
+        if (current == null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+            return computeExtractionFromCursorBundle(cursor, slotLimit);
+        }
         if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             if (!cursor.isEmpty()) {
                 return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
@@ -125,6 +131,73 @@ final class ClickSlotRules {
             return new Outcome(ItemUtils.copyWithAmount(current, current.getAmount() + 1), remainderOf(cursor, 1));
         }
         return computeSwap(current, cursor, slotLimit);
+    }
+
+    // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.
+    @Nullable
+    private static Outcome computeInsertionIntoCursorBundle(
+            ItemStack current,
+            ItemStack cursor
+    ) {
+        ItemStack slotAfter = current.clone();
+        ItemStack bundleAfter = cursor.clone();
+        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
+        if (contents == null) {
+            return null;
+        }
+        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(slotAfter));
+        if (inserted == 0) {
+            return null;
+        }
+        ItemStackProxy.INSTANCE.set(
+                bundleHandle,
+                DataComponentsProxy.BUNDLE_CONTENTS,
+                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
+        );
+        return new Outcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter);
+    }
+
+    // 从光标 Bundle 取出选中整组; 槽位放不下的余量重新插回 Bundle.
+    @Nullable
+    private static Outcome computeExtractionFromCursorBundle(
+            ItemStack cursor,
+            int slotLimit
+    ) {
+        ItemStack bundleAfter = cursor.clone();
+        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
+        if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
+            return null;
+        }
+        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        Object takenHandle = BundleContentsMutableProxy.INSTANCE.removeOne(mutableContents);
+        if (takenHandle == null) {
+            return null;
+        }
+        ItemStack taken = CraftItemStackProxy.INSTANCE.asCraftMirror(takenHandle).clone();
+        int placed = Math.min(effectiveLimit(slotLimit, taken), taken.getAmount());
+        if (placed <= 0) {
+            return null;
+        }
+        int remainder = taken.getAmount() - placed;
+        if (remainder > 0) {
+            ItemStack remainderStack = ItemUtils.copyWithAmount(taken, remainder);
+            int reinserted = BundleContentsMutableProxy.INSTANCE.tryInsert(
+                    mutableContents,
+                    ItemUtils.getItemStackHandle(remainderStack)
+            );
+            if (reinserted != remainder) {
+                return null;
+            }
+        }
+        ItemStackProxy.INSTANCE.set(
+                bundleHandle,
+                DataComponentsProxy.BUNDLE_CONTENTS,
+                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
+        );
+        return new Outcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter);
     }
 
     // 使用原版 BundleContents 规则把光标物品尽量插入 Bundle.

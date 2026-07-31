@@ -102,6 +102,8 @@ final class InventoryActionResolver {
             result = InventoryAction.NOTHING;
         } else if (cursor.isEmpty()) {
             result = InventoryAction.PICKUP_ALL;
+        } else if (current != null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+            result = outcome.slotAfter() == null ? InventoryAction.PICKUP_ALL_INTO_BUNDLE : InventoryAction.PICKUP_SOME_INTO_BUNDLE;
         } else if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
             result = outcome.cursorAfter().isEmpty() ? InventoryAction.PLACE_ALL_INTO_BUNDLE : InventoryAction.PLACE_SOME_INTO_BUNDLE;
         } else if (current == null) {
@@ -142,6 +144,9 @@ final class InventoryActionResolver {
         ClickSlotRules.Outcome outcome = ClickSlotRules.computeRightClick(current, cursor, link.inventory().slotMaxStackSize(link.slot()));
         if (outcome == null) {
             return InventoryAction.NOTHING;
+        }
+        if (current == null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+            return InventoryAction.PLACE_FROM_BUNDLE;
         }
         if (cursor.isEmpty()) {
             return InventoryAction.PICKUP_HALF;

@@ -151,7 +151,7 @@ final class ClickInterpreter {
      *
      * @param clickType 拖拽按键
      * @param generation 当前 Window generation
-     * @return 完整拖拽结果; 拖拽对不上或一格都没添加过时返回拒绝
+     * @return 单槽左右键按原版回退为普通点击; 其他情况返回完整拖拽, 序列不合法时返回拒绝
      */
     private Result completeDrag(ClickType clickType, long generation) {
         ActiveDrag drag = this.activeDrag;
@@ -161,7 +161,10 @@ final class ClickInterpreter {
             return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
 
-        Result.Drag completed = new Result.Drag(clickType, List.copyOf(drag.slots));
+        // 原版单槽左/右 QUICK_CRAFT 不发布拖拽, 而是用拖拽按键重新执行一次普通 PICKUP.
+        Result completed = drag.slots.size() == 1 && clickType != ClickType.MIDDLE
+                ? new Result.SingleClick(clickType, -1, drag.slots.getFirst())
+                : new Result.Drag(clickType, List.copyOf(drag.slots));
         this.reset();
         return completed;
     }
