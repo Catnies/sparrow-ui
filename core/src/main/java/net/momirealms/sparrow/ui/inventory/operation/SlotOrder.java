@@ -29,9 +29,8 @@ public final class SlotOrder {
     }
 
     /**
-     * 以给定槽号序列建立顺序; 序列必须是 {@code [0, slots.length)} 的排列.
-     *
-     * @throws IllegalArgumentException 当存在越界或重复槽号时
+     * 以给定槽号序列建立顺序;
+     * 序列必须是 {@code [0, slots.length)} 的排列.
      */
     @NotNull
     public static SlotOrder of(int... slots) {

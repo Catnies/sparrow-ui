@@ -5,7 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * 收集类操作的结果.
- * <p>事务被取消、冲突或不可用时零变更, collected 为 0.
  *
  * @param result 事务结果
  * @param collected 实际从库存收集到的数量

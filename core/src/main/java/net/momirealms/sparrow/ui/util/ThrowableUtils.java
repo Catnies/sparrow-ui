@@ -96,12 +96,6 @@ public final class ThrowableUtils {
     @FunctionalInterface
     public interface ThrowableSupplier<T> {
 
-        /**
-         * 获取一个结果.
-         * 
-         * @return 计算得到的结果
-         * @throws Throwable 如果在计算过程中发生错误
-         */
         T get() throws Throwable;
     }
 }
