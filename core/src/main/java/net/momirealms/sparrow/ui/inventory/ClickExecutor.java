@@ -97,10 +97,10 @@ final class ClickExecutor {
         }
 
         // 按Inventory分组取得写规划快照, 读取全部发生在对账后的快照上
-        Map<Inventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
+        Map<SparrowInventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
         List<DragTarget> targets = new ArrayList<>(candidates.size());
         for (ClickSemantics.LinkedSlot link : candidates.values()) {
-            SparrowInventory inventory = (SparrowInventory) link.inventory();
+            SparrowInventory inventory = link.inventory();
             SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
             if (!plan.writable(link.slot())) {
                 continue;
@@ -132,7 +132,7 @@ final class ClickExecutor {
         }
 
         // 逐槽计算实放量, delta 归入各自规划
-        Map<Inventory, List<SlotDelta>> deltasByInventory = new LinkedHashMap<>();
+        Map<SparrowInventory, List<SlotDelta>> deltasByInventory = new LinkedHashMap<>();
         int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
         int placedTotal = 0;
         for (int i = 0; i < targets.size() && budget > 0; i++) {
@@ -151,7 +151,7 @@ final class ClickExecutor {
         }
 
         List<InventoryTransactions.Scope> scopes = new ArrayList<>();
-        for (Map.Entry<Inventory, List<SlotDelta>> entry : deltasByInventory.entrySet()) {
+        for (Map.Entry<SparrowInventory, List<SlotDelta>> entry : deltasByInventory.entrySet()) {
             scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
         }
         TransactionResult result = InventoryTransactions.commit(
@@ -202,7 +202,7 @@ final class ClickExecutor {
             Runnable afterCommit
     ) {
         ItemStack cursor = context.cursor();
-        SparrowInventory inventory = (SparrowInventory) link.inventory();
+        SparrowInventory inventory = link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         if (!plan.writable(link.slot())) {
             context.markDirty(windowSlot);
@@ -262,7 +262,7 @@ final class ClickExecutor {
             ClickSemantics.LinkedSlot source,
             int windowSlot
     ) {
-        SparrowInventory inventory = (SparrowInventory) source.inventory();
+        SparrowInventory inventory = source.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         if (!plan.writable(source.slot())) {
             context.markDirty(windowSlot);
@@ -291,7 +291,7 @@ final class ClickExecutor {
             ClickSemantics.LinkedSlot source,
             ClickSemantics.LinkedSlot target
     ) {
-        SparrowInventory sourceInventory = (SparrowInventory) source.inventory();
+        SparrowInventory sourceInventory = source.inventory();
         SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
         if (!sourcePlan.writable(source.slot())) {
             return;
@@ -317,7 +317,7 @@ final class ClickExecutor {
             return;
         }
 
-        SparrowInventory targetInventory = (SparrowInventory) target.inventory();
+        SparrowInventory targetInventory = target.inventory();
         SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
         if (!targetPlan.writable(target.slot())) {
             return;
@@ -348,7 +348,7 @@ final class ClickExecutor {
         }
 
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), fullStack ? ClickType.CONTROL_DROP : ClickType.DROP, -1);
-        SparrowInventory inventory = (SparrowInventory) link.inventory();
+        SparrowInventory inventory = link.inventory();
         SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
         if (!plan.writable(link.slot())) {
             context.markDirty(windowSlot);
@@ -401,13 +401,13 @@ final class ClickExecutor {
         HashSet<SlotKey> coveredSlots = new HashSet<>();
         List<InventoryTransactions.Scope> scopes = new ArrayList<>();
 
-        List<Inventory> domain = new ArrayList<>(context.linkedInventories());
+        List<SparrowInventory> domain = new ArrayList<>(context.linkedInventories());
         domain.sort((left, right) -> Integer.compare(
                 right.guiPriority(OperationCategory.COLLECT),
                 left.guiPriority(OperationCategory.COLLECT)
         ));
         for (int i = 0; i < domain.size() && collected < space; i++) {
-            SparrowInventory inventory = (SparrowInventory) domain.get(i);
+            SparrowInventory inventory = domain.get(i);
             SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
             InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
                     plan.snapshot(),
@@ -444,7 +444,7 @@ final class ClickExecutor {
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
         SlotKey sourceKey = link.physicalKey();
 
-        List<Inventory> targets = addTargets(context, link.inventory());
+        List<SparrowInventory> targets = addTargets(context, link.inventory());
         for (int i = 0; i < targets.size(); i++) {
             MoveOutcome outcome = moveIntoInventory(reason, link, targets.get(i), sourceKey);
             if (outcome == MoveOutcome.MOVED || outcome == MoveOutcome.REJECTED) {
@@ -460,11 +460,11 @@ final class ClickExecutor {
     private static MoveOutcome moveIntoInventory(
             UpdateReason reason,
             ClickSemantics.LinkedSlot source,
-            Inventory target,
+            SparrowInventory target,
             SlotKey sourceKey
     ) {
-        SparrowInventory sourceInventory = (SparrowInventory) source.inventory();
-        SparrowInventory targetInventory = (SparrowInventory) target;
+        SparrowInventory sourceInventory = source.inventory();
+        SparrowInventory targetInventory = target;
 
         SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
         SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
@@ -505,8 +505,8 @@ final class ClickExecutor {
     }
 
     // 快速转移的候选目标
-    private static List<Inventory> addTargets(ClickSemantics.Context context, @Nullable Inventory exclude) {
-        List<Inventory> targets = new ArrayList<>(context.linkedInventories());
+    private static List<SparrowInventory> addTargets(ClickSemantics.Context context, @Nullable SparrowInventory exclude) {
+        List<SparrowInventory> targets = new ArrayList<>(context.linkedInventories());
         if (exclude != null) {
             targets.remove(exclude);
         }

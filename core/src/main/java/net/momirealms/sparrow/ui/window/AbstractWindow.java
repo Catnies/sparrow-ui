@@ -13,7 +13,7 @@ import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
-import net.momirealms.sparrow.ui.inventory.Inventory;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
@@ -912,7 +912,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param paths 显示路径, 为 null 时不做任何事
      */
     private void refreshLinkedInventories(@Nullable DisplayedSlotPath[] paths) {
-        LinkedHashSet<Inventory> seen = new LinkedHashSet<>();
+        LinkedHashSet<SparrowInventory> seen = new LinkedHashSet<>();
         this.forEachLinkedInventory(paths, false, inventory -> {
             if (seen.add(inventory)) {
                 inventory.refresh();
@@ -930,7 +930,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private void forEachLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
             boolean semanticOnly,
-            @NotNull Consumer<Inventory> action
+            @NotNull Consumer<SparrowInventory> action
     ) {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
@@ -1266,8 +1266,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      *
      * @return 去重后的连接Inventory
      */
-    private List<Inventory> collectLinkedInventories() {
-        LinkedHashSet<Inventory> inventories = new LinkedHashSet<>();
+    private List<SparrowInventory> collectLinkedInventories() {
+        LinkedHashSet<SparrowInventory> inventories = new LinkedHashSet<>();
         this.forEachLinkedInventory(this.paths, true, inventories::add);
         return List.copyOf(inventories);
     }
@@ -1328,7 +1328,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         @Override
         @NotNull
-        public List<Inventory> linkedInventories() {
+        public List<SparrowInventory> linkedInventories() {
             return AbstractWindow.this.collectLinkedInventories();
         }
 

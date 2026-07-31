@@ -30,10 +30,10 @@ public final class CompositeInventory extends SparrowInventory {
     /**
      * 以声明顺序拼接给定的 Inventory.
      *
-     * @param members 拼接成员, 至少一个, 必须全是内建实现
-     * @throws IllegalArgumentException 当成员为空, 含非内建实现, 或展开后存在真实槽位重叠时
+     * @param members 拼接成员, 至少一个
+     * @throws IllegalArgumentException 当成员为空或展开后存在真实槽位重叠时
      */
-    public CompositeInventory(@NotNull List<? extends Inventory> members) {
+    public CompositeInventory(@NotNull List<? extends SparrowInventory> members) {
         if (members.isEmpty()) {
             throw new IllegalArgumentException("composite inventory requires at least one member");
         }
@@ -41,14 +41,10 @@ public final class CompositeInventory extends SparrowInventory {
         this.memberOffsets = new int[members.size()];
         int offset = 0;
         for (int i = 0; i < members.size(); i++) {
-            Inventory member = members.get(i);
-            // 事务原子性依赖内建实现的锁与快照协议, 第三方 Inventory 实现无法参与
-            if (!(member instanceof SparrowInventory sparrowMember)) {
-                throw new IllegalArgumentException("composite members must be built-in inventories, got: " + member.getClass().getName());
-            }
-            this.members[i] = sparrowMember;
+            SparrowInventory member = members.get(i);
+            this.members[i] = member;
             this.memberOffsets[i] = offset;
-            offset += sparrowMember.size();
+            offset += member.size();
         }
         this.size = offset;
         this.requireNoOverlap();
@@ -98,7 +94,7 @@ public final class CompositeInventory extends SparrowInventory {
      * <p>逐个成员收集, 靠 Set 去重(同一个根被多个成员引用时只出现一次).
      */
     @Override
-    void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots) {
+    void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         for (int i = 0; i < this.members.length; i++) {
             this.members[i].collectRoots(roots);
         }

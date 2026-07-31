@@ -38,7 +38,7 @@ import java.util.function.UnaryOperator;
  * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册
  * 调度任务, 也不会主动切到 owner 线程, 阻塞等待或拆分跨 owner 的事务.
  */
-public final class ReferencingInventory extends AbstractInventory {
+public final class ReferencingInventory extends RootInventory {
     private final org.bukkit.inventory.Inventory bukkitInventory; // 被引用的 Bukkit 容器, 真实数据所在地
     private final Function<org.bukkit.inventory.Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
     private final SlotKey.ExternalSlot[] externalSlots; // 逻辑槽 -> 容器里的真实槽位, 同步与写回共用

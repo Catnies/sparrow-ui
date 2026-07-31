@@ -15,9 +15,9 @@ import java.util.List;
 
 // 让 JDK 动态代理出来的 NMS Container 直接读写 Sparrow Inventory.
 final class InventoryContainerHandler implements InvocationHandler {
-    private final Inventory inventory;
+    private final SparrowInventory inventory;
 
-    InventoryContainerHandler(@NotNull Inventory inventory) {
+    InventoryContainerHandler(@NotNull SparrowInventory inventory) {
         this.inventory = inventory;
     }
 
@@ -116,7 +116,7 @@ final class InventoryContainerHandler implements InvocationHandler {
         for (int slot = 0; slot < this.inventory.size(); slot++) {
             maxStackSize = Math.max(maxStackSize, this.inventory.slotMaxStackSize(slot));
         }
-        return maxStackSize > 0 ? maxStackSize : Inventory.DEFAULT_MAX_STACK_SIZE;
+        return maxStackSize > 0 ? maxStackSize : SparrowInventory.DEFAULT_MAX_STACK_SIZE;
     }
 
     private void maxStackSize(int maxStackSize) {

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
-import net.momirealms.sparrow.ui.inventory.Inventory;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -12,7 +12,7 @@ import java.util.List;
  * @param deltas 该Inventory的槽位变更, 不可变列表
  */
 public record InventoryDelta(
-        @NotNull Inventory inventory,
+        @NotNull SparrowInventory inventory,
         @NotNull List<SlotDelta> deltas
 ) {
 

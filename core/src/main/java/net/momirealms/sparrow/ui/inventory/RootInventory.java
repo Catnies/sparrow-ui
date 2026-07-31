@@ -25,16 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.UnaryOperator;
 
-/**
- * 自己持有槽位数据的Inventory的并发骨架: 不可变快照 + 一把短写锁.
- * <p>所有槽位内容收敛为一个 volatile 引用指向的数组, 数组更新时之后走替换引用而不会修改.
- * 写操作由 {@link InventoryTransactions} 在写锁内完成校验和换引用, 用户回调一律安排在锁外执行.
- * <p>本类是所有事务的最终落地处(视图家族把逻辑槽换算到这里); 批量规划走
- * {@link InventoryPlanner}, 单槽操作在本类内直接实现. 子类只需提供堆叠上限与遍历顺序等配置点.
- * <p>Inventory实例必须经过安全发布(final 字段, volatile, 锁或线程启动边界)交给其他线程使用;
- * 通过普通字段随手传递(裸发布)不在内存模型的保障范围内.
- */
-abstract class AbstractInventory extends SparrowInventory {
+abstract non-sealed class RootInventory extends SparrowInventory {
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong();   // 锁序号发号器, 每创建一个 Inventory 发一个号
 
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
@@ -44,17 +35,16 @@ abstract class AbstractInventory extends SparrowInventory {
     private final ObservableDispatcher<InventoryPreUpdateEvent> preUpdates = new ObservableDispatcher<>();   // pre  观察者的订阅登记处
     private final ObservableDispatcher<InventoryPostUpdateEvent> postUpdates = new ObservableDispatcher<>(); // post 观察者的订阅登记处
     private final ConcurrentLinkedQueue<InventoryPostUpdateEvent> pendingPostEvents = new ConcurrentLinkedQueue<>(); // 在锁内入队, 队列顺序即提交顺序
-    private final AtomicBoolean drainingPostEvents = new AtomicBoolean(); // "正在派发"标志, 同一时刻至多一个线程负责派发
+    private final AtomicBoolean drainingPostEvents = new AtomicBoolean(); // "正在派发" 标志
 
     private volatile @Nullable ItemStack @NotNull [] state; // 当前的不可变快照, 里面的物品归内部所有
 
     /**
      * 以给定数组为初始内容创建 Inventory.
      *
-     * @param initial 初始槽位内容, 空槽位置为 {@code null};
-     *                数组与物品都会被克隆, 之后改动原数组不影响Inventory.
+     * @param initial 初始槽位内容, 空槽位置为 {@code null}.
      */
-    AbstractInventory(@Nullable ItemStack @NotNull [] initial) {
+    RootInventory(@Nullable ItemStack @NotNull [] initial) {
         // 构造时就完成快照化: 先克隆再判空
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
@@ -64,22 +54,16 @@ abstract class AbstractInventory extends SparrowInventory {
         this.naturalOrder = SlotOrder.natural(initial.length);
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>自持数据的Inventory自己就是根, 槽号原样使用.
-     */
-    @Override
     @NotNull
+    @Override
     SlotKey.Anchor resolveSlot(int slot) {
         return new SlotKey.Anchor(this, slot);
     }
 
     /**
-     * 返回根Inventory槽位的最终物理身份;
-     * 普通根Inventory的槽位自身就是终点.
+     * 返回 RootInventory 槽位的最终物理身份;
      *
-     * @param anchor 根Inventory槽位
+     * @param anchor RootInventory 槽位
      * @return 该槽的物理身份
      */
     @NotNull
@@ -87,27 +71,16 @@ abstract class AbstractInventory extends SparrowInventory {
         return anchor;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>自持数据的Inventory只有它自己一个根.
-     */
     @Override
-    void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots) {
+    void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         roots.add(this);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public int size() {
         return this.state.length;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @Nullable
     public ItemStack itemAt(int slot) {
@@ -116,9 +89,6 @@ abstract class AbstractInventory extends SparrowInventory {
         return ItemUtils.copyOrNull(snapshot[slot]);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
         // 先把 volatile 引用抓到局部变量
@@ -130,22 +100,12 @@ abstract class AbstractInventory extends SparrowInventory {
         return copy;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>缺省实现所有槽位统一返回 {@link #DEFAULT_MAX_STACK_SIZE}.
-     */
     @Override
     public int slotMaxStackSize(int slot) {
         Objects.checkIndex(slot, this.size());
         return DEFAULT_MAX_STACK_SIZE;
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>缺省实现始终返回构造时建立的自然顺序.
-     */
     @Override
     @NotNull
     public SlotOrder iterationOrder(@NotNull OperationCategory category) {
@@ -186,18 +146,13 @@ abstract class AbstractInventory extends SparrowInventory {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>自持数据的Inventory没有外部来源, 什么都不做;
-     */
     @Override
     public void refresh() {
     }
 
     /**
      * 判断当前线程能不能访问本Inventory背后的真实数据. 自持数据的Inventory永远可用;
-     * ReferencingInventory按目标容器的持有者动态判断.
+     * ReferencingInventory 按目标容器的持有者动态判断.
      *
      * @return 可访问返回 {@code true}
      */
@@ -219,15 +174,13 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 写前的根级同步钩子: 任何写入口在读规划快照之前都会经过这里, 不管调用来自本Inventory
-     * 的公开方法还是视图的批量换算. simulate 等纯读路径不会触发.
+     * 任何写入口在读规划快照之前都会经过这里, simulate 等纯读路径不会触发.
      */
     void beforePlan() {
     }
 
     /**
-     * 提交后的根级钩子: 事务引擎提交成功之后, post 事件派发之前, 对每个参与的根携带
-     * 它的槽位变更调用一次.
+     * 事务提交成功之后, post 事件派发之前, 对每个参与的根携带它的槽位变更调用一次.
      * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
      * 保证观察者在事件里重入写入时外部状态已经同步;
      *
@@ -236,18 +189,12 @@ abstract class AbstractInventory extends SparrowInventory {
     void afterCommit(@NotNull List<SlotDelta> deltas) {
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
         return this.commitSingle(reason, slot, item, false);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
@@ -277,9 +224,6 @@ abstract class AbstractInventory extends SparrowInventory {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
@@ -316,9 +260,6 @@ abstract class AbstractInventory extends SparrowInventory {
         return new AddResult(result, result instanceof TransactionResult.Committed ? amount - moved : amount);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
@@ -332,9 +273,6 @@ abstract class AbstractInventory extends SparrowInventory {
         return this.commitScoped(reason, planned, List.of(new SlotDelta(slot, planned[slot], modified)));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
@@ -384,18 +322,12 @@ abstract class AbstractInventory extends SparrowInventory {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public Subscription subscribePreUpdate(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
         return this.preUpdates.subscribe(observer);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
@@ -403,7 +335,7 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 返回本Inventory的锁序号, 跨 Inventory 事务按它确定加锁顺序.
+     * 本 Inventory 的锁序号, 跨 Inventory 事务按它确定加锁顺序.
      *
      * @return 锁序号
      */
@@ -412,7 +344,7 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 返回本Inventory的写锁, 由事务引擎使用.
+     * 本 Inventory 的写锁, 由事务引擎使用.
      *
      * @return 写锁
      */
@@ -422,8 +354,8 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 返回当前快照的引用本身(不是克隆): 规划以它为基准, 提交时比对它有没有被换掉,
-     * 以此发现并发冲突.
+     * 返回当前快照的引用本身:
+     * 规划以它为基准, 提交时比对它有没有被换掉, 以此发现并发冲突.
      *
      * @return 当前快照引用
      */
@@ -433,7 +365,7 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 把当前快照换成新数组 —— 只允许在持有写锁时调用.
+     * 把当前快照换成新数组, 只允许在持有写锁时调用.
      *
      * @param newState 新的不可变快照
      */
@@ -442,8 +374,7 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 在锁外向本Inventory的 pre 观察者派发事件;
-     * 观察者的异常会被隔离并上报, 不会打断事务.
+     * 在锁外向本 Inventory 的 pre 观察者派发事件;
      *
      * @param event 提交前事件
      */
@@ -458,8 +389,7 @@ abstract class AbstractInventory extends SparrowInventory {
     }
 
     /**
-     * 把提交后事件放入待派发队列;
-     * 只允许在持有写锁时调用, 队列顺序因此与提交顺序一致.
+     * 把提交后事件放入待派发队列, 只允许在持有写锁时调用.
      *
      * @param event 提交后事件
      */
@@ -469,9 +399,7 @@ abstract class AbstractInventory extends SparrowInventory {
 
     /**
      * 由提交者线程把队列里的 post 事件按提交顺序派发完.
-     * <p>提交者在放锁之后调用本方法: 抢到"正在派发"标志的线程负责把队列发完为止,
-     * 其他提交者把事件入队后就可以直接返回 —— 派发不会堵住后面的提交,
-     * 而且同一个Inventory的事件顺序始终等于提交顺序.
+     * <p>提交者在放锁之后调用本方法: 抢到"正在派发"标志的线程负责把队列发完为止.
      */
     void drainPostEvents() {
         while (this.drainingPostEvents.compareAndSet(false, true)) {

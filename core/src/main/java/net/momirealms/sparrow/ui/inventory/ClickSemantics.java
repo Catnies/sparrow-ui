@@ -20,9 +20,9 @@ public final class ClickSemantics {
     }
 
     // 一个窗口槽背后连接的 Inventory 槽位, 可计算连接最终指向的物理槽身份.
-    public record LinkedSlot(@NotNull Inventory inventory, int slot) {
+    public record LinkedSlot(@NotNull SparrowInventory inventory, int slot) {
         SlotKey physicalKey() {
-            return ((SparrowInventory) this.inventory).physicalKey(this.slot);
+            return this.inventory.physicalKey(this.slot);
         }
     }
 
@@ -97,7 +97,7 @@ public final class ClickSemantics {
      */
     @ApiStatus.Internal
     public static boolean dispatchClickEvent(
-            @NotNull Inventory inventory,
+            @NotNull SparrowInventory inventory,
             int slot,
             @NotNull Player player,
             @NotNull ClickType clickType,
@@ -105,7 +105,7 @@ public final class ClickSemantics {
             @NotNull InventoryAction action
     ) {
         InventoryClickEvent event = new InventoryClickEvent(inventory, slot, player, clickType, hotbarButton, action);
-        ((SparrowInventory) inventory).publishClick(event);
+        inventory.publishClick(event);
         return !event.cancelled();
     }
 
@@ -113,8 +113,8 @@ public final class ClickSemantics {
      * 向被 InventoryLink 直接连接的 Inventory 派发 Bundle 选择事件.
      */
     @ApiStatus.Internal
-    public static void dispatchBundleSelectEvent(@NotNull Inventory inventory, int slot, @NotNull BundleSelectClick select) {
-        ((SparrowInventory) inventory).publishBundleSelect(
+    public static void dispatchBundleSelectEvent(@NotNull SparrowInventory inventory, int slot, @NotNull BundleSelectClick select) {
+        inventory.publishBundleSelect(
                 new InventoryBundleSelectEvent(inventory, slot, select.player(), select.bundleSlot())
         );
     }
@@ -186,7 +186,7 @@ public final class ClickSemantics {
          * @return 参与语义的全部Inventory
          */
         @NotNull
-        List<Inventory> linkedInventories();
+        List<SparrowInventory> linkedInventories();
 
         /**
          * 光标上正拿着的物品的快照;

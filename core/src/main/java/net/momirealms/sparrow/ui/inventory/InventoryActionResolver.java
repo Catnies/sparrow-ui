@@ -185,7 +185,7 @@ final class InventoryActionResolver {
         if (cursor.isEmpty() || cursor.getAmount() >= cursor.getMaxStackSize()) {
             return InventoryAction.NOTHING;
         }
-        List<Inventory> inventories = context.linkedInventories();
+        List<SparrowInventory> inventories = context.linkedInventories();
         for (int inventoryIndex = 0; inventoryIndex < inventories.size(); inventoryIndex++) {
             ItemStack[] snapshot = inventories.get(inventoryIndex).snapshot();
             for (int slot = 0; slot < snapshot.length; slot++) {

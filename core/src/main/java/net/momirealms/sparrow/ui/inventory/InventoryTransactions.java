@@ -34,7 +34,7 @@ final class InventoryTransactions {
      * @param deltas 该Inventory的槽位变更, 构造后不可变
      */
     record Scope(
-            @NotNull AbstractInventory inventory,
+            @NotNull RootInventory inventory,
             @Nullable ItemStack @NotNull [] planned,
             @NotNull List<SlotDelta> deltas
     ) {
@@ -180,7 +180,7 @@ final class InventoryTransactions {
         }
 
         // 按根Inventory归并, LinkedHashMap 保住声明首现顺序
-        LinkedHashMap<AbstractInventory, Scope> mergedByRoot = new LinkedHashMap<>();
+        LinkedHashMap<RootInventory, Scope> mergedByRoot = new LinkedHashMap<>();
         for (int i = 0; i < scopes.size(); i++) {
             Scope scope = scopes.get(i);
             Scope previous = mergedByRoot.get(scope.inventory());

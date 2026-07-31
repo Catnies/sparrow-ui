@@ -17,7 +17,7 @@ import java.util.UUID;
  * <p>堆叠上限, 遍历顺序与 guiPriority 属于配置: 改配置不产生槽变更, 不走事务也不派发事件,
  * 只影响之后的批量规划; 改配置与进行中的事务交错时, 读到新旧值都属正常(弱一致).
  */
-public final class VirtualInventory extends AbstractInventory {
+public final class VirtualInventory extends RootInventory {
     private final UUID uuid; // 持久化身份, 序列化时作为主键
     private volatile int @Nullable [] slotMaxStackSizes;    // 逐槽堆叠上限, null 表示全部用默认值; 数组不可变, 改就整组替换
     private volatile @Nullable SlotOrder addOrder;          // ADD 类别的遍历顺序, null 回退自然顺序

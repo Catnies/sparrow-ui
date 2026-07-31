@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.gui;
 
-import net.momirealms.sparrow.ui.inventory.Inventory;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -48,7 +48,7 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * @return 库存连接元素
      */
     @NotNull
-    static InventoryLink inventory(@NotNull Inventory inventory, int slot) {
+    static InventoryLink inventory(@NotNull SparrowInventory inventory, int slot) {
         return new InventoryLink(inventory, slot);
     }
 
@@ -129,7 +129,7 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      * @param inventory 库存
      * @param slot 库存槽位编号
      */
-    record InventoryLink(@NotNull Inventory inventory, int slot) implements SlotElement {
+    record InventoryLink(@NotNull SparrowInventory inventory, int slot) implements SlotElement {
 
         public InventoryLink {
             Objects.requireNonNull(inventory);

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.gui;
 
-import net.momirealms.sparrow.ui.inventory.Inventory;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import org.jetbrains.annotations.NotNull;
 
@@ -64,7 +64,7 @@ public interface SlotElementSupplier {
      * @return 逐槽连接库存的元素来源
      */
     @NotNull
-    static SlotElementSupplier inventory(@NotNull Inventory inventory) {
+    static SlotElementSupplier inventory(@NotNull SparrowInventory inventory) {
         return (ignoredSize, occurrence) -> new SlotElement.InventoryLink(inventory, occurrence);
     }
 

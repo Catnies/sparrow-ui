@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
-import net.momirealms.sparrow.ui.inventory.Inventory;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
@@ -13,7 +13,7 @@ import org.jetbrains.annotations.NotNull;
  * @param bundleSlot Bundle内部槽位; {@code -1} 表示光标已离开
  */
 public record InventoryBundleSelectEvent(
-        @NotNull Inventory inventory,
+        @NotNull SparrowInventory inventory,
         int slot,
         @NotNull Player player,
         int bundleSlot

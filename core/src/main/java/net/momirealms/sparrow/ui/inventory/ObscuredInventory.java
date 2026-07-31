@@ -24,18 +24,13 @@ public final class ObscuredInventory extends SparrowInventory {
     /**
      * 以"被遮谓词"创建视图: 谓词返回 {@code true} 的底层槽会被隐藏.
      *
-     * @param underlying 底层 Inventory, 必须是内建实现
+     * @param underlying 底层 Inventory
      * @param isObscured 判断某个底层槽是否被隐藏的谓词
-     * @throws IllegalArgumentException 当底层不是内建实现时
      */
-    public ObscuredInventory(@NotNull Inventory underlying, @NotNull IntPredicate isObscured) {
-        if (!(underlying instanceof SparrowInventory sparrowUnderlying)) {
-            throw new IllegalArgumentException("obscured underlying must be a built-in inventory, got: " + underlying.getClass().getName());
-        }
-        this.underlying = sparrowUnderlying;
-
+    public ObscuredInventory(@NotNull SparrowInventory underlying, @NotNull IntPredicate isObscured) {
+        this.underlying = underlying;
         // 两遍扫描建立双向映射: 第一遍给每个底层槽编逻辑号(被遮记为 -1), 第二遍反填出可见槽列表
-        int underlyingSize = sparrowUnderlying.size();
+        int underlyingSize = underlying.size();
         this.logicalSlots = new int[underlyingSize];
         int visible = 0;
         for (int slot = 0; slot < underlyingSize; slot++) {
@@ -76,7 +71,7 @@ public final class ObscuredInventory extends SparrowInventory {
      * <p>根全部来自底层.
      */
     @Override
-    void collectRoots(@NotNull LinkedHashSet<AbstractInventory> roots) {
+    void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         this.underlying.collectRoots(roots);
     }
 
