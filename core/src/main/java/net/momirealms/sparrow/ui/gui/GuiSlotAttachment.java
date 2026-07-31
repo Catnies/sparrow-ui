@@ -5,15 +5,10 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 记录对一个 GUI 槽位的订阅, 以及订阅创建时读到的状态.
- * <p>{@link #element()}, {@link #background()} 和 {@link #frozen()} 来自同一时刻.
- * 调用 {@link #close()} 后不再接收该槽位的更新.
- */
 public final class GuiSlotAttachment implements AutoCloseable {
-    private final SlotElement element;      // 订阅创建时的槽位元素
-    private final ItemProvider background;  // 订阅创建时的 GUI 背景, 可为 null
-    private final boolean frozen; // 订阅创建时的冻结状态
+    private final SlotElement element;       // 订阅创建时的槽位元素
+    private final ItemProvider background;   // 订阅创建时的 GUI 背景, 可为 null
+    private final boolean frozen;            // 订阅创建时的冻结状态
     private final Subscription subscription; // 槽位更新订阅
 
     GuiSlotAttachment(SlotElement element, @Nullable ItemProvider background, boolean frozen, Subscription subscription) {
@@ -62,7 +57,8 @@ public final class GuiSlotAttachment implements AutoCloseable {
     }
 
     /**
-     * 取消订阅. 重复调用不会产生额外效果.
+     * 取消订阅.
+     * 重复调用不会产生额外效果.
      */
     @Override
     public void close() {

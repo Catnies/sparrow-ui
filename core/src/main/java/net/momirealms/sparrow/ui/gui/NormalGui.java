@@ -4,9 +4,6 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 最基础的 GUI 实现, 每个槽位都直接保存一个 {@link SlotElement}.
- */
 public final class NormalGui extends AbstractGui {
 
     private NormalGui(Structure structure, SlotElement[] elements, ItemProvider background, boolean frozen) {
@@ -58,7 +55,7 @@ public final class NormalGui extends AbstractGui {
     }
 
     /**
-     * 只负责创建 NormalGui 实例, 其余构建逻辑由 AbstractGuiBuilder 复用.
+     * GUI Builder 的实现.
      */
     private static final class Builder extends AbstractGuiBuilder<NormalGui, Builder> {
         private Builder(Structure structure) {

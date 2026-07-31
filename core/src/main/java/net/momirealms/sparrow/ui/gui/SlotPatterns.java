@@ -5,14 +5,10 @@ import org.jetbrains.annotations.NotNull;
 import java.util.function.IntConsumer;
 
 public final class SlotPatterns {
-    /** 从上到下逐行选择, 每行从左到右. */
-    public static final SlotPattern ROW_MAJOR = SlotPatterns::emitRowMajor;
-    /** 从左到右逐列选择, 每列从上到下. */
-    public static final SlotPattern COLUMN_MAJOR = SlotPatterns::emitColumnMajor;
-    /** 只选择 {@code x + y} 为偶数的棋盘格. */
-    public static final SlotPattern CHECKERBOARD_EVEN = SlotPatterns::emitEvenSquares;
-    /** 只选择 {@code x + y} 为奇数的棋盘格. */
-    public static final SlotPattern CHECKERBOARD_ODD = SlotPatterns::emitOddSquares;
+    public static final SlotPattern ROW_MAJOR = SlotPatterns::emitRowMajor;             // 从上到下逐行选择, 每行从左到右
+    public static final SlotPattern COLUMN_MAJOR = SlotPatterns::emitColumnMajor;       // 从左到右逐列选择, 每列从上到下
+    public static final SlotPattern CHECKERBOARD_EVEN = SlotPatterns::emitEvenSquares;  // 只选择为偶数的棋盘格
+    public static final SlotPattern CHECKERBOARD_ODD = SlotPatterns::emitOddSquares;    // 只选择为奇数的棋盘格
 
     private SlotPatterns() {
     }

@@ -11,13 +11,13 @@ import java.util.function.IntConsumer;
  * 同一槽位不会重复出现, 创建后槽位和顺序都不会改变.
  */
 public final class SlotSequence {
-    private final GuiSize guiSize; // 槽位所属的 GUI 尺寸
-    private final int[] slots; // 按选择顺序排列的槽位编号, 不重复
-    private final int minX; // 选中槽位的最小 x 坐标, 空选择为 -1
-    private final int minY; // 选中槽位的最小 y 坐标, 空选择为 -1
+    private final GuiSize guiSize;  // 槽位所属的 GUI 尺寸
+    private final int[] slots;      // 按选择顺序排列的槽位编号, 不重复
+    private final int minX;         // 选中槽位的最小 x 坐标, 空选择为 -1
+    private final int minY;         // 选中槽位的最小 y 坐标, 空选择为 -1
 
     /**
-     * 创建槽位选择并预计算最小坐标. 调用方必须保证槽位数组不被后续修改.
+     * 创建槽位选择并预计算最小坐标.
      *
      * @param guiSize 槽位所属的 GUI 尺寸
      * @param slots 按选择顺序排列的槽位编号

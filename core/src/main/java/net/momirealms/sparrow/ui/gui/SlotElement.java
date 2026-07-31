@@ -5,10 +5,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-/**
- * 描述一个 GUI 槽位放什么.
- * <p>槽位可以是空的, 显示一个 Item, 连接到另一个 GUI 的槽位, 或连接到库存的槽位.
- */
 public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item, SlotElement.GuiLink, SlotElement.InventoryLink {
 
     /**

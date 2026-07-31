@@ -12,31 +12,18 @@ import java.util.Map;
 
 /**
  * 描述 GUI 每个槽位使用的标志符.
- *
  * <p>例如 {@code "ABB"} 表示一行三个槽位, 第一个槽位标记为 {@code A},
- * 后两个标记为 {@code B}. Builder 可以根据标志符一次填充多个槽位.</p>
- *
- * <p>Structure 只保存尺寸, 标志符和槽位位置, 不保存 Item 或 content 列表.
- * 创建后内容不会改变, 可以在多个 GUI 之间共用.</p>
+ * 后两个标记为 {@code B}. Builder 可以根据标志符一次填充多个槽位.
+ * <p>Structure 只保存尺寸, 标志符和槽位位置, 创建后内容不会改变, 可以在多个 GUI 之间共用.
  */
 public final class Structure {
-    private final GuiSize size; // GUI 尺寸
-    private final String[] identifiers; // 内部编号到标志符文本
+    private final GuiSize size;          // GUI 尺寸
+    private final String[] identifiers;  // 内部编号到标志符文本
     private final Map<String, Integer> identifierIndexes; // 标志符文本到内部编号
-    private final int[] identifierBySlot; // 每个槽位对应的标志符编号, -1 表示没有标志符
-    private final int[] sourceColumns; // 用于 Builder 失败信息的模板原始列号
+    private final int[] identifierBySlot;   // 每个槽位对应的标志符编号, -1 表示没有标志符
+    private final int[] sourceColumns;      // 用于 Builder 失败信息的模板原始列号
     private final SlotSequence[] slotsByIdentifier; // 每个标志符预先选好的槽位
 
-    /**
-     * 创建布局. 调用方必须保证各数组与映射内容相互对应且不再被修改.
-     *
-     * @param size GUI 尺寸
-     * @param identifiers 内部编号到标志符文本
-     * @param identifierIndexes 标志符文本到内部编号
-     * @param identifierBySlot 每个槽位对应的标志符编号
-     * @param sourceColumns 每个槽位在模板中的原始列号
-     * @param slotsByIdentifier 每个标志符预先选好的槽位
-     */
     private Structure(
             GuiSize size,
             String[] identifiers,
@@ -76,7 +63,6 @@ public final class Structure {
 
     /**
      * 根据多行字符串创建布局.
-     *
      * <p>每个普通 Unicode 字符占一个槽位. 反引号包围的文本作为一个完整标志符,
      * 例如 {@code `confirm button`}. 所有行必须包含相同数量的槽位.
      *
@@ -117,8 +103,7 @@ public final class Structure {
 
     /**
      * 使用一段连续文本创建指定尺寸的布局.
-     *
-     * <p>文本中解析出的槽位数量必须等于 {@link GuiSize#area()}.</p>
+     * <p>文本中解析出的槽位数量必须等于 {@link GuiSize#area()}.
      *
      * @param size GUI 尺寸
      * @param flatData 按槽位顺序连续排列的模板文本
@@ -143,7 +128,7 @@ public final class Structure {
     }
 
     /**
-     * 返回这个布局的 GUI 尺寸.
+     * 布局的 GUI 尺寸.
      *
      * @return GUI 尺寸
      */
@@ -153,7 +138,7 @@ public final class Structure {
     }
 
     /**
-     * 返回模板中是否出现过指定标志符.
+     * 模板中是否出现过指定标志符.
      *
      * @param identifier 标志符
      * @return 标志符存在时为 true
@@ -163,7 +148,7 @@ public final class Structure {
     }
 
     /**
-     * 返回指定槽位的标志符, 没有标志符时返回 null.
+     * 指定槽位的标志符, 没有标志符时返回 null.
      *
      * @param slot 槽位编号
      * @return 槽位标志符, 或 null
@@ -176,8 +161,7 @@ public final class Structure {
 
     /**
      * 选择所有使用指定标志符的槽位.
-     *
-     * <p>结果按从上到下, 每行从左到右的顺序排列.</p>
+     * <p>结果按从上到下, 每行从左到右的顺序排列.
      *
      * @param identifier 标志符
      * @return 对应的槽位选择
@@ -233,7 +217,7 @@ public final class Structure {
     }
 
     /**
-     * 返回布局中不同标志符的数量.
+     * 布局中不同标志符的数量.
      *
      * @return 标志符数量
      */
@@ -242,7 +226,7 @@ public final class Structure {
     }
 
     /**
-     * 返回标志符的内部编号.
+     * 标志符的内部编号.
      *
      * @param identifier 标志符
      * @return 内部编号
@@ -280,7 +264,7 @@ public final class Structure {
     }
 
     /**
-     * 返回槽位在模板中的原始列号, 用于错误定位.
+     * 槽位在模板中的原始列号, 用于错误定位.
      *
      * @param slot 槽位编号
      * @return 原始列号
@@ -289,21 +273,13 @@ public final class Structure {
         return this.sourceColumns[slot];
     }
 
-    /**
-     * 只在创建 Structure 时使用, 负责读取模板并记录每个标志符的槽位.
-     */
+    // 只在创建 Structure 时使用, 负责读取模板并记录每个标志符的槽位.
     private static final class Compiler {
         private final ArrayList<String> identifiers = new ArrayList<>(); // 内部编号到标志符文本
         private final HashMap<String, Integer> identifierIndexes = new HashMap<>(); // 标志符文本到内部编号
         private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>(); // 每个标志符按出现顺序记录的槽位
 
-        /**
-         * 先暂存第一行, 因为只有读完它才能确定 GUI 宽度.
-         *
-         * @param row 模板行文本
-         * @param rowIndex 行号, 用于错误定位
-         * @return 暂存的第一行解析结果
-         */
+        // 先暂存第一行, 因读完它确定 GUI 宽度.
         private ParsedRow parseBuffered(String row, int rowIndex) {
             IntArrayList identifiers = new IntArrayList();
             IntArrayList sourceColumns = new IntArrayList();
@@ -393,7 +369,7 @@ public final class Structure {
         }
 
         /**
-         * 返回标志符的内部编号, 首次出现时登记新编号.
+         * 标志符的内部编号, 首次出现时登记新编号.
          *
          * @param identifier 标志符文本
          * @return 内部编号

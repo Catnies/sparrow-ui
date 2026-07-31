@@ -51,135 +51,90 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
         this.frozen = source.frozen;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final Structure structure() {
         return this.structure;
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull SlotElementSupplier supplier) {
         return this.bindIngredient(identifier, supplier);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(char identifier, @NotNull SlotElementSupplier supplier) {
         return this.addIngredient(String.valueOf(identifier), supplier);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull SlotElement element) {
         return this.bindIngredient(identifier, SlotElementSupplier.fixed(element));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(char identifier, @NotNull SlotElement element) {
         return this.addIngredient(String.valueOf(identifier), element);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Item item) {
         return this.bindIngredient(identifier, SlotElementSupplier.fixed(new SlotElement.Item(item)));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(char identifier, @NotNull Item item) {
         return this.addIngredient(String.valueOf(identifier), item);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder) {
         return this.bindIngredient(identifier, (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(itemBuilder.build()));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemProvider provider) {
         return this.addIngredient(identifier, Item.simple(provider));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemStack itemStack) {
         return this.addIngredient(identifier, Item.simple(ItemProvider.constant(itemStack)));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier) {
         return this.bindIngredient(identifier, SlotElementSupplier.items(itemSupplier));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends SlotElement> elementSupplier) {
         return this.bindIngredient(identifier, SlotElementSupplier.fromSupplier(elementSupplier));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Gui gui) {
         return this.addIngredient(identifier, gui, 0, 0);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY) {
         return this.bindIngredient(identifier, SlotElementSupplier.gui(gui, offsetX, offsetY));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B setBackground(@Nullable ItemProvider background) {
@@ -187,18 +142,12 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
         return this.self();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B setBackground(@NotNull ItemStack background) {
         return this.setBackground(ItemProvider.constant(background));
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B setFrozen(boolean frozen) {
@@ -206,9 +155,6 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
         return this.self();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B addModifier(@NotNull Consumer<? super G> modifier) {
@@ -216,9 +162,6 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
         return this.self();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B setModifiers(@NotNull List<? extends Consumer<? super G>> modifiers) {
@@ -233,20 +176,12 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
         return this.self();
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public final B copy() {
         return this.newCopy();
     }
 
-    /**
-     * {@inheritDoc}
-     *
-     * <p>任何 Supplier 失败时都不会返回半成品.
-     */
     @Override
     @NotNull
     public final G build() {

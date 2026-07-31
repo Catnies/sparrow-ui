@@ -12,10 +12,6 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * 表示一个固定尺寸的 GUI.
- * <p>每个槽位可以为空, 显示 Item, 或连接到另一个 GUI.
- */
 public sealed interface Gui permits AbstractGui {
 
     /**
