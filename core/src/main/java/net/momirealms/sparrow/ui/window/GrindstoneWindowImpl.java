@@ -81,11 +81,11 @@ final class GrindstoneWindowImpl extends AbstractWindow<MenuHandle> implements G
             if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("grindstone result GUI must have size 1x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(this.lowerGui)
+                    WindowLayout.Region.lower(lowerGui)
             );
             return new GrindstoneWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }

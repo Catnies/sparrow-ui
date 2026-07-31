@@ -70,8 +70,8 @@ final class SmithingWindowImpl extends AbstractWindow<MenuHandle> implements Smi
             if (this.upperGui.width() != 4 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("smithing upper GUI must have size 4x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
             return new SmithingWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

@@ -163,12 +163,12 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
             if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("result GUI must have size 1x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.fuelGui),
                     WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(this.lowerGui)
+                    WindowLayout.Region.lower(lowerGui)
             );
             return this.createFurnaceWindow(
                     viewer,

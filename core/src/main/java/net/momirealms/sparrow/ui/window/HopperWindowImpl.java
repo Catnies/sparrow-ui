@@ -71,8 +71,8 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
             if (this.upperGui.width() != 5 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
             return new HopperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

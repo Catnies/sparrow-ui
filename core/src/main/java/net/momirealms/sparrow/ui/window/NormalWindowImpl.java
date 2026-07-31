@@ -85,8 +85,8 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
                 if (this.upperGui.width() != 9 || this.upperGui.height() < 1 || this.upperGui.height() > 6) {
                     throw new IllegalArgumentException("normal upper GUI must have width 9 and height between 1 and 6");
                 }
-                this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-                layout = WindowLayout.split(this.upperGui, this.lowerGui);
+                Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+                layout = WindowLayout.split(this.upperGui, lowerGui);
             }
             return new NormalWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }

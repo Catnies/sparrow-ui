@@ -173,10 +173,10 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
             if (this.selectedRecipeIndex < -1 || this.selectedRecipeIndex >= this.buttonsGui.area())
                 throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + this.selectedRecipeIndex);
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.upperGui),
-                    WindowLayout.Region.lower(this.lowerGui),
+                    WindowLayout.Region.lower(lowerGui),
                     WindowLayout.Region.virtual(this.buttonsGui)
             );
             return new StonecutterWindowImpl(

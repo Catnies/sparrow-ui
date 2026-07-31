@@ -235,10 +235,10 @@ final class CrafterWindowImpl extends AbstractWindow<CrafterMenuHandle> implemen
             if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("crafter result GUI must have size 1x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.craftingGui),
-                    WindowLayout.Region.lower(this.lowerGui),
+                    WindowLayout.Region.lower(lowerGui),
                     WindowLayout.Region.upper(this.resultGui)
             );
             return new CrafterWindowImpl(

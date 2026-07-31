@@ -169,12 +169,12 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
             if (this.resultGui.width() != 3 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("brewing result GUI must have size 3x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.resultGui),
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.fuelGui),
-                    WindowLayout.Region.lower(this.lowerGui)
+                    WindowLayout.Region.lower(lowerGui)
             );
             return new BrewingWindowImpl(
                     WindowManager.getInstance(),

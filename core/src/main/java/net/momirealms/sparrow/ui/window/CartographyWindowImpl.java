@@ -245,11 +245,11 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
             if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
                 throw new IllegalArgumentException("cartography result GUI must have size 1x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
             WindowLayout layout = WindowLayout.of(
                     WindowLayout.Region.upper(this.inputGui),
                     WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(this.lowerGui)
+                    WindowLayout.Region.lower(lowerGui)
             );
             return new CartographyWindowImpl(
                     WindowManager.getInstance(),

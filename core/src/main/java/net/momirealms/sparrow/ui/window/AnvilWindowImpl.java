@@ -257,8 +257,8 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
             if (this.upperGui.width() != 3 || this.upperGui.height() != 1)
                 throw new IllegalArgumentException("anvil upper GUI must have size 3x1");
 
-            this.lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, this.lowerGui);
+            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
             return new AnvilWindowImpl(
                     WindowManager.getInstance(),
                     viewer,
