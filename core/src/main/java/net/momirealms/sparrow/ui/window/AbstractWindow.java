@@ -724,13 +724,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     bundleSelection == null ? -1 : bundleSelection.selectedIndex(),
                     () -> this.bundleSelections[rawSlot] = null
             )) {
-                path.handleClick(new ItemClick(click.clickType(), this.viewer, this, rawSlot, click.hotbarButton()));
+                path.handleClick(new ItemClick(click.clickType(), this.viewer, this, menu.cursor(), rawSlot, click.hotbarButton()));
             }
             return;
         }
 
         // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
-        WindowOutsideClick event = new WindowOutsideClick(this.viewer, click.clickType(), click.hotbarButton());
+        WindowOutsideClick event = new WindowOutsideClick(this.viewer, this, click.clickType(), menu.cursor(), click.hotbarButton());
         this.outsideClickHandlers.forEachIsolated(
                 handler -> handler.accept(event),
                 "Failed to handle Window outside click",
@@ -801,7 +801,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
         this.updateBundleSelection(packet.slot(), packet.selectedIndex());
-        this.requirePath(packet.slot()).handleBundleSelect(new BundleSelectClick(this.viewer, packet.selectedIndex()));
+        this.requirePath(packet.slot()).handleBundleSelect(new BundleSelectClick(this.viewer, this, packet.slot(), packet.selectedIndex()));
     }
 
     /**
@@ -871,7 +871,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param clickType 点击类型
      */
     protected final void dispatchItemClick(int windowSlot, @NotNull ClickType clickType) {
-        this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, windowSlot, -1));
+        this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, this.semanticsContext.cursor(), windowSlot, -1));
     }
 
     /**

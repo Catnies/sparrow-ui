@@ -254,9 +254,9 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         long resetVersion = this.selectionResetVersion;
 
         // 任一 Item 抛错都会终止后续 Item 和 TradeSelection, previous 也不会前移
-        selectedTrade.getFirstInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 0));
-        selectedTrade.getSecondInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 1));
-        selectedTrade.getResult().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, 2));
+        selectedTrade.getFirstInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 0));
+        selectedTrade.getSecondInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 1));
+        selectedTrade.getResult().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 2));
 
         // Item 处理器可能重入缩短列表; 只有选择状态未被重置时才提交本次索引
         if (this.selectionResetVersion == resetVersion) {
