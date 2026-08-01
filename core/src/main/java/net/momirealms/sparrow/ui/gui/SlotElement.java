@@ -124,7 +124,7 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
     }
 
     /**
-     * 把当前槽位连接到库存的指定槽位: 显示该槽的真实物品, 内容随库存事务实时刷新.
+     * 把当前 GUI 槽位连接到 Inventory 的指定槽位: 显示该槽的当前内容, 内容随 Inventory 事务刷新.
      *
      * @param inventory 库存
      * @param slot 库存槽位编号

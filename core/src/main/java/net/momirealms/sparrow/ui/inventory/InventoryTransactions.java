@@ -16,21 +16,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
- * Inventory事务引擎: 所有Inventory写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
- * <p>一笔事务走四步: plan 由调用方先做完(在快照上算好每个槽改成什么) → pre 在不持锁的状态下
- * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在锁内核对"规划用的快照没被别人改过",
- * 核对通过才换上新内容 → post 放锁之后把事件按提交顺序派出去. 一笔事务涉及多个Inventory时,
+ * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
+ * <p>一笔事务走四步: plan 由调用方先做完(在规划内容上算好每个槽改成什么) → pre 在不持锁的状态下
+ * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在锁内核对规划基准状态引用是否仍然相同,
+ * 核对通过才换上新内容 → post 释放锁后把事件按提交顺序派出去. 一笔事务涉及多个 RootInventory 时,
  * 按每个 Inventory 创建时领到的固定序号依次加锁, 即便多线程同时跑跨 Inventory 事务也不会死锁.
  */
 final class InventoryTransactions {
 
     /**
-     * Inventory在事务里的参与份额: 计划更改槽数据, 规划时看到的快照数据.
+     * 一个 RootInventory 的写集: 要更改的槽位和规划时读取的状态引用.
      *
-     * @param inventory 参与的Inventory
-     * @param planned plan 阶段读到的快照引用, commit 时只比引用不比内容,
-     *                引用变了就说明在计划途中有人已经提交了事务
-     * @param deltas 该Inventory的槽位变更, 构造后不可变
+     * @param inventory 参与事务的 RootInventory
+     * @param planned 规划基准状态引用, commit 时只比较引用而不比较内容;
+     *                引用变化说明规划后已有其他事务提交
+     * @param deltas 该 RootInventory 的槽位变更, 构造后不可变
      */
     record Scope(
             @NotNull RootInventory inventory,
@@ -49,12 +49,12 @@ final class InventoryTransactions {
      * 提交一笔事务: 成功返回 {@link TransactionResult.Committed}, 其余结果都表示零变更.
      *
      * @param reason 变更原因
-     * @param scopes 参与Inventory与各自要改的槽位; 视图场景下同一根Inventory出现多次是合法的, 内部会合并
+     * @param scopes 各 RootInventory 写集; ViewInventory 规划中同一 RootInventory 出现多次是合法的, 内部会合并
      * @param bypassPre 为 {@code true} 时跳过 pre 阶段的询问, 谁也取消不了这笔事务 (post 事件照常派发)
-     * @return 事务结果; 只要不是 Committed, 所有参与Inventory都保持原样
-     * @throws IllegalArgumentException 当事务形状非法时(没有参与Inventory, 某个范围没有变更, 槽号越界, 同一个槽被写两次)
-     * @throws RuntimeException 当提交后的根钩子失败时; 此时镜像状态已经提交, 异常不表示零变更
-     * @throws Error 当提交后的根钩子失败时; 此时镜像状态已经提交, 异常不表示零变更
+     * @return 事务结果; 只要不是 Committed, 所有参与 RootInventory 都保持原样
+     * @throws IllegalArgumentException 当事务形状非法时(没有 RootInventory 写集, 某个写集没有变更, 槽号越界, 同一个槽被写两次)
+     * @throws RuntimeException 当提交后处理失败时; 此时 Sparrow 内部状态已经提交, 异常不表示零变更
+     * @throws Error 当提交后处理失败时; 此时 Sparrow 内部状态已经提交, 异常不表示零变更
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
@@ -78,12 +78,12 @@ final class InventoryTransactions {
 
         int locked = 0;
         try {
-            // 按全序逐把加锁, 消除跨Inventory事务的死锁可能
+            // 按全序逐把加锁, 消除跨 RootInventory 事务的死锁可能
             for (; locked < ordered.size(); locked++) {
                 ordered.get(locked).inventory().writeLock().lock();
             }
 
-            // 乐观校验: 任一快照引用已变说明有并发提交插入, 整体放弃
+            // 乐观校验: 任一规划基准状态引用已变说明有并发提交插入, 整体放弃
             for (int i = 0; i < ordered.size(); i++) {
                 Scope scope = ordered.get(i);
                 if (scope.inventory().currentState() != scope.planned()) {
@@ -91,7 +91,7 @@ final class InventoryTransactions {
                 }
             }
 
-            // 先为全部 Inventory 构造新快照再统一交换, 保证越界等非意料内的异常发生时能够复原.
+            // 先为全部 RootInventory 构造新的内部状态版本再统一交换, 保证意外异常发生时尚未改动任何状态.
             @Nullable ItemStack[][] newStates = new ItemStack[ordered.size()][];
             for (int i = 0; i < ordered.size(); i++) {
                 newStates[i] = applyDeltas(ordered.get(i));
@@ -111,7 +111,7 @@ final class InventoryTransactions {
         }
 
         // 先让每个 RootInventory 完成提交后的工作, ReferencingInventory 会在这里把内容写回外部容器.
-        // 因此提交后处理器运行时能够读到最新内容. 一个根失败也不能跳过其他根, 最后再统一抛出异常.
+        // 因此提交后处理器运行时能够读到最新内容. 一个 RootInventory 失败也不能跳过其他 RootInventory, 最后再统一抛出异常.
         Throwable afterCommitFailure = null;
         try {
             for (int i = 0; i < ordered.size(); i++) {
@@ -135,10 +135,10 @@ final class InventoryTransactions {
     }
 
     /**
-     * 校验事务, 再把指向同一 RootInventory 的多个范围合并成一个.
+     * 校验事务, 再把指向同一 RootInventory 的多个写集合并成一个.
      *
-     * @param scopes 调用方声明的参与范围
-     * @return 合并后的参与范围, 保持首次出现的声明顺序
+     * @param scopes 调用方声明的 RootInventory 写集
+     * @return 合并后的 RootInventory 写集, 保持首次出现的声明顺序
      * @throws IllegalArgumentException 当事务形状非法或存在冲突写入时
      */
     @NotNull
@@ -160,7 +160,7 @@ final class InventoryTransactions {
             }
         }
 
-        // 按根Inventory归并, LinkedHashMap 保住声明首现顺序
+        // 按 RootInventory 归并, LinkedHashMap 保住声明首现顺序
         LinkedHashMap<RootInventory, Scope> mergedByRoot = new LinkedHashMap<>();
         for (int i = 0; i < scopes.size(); i++) {
             Scope scope = scopes.get(i);
@@ -178,7 +178,7 @@ final class InventoryTransactions {
             mergedByRoot.put(scope.inventory(), new Scope(scope.inventory(), scope.planned(), combined));
         }
 
-        // 合并后的同槽重复意味着两个来源对同一物理槽给出冲突写入, 是调用方缺陷
+        // 合并后的同槽重复意味着两个来源对同一个 RootInventory 槽位给出冲突写入, 是调用方缺陷
         List<Scope> merged = List.copyOf(mergedByRoot.values());
         for (int i = 0; i < merged.size(); i++) {
             Scope scope = merged.get(i);
@@ -190,7 +190,7 @@ final class InventoryTransactions {
             }
         }
 
-        // 单根Inventory的物理映射在构造时保证一对一;只有多个根可能跨镜像写入同一个外部槽.
+        // 单个 RootInventory 的 SlotKey 映射在构造时保证一对一; 只有多个 RootInventory 可能指向相同的外部 SlotKey.
         if (merged.size() > 1) {
             HashSet<SlotKey> seenPhysicalSlots = new HashSet<>();
             for (int i = 0; i < merged.size(); i++) {
@@ -239,11 +239,11 @@ final class InventoryTransactions {
     /**
      * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
      * <p>Composite 可能同时使用多个被修改的 RootInventory, 但它仍然只处理一次.
-     * 当前 Inventory 没有可见变化或没有订阅者时, 不会创建对应事件.
+     * 当前 Inventory 没有可见槽位变更或没有订阅者时, 不会创建对应事件.
      *
      * @param reason 事务触发原因
      * @param scopes 本笔事务修改到的 RootInventory
-     * @param rootChanges 整笔事务在 RootInventory 中的变化
+     * @param rootChanges 整笔事务的 RootInventory 变更组
      * @param includePre 是否需要通知提交前订阅者
      * @return 本笔事务需要发送的 Inventory 更新事件
      */
@@ -261,7 +261,7 @@ final class InventoryTransactions {
             scopes.get(i).inventory().collectUpdateChannels(channels, seen);
         }
 
-        // 记住当前订阅者, 并把根槽位编号转换成各 Inventory 自己的槽位编号.
+        // 记录当前订阅者名单, 并把 RootInventory 槽位变更投影成各 Inventory 自己的槽位变更.
         List<InventoryUpdateChannel.Prepared> updates = new ArrayList<>(channels.size());
         for (int i = 0; i < channels.size(); i++) {
             InventoryUpdateChannel.Prepared update = channels.get(i).prepare(reason, rootChanges, includePre);
@@ -272,7 +272,7 @@ final class InventoryTransactions {
         return updates;
     }
 
-    // 把变更落到一张新快照上, 复制当前快照, 再把发生变化的槽位换成新物品.
+    // 复制当前内部状态版本, 再应用槽位变更, 得到新的内部状态版本.
     private static @Nullable ItemStack @NotNull [] applyDeltas(Scope scope) {
         @Nullable ItemStack[] next = scope.inventory().currentState().clone();
         List<SlotChange> deltas = scope.deltas();

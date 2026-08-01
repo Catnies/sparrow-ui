@@ -11,10 +11,10 @@ import org.jetbrains.annotations.Nullable;
 public interface ClientboundStateProjection extends ClientboundPacketFilter {
 
     /**
-     * 判断新 Window 是否复用了当前投影实例.
+     * 判断新 Window 是否复用了当前 ClientboundStateProjection 实例.
      *
      * @param successorFilter 新会话声明的拦包规则; 没有新会话时为 null
-     * @return 新会话继续维护当前投影时返回 true
+     * @return 新会话继续维护当前 ClientboundStateProjection 时返回 true
      */
     default boolean continuedBy(@Nullable ClientboundPacketFilter successorFilter) {
         return successorFilter == this;
@@ -22,7 +22,7 @@ public interface ClientboundStateProjection extends ClientboundPacketFilter {
 
     /**
      * 创建客户端应恢复的原版数据包.
-     * <p>只有新 Window 没有复用当前投影实例时才会调用. 调用方会在旧菜单关闭后发送这个包.
+     * <p>只有新 Window 没有复用当前 ClientboundStateProjection 实例时才会调用. 调用方会在旧菜单关闭后发送这个包.
      *
      * @return 恢复客户端状态的原版数据包
      */

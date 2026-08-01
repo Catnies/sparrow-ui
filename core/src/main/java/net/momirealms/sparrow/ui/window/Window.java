@@ -22,8 +22,8 @@ import java.util.function.Supplier;
 
 /**
  * 由一名玩家查看的 GUI 会话.
- * <p>所有变更方法都可以从任意线程调用. 命令会按玩家串行化命, 并只在玩家实体线程修改
- * GUI、菜单和协议状态. 查询方法返回最近一次已提交状态的线程安全快照.
+ * <p>所有变更方法都可以从任意线程调用. 命令会按玩家串行执行, 并只在玩家实体线程修改
+ * GUI, 菜单和协议状态. 查询方法返回最近一次已应用状态的线程安全快照.
  */
 public interface Window {
 
@@ -62,9 +62,9 @@ public interface Window {
     }
 
     /**
-     * 请求打开 Window, Stage 完成表示服务端生命周期已经提交, 不表示客户端已经显示.
+     * 请求打开 Window, Stage 完成表示服务端打开流程已经执行, 不表示客户端已经显示.
      *
-     * @return 打开请求的提交结果
+     * @return 打开请求的执行结果
      */
     @NotNull CompletionStage<OpenResult> open();
 
@@ -72,7 +72,7 @@ public interface Window {
      * 请求关闭 Window.
      * closeable 只限制玩家主动关闭, 不限制插件命令.
      *
-     * @return 关闭请求的提交结果
+     * @return 关闭请求的执行结果
      */
     @NotNull CompletionStage<CloseResult> close();
 
@@ -108,7 +108,7 @@ public interface Window {
     void updateTitle();
 
     /**
-     * 当前菜单标题, 也就是最近一次提交的标题快照.
+     * 当前菜单标题, 也就是最近一次已应用的标题快照.
      *
      * @return 当前标题
      */
@@ -116,7 +116,7 @@ public interface Window {
 
     /**
      * 设置是否接受客户端主动关闭.
-     * 此设置不阻止插件、断线或 Bukkit 外部关闭.
+     * 此设置不阻止插件, 断线或 Bukkit 外部关闭.
      *
      * @param closeable 是否可由客户端主动关闭
      */
@@ -302,7 +302,7 @@ public interface Window {
      * 通知 Window 对指定槽位的显示内容进行更新.
      * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.
      *
-     * @param windowSlot Window 逻辑槽位
+     * @param windowSlot Window 槽位
      */
     void notifyUpdate(int windowSlot);
 
@@ -341,9 +341,9 @@ public interface Window {
     @NotNull List<Gui> guis();
 
     /**
-     * 返回窗口槽位对应的根 GUI 链接.
+     * 返回 Window 槽位对应的根 GUI 链接.
      *
-     * @param windowSlot Window 逻辑槽位
+     * @param windowSlot Window 槽位
      * @return 根 GUI 链接
      */
     @NotNull
@@ -359,7 +359,7 @@ public interface Window {
     SlotElement.GuiLink guiAtHotbar(int hotbarSlot);
 
     /**
-     * 打开请求的提交结果.
+     * 打开请求的执行结果.
      */
     enum OpenResult {
         OPENED,
@@ -368,7 +368,7 @@ public interface Window {
     }
 
     /**
-     * 关闭请求的提交结果.
+     * 关闭请求的执行结果.
      */
     enum CloseResult {
         CLOSED,
@@ -593,7 +593,7 @@ public interface Window {
          * <p>此方法先同步调用 {@link #build(Player)}, 因而同样受其 Bukkit 背包线程约束.
          *
          * @param viewer 查看者
-         * @return 打开请求的提交结果
+         * @return 打开请求的执行结果
          */
         default @NotNull CompletionStage<OpenResult> open(@NotNull Player viewer) {
             return this.build(viewer).open();

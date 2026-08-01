@@ -6,10 +6,10 @@ import org.jetbrains.annotations.NotNull;
 import java.util.List;
 
 /**
- * 一次事务中单个Inventory的全部槽位变更.
+ * 一笔事务中单个 RootInventory 的变更组.
  *
- * @param inventory 发生变更的Inventory
- * @param slotChanges 该Inventory的槽位变更, 不可变列表
+ * @param inventory 发生变更的 RootInventory
+ * @param slotChanges 使用该 RootInventory 槽位坐标的变更记录, 不可变列表
  */
 public record RootInventoryChange(
         @NotNull SparrowInventory inventory,

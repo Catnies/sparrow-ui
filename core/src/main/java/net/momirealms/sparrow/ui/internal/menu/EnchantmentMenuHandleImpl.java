@@ -18,7 +18,7 @@ import java.util.List;
 
 /**
  * 把附魔展示状态转换为原版附魔台菜单协议.
- * <p>选项和 seed 存放在十个 container data slot 中. 变更只有在整个发包批次成功提交后
+ * <p>选项和 seed 存放在十个 container data slot 中. 变更只有在整个发包批次成功进入发送路径后
  * 才会清除 dirty 标记, 构包或发送失败时仍可在下一轮重试.
  */
 @SuppressWarnings("UnstableApiUsage")
@@ -101,7 +101,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
      */
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
-        // queue 只冻结本轮范围, dirty 状态要等发送路径提交后才清除
+        // queue 只记录本批发送范围, dirty 状态要等数据包进入发送路径后才清除
         this.dataSlots.queue(forceFull);
         for (
                 int slot = this.dataSlots.nextQueuedSlot(0);
@@ -117,7 +117,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
     }
 
     /**
-     * 在整个菜单包批次成功交给发送路径后提交 data slot 状态.
+     * 在整个菜单包批次成功交给发送路径后确认 data slot 状态.
      */
     @Override
     protected void commitPackets() {
@@ -125,7 +125,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
     }
 
     /**
-     * 三个附魔选项和符文种子到原版十个 container data slot 的事务快照.
+     * 三个附魔选项和符文种子对应的十个 container data slot 一致状态.
      */
     static final class DataSlots {
         static final int OPTION_COUNT = 3;          // cost 使用 data slot 0-2
@@ -142,12 +142,12 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
                 -1, -1, -1
         };
         private final BitSet dirtySlots = new BitSet(DATA_SLOT_COUNT);  // 尚未成功发送的变更
-        private final BitSet queuedSlots = new BitSet(DATA_SLOT_COUNT); // 当前批次冻结的发送范围
+        private final BitSet queuedSlots = new BitSet(DATA_SLOT_COUNT); // 当前批次记录的发送范围
         private boolean clientOptionsInvalid;                          // 客户端预测或输入槽更新可能覆盖了全部选项
         private boolean clientOptionsQueued;                           // 当前批次是否负责恢复全部客户端选项
 
         /**
-         * 更新一个选项对应的 cost、clue ID 和 clue level.
+         * 更新一个选项对应的 cost, clue ID 和 clue level.
          *
          * @param index 选项索引
          * @param cost 客户端显示的经验等级
@@ -182,7 +182,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
         }
 
         /**
-         * 冻结下一批要发送的 data slot. 强制同步会包含全部十项.
+         * 记录下一批要发送的 data slot. 强制同步会包含全部十项.
          *
          * @param forceFull 是否发送全部 data slot
          */
@@ -220,7 +220,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
         }
 
         /**
-         * 提交当前批次, 只清除该批次实际覆盖的 dirty 标记.
+         * 确认当前批次已进入发送路径, 只清除该批次实际覆盖的 dirty 标记.
          */
         void commit() {
             this.dirtySlots.andNot(this.queuedSlots);

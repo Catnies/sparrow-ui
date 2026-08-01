@@ -26,7 +26,7 @@ public interface StonecutterWindow extends Window {
     /**
      * 设置当前选中的配方按钮.
      * <p>-1 表示清除选择. Window 打开时, 非负索引必须属于当前发送给客户端的有效
-     * 按钮前缀; Window 关闭时只按按钮 GUI 的容量校验, 并在下次初始渲染时归一化.
+     * 按钮前缀; Window 未打开时只按按钮 GUI 的容量校验, 并在下次初始渲染时把越界选择校正为 -1.
      *
      * @param index 配方按钮索引或 -1
      */
@@ -47,7 +47,7 @@ public interface StonecutterWindow extends Window {
         Builder setUpperGui(@NotNull Gui upperGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

@@ -86,14 +86,14 @@ public final class PacketListener implements Listener, AutoCloseable {
 
     /**
      * 为一个 Window 会话安装新的入站包接收端.
-     * <p>新 Session 先替换活动引用但尚未提交. 若随后的打开包发送失败, 调用方必须
+     * <p>新 Session 先替换活动引用, 但仍保留回滚点. 若随后的打开包发送失败, 调用方必须
      * {@link Session#rollback()} 恢复此前会话; 成功后调用 {@link Session#commit()} 丢弃回滚点.
      *
      * @param player 连接所属玩家
      * @param containerId 要捕获的容器编号
      * @param inputSink 接收领域化入站消息的缓冲入口
      * @param clientboundPacketFilter 当前 Window 要拦下的原版出站包规则; 不处理时为 null
-     * @return 可提交、回滚或关闭的会话
+     * @return 可通过 {@link Session#commit()} 确认, 也可回滚或关闭的会话
      */
     @NotNull
     public Session open(
@@ -340,7 +340,7 @@ public final class PacketListener implements Listener, AutoCloseable {
             else {
                 return false;
             }
-            // Pong 只监听而不拦截; 其他 Window 包由领域层作为权威处理.
+            // Pong 只监听而不拦截; 其他 Window 包由领域层负责解释并生成服务端状态.
             this.inputSink.accept(input);
             return consume;
         }
@@ -348,7 +348,7 @@ public final class PacketListener implements Listener, AutoCloseable {
         /**
          * 找出本会话关闭后需要恢复原版数据的客户端内容.
          *
-         * <p>如果新会话复用了同一个投影实例, 它会继续维持客户端状态, 因而不会出现在结果中.</p>
+         * <p>如果新会话复用了同一个 ClientboundStateProjection 实例, 它会继续维持客户端状态, 因而不会出现在结果中.</p>
          *
          * @return 没有被新会话接手的客户端内容; 没有时为 null
          */
@@ -396,7 +396,7 @@ public final class PacketListener implements Listener, AutoCloseable {
 
         /**
          * 将 NMS 容器输入完整解码为稳定的 Bukkit 点击类型或拖拽步骤.
-         * 非法 button 组合保留为 {@link ClickType#UNKNOWN}, 交给实体线程触发权威状态纠正.
+         * 非法 button 组合保留为 {@link ClickType#UNKNOWN}, 交给实体线程触发服务端状态纠正.
          */
         private static MenuInput.Common.Interaction interaction(Object click) {
             ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;

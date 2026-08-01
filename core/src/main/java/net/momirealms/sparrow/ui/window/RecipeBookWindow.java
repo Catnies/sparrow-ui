@@ -14,11 +14,11 @@ public interface RecipeBookWindow extends Window {
     /**
      * 向当前菜单发送指定配方的 ghost recipe.
      *
-     * <p>此操作不要求玩家已经解锁配方. Stage 完成表示协议包已经提交给连接,
+     * <p>此操作不要求玩家已经解锁配方. Stage 完成表示协议包已经进入发送路径,
      * 不表示客户端已经显示或确认.</p>
      *
      * @param recipeId 配方资源标识符
-     * @return ghost recipe 提交结果
+     * @return ghost recipe 发送结果
      */
     @NotNull
     CompletionStage<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId);

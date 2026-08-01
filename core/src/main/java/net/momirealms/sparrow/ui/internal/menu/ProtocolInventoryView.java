@@ -17,10 +17,10 @@ import org.jetbrains.annotations.Nullable;
 import java.util.BitSet;
 
 /**
- * 为 Bukkit 事件提供当前协议快照, 但不把事件对视图的写入直接应用到玩家物品栏.
+ * 为 Bukkit 事件提供专用的 InventoryView, 但不把事件对该 InventoryView 的写入直接应用到玩家物品栏.
  *
- * <p>顶部库存本身就是事件状态的唯一镜像, 底部槽位使用独立快照数组. 事件可以观察与协议包
- * 一致的状态, 但任何写入都只触碰本地投影, Window 仍是唯一的物品变更权威.</p>
+ * <p>顶部库存和底部槽位数组共同组成 Bukkit 事件状态副本. 事件可以观察与协议包一致的内容,
+ * 但任何写入都只修改这份副本; 最终服务端渲染结果仍由 Window 决定.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
 final class ProtocolInventoryView implements InventoryView {
@@ -39,9 +39,9 @@ final class ProtocolInventoryView implements InventoryView {
     private boolean cursorTouched;
 
     /**
-     * 创建一个初始为空的协议视图.
+     * 创建一个初始为空的 Bukkit 事件用的 InventoryView.
      *
-     * @param player 视图所属玩家
+     * @param player InventoryView 所属玩家
      * @param upperSize 顶部槽位数量
      * @param inventoryType Bukkit 库存类型
      * @param menuType Bukkit 菜单类型
@@ -51,15 +51,15 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 创建下部玩家物品栏位于指定 raw slot 的协议视图.
+     * 创建下部玩家物品栏位于指定协议槽位(raw slot)的 Bukkit 事件用的 InventoryView.
      *
      * <p>顶部库存中位于 {@code lowerStart} 之前的槽位先出现, 随后是固定的 36 个玩家槽位,
      * 顶部库存的剩余槽位位于协议末尾. 普通菜单的 {@code upperSize == lowerStart},
      * Crafter 则用末尾的顶部槽位表示结果槽.</p>
      *
-     * @param player 视图所属玩家
+     * @param player InventoryView 所属玩家
      * @param upperSize Bukkit 顶部库存槽位数量
-     * @param lowerStart 玩家物品栏在协议中的起始 raw slot
+     * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
      * @param inventoryType Bukkit 库存类型
      * @param menuType Bukkit 菜单类型
      */
@@ -68,11 +68,11 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 创建使用给定顶部库存作为事件投影的协议视图.
+     * 创建使用给定 Bukkit 顶部库存保存事件状态的 InventoryView.
      *
-     * @param player 视图所属玩家
-     * @param upper Bukkit 顶部库存投影
-     * @param lowerStart 玩家物品栏在协议中的起始 raw slot
+     * @param player InventoryView 所属玩家
+     * @param upper 保存 Bukkit 事件状态的顶部库存
+     * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
      * @param inventoryType Bukkit 库存类型
      * @param menuType Bukkit 菜单类型
      */
@@ -94,10 +94,10 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 用完整权威状态替换事件可见的槽位、光标和标题.
+     * 用完整服务端渲染结果替换 Bukkit 事件状态副本中的槽位, 光标和标题.
      *
-     * @param slots 完整权威槽位
-     * @param cursor 权威光标
+     * @param slots 完整的服务端槽位渲染结果
+     * @param cursor 菜单实际光标
      * @param title 当前标题
      */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
@@ -116,12 +116,12 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 将权威增量重新投影到事件可见的协议镜像.
+     * 把发生变化的服务端渲染结果写回 Bukkit 事件状态副本.
      *
-     * @param slots 当前权威槽位数组
+     * @param slots 当前服务端槽位渲染结果
      * @param changedSlots 已发送变化或被 Bukkit 事件触碰的槽位
-     * @param cursor 当前权威光标
-     * @param cursorChanged 是否需要恢复权威光标投影
+     * @param cursor 当前菜单实际光标
+     * @param cursorChanged 是否需要恢复菜单实际光标
      */
     void apply(
             ItemStack @NotNull [] slots,
@@ -147,7 +147,7 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 返回事件视图当前展示的 Adventure 标题.
+     * 返回 Bukkit 事件用 InventoryView 当前展示的 Adventure 标题.
      *
      * @return 当前标题
      */
@@ -170,7 +170,7 @@ final class ProtocolInventoryView implements InventoryView {
     /**
      * 取出并清空 Bukkit 事件是否写入过光标的标记.
      *
-     * @return 需要恢复权威光标投影时返回 {@code true}
+     * @return 需要恢复菜单实际光标时返回 {@code true}
      */
     boolean takeCursorTouched() {
         boolean touched = this.cursorTouched;
@@ -199,7 +199,7 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 只更新协议镜像; 底部库存的写入绝不落到玩家真实物品栏.
+     * 只更新 Bukkit 事件状态副本; 底部库存的写入绝不落到玩家 Bukkit Inventory.
      */
     @Override
     public void setItem(int rawSlot, @Nullable ItemStack item) {
@@ -231,7 +231,7 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 只更新事件可见的光标镜像.
+     * 只更新 Bukkit 事件状态副本中的光标.
      */
     @Override
     public void setCursor(@Nullable ItemStack item) {

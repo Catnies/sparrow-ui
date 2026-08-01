@@ -30,7 +30,7 @@ public interface MerchantWindow extends Window {
     void setLevel(int level);
 
     /**
-     * 返回最近一次已提交的商人等级.
+     * 返回最近一次已应用的商人等级.
      *
      * @return 0 到 5 的等级
      */
@@ -44,7 +44,7 @@ public interface MerchantWindow extends Window {
     void setProgress(double progress);
 
     /**
-     * 返回最近一次已提交的经验条进度.
+     * 返回最近一次已应用的经验条进度.
      *
      * @return -1.0 或 0.0 到 1.0
      */
@@ -72,7 +72,7 @@ public interface MerchantWindow extends Window {
     void setTrades(@NotNull List<? extends Trade> trades);
 
     /**
-     * 返回最近一次已提交的交易快照.
+     * 返回最近一次已应用的交易快照.
      *
      * @return 不可修改的有序交易列表
      */
@@ -253,14 +253,14 @@ public interface MerchantWindow extends Window {
         /**
          * 设置必须为 3x1 的上部 GUI.
          *
-         * @param upperGui 商人三个真实槽位的 GUI
+         * @param upperGui 商人三个协议槽位(raw slot)对应的 GUI
          * @return 此 Builder
          */
         @NotNull
         Builder setUpperGui(@NotNull Gui upperGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

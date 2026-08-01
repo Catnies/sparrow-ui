@@ -24,7 +24,7 @@ final class ClickInterpreter {
      * @param interaction 已解码的容器交互
      * @param layout 当前 Window 布局
      * @param generation 当前 Window generation
-     * @return 等待、单次点击、完整拖拽或拒绝结果
+     * @return 等待, 单次点击, 完整拖拽或拒绝结果
      */
     @NotNull
     Result interpret(@NotNull MenuInput.Common.Interaction interaction, @NotNull WindowLayout layout, long generation) {
@@ -50,7 +50,7 @@ final class ClickInterpreter {
      *
      * @param packet 已解码的点击包
      * @param layout 当前 Window 布局
-     * @return 单次点击结果; 按键、热键栏编号或槽位不合法时返回拒绝
+     * @return 单次点击结果; 按键, 热键栏编号或槽位不合法时返回拒绝
      */
     private static Result interpretSingleClick(MenuInput.Common.Click packet, WindowLayout layout) {
         ClickType clickType = packet.clickType();
@@ -73,13 +73,13 @@ final class ClickInterpreter {
     /**
      * 推进网络层已经解码好的拖拽状态机.
      *
-     * @param step 拖拽的一步(开始、添加槽位或结束)
+     * @param step 拖拽的一步(开始, 添加槽位或结束)
      * @param layout 当前 Window 布局
      * @param generation 当前 Window generation
-     * @return 等待、完整拖拽或拒绝结果
+     * @return 等待, 完整拖拽或拒绝结果
      */
     private Result interpretDrag(MenuInput.Common.DragStep step, WindowLayout layout, long generation) {
-        // 拖拽只认左键、右键和中键, 其他按键直接拒绝
+        // 拖拽只认左键, 右键和中键, 其他按键直接拒绝
         if (!ClickInterpreter.isDragClick(step.clickType())) {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_BUTTON);
@@ -124,7 +124,7 @@ final class ClickInterpreter {
      * 把一格加进进行中的拖拽.
      *
      * @param clickType 拖拽按键
-     * @param windowSlot 客户端声明的窗口槽位
+     * @param windowSlot 客户端声明的协议槽位(raw slot)
      * @param generation 当前 Window generation
      * @param layout 当前 Window 布局
      * @return 正常添加时返回等待结果; 拖拽对不上或槽位越界时返回拒绝
@@ -222,12 +222,12 @@ final class ClickInterpreter {
         }
 
         /**
-         * 可以直接分派的单次点击; rawSlot 只可能是 {@link InventoryView#OUTSIDE}
-         * 或协议范围内的非负 Window 槽位.
+         * 可以直接分派的单次点击; {@code rawSlot} 是协议槽位(raw slot),
+         * 也可能是 {@link InventoryView#OUTSIDE}.
          *
          * @param clickType 点击类型
          * @param hotbarButton 热键栏编号, 仅 NUMBER_KEY 有效, 其他情况为 -1
-         * @param rawSlot 窗口槽位或 {@link InventoryView#OUTSIDE}
+         * @param rawSlot 协议槽位(raw slot)或 {@link InventoryView#OUTSIDE}
          */
         record SingleClick(
                 @NotNull ClickType clickType,
@@ -240,7 +240,7 @@ final class ClickInterpreter {
          * 已完成的拖拽, 槽位按客户端首次加入的顺序排列并去重.
          *
          * @param clickType 拖拽按键
-         * @param slots 拖过的槽位
+         * @param slots 拖过的协议槽位(raw slot)
          */
         record Drag(@NotNull ClickType clickType, @NotNull List<Integer> slots) implements Result {
         }

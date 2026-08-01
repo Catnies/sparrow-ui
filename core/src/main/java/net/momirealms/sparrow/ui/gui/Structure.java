@@ -81,7 +81,7 @@ public final class Structure {
         if (first.width() == 0)
             throw new IllegalArgumentException("structure rows must contain at least one slot");
 
-        // 第一行确定尺寸后, 其余行必须保持相同的逻辑宽度
+        // 第一行确定尺寸后, 其余行必须包含相同数量的 GUI 槽位
         GuiSize size = new GuiSize(first.width(), rows.length);
         int[] identifierBySlot = new int[size.area()];
         int[] sourceColumns = new int[size.area()];
@@ -295,8 +295,8 @@ public final class Structure {
          *
          * @param row 模板行文本
          * @param rowIndex 行号, 用于错误定位
-         * @param tokenConsumer 接收标志符的回调, (identifier 标志符内部编号, sourceColumn 模板中的原始列号, logicalColumn 槽位在 GUI 中的逻辑列号)
-         * @return 该行的逻辑宽度, 即槽位数量
+         * @param tokenConsumer 接收标志符的回调, (identifier 标志符内部编号, sourceColumn 模板中的原始列号, logicalColumn GUI 槽位列号)
+         * @return 该行的 GUI 槽位数量
          * @throws IllegalArgumentException 模板语法错误时抛出
          */
         private int parse(String row, int rowIndex, TriIntConsumer tokenConsumer) {

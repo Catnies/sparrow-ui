@@ -36,7 +36,7 @@ public interface PlayerUpdateReason extends UpdateReason {
      *
      * @param player 发起拖拽的玩家
      * @param clickType 拖拽按键(LEFT 均分, RIGHT 每槽一个, MIDDLE 创造整堆)
-     * @param slots 手势经过并成功路由的Inventory槽, 按手势顺序排列且不含重复物理别名
+     * @param slots 手势经过并成功解析出的 InventoryLink 槽位, 按手势顺序排列且不含重复 SlotKey
      */
     record Drag(
             @NotNull Player player,

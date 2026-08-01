@@ -111,7 +111,7 @@ public interface AnvilWindow extends Window {
         @NotNull Builder setUpperGui(@NotNull Gui upperGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

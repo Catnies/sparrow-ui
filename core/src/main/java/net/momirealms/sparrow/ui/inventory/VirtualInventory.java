@@ -12,8 +12,6 @@ import java.util.UUID;
 
 /**
  * 自己持有槽位数据的 Inventory 实现.
- * <p>身份用 {@link UUID} 表达, 也是持久化的主键, 槽内容在构造时快照化;
- * 尺寸构造后固定, 不支持 resize.
  * <p>堆叠上限, 遍历顺序与 guiPriority 属于配置: 改配置不产生槽变更, 不走事务也不派发事件,
  * 只影响之后的批量规划; 改配置与进行中的事务交错时, 读到新旧值都属正常(弱一致).
  */
@@ -46,7 +44,7 @@ public final class VirtualInventory extends RootInventory {
     }
 
     /**
-     * 以随机 UUID 创建 Inventory, 初始内容取给定数组快照.
+     * 以随机 UUID 创建 Inventory, 并复制给定的初始槽内容.
      *
      * @param initial 初始槽位内容, 空槽位置为 {@code null}
      */
@@ -55,7 +53,7 @@ public final class VirtualInventory extends RootInventory {
     }
 
     /**
-     * 以给定 UUID 创建 Inventory, 初始内容取给定数组快照.
+     * 以给定 UUID 创建 Inventory, 并复制给定的初始槽内容.
      *
      * @param uuid 持久化身份
      * @param initial 初始槽位内容, 空槽位置为 {@code null}
@@ -119,7 +117,7 @@ public final class VirtualInventory extends RootInventory {
     public synchronized void setMaxStackSize(int slot, int max) {
         if (max < 1)
             throw new IllegalArgumentException("max stack size must be at least 1: " + max);
-        // 沿用快照惯例: 数组不可变, 改一个槽也是复制整组后换引用, 读者无锁安全.
+        // 配置数组按写时复制方式发布: 改一个槽也复制整组后换引用, 读者无锁安全.
         // synchronized 用来串行化配置写者: 复制-修改-写回不是原子操作, 两个线程同时改
         // 会基于同一份旧数组互相覆盖, 配置悄悄丢失
         int[] current = this.slotMaxStackSizes;

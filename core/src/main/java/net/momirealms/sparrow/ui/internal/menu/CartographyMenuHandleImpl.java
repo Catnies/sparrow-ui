@@ -27,7 +27,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Paper 制图台菜单句柄, 负责虚拟地图、地图数据包和客户端预览输入.
+ * Paper 制图台菜单句柄, 负责虚拟地图, 地图数据包和客户端预览输入.
  */
 @SuppressWarnings("UnstableApiUsage")
 final class CartographyMenuHandleImpl extends ContainerMenuHandle implements CartographyMenuHandle {

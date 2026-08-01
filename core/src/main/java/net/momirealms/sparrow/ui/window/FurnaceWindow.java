@@ -50,7 +50,7 @@ public interface FurnaceWindow extends RecipeBookWindow {
     interface Builder extends RecipeBookWindow.Builder<FurnaceWindow, Builder> {
 
         /**
-         * 设置映射 raw slot 0 的 1x1 输入 GUI.
+         * 设置映射协议槽位(raw slot)0 的 1x1 输入 GUI.
          *
          * @param inputGui 输入 GUI
          * @return 此 Builder
@@ -59,7 +59,7 @@ public interface FurnaceWindow extends RecipeBookWindow {
         Builder setInputGui(@NotNull Gui inputGui);
 
         /**
-         * 设置映射 raw slot 1 的 1x1 燃料 GUI.
+         * 设置映射协议槽位(raw slot)1 的 1x1 燃料 GUI.
          *
          * @param fuelGui 燃料 GUI
          * @return 此 Builder
@@ -68,7 +68,7 @@ public interface FurnaceWindow extends RecipeBookWindow {
         Builder setFuelGui(@NotNull Gui fuelGui);
 
         /**
-         * 设置映射 raw slot 2 的 1x1 结果 GUI.
+         * 设置映射协议槽位(raw slot)2 的 1x1 结果 GUI.
          *
          * @param resultGui 结果 GUI
          * @return 此 Builder
@@ -77,7 +77,7 @@ public interface FurnaceWindow extends RecipeBookWindow {
         Builder setResultGui(@NotNull Gui resultGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

@@ -31,7 +31,7 @@ public class SparrowUI implements Listener {
 
     /**
      * 设置 SparrowUI 运行所在的插件实例.
-     * 该实例用于注册事件监听器、调度任务等.
+     * 该实例用于注册事件监听器, 调度任务等.
      *
      * @param plugin 要设置的插件实例
      * @throws IllegalStateException 如果插件实例已设置

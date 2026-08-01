@@ -244,7 +244,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     /**
-     * 冻结本次 build 使用的公共设置.
+     * 复制本次 build 使用的公共设置.
      *
      * @param windowReference Window 创建后写入的本次 build 引用
      * @return 独立的不可变设置快照

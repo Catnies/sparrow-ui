@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 /**
- * 主动向配方书窗口发送 ghost recipe 的提交结果.
+ * 主动向配方书 Window 发送 ghost recipe 的结果.
  */
 public enum GhostRecipeResult {
     SENT,

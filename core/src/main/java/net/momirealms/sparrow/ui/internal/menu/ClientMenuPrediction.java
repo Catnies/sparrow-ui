@@ -11,10 +11,9 @@ import org.jetbrains.annotations.NotNull;
 import java.util.BitSet;
 
 /**
- * 客户端点击包携带的非权威容器预测.
- *
- * <p>此对象只把客户端声称的远端哈希转交给 Paper 的远端槽位镜像. Window 的物品数组始终是
- * 权威状态, 预测值只能缩小需要复核的槽位集合, 不能直接改变任何业务物品.</p>
+ * 客户端点击包携带的容器预测, 只代表客户端声称的状态.
+ * <p>此对象只把客户端声称的哈希交给 Paper 的 RemoteSlot 客户端已知状态. Window 槽位内容始终
+ * 由服务端决定; 预测值只能缩小需要复核的槽位集合, 不能直接改变任何业务物品.</p>
  */
 @ApiStatus.Internal
 public final class ClientMenuPrediction implements MenuPrediction {
@@ -22,7 +21,7 @@ public final class ClientMenuPrediction implements MenuPrediction {
     private static final Object[] EMPTY_HASHES = new Object[0];
 
     private final int[] changedSlots;
-    private final Object[] changedHashes; // NMS HashedStack 快照, 与 changedSlots 按索引对应
+    private final Object[] changedHashes; // NMS HashedStack 数组副本, 与 changedSlots 按索引对应
     private final Object cursor; // NMS HashedStack 光标预测
 
     private ClientMenuPrediction(int @NotNull [] changedSlots, Object @NotNull [] changedHashes, @NotNull Object cursor) {
@@ -35,10 +34,10 @@ public final class ClientMenuPrediction implements MenuPrediction {
      * 从不再向下游转发的点击包接管预测数据.
      *
      * <p>点击包在 Netty 线程解码, 预测会在玩家实体线程消费. 这里把可变 fastutil map 压缩为
-     * 两个顺序数组, 在保持跨线程快照稳定的同时避免为一次性遍历复制哈希表和包装器.</p>
+     * 两个顺序数组, 在保持跨线程输入稳定的同时避免为一次性遍历复制哈希表和包装器.</p>
      *
      * @param packet 已被 Sparrow 捕获的点击包
-     * @return 该包的非权威预测
+     * @return 该包携带的客户端预测状态
      */
     @NotNull
     public static ClientMenuPrediction from(@NotNull Object packet) {
@@ -62,10 +61,10 @@ public final class ClientMenuPrediction implements MenuPrediction {
     }
 
     /**
-     * 将预测写入远端镜像, 并记录后续必须与权威状态核对的槽位.
+     * 将预测写入客户端已知状态, 并记录后续必须与服务端槽位内容核对的槽位.
      *
-     * @param remoteSlots Paper 远端槽位镜像
-     * @param remoteCursor Paper 远端光标镜像
+     * @param remoteSlots Paper 槽位客户端已知状态
+     * @param remoteCursor Paper 光标客户端已知状态
      * @param candidates 待复核槽位集合
      * @return 是否携带了需要复核的光标预测
      */

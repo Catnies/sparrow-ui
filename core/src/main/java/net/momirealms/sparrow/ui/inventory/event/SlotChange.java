@@ -7,9 +7,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class SlotChange {
-    private final int slot;
-    @Nullable private final ItemStack before; // 变更前的内部快照, 空槽为 null
-    @Nullable private final ItemStack after;  // 变更后的内部快照
+    private final int slot;                   // 承载这条记录的 Inventory 坐标
+    @Nullable private final ItemStack before; // 变更前的内部物品副本, 空槽为 null
+    @Nullable private final ItemStack after;  // 变更后的内部物品副本, 空槽为 null
 
     @ApiStatus.Internal
     public SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
@@ -25,7 +25,7 @@ public final class SlotChange {
         this.after = trusted ? after : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
     }
 
-    // 用另一个槽位编号表示同一条物品变化.
+    // 用另一个坐标空间的槽位编号表示同一条槽位变更记录.
     @NotNull
     @ApiStatus.Internal
     public SlotChange withSlot(int slot) {
@@ -66,8 +66,8 @@ public final class SlotChange {
 
     /**
      * 判断两个非空物品是否发生了不相似的替换.
-     * <p>这里的“交换”按 Bukkit {@link ItemStack#isSimilar(ItemStack)} 定义:
-     * 材质、名称、附魔或其他物品元数据不同都可能使本方法返回 {@code true}.
+     * <p>这里的"交换"按 Bukkit {@link ItemStack#isSimilar(ItemStack)} 定义:
+     * 材质, 名称, 附魔或其他物品元数据不同都可能使本方法返回 {@code true}.
      *
      * @return 两个非空物品是否发生了不相似的替换
      */
@@ -106,7 +106,7 @@ public final class SlotChange {
     }
 
     /**
-     * 变更前的物品; 每次调用返回独立克隆, 空槽返回 {@code null}.
+     * 变更前的物品; 每次调用返回独立副本, 空槽返回 {@code null}.
      */
     @Nullable
     public ItemStack before() {
@@ -114,7 +114,7 @@ public final class SlotChange {
     }
 
     /**
-     * 变更后的物品; 每次调用返回独立克隆, 清空槽位时返回 {@code null}.
+     * 变更后的物品; 每次调用返回独立副本, 清空槽位时返回 {@code null}.
      */
     @Nullable
     public ItemStack after() {

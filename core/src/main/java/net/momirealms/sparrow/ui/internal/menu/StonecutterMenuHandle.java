@@ -25,9 +25,9 @@ public interface StonecutterMenuHandle extends MenuHandle {
     void setSelectedRecipeIndex(int index);
 
     /**
-     * 收到客户端选择操作后, 以权威值强制复核选择 property 和结果槽.
+     * 收到客户端选择操作后, 以服务端选中值强制复核选择 property 和结果槽.
      *
-     * @param index 需要恢复给客户端的权威配方索引
+     * @param index 需要恢复给客户端的服务端配方索引
      */
     void reconcileClientSelection(int index);
 }

@@ -12,9 +12,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.BitSet;
 import java.util.List;
 
-/**
- * Paper 铁砧菜单句柄, 负责文本框可用性、结果槽有效性与经验消耗数据同步.
- */
 @SuppressWarnings("UnstableApiUsage")
 final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenuHandle {
     private static final int ENCHANTMENT_COST_DATA_SLOT = 0;

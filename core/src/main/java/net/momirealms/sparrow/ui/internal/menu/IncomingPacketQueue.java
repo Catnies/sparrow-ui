@@ -7,7 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Netty 生产、玩家实体线程消费的有界 FIFO.
+ * Netty 生产, 玩家实体线程消费的有界 FIFO.
  *
  * <p>队列只负责保序和背压. Window 已有唯一实体 tick, 因此不再为每个入站包创建调度任务.</p>
  *

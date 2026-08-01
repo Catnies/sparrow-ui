@@ -81,7 +81,7 @@ final class ClickExecutor {
             return;
         }
 
-        // 跨 InventoryLink 按最终物理槽去重
+        // 跨 InventoryLink 按 SlotKey 去重
         LinkedHashMap<SlotKey, ClickSemantics.LinkedSlot> candidates = new LinkedHashMap<>();
         for (int i = 0; i < windowSlots.size(); i++) {
             int windowSlot = windowSlots.get(i);
@@ -96,7 +96,7 @@ final class ClickExecutor {
             candidates.putIfAbsent(link.physicalKey(), link);
         }
 
-        // 按Inventory分组取得写规划快照, 读取全部发生在对账后的快照上
+        // 按 Inventory 分组取得写规划上下文, 所有读取都发生在外部容器对账之后
         Map<SparrowInventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
         List<DragTarget> targets = new ArrayList<>(candidates.size());
         for (ClickSemantics.LinkedSlot link : candidates.values()) {
@@ -128,7 +128,7 @@ final class ClickExecutor {
             return;
         }
 
-        // 逐槽计算实放量, delta 归入各自规划
+        // 逐槽计算实放量, 槽位变更归入各自规划
         Map<SparrowInventory, List<SlotChange>> deltasByInventory = new LinkedHashMap<>();
         int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
         int placedTotal = 0;
@@ -412,7 +412,7 @@ final class ClickExecutor {
             int windowSlot,
             ClickType clickType
     ) {
-        // 快速空判可基于滞后镜像, 真正的读取在各目标的事务窗口内完成
+        // 快速空判可以读取可能滞后的 Bukkit 内容镜像, 真正的读取在各目标的事务窗口内完成
         if (link.inventory().itemAt(link.slot()) == null) {
             context.markDirty(windowSlot);
             return;
@@ -445,7 +445,7 @@ final class ClickExecutor {
         @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
         if (current == null) return MoveOutcome.FULL;
 
-        // 与源槽是同一物理槽的目标槽上限报 0, 在规划里等于隐身
+        // 与源槽具有相同 SlotKey 的目标槽上限报 0, 在规划里等于不可用
         InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
                 targetPlan.snapshot(),
                 current,

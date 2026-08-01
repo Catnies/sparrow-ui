@@ -59,7 +59,7 @@ public interface CartographyWindow extends Window {
     void setIcons(@NotNull Set<? extends MapIcon> icons);
 
     /**
-     * 返回最近一次已提交的不可修改图标快照.
+     * 返回最近一次已应用的不可修改图标快照.
      *
      * @return 图标快照
      */
@@ -80,7 +80,7 @@ public interface CartographyWindow extends Window {
     void setView(@NotNull View view);
 
     /**
-     * 返回最近一次已提交的预览模式.
+     * 返回最近一次已应用的地图预览模式.
      *
      * @return 预览模式
      */
@@ -217,7 +217,7 @@ public interface CartographyWindow extends Window {
     interface Builder extends Window.Builder<CartographyWindow, Builder> {
 
         /**
-         * 设置映射原始槽位 0 和 1 的 1x2 输入 GUI.
+         * 设置映射协议槽位(raw slot)0 和 1 的 1x2 输入 GUI.
          *
          * @param inputGui 输入 GUI
          * @return 此 Builder
@@ -226,7 +226,7 @@ public interface CartographyWindow extends Window {
         Builder setInputGui(@NotNull Gui inputGui);
 
         /**
-         * 设置映射原始槽位 2 的 1x1 结果 GUI.
+         * 设置映射协议槽位(raw slot)2 的 1x1 结果 GUI.
          *
          * @param resultGui 结果 GUI
          * @return 此 Builder
@@ -235,7 +235,7 @@ public interface CartographyWindow extends Window {
         Builder setResultGui(@NotNull Gui resultGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

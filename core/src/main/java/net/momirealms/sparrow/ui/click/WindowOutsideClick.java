@@ -21,7 +21,7 @@ public final class WindowOutsideClick {
      * @param window 当前 Window
      * @param clickType Bukkit 点击类型
      * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
-     * @param cursor 派发时菜单持有的权威光标快照
+     * @param cursor 派发时菜单持有的实际光标快照
      */
     public WindowOutsideClick(@NotNull Player player, @NotNull Window window, @NotNull ClickType clickType, @NotNull ItemStack cursor, int hotbarButton) {
         this.player = player;

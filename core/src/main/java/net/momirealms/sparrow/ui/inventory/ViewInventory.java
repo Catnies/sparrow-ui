@@ -15,9 +15,9 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 
 /**
- * 不持有槽位状态、把自身槽位换算到一个或多个事务根的派生 Inventory.
- * <p>本类集中实现派生 Inventory 共有的单槽转发、多根规划和刷新行为;
- * 具体子类只需定义固定的槽位映射、内容副本和遍历顺序.
+ * 不持有槽位状态, 把自身槽位换算到一个或多个 RootInventory 的 Inventory.
+ * <p>本类集中实现 ViewInventory 共有的单槽转发, 多 RootInventory 规划和刷新行为;
+ * 具体子类只需定义固定的槽位映射, 内容副本和遍历顺序.
  */
 abstract non-sealed class ViewInventory extends SparrowInventory {
 
@@ -79,19 +79,19 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
     }
 
     /**
-     * 按 View 结构的声明顺序收集背后的全部事务根, 由集合按身份去重.
-     * 即使当前 View 没有可见槽, 也必须保留其 backing Root 供 {@link #refresh()} 使用.
+     * 按 ViewInventory 结构的声明顺序收集背后的全部 RootInventory, 由集合按实例身份去重.
+     * 即使当前 ViewInventory 没有可见槽, 也必须保留其底层 RootInventory 供 {@link #refresh()} 使用.
      *
-     * @param roots 接收事务根的集合
+     * @param roots 接收 RootInventory 的集合
      */
     abstract void collectRoots(@NotNull LinkedHashSet<RootInventory> roots);
 
     /**
-     * 收集一个 View 子节点背后的事务根.
-     * Root 节点直接加入集合, View 节点继续按自身结构展开.
+     * 收集一个 ViewInventory 子节点背后的 RootInventory.
+     * RootInventory 节点直接加入集合, ViewInventory 节点继续按自身结构展开.
      *
      * @param inventory 要展开的子 Inventory
-     * @param roots 接收事务根的集合
+     * @param roots 接收 RootInventory 的集合
      */
     static void collectRootsFrom(@NotNull SparrowInventory inventory, @NotNull LinkedHashSet<RootInventory> roots) {
         switch (inventory) {
@@ -113,8 +113,8 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
     }
 
     /**
-     * 读取当前派生 Inventory 的全部槽位, 并记住它们来自哪些事务根.
-     * <p>同一个事务根在一次规划中只读取一次, 防止同一次计算混入两个时刻的内容.
+     * 读取当前 ViewInventory 的全部槽位, 并记住它们来自哪些 RootInventory.
+     * <p>同一个 RootInventory 在一次规划中只读取一次, 防止同一次计算混入两个时刻的内容.
      *
      * @param forWrite 是否需要在读取前同步外部容器
      * @return 当前内容和后续提交所需的信息
@@ -137,12 +137,12 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
     }
 
     /**
-     * 把当前派生 Inventory 的槽位变化分配给实际持有事务状态的根.
+     * 把当前 ViewInventory 的槽位变更换算并分配给实际持有事务状态的 RootInventory.
      *
-     * @param plannedByRoot 计算修改结果时读到的各事务根内容
-     * @param topology 当前 Inventory 与事务根之间的槽位关系
-     * @param logicalDeltas 当前 Inventory 中要进行的槽位变化
-     * @return 每个事务根实际需要执行的槽位变化
+     * @param plannedByRoot 计算修改结果时读到的各 RootInventory 内容
+     * @param topology 当前 Inventory 与 RootInventory 之间的槽位关系
+     * @param logicalDeltas 当前 Inventory 中要进行的槽位变更
+     * @return 每个 RootInventory 实际需要执行的槽位变更
      */
     private static List<InventoryTransactions.Scope> toScopes(
             Map<RootInventory, @Nullable ItemStack[]> plannedByRoot,

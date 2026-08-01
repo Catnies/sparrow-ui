@@ -11,17 +11,17 @@ import java.util.Objects;
 
 /**
  * 将 Window 的有序结构区域预编译为不可变的槽位到 GUI 映射.
- * <p>Region 的声明顺序就是最终逻辑顺序, 尾部 virtual region 不进入菜单协议.
+ * <p>Region 的声明顺序就是最终 Window 槽位顺序, 尾部 Window 虚拟区域不进入菜单协议.
  * Region 仅存在于构建期, 运行时所有槽位都直接解析为普通根 GuiLink.
- * <p>编译结果是一个扁平数组, 窗口槽位号即下标, 运行期查询无需再遍历区域.
+ * <p>编译结果是一个扁平数组, Window 槽位号即下标, 运行期查询无需再遍历区域.
  */
 final class WindowLayout {
     private static final GuiSize LOWER_SIZE = new GuiSize(9, 4);
 
     private final int upperSize;               // 容器 upper 区域的槽位总数
     private final int lowerStart;              // lower 区域在窗口中的起始槽位
-    private final int protocolSize;            // 进入原版菜单协议的物理槽位数, 不含尾部 virtual 区域
-    private final SlotElement.GuiLink[] links; // 窗口槽位号(下标) -> GuiLink
+    private final int protocolSize;            // 协议槽位(raw slot)数量, 不含尾部 Window 虚拟区域
+    private final SlotElement.GuiLink[] links; // Window 槽位号(下标) -> GuiLink
     private final List<Gui> guis;              // 布局引用的全部根 GUI, 按首次出现顺序去重
 
     private WindowLayout(int upperSize, int lowerStart, int protocolSize, SlotElement.GuiLink[] links, List<Gui> guis) {
@@ -36,7 +36,7 @@ final class WindowLayout {
      * 按声明顺序编译 Window 的全部区域.
      *
      * <p>布局必须且只能包含一个 9x4 lower 区域, 至少包含一个 upper 区域.
-     * 传入的参数顺序决定了协议顺序, virtual region 如果存在, 必须全部位于物理区域之后.
+     * 传入的参数顺序决定了协议顺序, Window 虚拟区域如果存在, 必须全部位于协议区域之后.
      *
      * @param regions 按最终 Window 槽位顺序排列的区域
      * @return 编译后的不可变布局
@@ -57,13 +57,13 @@ final class WindowLayout {
             Region region = regions[index];
             switch (region.role()) {
                 case UPPER -> {
-                    // virtual 后缀开始后不允许再出现物理区域
+                    // Window 虚拟区域开始后不允许再出现协议区域
                     if (virtualSeen)
                         throw new IllegalArgumentException("virtual regions must be a trailing suffix");
                     upperSize = Math.addExact(upperSize, region.size());
                 }
                 case LOWER -> {
-                    // virtual 后缀开始后不允许再出现物理区域
+                    // Window 虚拟区域开始后不允许再出现协议区域
                     if (virtualSeen)
                         throw new IllegalArgumentException("virtual regions must be a trailing suffix");
                     // 布局必须且只能有一个 lower 区域, 记录其窗口起始槽位
@@ -72,12 +72,12 @@ final class WindowLayout {
                         throw new IllegalArgumentException("window layout requires exactly one lower region");
                     lowerStart = size;
                 }
-                // 进入 virtual 后缀
+                // 进入 Window 虚拟区域
                 default -> virtualSeen = true;
             }
 
             size = Math.addExact(size, region.size());
-            // 协议长度只累计 virtual 之前的物理部分
+            // 协议长度只累计 Window 虚拟区域之前的协议槽位
             if (!virtualSeen) {
                 protocolSize = size;
             }
@@ -97,7 +97,7 @@ final class WindowLayout {
             if (!guis.contains(region.gui())) {
                 guis.add(region.gui());
             }
-            // 逐槽位生成窗口槽位到 GUI 槽位的链接
+            // 逐槽位生成 Window 槽位到 GUI 槽位的链接
             for (int slot = 0; slot < region.size(); slot++) {
                 links[offset + slot] = new SlotElement.GuiLink(region.gui(), region.guiSlot() + slot);
             }
@@ -165,18 +165,18 @@ final class WindowLayout {
     }
 
     /**
-     * 返回实际发送给原版菜单协议的物理槽位长度.
+     * 返回实际发送给原版菜单协议的协议槽位(raw slot)数量.
      *
-     * @return 物理槽位长度, 不含尾部 virtual 区域
+     * @return 协议槽位(raw slot)数量, 不含尾部 Window 虚拟区域
      */
     int protocolSize() {
         return this.protocolSize;
     }
 
     /**
-     * 返回 Window 的逻辑槽位总数, 包含不进入协议的 Virtual 区域.
+     * 返回 Window 槽位总数, 包含不进入协议的 Window 虚拟区域.
      *
-     * @return 逻辑槽位总数
+     * @return Window 槽位总数
      */
     int size() {
         return this.links.length;
@@ -187,7 +187,7 @@ final class WindowLayout {
      * lower 区域内前 27 个槽位是背包主区, 快捷栏从偏移 27 开始.
      *
      * @param hotbarSlot 快捷栏槽位号(0-8)
-     * @return 对应的窗口槽位号
+     * @return 对应的 Window 槽位号
      * @throws IndexOutOfBoundsException 快捷栏槽位号超出 0-8 时抛出
      */
     int windowSlotAtHotbar(int hotbarSlot) {
@@ -223,7 +223,7 @@ final class WindowLayout {
             Objects.requireNonNull(gui, "gui");
             if (guiSlot < 0 || size < 0 || guiSlot > gui.area() - size)
                 throw new IndexOutOfBoundsException("GUI region out of bounds: slot=" + guiSlot + ", size=" + size);
-            // 物理区域不允许为空
+            // 协议区域不允许为空
             if (role != Role.VIRTUAL && size == 0)
                 throw new IllegalArgumentException("physical GUI region must contain at least one slot");
             // lower 区域对应玩家物品栏, 必须恰好是 9x4
@@ -284,10 +284,10 @@ final class WindowLayout {
         }
 
         /**
-         * 声明不进入原版菜单协议的 virtual 区域, 覆盖整个 GUI.
+         * 声明不进入原版菜单协议的 Window 虚拟区域, 覆盖整个 GUI.
          *
          * @param gui 区域所属的根 GUI
-         * @return virtual 区域声明
+         * @return Window 虚拟区域声明
          */
         @NotNull
         static Region virtual(@NotNull Gui gui) {
@@ -300,7 +300,7 @@ final class WindowLayout {
         enum Role {
             UPPER,   // 容器区域
             LOWER,   // 玩家物品栏区域, 布局中必须恰好一个且为 36 槽位
-            VIRTUAL  // 虚拟区域, 不进入原版菜单协议, 必须全部位于尾部
+            VIRTUAL  // Window 虚拟区域, 不进入原版菜单协议, 必须全部位于尾部
         }
     }
 }

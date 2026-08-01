@@ -60,7 +60,7 @@ final class VirtualInventoryCodec {
     }
 
     /**
-     * 把 VirtualInventory 的快照编码为字节数组.
+     * 把 VirtualInventory 当前槽内容的独立副本编码为字节数组.
      *
      * @param inventory 待编码的 VirtualInventory
      * @return 编码后的字节数组, 布局见类级说明
@@ -71,7 +71,7 @@ final class VirtualInventoryCodec {
         @Nullable ItemStack[] items = inventory.snapshot();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try {
-            // 明文段保留身份、版本和槽位图, 解码时可先完成尺寸校验
+            // 明文段保留身份, 版本和槽位图, 解码时可先完成尺寸校验
             DataOutputStream envelope = new DataOutputStream(buffer);
             envelope.writeLong(uuid.getMostSignificantBits());
             envelope.writeLong(uuid.getLeastSignificantBits());
@@ -253,7 +253,7 @@ final class VirtualInventoryCodec {
     /**
      * 按槽位是否非空构建位图, 每个字节从低位到高位对应连续八个槽位.
      *
-     * @param items 物品快照
+     * @param items 要编码的物品副本数组
      * @return 长度为 {@code ceil(items.length / 8)} 的位图
      */
     private static byte @NotNull [] buildMask(@Nullable ItemStack @NotNull [] items) {

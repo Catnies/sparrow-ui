@@ -16,7 +16,7 @@ public final class StaticItem implements Item {
     private final BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler; // null 表示不处理 Bundle 选择
 
     /**
-     * 创建以固定物品堆显示、无交互处理器的静态 Item.
+     * 创建以固定物品堆显示, 无交互处理器的静态 Item.
      *
      * @param itemStack 固定显示的物品堆
      */
@@ -25,7 +25,7 @@ public final class StaticItem implements Item {
     }
 
     /**
-     * 创建只持有显示来源、无交互处理器的静态 Item.
+     * 创建只持有显示来源, 无交互处理器的静态 Item.
      *
      * @param itemProvider 显示提供器
      */
@@ -34,7 +34,7 @@ public final class StaticItem implements Item {
     }
 
     /**
-     * 创建带点击处理器、无 Bundle 选择处理器的静态 Item.
+     * 创建带点击处理器, 无 Bundle 选择处理器的静态 Item.
      *
      * @param itemProvider 显示提供器
      * @param clickHandler 点击处理器, 可为 {@code null}

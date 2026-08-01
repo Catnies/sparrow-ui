@@ -11,12 +11,12 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * 把多个 Inventory 按声明顺序拼接成一个逻辑 Inventory 的视图, 自己不持有槽数据.
+ * 把多个 SparrowInventory 按声明顺序拼接成一个 ViewInventory, 自己不持有槽数据.
  */
 public final class CompositeInventory extends ViewInventory {
     private final SparrowInventory[] members;   // 按声明序排列的成员, 构造后固定
-    private final int[] memberOffsets;          // memberOffsets[i] = 成员 i 的逻辑槽起点
-    private final int size;                     // 全部成员槽位数之和, 即逻辑槽总数
+    private final int[] memberOffsets;          // memberOffsets[i] = 成员 i 在当前 Inventory 中的起始槽位
+    private final int size;                     // 全部成员槽位数之和, 即当前 Inventory 的槽位总数
 
     private volatile @Nullable SlotOrder addOrder;
     private volatile @Nullable SlotOrder collectOrder;
@@ -26,7 +26,7 @@ public final class CompositeInventory extends ViewInventory {
      * 以声明顺序拼接给定的 Inventory.
      *
      * @param members 拼接成员, 至少一个
-     * @throws IllegalArgumentException 当成员为空或展开后存在真实槽位重叠时
+     * @throws IllegalArgumentException 当成员为空或展开后存在重复的 SlotKey 时
      */
     public CompositeInventory(@NotNull List<? extends SparrowInventory> members) {
         if (members.isEmpty()) {
@@ -46,10 +46,10 @@ public final class CompositeInventory extends ViewInventory {
     }
 
     /**
-     * 把全部逻辑槽展开到最终真实槽位并拒绝重叠;
-     * 两个镜像根指向同一个 Bukkit 槽同样算重叠.
+     * 把全部当前 Inventory 槽位换算成 SlotKey 并拒绝重复;
+     * 两个 ReferencingInventory 指向同一个 Bukkit 容器槽位同样算重复.
      *
-     * @throws IllegalArgumentException 当两个逻辑槽指向同一块真实存储时
+     * @throws IllegalArgumentException 当两个当前 Inventory 槽位具有相同 SlotKey 时
      */
     private void requireNoOverlap() {
         HashSet<SlotKey> seen = new HashSet<>();
@@ -83,7 +83,7 @@ public final class CompositeInventory extends ViewInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>逐成员快照后拼接: 跨成员不承诺同一时刻.
+     * <p>逐成员读取内容副本后拼接: 跨成员不承诺来自同一时刻.
      */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
@@ -119,7 +119,7 @@ public final class CompositeInventory extends ViewInventory {
     }
 
     /**
-     * 显式覆盖指定类别的逻辑槽遍历顺序.
+     * 显式覆盖指定类别的当前 Inventory 槽位遍历顺序.
      *
      * @param category 操作类别
      * @param order 遍历顺序, 尺寸必须等于拼接后的总槽数
@@ -137,10 +137,10 @@ public final class CompositeInventory extends ViewInventory {
     }
 
     /**
-     * 定位逻辑槽属于第几个成员;
+     * 定位当前 Inventory 槽位属于第几个成员;
      * 成员数量通常很小, 直接从后往前线性查找.
      *
-     * @param slot 逻辑槽号
+     * @param slot 当前 Inventory 槽位
      * @return 成员下标
      * @throws IndexOutOfBoundsException 当槽号越界时
      */

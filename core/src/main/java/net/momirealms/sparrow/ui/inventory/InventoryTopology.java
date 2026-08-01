@@ -10,16 +10,16 @@ import java.util.IdentityHashMap;
 import java.util.List;
 
 /**
- * 缓存当前 Inventory 与其 RootInventory 之间的槽位映射。
+ * 当前 Inventory 与其 RootInventory 之间的槽位映射表.
  *
- * <p>写入时，用它将当前槽位定位到对应的 RootInventory 槽位。
- * RootInventory 更新时，用它反查该变化在当前 Inventory 中对应的槽位。
- * 被隐藏的槽位没有对应关系，因此不会触发当前 Inventory 的更新通知。
+ * <p>写入时, 用它将当前 Inventory 槽位换算成 RootInventory 槽地址.
+ * RootInventory 更新时, 用它反向筛选并投影为当前 Inventory 槽位.
+ * 被隐藏的槽位没有对应关系, 因此不会触发当前 Inventory 的更新通知.
  */
 final class InventoryTopology {
-    private final SlotKey.Anchor[] anchors;                                   // 每个当前槽位实际对应的根槽位
+    private final SlotKey.Anchor[] anchors;                                   // 每个当前 Inventory 槽位对应的 RootInventory 槽地址
     private final RootInventory[] roots;                                      // 当前 Inventory 使用到的所有 RootInventory
-    private final IdentityHashMap<RootInventory, int[]> logicalSlotsByRoot;   // 每个根槽位在当前 Inventory 中的位置, -1 表示不可见
+    private final IdentityHashMap<RootInventory, int[]> logicalSlotsByRoot;   // 每个 RootInventory 槽位在当前 Inventory 中的位置, -1 表示不可见
 
     private InventoryTopology(
             @NotNull SlotKey.Anchor[] anchors,
@@ -39,7 +39,7 @@ final class InventoryTopology {
      */
     @NotNull
     static InventoryTopology compile(@NotNull SparrowInventory inventory) {
-        // 先准备“当前槽位到根槽位”和“根槽位到当前槽位”两种查找方式.
+        // 先准备"当前 Inventory 槽位到 RootInventory 槽位"和反方向的两种查找方式.
         SlotKey.Anchor[] anchors = new SlotKey.Anchor[inventory.size()];
         List<RootInventory> roots = new ArrayList<>();
         IdentityHashMap<RootInventory, int[]> logicalSlotsByRoot = new IdentityHashMap<>();
@@ -61,10 +61,10 @@ final class InventoryTopology {
     }
 
     /**
-     * 查找当前槽位实际对应的 RootInventory 槽位.
+     * 查找当前 Inventory 槽位对应的 RootInventory 槽地址.
      *
      * @param logicalSlot 当前 Inventory 的槽位
-     * @return 对应的 RootInventory 和根槽位
+     * @return 对应的 RootInventory 槽地址
      * @throws ArrayIndexOutOfBoundsException 当槽位越界时
      */
     @NotNull
@@ -94,10 +94,10 @@ final class InventoryTopology {
     }
 
     /**
-     * 将 RootInventory 的变化转换为当前 Inventory 能看到的槽位变化.
+     * 反向筛选 RootInventory 变更, 并投影为当前 Inventory 的槽位变更.
      *
-     * @param rootChanges 整笔事务在 RootInventory 中的变化
-     * @return 当前 Inventory 能看到的槽位变化; 没有可见变化时返回空列表
+     * @param rootChanges 整笔事务的 RootInventory 变更组
+     * @return 当前 Inventory 能看到的槽位变更; 没有可见槽位变更时返回空列表
      */
     @NotNull
     List<SlotChange> project(@NotNull List<RootInventoryChange> rootChanges) {
@@ -111,7 +111,7 @@ final class InventoryTopology {
                 continue;
             }
 
-            // -1 表示该根槽位在当前 Inventory 中不可见, 其余槽位换成当前 Inventory 的编号.
+            // -1 表示该 RootInventory 槽位在当前 Inventory 中不可见, 其余槽位投影成当前 Inventory 槽位.
             List<SlotChange> rootDeltas = rootChange.slotChanges();
             for (int j = 0; j < rootDeltas.size(); j++) {
                 SlotChange rootDelta = rootDeltas.get(j);

@@ -144,7 +144,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
-        // 非按钮输入和过期、越界按钮都不属于当前附魔选择
+        // 非按钮输入和过期, 越界按钮都不属于当前附魔选择
         if (!(input instanceof MenuInput.WindowSpecific.ButtonClick(int containerId, int button))) {
             return;
         }

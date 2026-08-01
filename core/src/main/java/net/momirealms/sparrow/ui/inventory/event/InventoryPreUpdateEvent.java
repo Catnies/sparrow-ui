@@ -8,20 +8,20 @@ import java.util.List;
 /**
  * Inventory 在事务提交前发出的更新事件.
  * <p>{@link #slotChanges()} 使用当前订阅 Inventory 的槽位坐标,
- * {@link #rootChanges()} 则保留整笔事务涉及的所有根 Inventory 变化.
+ * {@link #rootChanges()} 则保留整笔事务涉及的所有 RootInventory 变更.
  */
 public final class InventoryPreUpdateEvent {
     private final UpdateReason reason;                // 整笔事务的触发原因
-    private final List<SlotChange> slotChanges;             // 使用订阅视图逻辑坐标的不可变投影
-    private final List<RootInventoryChange> rootChanges;   // 使用根坐标的完整不可变事务变更
+    private final List<SlotChange> slotChanges;             // 投影到当前订阅 Inventory 后的槽位变更
+    private final List<RootInventoryChange> rootChanges;    // 整笔事务的完整 RootInventory 变更
     private boolean cancelled;                        // 当前处理器最终决定的取消状态
 
     /**
      * 创建一个提交前更新事件.
      *
      * @param reason 事务触发原因
-     * @param slotChanges 当前 Inventory 能看到的槽位变化
-     * @param rootChanges 整笔事务在根 Inventory 中的完整变化
+     * @param slotChanges 投影到当前订阅 Inventory 后的槽位变更
+     * @param rootChanges 整笔事务的完整 RootInventory 变更
      */
     @ApiStatus.Internal
     public InventoryPreUpdateEvent(
@@ -45,9 +45,9 @@ public final class InventoryPreUpdateEvent {
     }
 
     /**
-     * 返回当前订阅 Inventory 能看到的槽位变化.
+     * 返回投影到当前订阅 Inventory 后的槽位变更.
      *
-     * @return 使用当前 Inventory 槽位坐标的变化
+     * @return 使用当前 Inventory 槽位坐标的变更记录
      */
     @NotNull
     public List<SlotChange> slotChanges() {
@@ -55,9 +55,9 @@ public final class InventoryPreUpdateEvent {
     }
 
     /**
-     * 返回整笔事务在所有根 Inventory 中的完整变化.
+     * 返回整笔事务涉及的所有 RootInventory 变更组.
      *
-     * @return 使用根 Inventory 槽位坐标的完整变化
+     * @return 使用 RootInventory 槽位坐标的完整事务变更
      */
     @NotNull
     public List<RootInventoryChange> rootChanges() {

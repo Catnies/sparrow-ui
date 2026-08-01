@@ -3,19 +3,19 @@ package net.momirealms.sparrow.ui.inventory;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 槽位的最终物理身份, 用来判断两个逻辑槽背后是不是同一块真实存储.
+ * SlotKey 用来判断两个当前 Inventory 槽位最终是否指向同一个存储位置.
  */
 sealed interface SlotKey permits SlotKey.Anchor, SlotKey.ExternalSlot {
 
     /**
-     * 逻辑槽在RootInventory里的落点(哪个RootInventory的哪个槽);
-     * 普通RootInventory的槽位以此作为最终物理身份.
+     * RootInventory 槽地址, 由 RootInventory 实例和该 RootInventory 内的槽位编号组成.
+     * 普通 RootInventory 的槽位直接以这个地址作为 SlotKey.
      */
     record Anchor(@NotNull RootInventory root, int rootSlot) implements SlotKey {
     }
 
     /**
-     * 多个ReferencingInventory共同指向的外部真实槽位.
+     * 外部容器槽身份. {@code owner} 表示外部容器身份, {@code slot} 表示该容器中的槽位.
      */
     record ExternalSlot(@NotNull Object owner, int slot) implements SlotKey {
     }

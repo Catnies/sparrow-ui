@@ -127,7 +127,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置第一次挂载时启动、在 Item 生命周期内只执行一次的异步显示来源.
+     * 配置第一次挂载时启动, 在 Item 生命周期内只执行一次的异步显示来源.
      *
      * @param placeholder 加载完成前的显示内容
      * @param loader 由调用方选择执行器并创建异步结果的懒加载器
@@ -236,9 +236,8 @@ public final class ItemBuilder {
 
     /**
      * 添加在 Item 完整构建后执行的修改器. 修改器按添加顺序执行.
-     *
-     * <p>修改器可以保存 Item 引用、建立外部注册关系或调用 {@link ObservableItem#notifyWindows()}.
-     * 如果某个修改器抛出异常，后续修改器不会执行，异常由 {@link #build()} 直接抛出.</p>
+     * <p>修改器可以保存 Item 引用, 建立外部注册关系或调用 {@link ObservableItem#notifyWindows()}.
+     * 如果某个修改器抛出异常, 后续修改器不会执行, 异常由 {@link #build()} 直接抛出.</p>
      *
      * @param modifier 构建完成后的修改器
      * @return 此构建器
@@ -358,7 +357,7 @@ public final class ItemBuilder {
 
 
 
-        // 第一次挂载时异步解析一次、之后复用结果的显示来源.
+        // 第一次挂载时异步解析一次, 之后复用结果的显示来源.
         final class AsyncOnceDisplaySource implements DisplaySource {
             private final AtomicReference<AsyncLoader> pendingLoader;   // 挂起的加载器, 取出后置 null 保证只加载一次
             private final Runnable invalidator;                         // 加载完成后通知 Window 失效的回调

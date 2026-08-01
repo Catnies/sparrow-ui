@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
- * 保存每名玩家当前已提交的 Window, 并串行化该玩家的生命周期命令.
+ * 保存每名玩家当前活动的 Window, 并串行执行该玩家的生命周期命令.
  */
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;
@@ -72,7 +72,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 将 Window 进行开启, 这将会"打开命令"串行化提交到到玩家的实体线程.
+     * 请求开启 Window, 打开命令会进入该玩家的命令通道并在实体线程执行.
      *
      * @param window 要打开的 Window
      * @return 打开结果阶段
@@ -87,7 +87,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 在玩家实体线程提交打开状态.
+     * 在玩家实体线程完成打开流程.
      * 先完成新窗口初始化再发布 active 映射, 随后才关闭被替换的旧窗口.
      */
     private Window.OpenResult openNow(AbstractWindow<?> window) {
@@ -154,7 +154,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 将 Window 进行关闭, 这将会"关闭命令"串行化提交到到玩家的实体线程.
+     * 请求关闭 Window, 关闭命令会进入该玩家的命令通道并在实体线程执行.
      *
      * @param window 要关闭的 Window
      * @return 关闭结果阶段
@@ -271,7 +271,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * Bukkit 观测到容器关闭时, 若 View 属于某个活动 Window 则按外部关闭处理.
+     * Bukkit 观测到容器关闭时, 若 InventoryView 属于某个活动 Window 则按外部关闭处理.
      * 断线关闭已经由服务器接管, 事件返回后会继续完成容器生命周期, 因此必须在事件内同步通知 handler;
      * 其他原因仍延后到下一实体 tick, 保留 close handler 打开新 Window 的既有能力.
      */
@@ -388,7 +388,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 返回当前已提交 Window 的快照.
+     * 返回当前活动 Window 的快照.
      *
      * @return 所有活动 Window
      */

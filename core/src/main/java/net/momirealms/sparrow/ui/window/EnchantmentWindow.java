@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 public interface EnchantmentWindow extends Window {
 
     /**
-     * 创建使用 2x1 上部 GUI、真实玩家背包和三个禁用选项的 Builder.
+     * 创建使用 2x1 上部 GUI, 玩家 Bukkit Inventory 和三个禁用选项的 Builder.
      *
      * @return 附魔台 Window Builder
      */
@@ -108,7 +108,7 @@ public interface EnchantmentWindow extends Window {
         Builder setUpperGui(@NotNull Gui upperGui);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示映射玩家真实物品栏.
+         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerGui 下部 GUI
          * @return 此 Builder

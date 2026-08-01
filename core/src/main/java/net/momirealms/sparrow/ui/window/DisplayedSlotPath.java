@@ -106,21 +106,21 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 生成当前槽位应显示的 ItemStack，按以下优先级查找:
+     * 生成当前槽位应显示的 ItemStack, 按以下优先级查找:
      * <ol>
-     *   <li>若路径终点为 Inventory 连接, 显示对应 Inventory 槽位的真实物品:
+     *   <li>若路径终点为 InventoryLink, 显示对应当前 Inventory 槽位的内容:
      *       若该槽为空, 回退为 Inventory 的背景</li>
      *   <li>若路径终点为 Item, 显示该 Item</li>
      *   <li>若以上均不存在 Item, 回退为最深层 GUI 的背景</li>
-     *   <li>若仍无结果，返回空物品作为最终兜底</li>
+     *   <li>若仍无结果, 返回空物品作为最终兜底</li>
      * </ol>
      *
-     * @return 当前槽位应显示的 ItemStack，不会为 {@code null}
+     * @return 当前槽位应显示的 ItemStack, 不会为 {@code null}
      */
     @NotNull ItemStack render() {
         PathState state = this.currentState();
 
-        // Inventory 连接: 真实物品优先, 空槽回退背景; itemAt 返回的克隆归本槽渲染独占
+        // InventoryLink: Inventory 当前内容优先, 空槽回退背景; itemAt 返回的副本归本槽渲染独占
         if (state.inventoryLink != null) {
             ItemStack stack = state.inventoryLink.inventory().itemAt(state.inventoryLink.slot());
             if (stack != null) {
@@ -137,7 +137,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 把点击转发给路径终点的 Item.
-     * 路径被冻结或终点不是 Item 时直接忽略.
+     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
      *
      * @param click 点击上下文
      */
@@ -150,7 +150,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 把收纳袋选择转发给路径终点的 Item.
-     * 路径被冻结或终点不是 Item 时直接忽略.
+     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
      *
      * @param select Bundle 选择上下文
      */
@@ -178,10 +178,10 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回路径是否被冻结;
-     * 冻结槽不参与点击语义与 Item 分派.
+     * 返回路径是否经过已冻结 GUI;
+     * GUI 冻结槽不参与点击语义与 Item 分派.
      *
-     * @return 被冻结时返回 true
+     * @return 路径经过已冻结 GUI 时返回 true
      */
     boolean frozen() {
         return this.currentState().frozen;
@@ -216,7 +216,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 从根槽位开始一层层跟随 GuiLink, 并订阅沿途的每个 GUI 槽位和最终 Item.
+     * 从根 GUI 槽位开始一层层跟随 GuiLink, 并订阅沿途的每个 GUI 槽位和最终 Item.
      * <p>遇到空槽位或 Item 就停. 遇到重复的 GUI 说明链接成环, 直接失败.
      *
      * @param candidate 正在准备的新路径
@@ -234,7 +234,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             // 订阅这一层 GUI 的槽位: GUI 的失效通知会要求重建路径
             GuiSlotAttachment attachment = gui.attach(guiSlot, ignoredInvalidation -> candidate.notifyWindows(true));
             candidate.add(gui, attachment);
-            // 记录沿途最深层背景; 任何一层冻结, 整条路径都算冻结
+            // 记录沿途最深层背景; 任何一层 GUI 冻结, 整条路径都视为经过已冻结 GUI
             if (attachment.background() != null) {
                 candidate.background = attachment.background();
             }
@@ -254,7 +254,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 case SlotElement.InventoryLink link -> {
                     candidate.inventoryLink = link;
                     candidate.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
-                        // 事件使用被订阅 Inventory 的逻辑坐标, 只需检查当前路径连接的槽号.
+                        // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
                         for (int i = 0; i < event.slotChanges().size(); i++) {
                             if (event.slotChanges().get(i).slot() == link.slot()) {
                                 candidate.notifyWindows(false);
@@ -327,11 +327,10 @@ final class DisplayedSlotPath implements AutoCloseable {
         private GuiSlotAttachment[] guiAttachments = new GuiSlotAttachment[4]; // 与 guis 使用相同下标
         private int depth;               // 路径当前深度, 即 guis 中已使用的层数
 
-        // TODO 未来处理, 这里的互斥对象, 是不是有更好的处理办法?
-
         // Item 部分, 与 Inventory 链接互斥
         private Item item; // 路径终点的 Item
         private ItemAttachment itemAttachment = ItemAttachment.PASSIVE; // 最终的 Item 的 ItemAttachment
+
         // Inventory 链接部分, 与 Item 互斥
         private SlotElement.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
         private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅

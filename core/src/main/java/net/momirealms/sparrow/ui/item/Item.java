@@ -22,7 +22,7 @@ public interface Item {
     }
 
     /**
-     * 创建以固定物品堆显示、没有主动更新能力的简单 Item.
+     * 创建以固定物品堆显示, 没有主动更新能力的简单 Item.
      *
      * @param itemStack 固定显示的物品堆
      * @return 使用 {@link StaticItem} 快路径的 Item

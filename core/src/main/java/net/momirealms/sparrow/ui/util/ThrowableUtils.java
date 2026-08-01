@@ -4,7 +4,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 提供异常聚合、非受检异常传播与受检异常穿透功能.
+ * 提供异常聚合, 非受检异常传播与受检异常穿透功能.
  */
 public final class ThrowableUtils {
     private ThrowableUtils() {}

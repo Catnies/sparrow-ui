@@ -12,22 +12,22 @@ import java.util.List;
 
 /**
  * Window 底层菜单的处理器, 每个打开中的 Window 对应一个实现实例.
- * <p>实现负责把客户端看到的远端镜像维护成服务端的权威状态.
+ * <p>实现负责维护客户端已知状态, 并用本轮服务端渲染结果纠正客户端显示.
  */
 @ApiStatus.Internal
 public interface MenuHandle extends AutoCloseable {
 
     /**
-     * 光标物品快照
+     * 本轮同步使用的菜单实际光标和客户端显示光标.
      *
-     * @param actual 服务端菜单真实持有的光标物品快照
-     * @param visual 客户端侧显示的光标物品快照
+     * @param actual 服务端菜单实际持有的光标物品副本
+     * @param visual 只供客户端显示的光标物品副本
      */
     record CursorSnapshot(@NotNull ItemStack actual, @NotNull ItemStack visual) {
     }
 
     /**
-     * 在打开菜单之前, 把玩家光标上真实拿着的物品接管过来.
+     * 在打开菜单之前, 接管玩家当前菜单实际持有的光标物品.
      *
      * <p>如果是在替换同一个玩家的 Window, 就从旧菜单手里接; 否则先让当前打开的原版菜单
      * 走完正常的关闭流程, 再从玩家背包菜单接. 在新菜单真正接管之前, 实现不能清空来源菜单;
@@ -41,25 +41,25 @@ public interface MenuHandle extends AutoCloseable {
      * 打开菜单, 把初始的完整界面状态发给客户端.
      *
      * <p>传进来的槽位数组只在这次调用期间有效, 实现不可改也不可持有.
-     * <p>数组里每个物品都是 Window 独占的稳定快照, 异步发出的数据包要拷一份.
+     * <p>数组里每个物品都是 Window 独占的稳定副本, 异步发出的数据包还要再复制一份.
      *
      * @param title 初始标题
-     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
-     * @param cursor 本次同步要用的真实光标与可视光标
+     * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
+     * @param cursor 本次同步要用的菜单实际光标与客户端显示光标
      */
     void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * 将服务端的权威数据和状态同步给客户端.
+     * 将本轮服务端渲染结果和菜单状态同步给客户端.
      *
      * <p>实现只检查 dirty 标记的槽位和之前收到的客户端预测;
      * 若 {@code forceFull} 为 true 时直接发一份完整状态.
      * <p>数组和位图只在本次调用期间有效, 实现不可改也不可持有.
-     * 槽位和光标物品都是 Window 独占的稳定快照, 异步发出的数据包要拷一份.
+     * 槽位和光标物品都是 Window 独占的稳定副本, 异步发出的数据包还要再复制一份.
      *
-     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
+     * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
      * @param dirtySlots 这一轮可能变过的槽位
-     * @param cursor 本次同步要用的真实光标与可视光标
+     * @param cursor 本次同步要用的菜单实际光标与客户端显示光标
      * @param cursorDirty 这一轮是否需要核对光标
      * @param forceFull 是否强制发送完整状态
      */
@@ -76,8 +76,8 @@ public interface MenuHandle extends AutoCloseable {
      * 实现方式是让客户端重新打开一次界面, 并附上完整状态.
      *
      * @param title 新标题
-     * @param slots 按客户端协议 raw slot 排列的物理槽位权威物品
-     * @param cursor 本次同步要用的真实光标与可视光标
+     * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
+     * @param cursor 本次同步要用的菜单实际光标与客户端显示光标
      */
     void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
@@ -111,7 +111,7 @@ public interface MenuHandle extends AutoCloseable {
     void retire();
 
     /**
-     * 检查这个交互是不是发给当前会话、当前 state id 的,
+     * 检查这个交互是不是发给当前会话, 当前 state id 的,
      * 顺便把数据包内的客户端预测数据收下来.
      *
      * @param interaction 待检查的交互
@@ -140,7 +140,7 @@ public interface MenuHandle extends AutoCloseable {
      * 返回给 Bukkit 事件用的 InventoryView.
      *
      * <p>事件处理方可能会改从 InventoryView 上读到的物品, 所以 {@link InventoryView#getItem(int)} 和
-     * {@link InventoryView#getCursor()} 返回的是独立快照, 不是 Window 持有的权威物品.
+     * {@link InventoryView#getCursor()} 返回的是独立副本, 不是 Window 持有的服务端渲染结果.
      *
      * @return InventoryView
      */
@@ -162,20 +162,20 @@ public interface MenuHandle extends AutoCloseable {
     int stateId();
 
     /**
-     * 返回菜单真正持有的光标物品快照.
+     * 返回菜单实际持有的光标物品副本.
      *
-     * @return 调用方可以随意修改的真实光标快照
+     * @return 调用方可以随意修改的菜单实际光标副本
      */
     @NotNull
     ItemStack cursor();
 
     /**
-     * 用权威数据整体覆盖菜单真正持有的光标物品.
+     * 整体覆盖菜单实际持有的光标物品.
      *
-     * <p>实现会拷一份传进来的物品, 不会存参数本身. 覆盖之后的光标同步(打脏标记、
+     * <p>实现会拷一份传进来的物品, 不会存参数本身. 覆盖之后的光标同步(打脏标记,
      * 调 synchronize)由调用方负责.
      *
-     * @param cursor 新的真实光标, 空物品表示清空
+     * @param cursor 新的菜单实际光标, 空物品表示清空
      */
     void cursor(@NotNull ItemStack cursor);
 }

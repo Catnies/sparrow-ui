@@ -43,8 +43,8 @@ public interface MerchantMenuHandle extends MenuHandle {
     void invalidateClientContents();
 
     /**
-     * 推进 Trade Item 的周期刷新计划并检查尚未提交的 offers revision.
-     * <p>此方法只合并刷新状态, 不渲染、发包或提交 revision.
+     * 推进 Trade Item 的周期刷新计划并检查尚未发送的 offers revision.
+     * <p>此方法只合并刷新状态, 不渲染或发送 revision 对应的数据包.
      *
      * @return 是否需要进入本 tick 的菜单同步批次
      */

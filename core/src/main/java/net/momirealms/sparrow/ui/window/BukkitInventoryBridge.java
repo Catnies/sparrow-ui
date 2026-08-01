@@ -56,7 +56,7 @@ final class BukkitInventoryBridge {
      *
      * @param window 目标 Window
      * @param clickType 拖拽手势的点击类型
-     * @param slots 手势覆盖的原始槽位
+     * @param slots 手势覆盖的协议槽位(raw slot)
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, List<Integer> slots) {

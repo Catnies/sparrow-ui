@@ -18,14 +18,14 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * 引用真实 Bukkit 容器的 Inventory 实现: 容器是真实数据的所在地, 本类只维护它的一份镜像快照.
- * <p><strong>线程安全由调用方负责.</strong> 工厂构造、{@link #refresh()} 与所有写操作都会直接访问
+ * 引用 Bukkit 容器的 RootInventory 实现: Bukkit 容器是外部数据来源, 本类只维护一份 Bukkit 内容镜像.
+ * <p><strong>线程安全由调用方负责.</strong> 工厂构造, {@link #refresh()} 与所有写操作都会直接访问
  * 被引用的 Bukkit 容器. 调用方必须保证当前执行上下文可以合法访问该容器, 且同一笔事务里的所有
- * ReferencingInventory 都能在该上下文访问. 本类不判断平台或容器 owner, 不调度到 owner 线程,
- * 也不提供只读回退. 平台抛出的线程访问异常会沿调用栈传播; 异常可能发生在 Sparrow 镜像已经提交
+ * ReferencingInventory 都能在该上下文访问. 本类不判断平台或容器的 Folia 执行所有者, 也不调度到其线程,
+ * 还不提供只读回退. 平台抛出的线程访问异常会沿调用栈传播; 异常可能发生在 Sparrow 内部状态已经提交
  * 或 Bukkit 容器已经部分写入之后, 因此不能根据异常推断本次操作为零变更.
- * <p>读操作只读取镜像, 不访问 Bukkit 容器, 但内容可能滞后于容器, 要等下一次同步才更新.
- * <p>写路径靠两个函数接入事务流程: {@code prepareWrite} 在任何写入口读取规划快照之前
+ * <p>读操作只读取 Bukkit 内容镜像, 不访问 Bukkit 容器, 但这份内容镜像可能滞后, 要等下一次同步才更新.
+ * <p>写路径靠两个函数接入事务流程: {@code prepareWrite} 在任何写入口读取规划内容之前
  * 同步容器内容, {@code afterCommit} 在提交成功后, post 事件派发前把变更写回容器.
  * 外部世界(漏斗, 其他插件)对容器的直接修改在同步时被发现, 以 {@link UpdateReason.External}
  * 原因只派发 post 事件.
@@ -33,19 +33,19 @@ import java.util.function.UnaryOperator;
  */
 @ApiStatus.Experimental
 public final class ReferencingInventory extends RootInventory {
-    private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 真实数据所在地
+    private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 即外部数据来源
     private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
-    private final SlotKey.ExternalSlot[] externalSlots; // 逻辑槽 -> 容器里的真实槽位, 同步与写回共用
+    private final SlotKey.ExternalSlot[] externalSlots; // 当前 Inventory 槽位 -> Bukkit 容器槽位, 同步与写回共用
     private final int bukkitMaxStackSize;           // 容器的堆叠上限, 构造时缓存
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
     /**
-     * 以给定容器与初始镜像创建 ReferencingInventory.
+     * 以给定容器与初始 Bukkit 内容镜像创建 ReferencingInventory.
      *
      * @param bukkitInventory 被引用的 Bukkit 容器
      * @param contentsGetter 从容器读取被引用区段的函数
-     * @param initialMirror 初始镜像内容, 已按逻辑槽序排列并归一化
-     * @param slotMapping 逻辑槽到容器槽位的映射
+     * @param initialMirror 初始 Bukkit 内容镜像, 已按当前 Inventory 槽位排列, 空物品已转为 {@code null}
+     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
      * @param addOrder ADD 类别的遍历顺序, {@code null} 回退自然顺序
      */
     private ReferencingInventory(
@@ -86,8 +86,8 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 引用玩家背包的存储内容, 并把热键行挪到最后九个逻辑槽:
-     * 逻辑槽 {@code i} 对应真实槽 {@code (i + 9) % 36}, 主背包在前, 快捷栏在后.
+     * 引用玩家背包的存储内容, 并把热键行挪到当前 Inventory 的最后九个槽位:
+     * 当前 Inventory 槽位 {@code i} 对应 Bukkit 容器槽位 {@code (i + 9) % 36}, 主背包在前, 快捷栏在后.
      * ADD 操作按原版 quick-move 的习惯从热键行尾部反向遍历.
      *
      * @param inventory 玩家背包
@@ -103,7 +103,7 @@ public final class ReferencingInventory extends RootInventory {
      *
      * @param inventory 被引用的 Bukkit 容器
      * @param contentsGetter 从容器读取被引用区段的函数
-     * @param slotReorder 逻辑槽到真实槽的重排函数
+     * @param slotReorder 当前 Inventory 槽位到 Bukkit 容器槽位的重排函数
      * @param reverseAddOrder 是否给 ADD 类别使用反向遍历顺序
      * @return ReferencingInventory
      * @throws IllegalArgumentException 当重排后的映射尺寸与内容尺寸不符时
@@ -174,7 +174,7 @@ public final class ReferencingInventory extends RootInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>落点是容器里的真实槽位: 两个镜像指向同一个 Bukkit 槽时物理身份相同.
+     * <p>返回 Bukkit 容器槽对应的 SlotKey: 两个 ReferencingInventory 指向同一外部容器身份和同一 Bukkit 容器槽位时, SlotKey 相同.
      */
     @Override
     @NotNull
@@ -185,7 +185,7 @@ public final class ReferencingInventory extends RootInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>先把容器最新内容同步进镜像, 规划才基于最新数据.
+     * <p>先把 Bukkit 容器当前内容同步进 Bukkit 内容镜像, 再基于更新后的内容规划.
      */
     @Override
     void prepareWrite() {
@@ -195,11 +195,11 @@ public final class ReferencingInventory extends RootInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>把每个槽位变更写回容器对应的真实槽位.
+     * <p>把每个槽位变更写回对应的 Bukkit 容器槽位.
      */
     @Override
     void afterCommit(@NotNull List<SlotChange> deltas) {
-        // delta 的访问器返回克隆, 容器不会拿到镜像内部实例
+        // SlotChange 的访问器返回物品副本, 容器不会拿到 Bukkit 内容镜像内部的实例
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             this.bukkitInventory.setItem(this.externalSlots[delta.slot()].slot(), delta.after());
@@ -207,12 +207,12 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 把容器当前内容和镜像逐槽对比, 差异槽以 External 原因提交进镜像(绕过 pre, 只派发 post).
+     * 把 Bukkit 容器当前内容和 Bukkit 内容镜像逐槽对比, 再以 External 原因提交差异槽以更新 Bukkit 内容镜像(绕过 pre, 只派发 post).
      * 调用方保证运行期访问被正确串行化, 因此提交被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
      */
     private void reconcileFromBukkit() {
-        // 逐槽对比: 比较阶段直接拿容器读出的引用, 不做深克隆 —— 绝大多数 tick 没有外部变更,
-        // 只有差异槽才在 SlotDelta 构造里克隆
+        // 逐槽对比: 比较阶段直接使用容器读出的引用, 不复制物品 —— 绝大多数 tick 没有外部变更,
+        // 只有差异槽才由 SlotChange 复制物品
         @Nullable ItemStack[] raw = this.contentsGetter.apply(this.bukkitInventory);
         @Nullable ItemStack[] mirror = this.currentState();
         @Nullable List<SlotChange> deltas = null;
@@ -246,11 +246,11 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 按逻辑槽顺序从容器原始内容取样, 克隆成镜像约定(空槽为 {@code null}).
+     * 按当前 Inventory 槽位顺序从容器原始内容取样, 复制成 Bukkit 内容镜像(空槽为 {@code null}).
      *
      * @param raw 容器原始内容
-     * @param slotMapping 逻辑槽到容器槽位的映射
-     * @return 按逻辑槽排列的镜像内容
+     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
+     * @return 按当前 Inventory 槽位排列的 Bukkit 内容镜像
      */
     private static @Nullable ItemStack[] readLogicalContents(@Nullable ItemStack[] raw, SlotOrder slotMapping) {
         @Nullable ItemStack[] logical = new ItemStack[raw.length];
@@ -289,11 +289,11 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 为每个逻辑槽建立指向容器真实槽位的物理身份.
+     * 为每个当前 Inventory 槽位建立对应的 Bukkit 容器槽身份.
      *
      * @param inventory 被引用的容器
-     * @param slotMapping 逻辑槽到容器槽位的映射
-     * @return 每个逻辑槽的最终物理身份
+     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
+     * @return 每个当前 Inventory 槽位的 SlotKey
      */
     private static SlotKey.ExternalSlot[] externalSlots(Inventory inventory, SlotOrder slotMapping) {
         SlotKey.ExternalSlot[] externalSlots = new SlotKey.ExternalSlot[slotMapping.size()];
@@ -304,8 +304,8 @@ public final class ReferencingInventory extends RootInventory {
     }
 
     /**
-     * 玩家背包重排: 逻辑槽 {@code i} 指向真实槽 {@code (i + 9) % 36},
-     * 热键行(真实槽 0-8)因此落到逻辑槽 27-35.
+     * 玩家背包重排: 当前 Inventory 槽位 {@code i} 指向 Bukkit 容器槽位 {@code (i + 9) % 36},
+     * 热键行(Bukkit 容器槽位 0-8)因此落到当前 Inventory 槽位 27-35.
      *
      * @param slots 恒等槽位数组
      * @return 重排后的槽位数组

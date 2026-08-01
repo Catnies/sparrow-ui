@@ -20,25 +20,25 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 管理一个 Inventory 的 PreUpdateEvent 和 PostUpdateEvent 更新订阅.
- * <p>有订阅者时, 它会登记到当前 Inventory 使用的所有 RootInventory 中。
- * 一笔事务即使同时修改了多个 RootInventory, 也只会找到同一个通道一次,
- * 因此当前 Inventory 的订阅者最多收到一次通知。
- * <p>事务开始时会记住当时的订阅者。 PostUpdateEvent 事件按照事务提交顺序排队,
- * 并在所有 RootInventory 都完成 PostUpdateEvent 的处理后再通知订阅者。
+ * 一个 Inventory 的事务订阅器, 管理 PreUpdateEvent 和 PostUpdateEvent 订阅.
+ * <p>有订阅者时, 它会登记到当前 Inventory 使用的所有 RootInventory 中.
+ * 一笔事务即使同时修改了多个 RootInventory, 也只会找到同一个 InventoryUpdateChannel 一次,
+ * 因此当前 Inventory 的订阅者最多收到一次通知.
+ * <p>事务开始时会记录当时的订阅者名单. PostUpdateEvent 事件按照事务提交顺序排队,
+ * 并在所有 RootInventory 都完成提交后处理后再通知订阅者.
  */
 final class InventoryUpdateChannel {
-    private final InventoryTopology topology; // 当前 Inventory 与 RootInventory 之间的槽位关系
+    private final InventoryTopology topology; // 当前 Inventory 的槽位映射表
     private final CopyOnWriteArrayList<Subscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
     private final CopyOnWriteArrayList<Subscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
     private final ConcurrentLinkedQueue<PostDelivery> pendingPostDeliveries = new ConcurrentLinkedQueue<>(); // 等待发送的 PostUpdateEvent
     private final AtomicBoolean drainingPostDeliveries = new AtomicBoolean(); // 是否已有线程正在发送 PostUpdateEvent
-    private final Object lifecycleLock = new Object(); // 防止订阅和取消订阅同时改变 RootInventory 登记
+    private final Object lifecycleLock = new Object(); // 防止订阅和取消订阅同时改变 RootInventory 中的登记
 
     private volatile boolean active; // 是否已经登记到所有 RootInventory
 
     /**
-     * 创建一个尚未登记到 RootInventory 的更新通道.
+     * 创建一个尚未登记到 RootInventory 的 InventoryUpdateChannel.
      *
      * @param topology 当前 Inventory 的槽位映射
      */
@@ -48,7 +48,7 @@ final class InventoryUpdateChannel {
 
     /**
      * 添加一个 PreUpdate 处理器.
-     * 第一个订阅者会让通道登记到所有 RootInventory.
+     * 第一个订阅者会让当前 InventoryUpdateChannel 登记到所有 RootInventory.
      *
      * @param observer 接收事件的观察者
      * @return 用于取消本次订阅的对象
@@ -60,7 +60,7 @@ final class InventoryUpdateChannel {
 
     /**
      * 添加一个 PostUpdate 处理器
-     * 第一个订阅者会让通道登记到所有 RootInventory.
+     * 第一个订阅者会让当前 InventoryUpdateChannel 登记到所有 RootInventory.
      *
      * @param observer 接收事件的观察者
      * @return 用于取消本次订阅的对象
@@ -71,7 +71,7 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 保存一个订阅者, 必要时把当前通道登记到所有 RootInventory.
+     * 保存一个订阅者, 必要时把当前 InventoryUpdateChannel 登记到所有 RootInventory.
      *
      * @param subscribers PreUpdateEvent 或 PostUpdateEvent 的订阅者列表
      * @param observer 要添加的观察者
@@ -86,7 +86,7 @@ final class InventoryUpdateChannel {
     ) {
         Subscriber<E> subscriber = new Subscriber<>(this, subscribers, Objects.requireNonNull(observer, "observer"));
         synchronized (this.lifecycleLock) {
-            // 先保存订阅者, 避免事务找到通道时还看不到第一个订阅者.
+            // 先保存订阅者, 避免事务找到 InventoryUpdateChannel 时还看不到第一个订阅者.
             subscribers.add(subscriber);
             try {
                 if (!this.active) {
@@ -103,7 +103,7 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 把当前通道登记到所有 RootInventory, 使之后的事务能够找到它.
+     * 把当前 InventoryUpdateChannel 登记到所有 RootInventory, 使之后的事务能够找到它.
      * <p>如果中途失败, 已经完成的登记会被撤销.
      *
      * @throws RuntimeException 当登记或撤销登记失败时
@@ -128,7 +128,7 @@ final class InventoryUpdateChannel {
 
     /**
      * 移除一个订阅者.
-     * 没有任何订阅者后, 同时从 RootInventory 中撤销当前通道.
+     * 没有任何订阅者后, 同时从 RootInventory 中撤销当前 InventoryUpdateChannel.
      *
      * @param subscribers 该订阅者所在的列表
      * @param subscriber 要移除的订阅者
@@ -147,8 +147,8 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 从所有 RootInventory 中撤销当前通道, 使之后的事务不再处理它.
-     * <p>先把通道标记为停用, 并发事务即使暂时还能找到它也会直接跳过.
+     * 从所有 RootInventory 中撤销当前 InventoryUpdateChannel, 使之后的事务不再处理它.
+     * <p>先标记为停用, 并发事务即使暂时还能找到它也会直接跳过.
      */
     private void uninstall() {
         this.active = false;
@@ -158,7 +158,7 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 判断当前通道是否已经登记到所有 RootInventory.
+     * 判断当前 InventoryUpdateChannel 是否已经登记到所有 RootInventory.
      *
      * @return 是否可以处理新的事务
      */
@@ -167,12 +167,12 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 记录本笔事务开始时的订阅者, 并把根槽位变化转换为当前 Inventory 的槽位变化.
+     * 记录本笔事务开始时的订阅者名单, 并把 RootInventory 槽位变更投影为当前 Inventory 槽位变更.
      * <p>PreUpdateEvent 和 PostUpdateEvent 订阅者会同时记录, 所以 PreUpdateEvent 处理器中新加的订阅者要从下一笔事务开始接收事件.
-     * 当前 Inventory 没有可见变化时不创建事件.
+     * 当前 Inventory 没有可见槽位变更时不创建事件.
      *
      * @param reason 事务触发原因
-     * @param rootChanges 整笔事务在 RootInventory 中的变化
+     * @param rootChanges 整笔事务的 RootInventory 变更组
      * @param includePre 是否记录 PreUpdateEvent 订阅者
      * @return 本次要发送的事件; 不需要通知时返回 {@code null}
      */
@@ -192,7 +192,7 @@ final class InventoryUpdateChannel {
             return null;
         }
 
-        // 每个 Inventory 只转换一次槽位; Obscured 中只有隐藏槽位变化时会得到空结果.
+        // 每个 Inventory 只投影一次; ObscuredInventory 中只有被遮槽位发生变更时会得到空结果.
         List<SlotChange> deltas = this.topology.project(rootChanges);
         if (deltas.isEmpty()) {
             return null;
@@ -209,15 +209,15 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 按事务提交顺序发送所有已经可以发送的 PostUpdateEvent 事件.
+     * 按事务提交顺序派发所有已经可以派发的 PostUpdateEvent 事件.
      * <p>排在前面的事件尚未完成时, 后面的事件必须继续等待. 发送线程退出前会再次检查队列,
      * 避免恰好在退出过程中准备好的事件一直留在队列中.
      */
     private void drainPostDeliveries() {
-        // 同一时间只允许一个线程发送队列中的事件.
+        // 同一时间只允许一个线程派发队列中的事件.
         while (this.drainingPostDeliveries.compareAndSet(false, true)) {
             try {
-                // 只从队首开始发送, 前一个事件没有准备好时不能跳到后面.
+                // 只从队首开始派发, 前一个事件尚不允许派发时不能跳到后面.
                 while (true) {
                     PostDelivery next = this.pendingPostDeliveries.peek();
                     if (next == null || !next.ready) {
@@ -232,7 +232,7 @@ final class InventoryUpdateChannel {
                 this.drainingPostDeliveries.set(false);
             }
 
-            // 释放发送权后再看一次, 处理刚刚准备好但没有被其他线程接手的事件.
+            // 释放派发权后再看一次, 处理刚刚允许派发但没有被其他线程接手的事件.
             PostDelivery next = this.pendingPostDeliveries.peek();
             if (next == null || !next.ready) {
                 break;
@@ -241,12 +241,12 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 把事件发送给本笔事务开始时记录的订阅者.
+     * 把事件派发给本笔事务开始时记录的订阅者.
      * <p>已经取消订阅的观察者会被跳过. 单个观察者抛出异常时只会上报错误,
      * 不会影响其他观察者继续接收事件.
      *
      * @param recipients 本笔事务需要通知的订阅者
-     * @param event 要发送的事件
+     * @param event 要派发的事件
      * @param failureMessage 上报异常时使用的消息
      * @param <E> 事件类型
      */
@@ -269,9 +269,9 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 保存当前 Inventory 在一笔事务中需要发送的事件.
-     * <p>PreUpdateEvent 事件可以立即发送.  PostUpdateEvent 事件先进入队列,
-     * 等所有 RootInventory 完成 PostUpdateEvent 的处理后才能发送.
+     * 保存当前 Inventory 在一笔事务中需要派发的事件.
+     * <p>PreUpdateEvent 事件可以立即派发. PostUpdateEvent 事件先进入队列,
+     * 等所有 RootInventory 完成提交后处理后才能派发.
      */
     final class Prepared {
         private final List<Subscriber<InventoryPreUpdateEvent>> preRecipients; // 本笔事务需要通知的 PreUpdateEvent 订阅者
@@ -296,7 +296,7 @@ final class InventoryUpdateChannel {
         }
 
         /**
-         * 发送 PreUpdateEvent 事件, 并返回所有处理器执行后的取消状态.
+         * 派发 PreUpdateEvent 事件, 并返回所有处理器执行后的取消状态.
          *
          * @param cancelled 前一个 Inventory 事件留下的取消状态
          * @return 当前事件处理完成后的取消状态
@@ -312,7 +312,7 @@ final class InventoryUpdateChannel {
 
         /**
          * 在事务提交时把 PostUpdateEvent 事件放入队列, 保住事务之间的通知顺序.
-         * <p>事件此时还不能发送, 后面的事务只能排在它后面等待.
+         * <p>事件此时还不能派发, 后面的事务只能排在它后面等待.
          */
         void reservePost() {
             if (this.post != null) {
@@ -321,7 +321,7 @@ final class InventoryUpdateChannel {
         }
 
         /**
-         * 标记所有 RootInventory 已经完成 PostUpdateEvent 的处理, 允许发送当前事件.
+         * 标记所有 RootInventory 已经完成提交后处理, 允许派发当前事件.
          */
         void markPostReady() {
             if (this.post != null) {
@@ -330,7 +330,7 @@ final class InventoryUpdateChannel {
         }
 
         /**
-         * 尝试发送队列中已经准备好的 PostUpdateEvent 事件.
+         * 从队首连续派发已经允许派发的 PostUpdateEvent 事件.
          */
         void drainPost() {
             if (this.post != null) {
@@ -341,18 +341,18 @@ final class InventoryUpdateChannel {
 
     /**
      * 队列中的一个 PostUpdateEvent 事件.
-     * <p>加入队列时还不能发送, 所有 RootInventory 完成 PostUpdateEvent 的处理后才会变为可发送.
+     * <p>加入队列时还不能派发, 所有 RootInventory 完成提交后处理后才会允许派发.
      */
     private static final class PostDelivery {
         private final List<Subscriber<InventoryPostUpdateEvent>> recipients; // 本笔事务需要通知的 PostUpdateEvent 订阅者
         private final InventoryPostUpdateEvent event;                        // 槽位已经转换为当前 Inventory 坐标的事件
-        private volatile boolean ready;                                      // 是否已经可以发送
+        private volatile boolean ready;                                      // 是否已经允许派发
 
         /**
-         * 创建一个尚未准备好发送的 PostUpdateEvent 事件.
+         * 创建一个尚不允许派发的 PostUpdateEvent 事件.
          *
          * @param recipients 需要通知的 PostUpdateEvent 订阅者
-         * @param event 要发送的事件
+         * @param event 要派发的事件
          */
         private PostDelivery(
                 @NotNull List<Subscriber<InventoryPostUpdateEvent>> recipients,
@@ -371,14 +371,14 @@ final class InventoryUpdateChannel {
      * @param <E> 事件类型
      */
     private static final class Subscriber<E> implements Subscription {
-        private final InventoryUpdateChannel owner;                    // 所属更新通道
+        private final InventoryUpdateChannel owner;                    // 所属 InventoryUpdateChannel
         private final CopyOnWriteArrayList<Subscriber<E>> subscribers; // 当前订阅所在的列表
         private final AtomicReference<Observer<? super E>> observer;   // null 表示已经取消订阅
 
         /**
          * 创建一个新的订阅.
          *
-         * @param owner 所属更新通道
+         * @param owner 所属 InventoryUpdateChannel
          * @param subscribers 订阅要加入的列表
          * @param observer 接收事件的观察者
          */

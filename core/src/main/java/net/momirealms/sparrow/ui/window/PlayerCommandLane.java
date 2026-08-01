@@ -60,7 +60,7 @@ final class PlayerCommandLane {
     }
 
     /**
-     * 在锁内决定命令是立即 drain、安排实体调度还是按注销路径完成.
+     * 在锁内决定命令是立即 drain, 安排实体调度还是按注销路径完成.
      * 调度器调用发生在锁外, 避免 retired 回调与命令队列锁形成重入关系.
      *
      * @param action 玩家仍可调度时执行的操作

@@ -23,7 +23,7 @@ final class InventoryPlanner {
      * 还有剩余再走第二遍, 按同样的顺序占用空槽.
      * 每个槽最多放多少取 min(槽位上限, 物品自身上限), 上限报 0 的槽(比如被调用方禁用的槽)自然被跳过.
      *
-     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
+     * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
      * @param item 要放入的物品
      * @param order 槽位遍历顺序
      * @param slotLimit 各槽位的堆叠上限
@@ -70,8 +70,8 @@ final class InventoryPlanner {
      * 规划一次批量移除: 按给定顺序逐槽检查, matcher 看中的物品就扣掉,
      * 直到凑够数量或者翻完所有槽.
      *
-     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
-     * @param matcher  判断某个物品该不该移除; 它是调用方代码, 只许接触物品的克隆
+     * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
+     * @param matcher 判断某个物品该不该移除; 它是调用方代码, 只许接触物品副本
      * @param upTo     最多移除的数量
      * @param order    槽位遍历顺序
      * @return 移除方案与实际能移除的数量
@@ -83,7 +83,7 @@ final class InventoryPlanner {
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
-            // matcher 是用户代码, 只允许它接触克隆
+            // matcher 是用户代码, 只允许它接触物品副本
             if (current == null || !matcher.test(current.clone())) {
                 continue;
             }
@@ -99,7 +99,7 @@ final class InventoryPlanner {
      * <p>touched 标记保证同一个槽只会落入其中一遍, 因此 includedSlot 过滤器对每个槽
      * 最多被调用一次.
      *
-     * @param snapshot 规划用的槽位快照, 空槽为 {@code null}
+     * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
      * @param template 物品样板, 只用来判断"像不像", 它自己的数量不影响结果
      * @param upTo 最多收集的数量
      * @param order 槽位遍历顺序
@@ -125,7 +125,7 @@ final class InventoryPlanner {
                 if (fullStack != wantFullStacks) {
                     continue;
                 }
-                // 匹配槽只会落入一个 pass, 因而过滤器至多调用一次;调用方可据此认领跨域物理槽.
+                // 匹配槽只会落入一个 pass, 因而过滤器至多调用一次; 调用方可据此认领跨 Inventory 的同一 SlotKey.
                 if (includedSlot != null && !includedSlot.test(slot)) {
                     continue;
                 }

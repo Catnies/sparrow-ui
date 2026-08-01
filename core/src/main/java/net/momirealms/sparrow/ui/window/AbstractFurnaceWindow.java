@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * 三种原版炉类 Window 共用的布局、进度与 Builder 实现.
+ * 三种原版炉类 Window 共用的布局, 进度与 Builder 实现.
  */
 abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMenuHandle> {
     private volatile double cookProgress;

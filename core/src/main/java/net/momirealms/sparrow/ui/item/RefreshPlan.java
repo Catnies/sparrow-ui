@@ -8,8 +8,8 @@ import java.util.stream.IntStream;
 /**
  * Window 单一 tick 任务使用的不可变周期刷新计划.
  *
- * <p>一个计划可以精确组合多个周期. 例如轮播每 5 tick 换帧，同时用户要求每 7 tick
- * 重新计算上下文时，计划会在 5 或 7 的倍数到期.</p>
+ * <p>一个计划可以精确组合多个周期. 例如轮播每 5 tick 换帧, 同时用户要求每 7 tick
+ * 重新计算上下文时, 计划会在 5 或 7 的倍数到期.</p>
  */
 public final class RefreshPlan {
     private static final RefreshPlan NONE = new RefreshPlan(new int[0]); // 共享的永不到期计划

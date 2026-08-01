@@ -36,11 +36,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
-/**
- * 将 {@link MerchantWindow} 的状态投影为原版 Merchant 客户端协议.
- * <p>offers 只承担展示职责, 不参与真实输入匹配, 结果生成或交易次数计算. 每次菜单会话独立持有
- * Trade 与 Item 挂载; 任意线程到达的失效只推进 revision, 渲染和发包仍由玩家实体线程完成.
- */
 @SuppressWarnings("UnstableApiUsage")
 final class MerchantMenuHandleImpl extends ContainerMenuHandle implements MerchantMenuHandle {
     private static final int FIRST_INPUT_SLOT = 0;
@@ -209,7 +204,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     /**
-     * 标题重开已经携带完整内容, 同样可以提交待处理的选择纠正.
+     * 标题重开已经携带完整内容, 同样可以完成待处理的选择纠正.
      */
     @Override
     public void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
@@ -227,7 +222,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     /**
      * {@inheritDoc}
      * <p>本批次只捕获一次 revision. 发送期间到达的新失效会保留为更大的 revision,
-     * 由后续 tick 再次提交.
+     * 由后续 tick 再次发送.
      */
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
@@ -310,7 +305,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         ItemStack secondInput = binding.renderSecondInput(this, tradeIndex);
         ItemStack result = binding.renderResult(this, tradeIndex);
 
-        // 只标记协议展示副本, 不修改 Trade Item 提供的真实物品
+        // 只标记协议展示副本, 不修改 Trade Item 提供的服务端物品
         MarkedStack markedFirstInput = this.mark(firstInput, true);
         Object firstCost = this.createCost(markedFirstInput);
         Optional<Object> secondCost = secondInput.isEmpty()
@@ -336,7 +331,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     /**
-     * 创建要求完整组件精确匹配的 ItemCost, 阻止真实背包物品自动填入展示交易.
+     * 创建要求完整组件精确匹配的 ItemCost, 阻止玩家背包物品自动填入展示交易.
      */
     private Object createCost(MarkedStack marked) {
         Object stack = marked.stack(); // NMS ItemStack
@@ -346,7 +341,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
                 ? ItemStackProxy.INSTANCE.typeHolder(stack)
                 : ItemStackProxy.INSTANCE.getItemHolder(stack);
 
-        // predicate 包含随机 CUSTOM_DATA, 客户端背包中的真实物品无法精确匹配
+        // predicate 包含随机 CUSTOM_DATA, 玩家背包物品无法精确匹配
         Object predicate = DataComponentExactPredicateProxy.INSTANCE.allOf(
                 ItemStackProxy.INSTANCE.getComponents(stack)
         );

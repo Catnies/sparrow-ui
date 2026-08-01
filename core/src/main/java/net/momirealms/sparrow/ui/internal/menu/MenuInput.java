@@ -7,8 +7,8 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 从 NMS 包转换出的稳定入站消息.
  *
- * <p>客户端预测以不透明的 {@link MenuPrediction} 随交互传递, 但不作为权威状态. Window
- * 只根据操作意图更新自身的权威渲染结果, Paper 菜单 Adapter 只用预测缩小远端复核范围.</p>
+ * <p>客户端预测以不透明的 {@link MenuPrediction} 随交互传递, 但不能替代服务端状态. Window
+ * 只根据操作意图更新自身的渲染结果, Paper 菜单 Adapter 只用预测缩小客户端状态复核范围.</p>
  */
 @ApiStatus.Internal
 public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpecific {
@@ -47,22 +47,22 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
             int stateId();
 
             /**
-             * 返回客户端声称已经改变的远端容器预测.
+             * 返回客户端声称已经改变的容器预测状态.
              *
-             * @return 非权威客户端预测
+             * @return 客户端预测状态
              */
             @NotNull MenuPrediction prediction();
         }
 
         /**
-         * 客户端对一个原始槽位的单次点击意图.
+         * 客户端对一个协议槽位(raw slot)的单次点击意图.
          *
          * @param containerId 目标容器编号
          * @param stateId 客户端声称的容器状态编号
-         * @param slot 原始槽位编号
+         * @param slot 协议槽位(raw slot)
          * @param clickType Bukkit 点击类型
          * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
-         * @param prediction 客户端声称的非权威远端状态
+         * @param prediction 客户端声称的预测状态
          */
         record Click(
                 int containerId,
@@ -89,10 +89,10 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          *
          * @param containerId 目标容器编号
          * @param stateId 客户端声称的容器状态编号
-         * @param slot 当前步骤携带的原始槽位编号
+         * @param slot 当前步骤携带的协议槽位(raw slot)
          * @param clickType 拖拽使用的 Bukkit 点击类型
          * @param phase 手势阶段
-         * @param prediction 客户端声称的非权威远端状态
+         * @param prediction 客户端声称的预测状态
          */
         record DragStep(
                 int containerId,
@@ -126,7 +126,7 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          * 客户端在 bundle 物品中选择了一个内部条目.
          *
          * @param containerId 接收包时所属的容器编号
-         * @param slot bundle 所在的原始槽位
+         * @param slot Bundle 所在的协议槽位(raw slot)
          * @param selectedIndex 被选中的 bundle 内部索引
          */
         record BundleSelection(int containerId, int slot, int selectedIndex) implements Common {

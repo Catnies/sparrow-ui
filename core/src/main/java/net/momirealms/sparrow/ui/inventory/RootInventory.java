@@ -24,9 +24,9 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
-    private final CopyOnWriteArrayList<InventoryUpdateChannel> updateChannels = new CopyOnWriteArrayList<>(); // 所有能看到本根且当前有订阅者的逻辑视图通道
+    private final CopyOnWriteArrayList<InventoryUpdateChannel> updateChannels = new CopyOnWriteArrayList<>(); // 所有能访问当前 RootInventory 且拥有订阅者的 Inventory 事务订阅器
 
-    private volatile @Nullable ItemStack @NotNull [] state; // 当前的不可变快照, 里面的物品归内部所有
+    private volatile @Nullable ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
 
     /**
      * 以给定数组为初始内容创建 Inventory.
@@ -34,7 +34,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
      * @param initial 初始槽位内容, 空槽位置为 {@code null}.
      */
     RootInventory(@Nullable ItemStack @NotNull [] initial) {
-        // 构造时就完成快照化: 先克隆再判空
+        // 构造时复制每个物品, 并把空物品转为 null
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
             slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
@@ -50,10 +50,10 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 返回 RootInventory 槽位的最终物理身份;
+     * 返回 RootInventory 槽位对应的 SlotKey.
      *
-     * @param anchor RootInventory 槽位
-     * @return 该槽的物理身份
+     * @param anchor RootInventory 槽地址
+     * @return 该槽的 SlotKey
      */
     @NotNull
     SlotKey rootPhysicalKey(@NotNull SlotKey.Anchor anchor) {
@@ -99,8 +99,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>本类就是事务终点, 直通自身状态:
-     * 只有一个根, 快照即当前状态, 无需逐槽换算.
+     * <p>本类直接持有事务状态, 规划内容就是当前内部状态版本, 无需逐槽换算.
      */
     @NotNull
     @Override
@@ -114,7 +113,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>直通自身状态, 写前准备只对本根做一次.
+     * <p>直接使用自身状态, 写前准备只对当前 RootInventory 做一次.
      */
     @NotNull
     @Override
@@ -132,18 +131,18 @@ abstract non-sealed class RootInventory extends SparrowInventory {
 
     /**
      * 为一次写规划做准备, 触发写前同步.
-     * 任何写入口在读规划快照之前都会经过这里, simulate 等纯读路径不会触发.
+     * 任何写入口在读取规划内容之前都会经过这里, simulate 等纯读路径不会触发.
      */
     void prepareWrite() {
     }
 
     /**
-     * 事务提交成功之后, post 事件派发之前, 对每个参与的根携带它的槽位变更调用一次.
+     * 事务提交成功之后, post 事件派发之前, 对每个参与的 RootInventory 携带其槽位变更调用一次.
      * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
      * 保证观察者在事件里重入写入时外部状态已经同步. 此方法抛出的异常会直接传播,
-     * 此时镜像状态已经提交;
+     * 此时 Sparrow 内部状态已经提交;
      *
-     * @param deltas 本次事务在该根上的槽位变更
+     * @param deltas 本次事务在当前 RootInventory 上的槽位变更
      */
     void afterCommit(@NotNull List<SlotChange> deltas) {
     }
@@ -221,7 +220,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         Objects.checkIndex(slot, this.size());
         this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
-        // modifier 收到克隆, 在锁外执行; 其返回值经 SlotDelta 构造再次归一化与克隆
+        // modifier 收到物品副本并在锁外执行; SlotChange 会再次复制返回值, 并把空物品转为 null
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
         return this.commitScoped(reason, planned, List.of(new SlotChange(slot, planned[slot], modified)));
     }
@@ -237,7 +236,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
             return EMPTY_COMMITTED;
         }
 
-        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则权威写入的超上限堆
+        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则直接写入的超上限堆
         // 会在"减 1"时被静默压回上限, 凭空销毁物品. long 算术防止 int 边界溢出.
         long desired = (long) current.getAmount() + change;
         int target;
@@ -258,10 +257,10 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 把本根上已规划好的变更作为单根事务提交.
+     * 把当前 RootInventory 上已规划好的变更作为单 RootInventory 事务提交.
      *
      * @param reason 变更原因
-     * @param planned 规划时读取的快照引用, 提交时用它做并发校验
+     * @param planned 规划基准状态引用, 提交时用它做并发校验
      * @param deltas 槽位变更
      * @return 事务结果
      */
@@ -293,10 +292,10 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 返回当前快照的引用本身:
+     * 返回当前内部状态版本的引用本身:
      * 规划以它为基准, 提交时比对它有没有被换掉, 以此发现并发冲突.
      *
-     * @return 当前快照引用
+     * @return 当前内部状态版本引用
      */
     @Nullable
     ItemStack @NotNull [] currentState() {
@@ -304,40 +303,40 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 把当前快照换成新数组, 只允许在持有写锁时调用.
+     * 把当前内部状态版本换成新数组, 只允许在持有写锁时调用.
      *
-     * @param newState 新的不可变快照
+     * @param newState 新的内部状态版本
      */
     void swapState(@Nullable ItemStack @NotNull [] newState) {
         this.state = newState;
     }
 
     /**
-     * 登记一个能够看到本根的逻辑视图更新通道.
-     * <p>同一通道也可能登记在其他根上; 事务收集阶段会按通道身份去重.
+     * 登记一个能够访问当前 RootInventory 的 Inventory 事务订阅器.
+     * <p>同一订阅器也可能登记在其他 RootInventory 上; 事务收集阶段会按订阅器实例身份去重.
      *
-     * @param channel 要登记的逻辑视图通道
+     * @param channel 要登记的 Inventory 事务订阅器
      */
     void addUpdateChannel(@NotNull InventoryUpdateChannel channel) {
         this.updateChannels.add(channel);
     }
 
     /**
-     * 撤销一个不再拥有任何订阅者的逻辑视图更新通道.
+     * 撤销一个不再拥有任何订阅者的 Inventory 事务订阅器.
      *
-     * @param channel 要撤销的逻辑视图通道
+     * @param channel 要撤销的 Inventory 事务订阅器
      */
     void removeUpdateChannel(@NotNull InventoryUpdateChannel channel) {
         this.updateChannels.remove(channel);
     }
 
     /**
-     * 把当前根上仍然活动的视图通道追加到事务级结果中.
-     * <p>跨根 Composite 会让同一通道出现在多个根的索引里, {@code seen} 使用对象身份消除重复,
-     * 保证该视图在一笔事务中只准备一次投影.
+     * 把当前 RootInventory 上仍然活动的 Inventory 事务订阅器追加到事务级结果中.
+     * <p>跨 RootInventory 的 CompositeInventory 会让同一订阅器出现在多个 RootInventory 的索引里,
+     * {@code seen} 使用订阅器实例身份消除重复, 保证同一订阅器在一笔事务中只准备一次当前 Inventory 槽位变更.
      *
-     * @param channels 按首次遇到顺序收集通道的事务级列表
-     * @param seen 事务级通道身份集合
+     * @param channels 按首次遇到顺序收集订阅器的事务级列表
+     * @param seen 事务级订阅器实例身份集合
      */
     void collectUpdateChannels(
             @NotNull List<InventoryUpdateChannel> channels,
