@@ -14,7 +14,7 @@ import java.util.function.IntPredicate;
  * <p>读写通过逻辑槽与底层槽的双向映射委托给底层; 批量操作只在可见槽上规划, 被遮住的槽
  * 既放不进去也收不出来.
  */
-public final class ObscuredInventory extends SparrowInventory {
+public final class ObscuredInventory extends ViewInventory {
     private final SparrowInventory underlying; // 被装饰的底层 Inventory
     private final int[] visibleSlots; // 逻辑槽 -> 底层槽, 按底层槽序升序
     private final int[] logicalSlots; // 底层槽 -> 逻辑槽, 被遮槽为 -1

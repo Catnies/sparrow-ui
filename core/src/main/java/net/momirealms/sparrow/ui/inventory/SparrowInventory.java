@@ -21,12 +21,9 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -43,7 +40,7 @@ import java.util.function.UnaryOperator;
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
  * <p>Window 交互事件则属于 被 InventoryLink 直接连接的逻辑 Inventory 实例, 不向根或外层视图传播.
  */
-public abstract sealed class SparrowInventory permits RootInventory, CompositeInventory, ObscuredInventory {
+public abstract sealed class SparrowInventory permits RootInventory, ViewInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
     static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
 
@@ -185,10 +182,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public ItemStack itemAt(int slot) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().itemAt(anchor.rootSlot());
-    }
+    public abstract ItemStack itemAt(int slot);
 
     /**
      * 指定槽位自身的堆叠上限, 不含物品自带的堆叠上限.
@@ -198,10 +192,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @return 该槽位的堆叠上限
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public int slotMaxStackSize(int slot) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().slotMaxStackSize(anchor.rootSlot());
-    }
+    public abstract int slotMaxStackSize(int slot);
 
     /**
      * 每个槽位是否都装有达到有效堆叠上限的物品.
@@ -338,10 +329,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().setItem(reason, anchor.rootSlot(), item);
-    }
+    public abstract TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item);
 
     /**
      * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消;
@@ -354,10 +342,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().forceSetItem(reason, anchor.rootSlot(), item);
-    }
+    public abstract TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item);
 
     /**
      * 往指定槽位尽量放入物品.
@@ -370,10 +355,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().putItem(reason, anchor.rootSlot(), item);
-    }
+    public abstract AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item);
 
     /**
      * 读、改、写指定槽位.
@@ -386,10 +368,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().modifyItem(reason, anchor.rootSlot(), modifier);
-    }
+    public abstract TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier);
 
     /**
      * 增减槽内物品数量. 减少时最低到 0, 增加时最高到有效堆叠上限;
@@ -401,10 +380,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().changeAmount(reason, anchor.rootSlot(), change);
-    }
+    public abstract TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change);
 
     /**
      * 按 ADD 遍历顺序把物品尽量放进 Inventory , 先合并相似物品堆, 再占用空槽.
@@ -611,13 +587,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * ReferencingInventory 的调用方必须保证当前线程可以访问外部容器;
      * 平台拒绝访问时异常会直接传播.
      */
-    public void refresh() {
-        LinkedHashSet<RootInventory> roots = new LinkedHashSet<>();
-        this.collectRoots(roots);
-        for (RootInventory root : roots) {
-            root.refresh();
-        }
-    }
+    public abstract void refresh();
 
     /**
      * 把 SparrowInventory 包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例.
@@ -712,9 +682,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @return 规划上下文
      */
     @NotNull
-    PlanContext openPlan() {
-        return this.capturePlan(false);
-    }
+    abstract PlanContext openPlan();
 
     /**
      * 打开写路径的规划上下文: 在读快照之前, 先让每个参与的 RootInventory 做一次写前准备.
@@ -723,63 +691,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @return 规划上下文
      */
     @NotNull
-    PlanContext openPlanForWrite() {
-        return this.capturePlan(true);
-    }
-
-    /**
-     * 读取当前 Inventory 的全部槽位, 并记住它们来自哪些 RootInventory.
-     * <p>同一个 RootInventory 在一笔事务中只读取一次, 防止同一次计算混入两个时刻的内容.
-     *
-     * @param forWrite 是否需要在读取前同步外部容器
-     * @return 当前内容和后续提交所需的信息
-     */
-    private PlanContext capturePlan(boolean forWrite) {
-        int size = this.size();
-        InventoryTopology topology = this.topology();
-        Map<RootInventory, @Nullable ItemStack[]> plannedByRoot = new LinkedHashMap<>();
-        @Nullable ItemStack[] logical = new ItemStack[size];
-        // 逐个找到槽位所在的 RootInventory, 每个根只准备和读取一次.
-        for (int slot = 0; slot < size; slot++) {
-            SlotKey.Anchor anchor = topology.anchorAt(slot);
-            @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
-                // 先同步外部容器, 再读取用于计算修改结果的内容.
-                if (forWrite) root.prepareWrite();
-                return root.currentState();
-            });
-            logical[slot] = planned[anchor.rootSlot()];
-        }
-        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, topology, logicalDeltas));
-    }
-
-    /**
-     * 把当前 Inventory 的槽位变化分配给实际存放物品的 RootInventory.
-     *
-     * @param plannedByRoot 计算修改结果时读到的各 RootInventory 内容
-     * @param topology 当前 Inventory 与 RootInventory 之间的槽位关系
-     * @param logicalDeltas 当前 Inventory 中要进行的槽位变化
-     * @return 每个 RootInventory 实际需要执行的槽位变化
-     */
-    private static List<InventoryTransactions.Scope> toScopes(
-            Map<RootInventory, @Nullable ItemStack[]> plannedByRoot,
-            InventoryTopology topology,
-            List<SlotDelta> logicalDeltas
-    ) {
-        // 按 RootInventory 分组, 同时把槽位编号换成 RootInventory 使用的编号.
-        Map<RootInventory, List<SlotDelta>> deltasByRoot = new LinkedHashMap<>();
-        for (int i = 0; i < logicalDeltas.size(); i++) {
-            SlotDelta delta = logicalDeltas.get(i);
-            SlotKey.Anchor anchor = topology.anchorAt(delta.slot());
-            deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.relocatedTo(anchor.rootSlot()));
-        }
-
-        // 为每个确实需要修改的 RootInventory 创建一项提交内容.
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>(deltasByRoot.size());
-        for (Map.Entry<RootInventory, List<SlotDelta>> entry : deltasByRoot.entrySet()) {
-            scopes.add(new InventoryTransactions.Scope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
-        }
-        return scopes;
-    }
+    abstract PlanContext openPlanForWrite();
 
     /**
      * 返回当前 Inventory 与 RootInventory 之间的槽位关系, 第一次调用时计算.
@@ -787,7 +699,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
      * @return 当前 Inventory 的槽位映射
      */
     @NotNull
-    private InventoryTopology topology() {
+    final InventoryTopology topology() {
         InventoryTopology topology = this.topology;
         if (topology == null) {
             synchronized (this) {

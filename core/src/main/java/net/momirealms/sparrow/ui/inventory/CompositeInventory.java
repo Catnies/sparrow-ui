@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * 把多个 Inventory 按声明顺序拼接成一个逻辑 Inventory 的视图, 自己不持有槽数据.
  */
-public final class CompositeInventory extends SparrowInventory {
+public final class CompositeInventory extends ViewInventory {
     private final SparrowInventory[] members;   // 按声明序排列的成员, 构造后固定
     private final int[] memberOffsets;          // memberOffsets[i] = 成员 i 的逻辑槽起点
     private final int size;                     // 全部成员槽位数之和, 即逻辑槽总数
