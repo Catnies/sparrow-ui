@@ -37,72 +37,100 @@ public final class SlotChange {
     }
 
     /**
-     * 判断本次变更是否向槽位中加入了物品.
-     * <p>空槽变为非空槽, 或相似物品的数量增加时返回 {@code true}.
-     * 两个不相似的非空物品之间的替换由 {@link #isSwap()} 表达.
+     * 判断本次变更是否有物品流入槽位.
+     * <p>本方法与 {@link #isRemove()} 不互斥. 两个不相似的非空物品发生替换时,
+     * 槽位同时存在物品流入与流出, 两个方法都会返回 {@code true}.
      *
-     * @return 本次变更是否加入了物品
+     * @return {@link #addedAmount()} 大于 {@code 0} 时返回 {@code true}
      */
     public boolean isAdd() {
-        if (this.after != null && this.before != null && this.after.isSimilar(this.before)) {
-            return this.after.getAmount() > this.before.getAmount();
-        }
-        return this.before == null && this.after != null;
+        return this.addedAmount() > 0;
     }
 
     /**
-     * 判断本次变更是否从槽位中移除了物品.
-     * <p>非空槽变为空槽, 或相似物品的数量减少时返回 {@code true}.
-     * 两个不相似的非空物品之间的替换由 {@link #isSwap()} 表达.
+     * 判断本槽位是否只有物品流入, 没有物品流出.
+     * <p>不相似物品发生替换时同时存在两个方向的物品流, 本方法返回 {@code false}.
      *
-     * @return 本次变更是否移除了物品
+     * @return {@link #isAdd()} 为 {@code true} 且 {@link #isRemove()} 为 {@code false} 时返回 {@code true}
+     */
+    public boolean isAddOnly() {
+        return this.isAdd() && !this.isRemove();
+    }
+
+    /**
+     * 判断本次变更是否有物品流出槽位.
+     * <p>本方法与 {@link #isAdd()} 不互斥. 两个不相似的非空物品发生替换时,
+     * 槽位同时存在物品流入与流出, 两个方法都会返回 {@code true}.
+     *
+     * @return {@link #removedAmount()} 大于 {@code 0} 时返回 {@code true}
      */
     public boolean isRemove() {
-        if (this.after != null && this.before != null && this.after.isSimilar(this.before)) {
-            return this.after.getAmount() < this.before.getAmount();
-        }
-        return this.after == null && this.before != null;
+        return this.removedAmount() > 0;
+    }
+
+    /**
+     * 判断本槽位是否只有物品流出, 没有物品流入.
+     * <p>不相似物品发生替换时同时存在两个方向的物品流, 本方法返回 {@code false}.
+     *
+     * @return {@link #isRemove()} 为 {@code true} 且 {@link #isAdd()} 为 {@code false} 时返回 {@code true}
+     */
+    public boolean isRemoveOnly() {
+        return this.isRemove() && !this.isAdd();
     }
 
     /**
      * 判断两个非空物品是否发生了不相似的替换.
-     * <p>这里的"交换"按 Bukkit {@link ItemStack#isSimilar(ItemStack)} 定义:
+     * <p>替换同时包含旧物品流出和新物品流入, 因此本方法返回 {@code true} 时,
+     * {@link #isAdd()} 与 {@link #isRemove()} 也会返回 {@code true}.
+     * 物品相似性按 Bukkit {@link ItemStack#isSimilar(ItemStack)} 定义:
      * 材质, 名称, 附魔或其他物品元数据不同都可能使本方法返回 {@code true}.
      *
      * @return 两个非空物品是否发生了不相似的替换
      */
-    public boolean isSwap() {
+    public boolean isReplacement() {
         return this.after != null && this.before != null && !this.after.isSimilar(this.before);
     }
 
     /**
-     * 返回本次加入的物品数量.
+     * 判断显式写入前后的槽位内容是否没有变化.
+     * <p>本方法只描述槽位内容; 即使返回 {@code true}, 包含本记录的事务仍可能完成提交和事件派发.
      *
-     * @return 加入的物品数量
-     * @throws IllegalStateException 当 {@link #isAdd()} 为 {@code false} 时
+     * @return 两个方向都没有物品流时返回 {@code true}
      */
-    public int addedAmount() {
-        if (!this.isAdd()) {
-            throw new IllegalStateException("No items have been added");
-        }
-        return this.before == null
-                ? this.after.getAmount()
-                : this.after.getAmount() - this.before.getAmount();
+    public boolean isUnchanged() {
+        return !this.isAdd() && !this.isRemove();
     }
 
     /**
-     * 返回本次移除的物品数量.
+     * 返回本次流入槽位的物品总量.
+     * <p>没有物品流入时返回 {@code 0}; 不相似物品发生替换时返回变更后物品的完整数量.
      *
-     * @return 移除的物品数量
-     * @throws IllegalStateException 当 {@link #isRemove()} 为 {@code false} 时
+     * @return 流入数量, 不会小于 {@code 0}
+     */
+    public int addedAmount() {
+        if (this.after == null) {
+            return 0;
+        }
+        if (this.before == null || !this.after.isSimilar(this.before)) {
+            return this.after.getAmount();
+        }
+        return Math.max(this.after.getAmount() - this.before.getAmount(), 0);
+    }
+
+    /**
+     * 返回本次流出槽位的物品总量.
+     * <p>没有物品流出时返回 {@code 0}; 不相似物品发生替换时返回变更前物品的完整数量.
+     *
+     * @return 流出数量, 不会小于 {@code 0}
      */
     public int removedAmount() {
-        if (!this.isRemove()) {
-            throw new IllegalStateException("No items have been removed");
+        if (this.before == null) {
+            return 0;
         }
-        return this.after == null
-                ? this.before.getAmount()
-                : this.before.getAmount() - this.after.getAmount();
+        if (this.after == null || !this.before.isSimilar(this.after)) {
+            return this.before.getAmount();
+        }
+        return Math.max(this.before.getAmount() - this.after.getAmount(), 0);
     }
 
     /**
@@ -119,6 +147,11 @@ public final class SlotChange {
     @Nullable
     public ItemStack after() {
         return ItemUtils.copyOrNull(this.after);
+    }
+
+    @Nullable
+    ItemStack rawBefore() {
+        return this.before;
     }
 
     @Nullable

@@ -718,7 +718,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
             synchronized (this) {
                 channel = this.updateChannel;
                 if (channel == null) {
-                    channel = new InventoryUpdateChannel(this.topology());
+                    channel = new InventoryUpdateChannel(this, this.topology());
                     this.updateChannel = channel;
                 }
             }

@@ -115,7 +115,7 @@ public final class ClickSemantics {
     @ApiStatus.Internal
     public static void dispatchBundleSelectEvent(@NotNull SparrowInventory inventory, int slot, @NotNull BundleSelectClick select) {
         inventory.publishBundleSelect(
-                new InventoryBundleSelectEvent(inventory, slot, select.player(), select.bundleSlot())
+                new InventoryBundleSelectEvent(inventory, slot, select.player(), select.window(), select.windowSlot(), select.bundleSlot())
         );
     }
 

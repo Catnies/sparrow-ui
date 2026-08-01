@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * 并在所有 RootInventory 都完成提交后处理后再通知订阅者.
  */
 final class InventoryUpdateChannel {
+    private final SparrowInventory inventory; // 当前订阅使用其逻辑槽位坐标的 Inventory
     private final InventoryTopology topology; // 当前 Inventory 的槽位映射表
     private final CopyOnWriteArrayList<Subscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
     private final CopyOnWriteArrayList<Subscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
@@ -40,9 +41,11 @@ final class InventoryUpdateChannel {
     /**
      * 创建一个尚未登记到 RootInventory 的 InventoryUpdateChannel.
      *
+     * @param inventory 当前订阅的 Inventory
      * @param topology 当前 Inventory 的槽位映射
      */
-    InventoryUpdateChannel(@NotNull InventoryTopology topology) {
+    InventoryUpdateChannel(@NotNull SparrowInventory inventory, @NotNull InventoryTopology topology) {
+        this.inventory = inventory;
         this.topology = topology;
     }
 
@@ -201,10 +204,10 @@ final class InventoryUpdateChannel {
         // 没有对应订阅者时, 不创建该事件.
         InventoryPreUpdateEvent preEvent = preRecipients.isEmpty()
                 ? null
-                : new InventoryPreUpdateEvent(reason, deltas, rootChanges);
+                : new InventoryPreUpdateEvent(this.inventory, reason, deltas, rootChanges);
         PostDelivery post = postRecipients.isEmpty()
                 ? null
-                : new PostDelivery(postRecipients, new InventoryPostUpdateEvent(reason, deltas, rootChanges));
+                : new PostDelivery(postRecipients, new InventoryPostUpdateEvent(this.inventory, reason, deltas, rootChanges));
         return new Prepared(preRecipients, preEvent, post);
     }
 
