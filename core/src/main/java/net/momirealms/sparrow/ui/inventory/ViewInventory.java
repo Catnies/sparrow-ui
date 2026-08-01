@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import org.bukkit.inventory.ItemStack;
@@ -147,17 +147,17 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
     private static List<InventoryTransactions.Scope> toScopes(
             Map<RootInventory, @Nullable ItemStack[]> plannedByRoot,
             InventoryTopology topology,
-            List<SlotDelta> logicalDeltas
+            List<SlotChange> logicalDeltas
     ) {
-        Map<RootInventory, List<SlotDelta>> deltasByRoot = new LinkedHashMap<>();
+        Map<RootInventory, List<SlotChange>> deltasByRoot = new LinkedHashMap<>();
         for (int i = 0; i < logicalDeltas.size(); i++) {
-            SlotDelta delta = logicalDeltas.get(i);
+            SlotChange delta = logicalDeltas.get(i);
             SlotKey.Anchor anchor = topology.anchorAt(delta.slot());
-            deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.relocatedTo(anchor.rootSlot()));
+            deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.withSlot(anchor.rootSlot()));
         }
 
         List<InventoryTransactions.Scope> scopes = new ArrayList<>(deltasByRoot.size());
-        for (Map.Entry<RootInventory, List<SlotDelta>> entry : deltasByRoot.entrySet()) {
+        for (Map.Entry<RootInventory, List<SlotChange>> entry : deltasByRoot.entrySet()) {
             scopes.add(new InventoryTransactions.Scope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
         }
         return scopes;

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
+import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -11,12 +11,12 @@ public sealed interface TransactionResult {
      * 事务成功:
      * 所有参与库存的改动都已生效, post 事件也已派发完毕.
      *
-     * @param changes 每个参与库存各一条变更记录, 按调用方声明的顺序排列
+     * @param rootChanges 每个参与库存各一条变更记录, 按调用方声明的顺序排列
      */
-    record Committed(@NotNull List<InventoryDelta> changes) implements TransactionResult {
+    record Committed(@NotNull List<RootInventoryChange> rootChanges) implements TransactionResult {
 
         public Committed {
-            changes = List.copyOf(changes);
+            rootChanges = List.copyOf(rootChanges);
         }
     }
 

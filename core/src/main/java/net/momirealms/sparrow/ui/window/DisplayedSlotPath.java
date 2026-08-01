@@ -255,8 +255,8 @@ final class DisplayedSlotPath implements AutoCloseable {
                     candidate.inventoryLink = link;
                     candidate.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
                         // 事件使用被订阅 Inventory 的逻辑坐标, 只需检查当前路径连接的槽号.
-                        for (int i = 0; i < event.deltas().size(); i++) {
-                            if (event.deltas().get(i).slot() == link.slot()) {
+                        for (int i = 0; i < event.slotChanges().size(); i++) {
+                            if (event.slotChanges().get(i).slot() == link.slot()) {
                                 candidate.notifyWindows(false);
                                 return;
                             }

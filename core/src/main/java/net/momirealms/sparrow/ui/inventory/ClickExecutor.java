@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -129,7 +129,7 @@ final class ClickExecutor {
         }
 
         // 逐槽计算实放量, delta 归入各自规划
-        Map<SparrowInventory, List<SlotDelta>> deltasByInventory = new LinkedHashMap<>();
+        Map<SparrowInventory, List<SlotChange>> deltasByInventory = new LinkedHashMap<>();
         int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
         int placedTotal = 0;
         for (int i = 0; i < targets.size() && budget > 0; i++) {
@@ -140,7 +140,7 @@ final class ClickExecutor {
             }
             ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
             deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
-                    .add(new SlotDelta(target.link().slot(), target.current(), after));
+                    .add(new SlotChange(target.link().slot(), target.current(), after));
             if (!creative) {
                 budget -= placed;
                 placedTotal += placed;
@@ -148,7 +148,7 @@ final class ClickExecutor {
         }
 
         List<InventoryTransactions.Scope> scopes = new ArrayList<>();
-        for (Map.Entry<SparrowInventory, List<SlotDelta>> entry : deltasByInventory.entrySet()) {
+        for (Map.Entry<SparrowInventory, List<SlotChange>> entry : deltasByInventory.entrySet()) {
             scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
         }
         TransactionResult result = InventoryTransactions.commit(
@@ -218,7 +218,7 @@ final class ClickExecutor {
 
         TransactionResult result = InventoryTransactions.commit(
                 new PlayerUpdateReason.Click(context.viewer(), clickType, -1),
-                plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, outcome.slotAfter()))),
+                plan.scoper().apply(List.of(new SlotChange(link.slot(), current, outcome.slotAfter()))),
                 false
         );
         if (result instanceof TransactionResult.Committed) {
@@ -265,7 +265,7 @@ final class ClickExecutor {
         }
         TransactionResult result = InventoryTransactions.commit(
                 new PlayerUpdateReason.Click(context.viewer(), ClickType.SWAP_OFFHAND, -1),
-                plan.scoper().apply(List.of(new SlotDelta(source.slot(), current, offhand))),
+                plan.scoper().apply(List.of(new SlotChange(source.slot(), current, offhand))),
                 false
         );
         if (result instanceof TransactionResult.Committed) {
@@ -292,8 +292,8 @@ final class ClickExecutor {
             InventoryTransactions.commit(
                     reason,
                     sourcePlan.scoper().apply(List.of(
-                            new SlotDelta(source.slot(), sourceItem, targetItem),
-                            new SlotDelta(target.slot(), targetItem, sourceItem)
+                            new SlotChange(source.slot(), sourceItem, targetItem),
+                            new SlotChange(target.slot(), targetItem, sourceItem)
                     )),
                     false
             );
@@ -307,10 +307,10 @@ final class ClickExecutor {
             return;
         }
         List<InventoryTransactions.Scope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
-                new SlotDelta(source.slot(), sourceItem, targetItem)
+                new SlotChange(source.slot(), sourceItem, targetItem)
         )));
         scopes.addAll(targetPlan.scoper().apply(List.of(
-                new SlotDelta(target.slot(), targetItem, sourceItem)
+                new SlotChange(target.slot(), targetItem, sourceItem)
         )));
         InventoryTransactions.commit(reason, scopes, false);
     }
@@ -339,7 +339,7 @@ final class ClickExecutor {
         int left = current.getAmount() - take;
         TransactionResult result = InventoryTransactions.commit(
                 reason,
-                plan.scoper().apply(List.of(new SlotDelta(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
+                plan.scoper().apply(List.of(new SlotChange(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
                 false
         );
         if (result instanceof TransactionResult.Committed) {
@@ -460,7 +460,7 @@ final class ClickExecutor {
         }
 
         int left = current.getAmount() - moved;
-        List<SlotDelta> sourceDeltas = List.of(new SlotDelta(
+        List<SlotChange> sourceDeltas = List.of(new SlotChange(
                 source.slot(),
                 current,
                 left > 0 ? ItemUtils.copyWithAmount(current, left) : null

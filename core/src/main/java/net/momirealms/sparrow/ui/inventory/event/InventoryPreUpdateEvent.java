@@ -7,30 +7,30 @@ import java.util.List;
 
 /**
  * Inventory 在事务提交前发出的更新事件.
- * <p>{@link #deltas()} 使用当前订阅 Inventory 的槽位坐标,
+ * <p>{@link #slotChanges()} 使用当前订阅 Inventory 的槽位坐标,
  * {@link #rootChanges()} 则保留整笔事务涉及的所有根 Inventory 变化.
  */
 public final class InventoryPreUpdateEvent {
     private final UpdateReason reason;                // 整笔事务的触发原因
-    private final List<SlotDelta> deltas;             // 使用订阅视图逻辑坐标的不可变投影
-    private final List<InventoryDelta> rootChanges;   // 使用根坐标的完整不可变事务变更
+    private final List<SlotChange> slotChanges;             // 使用订阅视图逻辑坐标的不可变投影
+    private final List<RootInventoryChange> rootChanges;   // 使用根坐标的完整不可变事务变更
     private boolean cancelled;                        // 当前处理器最终决定的取消状态
 
     /**
      * 创建一个提交前更新事件.
      *
      * @param reason 事务触发原因
-     * @param deltas 当前 Inventory 能看到的槽位变化
+     * @param slotChanges 当前 Inventory 能看到的槽位变化
      * @param rootChanges 整笔事务在根 Inventory 中的完整变化
      */
     @ApiStatus.Internal
     public InventoryPreUpdateEvent(
             @NotNull UpdateReason reason,
-            @NotNull List<SlotDelta> deltas,
-            @NotNull List<InventoryDelta> rootChanges
+            @NotNull List<SlotChange> slotChanges,
+            @NotNull List<RootInventoryChange> rootChanges
     ) {
         this.reason = reason;
-        this.deltas = deltas;
+        this.slotChanges = slotChanges;
         this.rootChanges = rootChanges;
     }
 
@@ -50,8 +50,8 @@ public final class InventoryPreUpdateEvent {
      * @return 使用当前 Inventory 槽位坐标的变化
      */
     @NotNull
-    public List<SlotDelta> deltas() {
-        return this.deltas;
+    public List<SlotChange> slotChanges() {
+        return this.slotChanges;
     }
 
     /**
@@ -60,7 +60,7 @@ public final class InventoryPreUpdateEvent {
      * @return 使用根 Inventory 槽位坐标的完整变化
      */
     @NotNull
-    public List<InventoryDelta> rootChanges() {
+    public List<RootInventoryChange> rootChanges() {
         return this.rootChanges;
     }
 

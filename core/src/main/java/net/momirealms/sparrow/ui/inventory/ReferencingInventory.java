@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
@@ -198,10 +198,10 @@ public final class ReferencingInventory extends RootInventory {
      * <p>把每个槽位变更写回容器对应的真实槽位.
      */
     @Override
-    void afterCommit(@NotNull List<SlotDelta> deltas) {
+    void afterCommit(@NotNull List<SlotChange> deltas) {
         // delta 的访问器返回克隆, 容器不会拿到镜像内部实例
         for (int i = 0; i < deltas.size(); i++) {
-            SlotDelta delta = deltas.get(i);
+            SlotChange delta = deltas.get(i);
             this.bukkitInventory.setItem(this.externalSlots[delta.slot()].slot(), delta.after());
         }
     }
@@ -215,7 +215,7 @@ public final class ReferencingInventory extends RootInventory {
         // 只有差异槽才在 SlotDelta 构造里克隆
         @Nullable ItemStack[] raw = this.contentsGetter.apply(this.bukkitInventory);
         @Nullable ItemStack[] mirror = this.currentState();
-        @Nullable List<SlotDelta> deltas = null;
+        @Nullable List<SlotChange> deltas = null;
         for (int slot = 0; slot < mirror.length; slot++) {
             @Nullable ItemStack liveItem = raw[this.externalSlots[slot].slot()];
             @Nullable ItemStack mirrorItem = mirror[slot];
@@ -224,7 +224,7 @@ public final class ReferencingInventory extends RootInventory {
                 if (deltas == null) {
                     deltas = new ArrayList<>();
                 }
-                deltas.add(new SlotDelta(slot, mirrorItem, liveItem));
+                deltas.add(new SlotChange(slot, mirrorItem, liveItem));
             }
         }
         if (deltas == null) {

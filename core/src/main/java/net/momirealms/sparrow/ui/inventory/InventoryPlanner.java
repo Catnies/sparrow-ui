@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
@@ -31,7 +31,7 @@ final class InventoryPlanner {
      */
     @NotNull
     static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit) {
-        List<SlotDelta> deltas = new ArrayList<>();
+        List<SlotChange> deltas = new ArrayList<>();
         int remaining = item.getAmount();
 
         // 第一遍: 合并到相似且未满的堆
@@ -46,7 +46,7 @@ final class InventoryPlanner {
                 continue;
             }
             int moved = Math.min(space, remaining);
-            deltas.add(new SlotDelta(slot, current, ItemUtils.copyWithAmount(current, current.getAmount() + moved)));
+            deltas.add(new SlotChange(slot, current, ItemUtils.copyWithAmount(current, current.getAmount() + moved)));
             remaining -= moved;
         }
 
@@ -60,7 +60,7 @@ final class InventoryPlanner {
             if (moved <= 0) {
                 continue;
             }
-            deltas.add(new SlotDelta(slot, null, ItemUtils.copyWithAmount(item, moved)));
+            deltas.add(new SlotChange(slot, null, ItemUtils.copyWithAmount(item, moved)));
             remaining -= moved;
         }
         return new AddPlan(deltas, remaining);
@@ -78,7 +78,7 @@ final class InventoryPlanner {
      */
     @NotNull
     static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order) {
-        List<SlotDelta> deltas = new ArrayList<>();
+        List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
@@ -88,7 +88,7 @@ final class InventoryPlanner {
                 continue;
             }
             int take = Math.min(current.getAmount(), upTo - taken);
-            deltas.add(new SlotDelta(slot, current, reduced(current, take)));
+            deltas.add(new SlotChange(slot, current, reduced(current, take)));
             taken += take;
         }
         return new TakePlan(deltas, taken);
@@ -109,7 +109,7 @@ final class InventoryPlanner {
      */
     @NotNull
     static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
-        List<SlotDelta> deltas = new ArrayList<>();
+        List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
         boolean[] touched = new boolean[snapshot.length];
 
@@ -130,7 +130,7 @@ final class InventoryPlanner {
                     continue;
                 }
                 int take = Math.min(current.getAmount(), upTo - taken);
-                deltas.add(new SlotDelta(slot, current, reduced(current, take)));
+                deltas.add(new SlotChange(slot, current, reduced(current, take)));
                 touched[slot] = true;
                 taken += take;
             }
@@ -156,7 +156,7 @@ final class InventoryPlanner {
      * @param deltas 每个要改动的槽的变更
      * @param remaining 规划完仍然放不下的数量
      */
-    record AddPlan(List<SlotDelta> deltas, int remaining) {
+    record AddPlan(List<SlotChange> deltas, int remaining) {
     }
 
     /**
@@ -165,6 +165,6 @@ final class InventoryPlanner {
      * @param deltas 每个要改动的槽的变更
      * @param taken 实际能取出的总数量
      */
-    record TakePlan(List<SlotDelta> deltas, int taken) {
+    record TakePlan(List<SlotChange> deltas, int taken) {
     }
 }

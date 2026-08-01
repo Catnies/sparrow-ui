@@ -7,7 +7,7 @@ import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
@@ -505,9 +505,9 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
             }
             InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize);
             remaining[index] = plan.remaining();
-            List<SlotDelta> deltas = plan.deltas();
+            List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
-                SlotDelta delta = deltas.get(j);
+                SlotChange delta = deltas.get(j);
                 working[delta.slot()] = delta.after();
             }
             index++;
@@ -644,7 +644,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
 
     /**
      * 订阅事务提交前的事件, 处理器可以取消整个事务.
-     * 一笔事务对本次订阅最多通知一次. {@link InventoryPreUpdateEvent#deltas()} 中的槽位编号属于当前 Inventory,
+     * 一笔事务对本次订阅最多通知一次. {@link InventoryPreUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory,
      * 当前 Inventory 没有可见变化时不会通知.
      *
      * @param observer 事件处理器
@@ -657,7 +657,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
 
     /**
      * 订阅事务提交后的事件. 一笔事务对本次订阅最多通知一次.
-     * {@link InventoryPostUpdateEvent#deltas()} 中的槽位编号属于当前 Inventory, 没有可见变化时不会通知.
+     * {@link InventoryPostUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory, 没有可见变化时不会通知.
      * 连续修改同一个 RootInventory 时, 事件顺序与事务提交顺序一致.
      *
      * @param observer 事件处理器
@@ -734,7 +734,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      */
     record PlanContext(
             @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotDelta>, List<InventoryTransactions.Scope>> scoper
+            @NotNull Function<List<SlotChange>, List<InventoryTransactions.Scope>> scoper
     ) {
     }
 

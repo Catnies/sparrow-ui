@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -100,10 +100,10 @@ final class InventoryTopology {
      * @return 当前 Inventory 能看到的槽位变化; 没有可见变化时返回空列表
      */
     @NotNull
-    List<SlotDelta> project(@NotNull List<InventoryDelta> rootChanges) {
-        List<SlotDelta> projected = new ArrayList<>();
+    List<SlotChange> project(@NotNull List<RootInventoryChange> rootChanges) {
+        List<SlotChange> projected = new ArrayList<>();
         for (int i = 0; i < rootChanges.size(); i++) {
-            InventoryDelta rootChange = rootChanges.get(i);
+            RootInventoryChange rootChange = rootChanges.get(i);
 
             // 整笔事务可能还修改了当前 Inventory 没有使用的 RootInventory.
             int[] logicalSlots = this.logicalSlotsByRoot.get(rootChange.inventory());
@@ -112,12 +112,12 @@ final class InventoryTopology {
             }
 
             // -1 表示该根槽位在当前 Inventory 中不可见, 其余槽位换成当前 Inventory 的编号.
-            List<SlotDelta> rootDeltas = rootChange.deltas();
+            List<SlotChange> rootDeltas = rootChange.slotChanges();
             for (int j = 0; j < rootDeltas.size(); j++) {
-                SlotDelta rootDelta = rootDeltas.get(j);
+                SlotChange rootDelta = rootDeltas.get(j);
                 int logicalSlot = logicalSlots[rootDelta.slot()];
                 if (logicalSlot != -1) {
-                    projected.add(rootDelta.relocatedTo(logicalSlot));
+                    projected.add(rootDelta.withSlot(logicalSlot));
                 }
             }
         }

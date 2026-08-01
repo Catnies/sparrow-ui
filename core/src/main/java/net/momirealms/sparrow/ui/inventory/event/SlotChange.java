@@ -6,20 +6,20 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public final class SlotDelta {
+public final class SlotChange {
     private final int slot;
     @Nullable private final ItemStack before; // 变更前的内部快照, 空槽为 null
     @Nullable private final ItemStack after;  // 变更后的内部快照
 
     @ApiStatus.Internal
-    public SlotDelta(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
+    public SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
         this.slot = slot;
         this.before = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
         this.after = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
     }
 
     @ApiStatus.Internal
-    private SlotDelta(int slot, @Nullable ItemStack before, @Nullable ItemStack after, boolean trusted) {
+    private SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after, boolean trusted) {
         this.slot = slot;
         this.before = trusted ? before : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
         this.after = trusted ? after : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
@@ -28,8 +28,8 @@ public final class SlotDelta {
     // 用另一个槽位编号表示同一条物品变化.
     @NotNull
     @ApiStatus.Internal
-    public SlotDelta relocatedTo(int slot) {
-        return new SlotDelta(slot, this.before, this.after, true);
+    public SlotChange withSlot(int slot) {
+        return new SlotChange(slot, this.before, this.after, true);
     }
 
     public int slot() {

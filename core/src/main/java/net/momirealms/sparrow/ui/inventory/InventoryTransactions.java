@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
@@ -35,7 +35,7 @@ final class InventoryTransactions {
     record Scope(
             @NotNull RootInventory inventory,
             @Nullable ItemStack @NotNull [] planned,
-            @NotNull List<SlotDelta> deltas
+            @NotNull List<SlotChange> deltas
     ) {
         Scope {
             deltas = List.copyOf(deltas);
@@ -60,7 +60,7 @@ final class InventoryTransactions {
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
         List<Scope> declared = validateAndMerge(scopes);
         List<Scope> ordered = sortByLockOrder(declared);
-        List<InventoryDelta> rootChanges = changesOf(declared);
+        List<RootInventoryChange> rootChanges = changesOf(declared);
 
         // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
         boolean cancelled = false;
@@ -149,7 +149,7 @@ final class InventoryTransactions {
         for (int i = 0; i < scopes.size(); i++) {
             Scope scope = scopes.get(i);
             if (scope.deltas().isEmpty()) {
-                throw new IllegalArgumentException("transaction scope has no slot deltas");
+                throw new IllegalArgumentException("transaction scope has no slot slotChanges");
             }
             int size = scope.planned().length;
             for (int j = 0; j < scope.deltas().size(); j++) {
@@ -173,7 +173,7 @@ final class InventoryTransactions {
             if (previous.planned() != scope.planned()) {
                 throw new IllegalArgumentException("transaction contains the same inventory with different planned snapshots");
             }
-            List<SlotDelta> combined = new ArrayList<>(previous.deltas());
+            List<SlotChange> combined = new ArrayList<>(previous.deltas());
             combined.addAll(scope.deltas());
             mergedByRoot.put(scope.inventory(), new Scope(scope.inventory(), scope.planned(), combined));
         }
@@ -185,7 +185,7 @@ final class InventoryTransactions {
             HashSet<Integer> seenSlots = new HashSet<>();
             for (int j = 0; j < scope.deltas().size(); j++) {
                 if (!seenSlots.add(scope.deltas().get(j).slot())) {
-                    throw new IllegalArgumentException("transaction contains conflicting deltas for slot " + scope.deltas().get(j).slot());
+                    throw new IllegalArgumentException("transaction contains conflicting slotChanges for slot " + scope.deltas().get(j).slot());
                 }
             }
         }
@@ -198,7 +198,7 @@ final class InventoryTransactions {
                 for (int j = 0; j < scope.deltas().size(); j++) {
                     int slot = scope.deltas().get(j).slot();
                     if (!seenPhysicalSlots.add(scope.inventory().physicalKey(slot))) {
-                        throw new IllegalArgumentException("transaction contains conflicting deltas for the same physical slot");
+                        throw new IllegalArgumentException("transaction contains conflicting slotChanges for the same physical slot");
                     }
                 }
             }
@@ -227,11 +227,11 @@ final class InventoryTransactions {
      * @return 按传入顺序排列的完整修改列表
      */
     @NotNull
-    private static List<InventoryDelta> changesOf(List<Scope> scopes) {
-        List<InventoryDelta> changes = new ArrayList<>(scopes.size());
+    private static List<RootInventoryChange> changesOf(List<Scope> scopes) {
+        List<RootInventoryChange> changes = new ArrayList<>(scopes.size());
         for (int i = 0; i < scopes.size(); i++) {
             Scope scope = scopes.get(i);
-            changes.add(new InventoryDelta(scope.inventory(), scope.deltas()));
+            changes.add(new RootInventoryChange(scope.inventory(), scope.deltas()));
         }
         return List.copyOf(changes);
     }
@@ -251,7 +251,7 @@ final class InventoryTransactions {
     private static List<InventoryUpdateChannel.Prepared> prepareUpdates(
             @NotNull UpdateReason reason,
             @NotNull List<Scope> scopes,
-            @NotNull List<InventoryDelta> rootChanges,
+            @NotNull List<RootInventoryChange> rootChanges,
             boolean includePre
     ) {
         // 同一个 Inventory 可能登记在多个 RootInventory 中, 这里只保留一份.
@@ -275,9 +275,9 @@ final class InventoryTransactions {
     // 把变更落到一张新快照上, 复制当前快照, 再把发生变化的槽位换成新物品.
     private static @Nullable ItemStack @NotNull [] applyDeltas(Scope scope) {
         @Nullable ItemStack[] next = scope.inventory().currentState().clone();
-        List<SlotDelta> deltas = scope.deltas();
+        List<SlotChange> deltas = scope.deltas();
         for (int i = 0; i < deltas.size(); i++) {
-            SlotDelta delta = deltas.get(i);
+            SlotChange delta = deltas.get(i);
             next[delta.slot()] = delta.rawAfter();
         }
         return next;

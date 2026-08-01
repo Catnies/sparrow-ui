@@ -3,10 +3,10 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
+import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
@@ -179,7 +179,7 @@ final class InventoryUpdateChannel {
     @Nullable
     Prepared prepare(
             @NotNull UpdateReason reason,
-            @NotNull List<InventoryDelta> rootChanges,
+            @NotNull List<RootInventoryChange> rootChanges,
             boolean includePre
     ) {
         if (!this.active) {
@@ -193,7 +193,7 @@ final class InventoryUpdateChannel {
         }
 
         // 每个 Inventory 只转换一次槽位; Obscured 中只有隐藏槽位变化时会得到空结果.
-        List<SlotDelta> deltas = this.topology.project(rootChanges);
+        List<SlotChange> deltas = this.topology.project(rootChanges);
         if (deltas.isEmpty()) {
             return null;
         }

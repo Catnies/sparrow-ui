@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
@@ -145,7 +145,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
      *
      * @param deltas 本次事务在该根上的槽位变更
      */
-    void afterCommit(@NotNull List<SlotDelta> deltas) {
+    void afterCommit(@NotNull List<SlotChange> deltas) {
     }
 
     @Override
@@ -173,7 +173,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         Objects.checkIndex(slot, this.size());
         this.prepareWrite();
         @Nullable ItemStack[] planned = this.currentState();
-        SlotDelta delta = new SlotDelta(slot, planned[slot], item);
+        SlotChange delta = new SlotChange(slot, planned[slot], item);
         return InventoryTransactions.commit(
                 reason,
                 List.of(new InventoryTransactions.Scope(this, planned, List.of(delta))),
@@ -211,7 +211,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
 
         ItemStack after = current != null ? current.clone() : input.clone();
         after.setAmount((current != null ? current.getAmount() : 0) + moved);
-        TransactionResult result = this.commitScoped(reason, planned, List.of(new SlotDelta(slot, current, after)));
+        TransactionResult result = this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
         return new AddResult(result, result instanceof TransactionResult.Committed ? amount - moved : amount);
     }
 
@@ -223,7 +223,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         // modifier 收到克隆, 在锁外执行; 其返回值经 SlotDelta 构造再次归一化与克隆
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
-        return this.commitScoped(reason, planned, List.of(new SlotDelta(slot, planned[slot], modified)));
+        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, planned[slot], modified)));
     }
 
     @Override
@@ -254,7 +254,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
             return EMPTY_COMMITTED;
         }
         @Nullable ItemStack after = target > 0 ? ItemUtils.copyWithAmount(current, target) : null;
-        return this.commitScoped(reason, planned, List.of(new SlotDelta(slot, current, after)));
+        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
     }
 
     /**
@@ -265,7 +265,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
      * @param deltas 槽位变更
      * @return 事务结果
      */
-    private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotDelta> deltas) {
+    private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotChange> deltas) {
         return InventoryTransactions.commit(
                 reason,
                 List.of(new InventoryTransactions.Scope(this, planned, deltas)),

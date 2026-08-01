@@ -9,14 +9,14 @@ import java.util.List;
  * 一次事务中单个Inventory的全部槽位变更.
  *
  * @param inventory 发生变更的Inventory
- * @param deltas 该Inventory的槽位变更, 不可变列表
+ * @param slotChanges 该Inventory的槽位变更, 不可变列表
  */
-public record InventoryDelta(
+public record RootInventoryChange(
         @NotNull SparrowInventory inventory,
-        @NotNull List<SlotDelta> deltas
+        @NotNull List<SlotChange> slotChanges
 ) {
 
-    public InventoryDelta {
-        deltas = List.copyOf(deltas);
+    public RootInventoryChange {
+        slotChanges = List.copyOf(slotChanges);
     }
 }
