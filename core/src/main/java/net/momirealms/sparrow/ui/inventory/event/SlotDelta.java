@@ -25,7 +25,7 @@ public final class SlotDelta {
         this.after = trusted ? after : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
     }
 
-    // 视图把逻辑槽 delta 映射到底层槽时使用: 只换槽号, 内部快照不再克隆.
+    // 用另一个槽位编号表示同一条物品变化.
     @NotNull
     @ApiStatus.Internal
     public SlotDelta relocatedTo(int slot) {

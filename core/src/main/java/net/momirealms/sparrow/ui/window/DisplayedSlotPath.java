@@ -252,11 +252,16 @@ final class DisplayedSlotPath implements AutoCloseable {
                     return;
                 }
                 case SlotElement.InventoryLink link -> {
-                    // Inventory 事务的 post 通知只要求重新渲染, 不重建路径; 不按槽过滤 ——
-                    // 精确过滤需要跨包解析视图槽域, dirty 是幂等标记, 过度通知只是
-                    // 让本槽多渲染一次并读到相同内容
                     candidate.inventoryLink = link;
-                    candidate.inventorySubscription = link.inventory().subscribePostUpdate(ignoredEvent -> candidate.notifyWindows(false));
+                    candidate.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
+                        // 事件使用被订阅 Inventory 的逻辑坐标, 只需检查当前路径连接的槽号.
+                        for (int i = 0; i < event.deltas().size(); i++) {
+                            if (event.deltas().get(i).slot() == link.slot()) {
+                                candidate.notifyWindows(false);
+                                return;
+                            }
+                        }
+                    });
                     return;
                 }
                 case SlotElement.Empty ignoredEmpty -> {

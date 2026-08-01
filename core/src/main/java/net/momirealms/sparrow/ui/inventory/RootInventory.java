@@ -1,12 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.Observer;
-import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
-import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
@@ -16,11 +10,11 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.UnaryOperator;
@@ -31,11 +25,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
-
-    private final ObservableDispatcher<InventoryPreUpdateEvent> preUpdates = new ObservableDispatcher<>();   // pre  观察者的订阅登记处
-    private final ObservableDispatcher<InventoryPostUpdateEvent> postUpdates = new ObservableDispatcher<>(); // post 观察者的订阅登记处
-    private final ConcurrentLinkedQueue<InventoryPostUpdateEvent> pendingPostEvents = new ConcurrentLinkedQueue<>(); // 在锁内入队, 队列顺序即提交顺序
-    private final AtomicBoolean drainingPostEvents = new AtomicBoolean(); // "正在派发" 标志
+    private final CopyOnWriteArrayList<InventoryUpdateChannel> updateChannels = new CopyOnWriteArrayList<>(); // 所有能看到本根且当前有订阅者的逻辑视图通道
 
     private volatile @Nullable ItemStack @NotNull [] state; // 当前的不可变快照, 里面的物品归内部所有
 
@@ -289,18 +279,6 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         );
     }
 
-    @Override
-    @NotNull
-    public Subscription subscribePreUpdate(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
-        return this.preUpdates.subscribe(observer);
-    }
-
-    @Override
-    @NotNull
-    public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
-        return this.postUpdates.subscribe(observer);
-    }
-
     /**
      * 本 Inventory 的锁序号, 跨 Inventory 事务按它确定加锁顺序.
      *
@@ -341,53 +319,42 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
-     * 在锁外向本 Inventory 的 pre 观察者派发事件;
+     * 登记一个能够看到本根的逻辑视图更新通道.
+     * <p>同一通道也可能登记在其他根上; 事务收集阶段会按通道身份去重.
      *
-     * @param event 提交前事件
+     * @param channel 要登记的逻辑视图通道
      */
-    void publishPreUpdate(@NotNull InventoryPreUpdateEvent event) {
-        try {
-            this.preUpdates.publish(event);
-        } catch (Throwable exception) {
-            // 捕获 Throwable: 观察者抛出的 Error(比如测试里的 AssertionError)同样不能
-            // 逃逸给提交者, 否则事务结果与异常并存, 调用方无从判断到底成没成
-            SparrowUI.getInstance().handleException("Failed to handle Inventory pre-update", exception);
-        }
+    void addUpdateChannel(@NotNull InventoryUpdateChannel channel) {
+        this.updateChannels.add(channel);
     }
 
     /**
-     * 把提交后事件放入待派发队列, 只允许在持有写锁时调用.
+     * 撤销一个不再拥有任何订阅者的逻辑视图更新通道.
      *
-     * @param event 提交后事件
+     * @param channel 要撤销的逻辑视图通道
      */
-    void enqueuePostEvent(@NotNull InventoryPostUpdateEvent event) {
-        this.pendingPostEvents.add(event);
+    void removeUpdateChannel(@NotNull InventoryUpdateChannel channel) {
+        this.updateChannels.remove(channel);
     }
 
     /**
-     * 由提交者线程把队列里的 post 事件按提交顺序派发完.
-     * <p>提交者在放锁之后调用本方法: 抢到"正在派发"标志的线程负责把队列发完为止.
+     * 把当前根上仍然活动的视图通道追加到事务级结果中.
+     * <p>跨根 Composite 会让同一通道出现在多个根的索引里, {@code seen} 使用对象身份消除重复,
+     * 保证该视图在一笔事务中只准备一次投影.
+     *
+     * @param channels 按首次遇到顺序收集通道的事务级列表
+     * @param seen 事务级通道身份集合
      */
-    void drainPostEvents() {
-        while (this.drainingPostEvents.compareAndSet(false, true)) {
-            try {
-                // 抢到标志的线程独占派发: 逐个出队, 单个观察者的异常隔离上报, 不中断整个派发.
-                InventoryPostUpdateEvent event;
-                while ((event = this.pendingPostEvents.poll()) != null) {
-                    try {
-                        this.postUpdates.publish(event);
-                    } catch (Throwable exception) {
-                        SparrowUI.getInstance().handleException("Failed to handle Inventory post-update", exception);
-                    }
-                }
-            } finally {
-                this.drainingPostEvents.set(false);
-            }
-
-            // 放下标志后再检查一次队列: 如果有事件恰好赶在退出间隙入队, 而入队线程没抢到标志,
-            // 就由本线程再派发一轮, 保证事件不会滞留
-            if (this.pendingPostEvents.isEmpty()) {
-                break;
+    void collectUpdateChannels(
+            @NotNull List<InventoryUpdateChannel> channels,
+            @NotNull IdentityHashMap<InventoryUpdateChannel, Boolean> seen
+    ) {
+        // CopyOnWriteArrayList 的独立数组快照避免安装或卸载与本次遍历相互干扰.
+        InventoryUpdateChannel[] snapshot = this.updateChannels.toArray(InventoryUpdateChannel[]::new);
+        for (int i = 0; i < snapshot.length; i++) {
+            InventoryUpdateChannel channel = snapshot[i];
+            if (channel.isActive() && seen.put(channel, Boolean.TRUE) == null) {
+                channels.add(channel);
             }
         }
     }

@@ -2,9 +2,8 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.inventory.event.InventoryDelta;
 import net.momirealms.sparrow.ui.inventory.event.SlotDelta;
-import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -12,6 +11,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -50,7 +50,7 @@ final class InventoryTransactions {
      *
      * @param reason 变更原因
      * @param scopes 参与Inventory与各自要改的槽位; 视图场景下同一根Inventory出现多次是合法的, 内部会合并
-     * @param bypassPre 为 {@code true} 时跳过 pre 阶段的询问, 谁也取消不了这笔事务(post 事件照常派发)
+     * @param bypassPre 为 {@code true} 时跳过 pre 阶段的询问, 谁也取消不了这笔事务 (post 事件照常派发)
      * @return 事务结果; 只要不是 Committed, 所有参与Inventory都保持原样
      * @throws IllegalArgumentException 当事务形状非法时(没有参与Inventory, 某个范围没有变更, 槽号越界, 同一个槽被写两次)
      * @throws RuntimeException 当提交后的根钩子失败时; 此时镜像状态已经提交, 异常不表示零变更
@@ -58,18 +58,20 @@ final class InventoryTransactions {
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
-        // 声明序列表负责事件载荷, 锁序列表只服务于加锁与提交, 两个顺序自此解耦
         List<Scope> declared = validateAndMerge(scopes);
         List<Scope> ordered = sortByLockOrder(declared);
-        List<InventoryDelta> changes = changesOf(declared);
+        List<InventoryDelta> rootChanges = changesOf(declared);
 
-        // pre 阶段: 锁外对每个参与根派发一次, 任一观察者取消则整个事务零变更结束
+        // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
+        boolean cancelled = false;
+        List<InventoryUpdateChannel.Prepared> updates = prepareUpdates(reason, declared, rootChanges, !bypassPre);
+
+        // 按顺序派发 PreUpdateEvent, 每个 Inventory 处理后的取消状态会交给下一个 Inventory.
         if (!bypassPre) {
-            InventoryPreUpdateEvent preEvent = new InventoryPreUpdateEvent(reason, changes);
-            for (int i = 0; i < ordered.size(); i++) {
-                ordered.get(i).inventory().publishPreUpdate(preEvent);
+            for (int i = 0; i < updates.size(); i++) {
+                cancelled = updates.get(i).publishPre(cancelled);
             }
-            if (preEvent.cancelled()) {
+            if (cancelled) {
                 return TransactionResult.Cancelled.INSTANCE;
             }
         }
@@ -89,8 +91,7 @@ final class InventoryTransactions {
                 }
             }
 
-            // 先为全部Inventory构造新快照再统一交换, 保证越界等非意料内的异常发生时零交换
-            InventoryPostUpdateEvent postEvent = new InventoryPostUpdateEvent(reason, changes);
+            // 先为全部 Inventory 构造新快照再统一交换, 保证越界等非意料内的异常发生时能够复原.
             @Nullable ItemStack[][] newStates = new ItemStack[ordered.size()][];
             for (int i = 0; i < ordered.size(); i++) {
                 newStates[i] = applyDeltas(ordered.get(i));
@@ -99,9 +100,9 @@ final class InventoryTransactions {
                 ordered.get(i).inventory().swapState(newStates[i]);
             }
 
-            // 锁内入队使 post 顺序与快照交换顺序一致, 实际派发推迟到放锁之后
-            for (int i = 0; i < ordered.size(); i++) {
-                ordered.get(i).inventory().enqueuePostEvent(postEvent);
+            // 更换内容时就把 PostUpdateEvent 放入队列, 防止后提交的事务先发出通知.
+            for (int i = 0; i < updates.size(); i++) {
+                updates.get(i).reservePost();
             }
         } finally {
             for (int i = locked - 1; i >= 0; i--) {
@@ -109,24 +110,32 @@ final class InventoryTransactions {
             }
         }
 
-        // 提交后先于 post 派发: ReferencingInventory 根在此把变更写回外部容器,
-        // 使 post 观察者重入写时外部状态已同步. 异常直接传播, finally 仍会排空已经入队的 post.
+        // 先让每个 RootInventory 完成提交后的工作, ReferencingInventory 会在这里把内容写回外部容器.
+        // 因此提交后处理器运行时能够读到最新内容. 一个根失败也不能跳过其他根, 最后再统一抛出异常.
+        Throwable afterCommitFailure = null;
         try {
             for (int i = 0; i < ordered.size(); i++) {
                 InventoryTransactions.Scope scope = ordered.get(i);
-                scope.inventory().afterCommit(scope.deltas());
+                afterCommitFailure = ThrowableUtils.captureUnchecked(
+                        afterCommitFailure,
+                        () -> scope.inventory().afterCommit(scope.deltas())
+                );
             }
         } finally {
-            // post 阶段: 锁外排水, 观察者异常在排水路径内隔离.
-            for (int i = 0; i < ordered.size(); i++) {
-                ordered.get(i).inventory().drainPostEvents();
+            // 所有 RootInventory 都处理完后, 当前提交后事件才可以按队列顺序发送.
+            for (int i = 0; i < updates.size(); i++) {
+                updates.get(i).markPostReady();
+            }
+            for (int i = 0; i < updates.size(); i++) {
+                updates.get(i).drainPost();
             }
         }
-        return new TransactionResult.Committed(changes);
+        ThrowableUtils.throwIfUnchecked(afterCommitFailure);
+        return new TransactionResult.Committed(rootChanges);
     }
 
     /**
-     * 校验事务, 再把指向同一根 Inventory 的多个范围合并成一个.
+     * 校验事务, 再把指向同一 RootInventory 的多个范围合并成一个.
      *
      * @param scopes 调用方声明的参与范围
      * @return 合并后的参与范围, 保持首次出现的声明顺序
@@ -198,11 +207,11 @@ final class InventoryTransactions {
     }
 
     /**
-     * 把参与范围按各 Inventory 的锁序号排成全局唯一的加锁顺序.
-     * <p>加锁, 冲突核对, 换快照都按这个顺序进行; 事件载荷的顺序与此无关, 仍按声明顺序.
+     * 按固定顺序排列参与事务的 Inventory, 避免并发事务互相等待.
+     * <p>这个顺序只用于加锁和写入. 事件中的变化仍保持调用方传入的顺序.
      *
-     * @param declared 按声明顺序排列的参与范围
-     * @return 按锁序号重新排序后的参与范围
+     * @param declared 按调用方传入顺序排列的修改内容
+     * @return 按加锁顺序排列的新列表
      */
     @NotNull
     private static List<Scope> sortByLockOrder(List<Scope> declared) {
@@ -211,7 +220,12 @@ final class InventoryTransactions {
         return ordered;
     }
 
-    // 每个参与 Inventory 一条变更记录, 按调用方声明顺序排列.
+    /**
+     * 整理本笔事务在每个 RootInventory 中修改了哪些槽位.
+     *
+     * @param scopes 各 RootInventory 要修改的槽位
+     * @return 按传入顺序排列的完整修改列表
+     */
     @NotNull
     private static List<InventoryDelta> changesOf(List<Scope> scopes) {
         List<InventoryDelta> changes = new ArrayList<>(scopes.size());
@@ -220,6 +234,42 @@ final class InventoryTransactions {
             changes.add(new InventoryDelta(scope.inventory(), scope.deltas()));
         }
         return List.copyOf(changes);
+    }
+
+    /**
+     * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
+     * <p>Composite 可能同时使用多个被修改的 RootInventory, 但它仍然只处理一次.
+     * 当前 Inventory 没有可见变化或没有订阅者时, 不会创建对应事件.
+     *
+     * @param reason 事务触发原因
+     * @param scopes 本笔事务修改到的 RootInventory
+     * @param rootChanges 整笔事务在 RootInventory 中的变化
+     * @param includePre 是否需要通知提交前订阅者
+     * @return 本笔事务需要发送的 Inventory 更新事件
+     */
+    @NotNull
+    private static List<InventoryUpdateChannel.Prepared> prepareUpdates(
+            @NotNull UpdateReason reason,
+            @NotNull List<Scope> scopes,
+            @NotNull List<InventoryDelta> rootChanges,
+            boolean includePre
+    ) {
+        // 同一个 Inventory 可能登记在多个 RootInventory 中, 这里只保留一份.
+        List<InventoryUpdateChannel> channels = new ArrayList<>();
+        IdentityHashMap<InventoryUpdateChannel, Boolean> seen = new IdentityHashMap<>();
+        for (int i = 0; i < scopes.size(); i++) {
+            scopes.get(i).inventory().collectUpdateChannels(channels, seen);
+        }
+
+        // 记住当前订阅者, 并把根槽位编号转换成各 Inventory 自己的槽位编号.
+        List<InventoryUpdateChannel.Prepared> updates = new ArrayList<>(channels.size());
+        for (int i = 0; i < channels.size(); i++) {
+            InventoryUpdateChannel.Prepared update = channels.get(i).prepare(reason, rootChanges, includePre);
+            if (update != null) {
+                updates.add(update);
+            }
+        }
+        return updates;
     }
 
     // 把变更落到一张新快照上, 复制当前快照, 再把发生变化的槽位换成新物品.

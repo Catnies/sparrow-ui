@@ -16,7 +16,6 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -41,7 +40,7 @@ import java.util.function.UnaryOperator;
  *   <li>每次修改都走完整的规划、询问、提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
  * <p>读操作直接读取当前不可变快照, 任何线程都可以安全调用. 写操作遇到并发冲突时返回{@link TransactionResult.Conflicted} 且不产生修改;
- * <p>事务事件由 RootInventory 产生: 在视图上订阅会转发到背后的全部根.
+ * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
  * <p>Window 交互事件则属于 被 InventoryLink 直接连接的逻辑 Inventory 实例, 不向根或外层视图传播.
  */
 public abstract sealed class SparrowInventory permits RootInventory, CompositeInventory, ObscuredInventory {
@@ -55,6 +54,8 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     @Nullable private volatile Integer otherGuiPriority;
     private final ObservableDispatcher<InventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
+    @Nullable private volatile InventoryTopology topology;             // 第一次读取槽位关系或订阅更新时创建
+    @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
 
@@ -86,7 +87,7 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     public abstract SlotOrder iterationOrder(@NotNull OperationCategory category);
 
     /**
-     * 把 Window 的逻辑槽号换算成根 Inventory 里的槽位;
+     * 把 Window 的逻辑槽号换算成 RootInventory 里的槽位;
      *
      * @param slot 逻辑槽号
      * @return 该逻辑槽落到的  RootInventory 槽位
@@ -681,26 +682,28 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
 
     /**
      * 订阅事务提交前的事件, 处理器可以取消整个事务.
-     * 视图订阅会转发到背后的全部 RootInventory .
+     * 一笔事务对本次订阅最多通知一次. {@link InventoryPreUpdateEvent#deltas()} 中的槽位编号属于当前 Inventory,
+     * 当前 Inventory 没有可见变化时不会通知.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
     public Subscription subscribePreUpdate(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
-        return this.subscribeRoots(root -> root.subscribePreUpdate(observer));
+        return this.updateChannel().subscribePre(observer);
     }
 
     /**
-     * 订阅事务提交后的事件. 对同一个 RootInventory, 事件顺序与事务提交顺序一致;
-     * 视图订阅会转发到背后的全部 RootInventory .
+     * 订阅事务提交后的事件. 一笔事务对本次订阅最多通知一次.
+     * {@link InventoryPostUpdateEvent#deltas()} 中的槽位编号属于当前 Inventory, 没有可见变化时不会通知.
+     * 连续修改同一个 RootInventory 时, 事件顺序与事务提交顺序一致.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
     public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
-        return this.subscribeRoots(root -> root.subscribePostUpdate(observer));
+        return this.updateChannel().subscribePost(observer);
     }
 
     /**
@@ -725,55 +728,52 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     }
 
     /**
-     * 为视图采集规划上下文: 逐槽解析到 RootInventory 并读取快照.
-     * 同一个 RootInventory 在整个事务中只读取一次快照引用,
-     * 保证之后提交时的校验基准和逻辑快照内部一致.
+     * 读取当前 Inventory 的全部槽位, 并记住它们来自哪些 RootInventory.
+     * <p>同一个 RootInventory 在一笔事务中只读取一次, 防止同一次计算混入两个时刻的内容.
      *
-     * @param forWrite 是否用于写路径
-     * @return 规划上下文
+     * @param forWrite 是否需要在读取前同步外部容器
+     * @return 当前内容和后续提交所需的信息
      */
     private PlanContext capturePlan(boolean forWrite) {
         int size = this.size();
+        InventoryTopology topology = this.topology();
         Map<RootInventory, @Nullable ItemStack[]> plannedByRoot = new LinkedHashMap<>();
-        SlotKey.Anchor[] anchors = new SlotKey.Anchor[size];
         @Nullable ItemStack[] logical = new ItemStack[size];
-        // 逐槽解析: 每个  RootInventory 只在首次遇到时做一次写前准备并读一次快照
+        // 逐个找到槽位所在的 RootInventory, 每个根只准备和读取一次.
         for (int slot = 0; slot < size; slot++) {
-            SlotKey.Anchor anchor = this.resolveSlot(slot);
-            anchors[slot] = anchor;
+            SlotKey.Anchor anchor = topology.anchorAt(slot);
             @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
-                // 写前准备先于读取快照: 镜像型根在这里同步外部内容, 规划才基于最新数据
+                // 先同步外部容器, 再读取用于计算修改结果的内容.
                 if (forWrite) root.prepareWrite();
                 return root.currentState();
             });
             logical[slot] = planned[anchor.rootSlot()];
         }
-        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, anchors, logicalDeltas));
+        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, topology, logicalDeltas));
     }
 
     /**
-     * 把逻辑槽的变更集按 RootInventory 分组,
-     * 并把槽号换算成 RootInventory 里的槽号, 产出跨根事务的参与范围.
+     * 把当前 Inventory 的槽位变化分配给实际存放物品的 RootInventory.
      *
-     * @param plannedByRoot 各 RootInventory 在规划时读取的快照
-     * @param anchors 每个逻辑槽对应的 RootInventory 槽位
-     * @param logicalDeltas 逻辑槽变更集
-     * @return 按 RootInventory 分组的事务参与范围
+     * @param plannedByRoot 计算修改结果时读到的各 RootInventory 内容
+     * @param topology 当前 Inventory 与 RootInventory 之间的槽位关系
+     * @param logicalDeltas 当前 Inventory 中要进行的槽位变化
+     * @return 每个 RootInventory 实际需要执行的槽位变化
      */
     private static List<InventoryTransactions.Scope> toScopes(
             Map<RootInventory, @Nullable ItemStack[]> plannedByRoot,
-            SlotKey.Anchor[] anchors,
+            InventoryTopology topology,
             List<SlotDelta> logicalDeltas
     ) {
-        // 按根分组, 同时把槽号换算成  RootInventory 内的槽号
+        // 按 RootInventory 分组, 同时把槽位编号换成 RootInventory 使用的编号.
         Map<RootInventory, List<SlotDelta>> deltasByRoot = new LinkedHashMap<>();
         for (int i = 0; i < logicalDeltas.size(); i++) {
             SlotDelta delta = logicalDeltas.get(i);
-            SlotKey.Anchor anchor = anchors[delta.slot()];
+            SlotKey.Anchor anchor = topology.anchorAt(delta.slot());
             deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.relocatedTo(anchor.rootSlot()));
         }
 
-        // 每个有变更的  RootInventory 产出一个事务参与范围
+        // 为每个确实需要修改的 RootInventory 创建一项提交内容.
         List<InventoryTransactions.Scope> scopes = new ArrayList<>(deltasByRoot.size());
         for (Map.Entry<RootInventory, List<SlotDelta>> entry : deltasByRoot.entrySet()) {
             scopes.add(new InventoryTransactions.Scope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
@@ -782,29 +782,44 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     }
 
     /**
-     * 把同一个订阅动作应用到所有 RootInventory 上, 聚合成一个凭证返回.
+     * 返回当前 Inventory 与 RootInventory 之间的槽位关系, 第一次调用时计算.
      *
-     * @param subscriber 对单个 RootInventory 执行订阅的动作
-     * @return 聚合后的订阅凭证
+     * @return 当前 Inventory 的槽位映射
      */
-    private Subscription subscribeRoots(Function<RootInventory, Subscription> subscriber) {
-        LinkedHashSet<RootInventory> roots = new LinkedHashSet<>();
-        this.collectRoots(roots);
-        Subscription[] subscriptions = new Subscription[roots.size()];
-        int subscribed = 0;
-        try {
-            for (RootInventory root : roots) {
-                subscriptions[subscribed] = subscriber.apply(root);
-                subscribed++;
+    @NotNull
+    private InventoryTopology topology() {
+        InventoryTopology topology = this.topology;
+        if (topology == null) {
+            synchronized (this) {
+                // 再检查一次, 避免两个线程同时计算相同的槽位关系.
+                topology = this.topology;
+                if (topology == null) {
+                    topology = InventoryTopology.compile(this);
+                    this.topology = topology;
+                }
             }
-        } catch (RuntimeException | Error throwable) {
-            // 全有或全无: 中途失败时逆序关闭已建立的根订阅, 调用方无从关闭未返回的凭证
-            for (int i = subscribed - 1; i >= 0; i--) {
-                ThrowableUtils.captureUnchecked(throwable, subscriptions[i]::close);
-            }
-            throw throwable;
         }
-        return new CompositeSubscription(subscriptions);
+        return topology;
+    }
+
+    /**
+     * 返回负责保存当前 Inventory 订阅并发送更新事件的对象, 第一次订阅时创建.
+     *
+     * @return 当前 Inventory 用来发送更新事件的对象
+     */
+    @NotNull
+    private InventoryUpdateChannel updateChannel() {
+        InventoryUpdateChannel channel = this.updateChannel;
+        if (channel == null) {
+            synchronized (this) {
+                channel = this.updateChannel;
+                if (channel == null) {
+                    channel = new InventoryUpdateChannel(this.topology());
+                    this.updateChannel = channel;
+                }
+            }
+        }
+        return channel;
     }
 
     /**
@@ -819,26 +834,4 @@ public abstract sealed class SparrowInventory permits RootInventory, CompositeIn
     ) {
     }
 
-    /**
-     * 聚合多个订阅的凭证: 一次 {@link #close()} 关掉全部  RootInventory 上的转发订阅.
-     */
-    private static final class CompositeSubscription implements Subscription {
-        private final Subscription[] subscriptions; // 各  RootInventory 上的订阅凭证
-
-        private CompositeSubscription(Subscription[] subscriptions) {
-            this.subscriptions = subscriptions;
-        }
-
-        @Override
-        public boolean isClosed() {
-            return this.subscriptions.length == 0 || this.subscriptions[0].isClosed();
-        }
-
-        @Override
-        public void close() {
-            for (int i = 0; i < this.subscriptions.length; i++) {
-                this.subscriptions[i].close();
-            }
-        }
-    }
 }
