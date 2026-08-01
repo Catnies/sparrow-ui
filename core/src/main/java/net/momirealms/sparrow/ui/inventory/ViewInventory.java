@@ -78,6 +78,28 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
         }
     }
 
+    /**
+     * 按 View 结构的声明顺序收集背后的全部事务根, 由集合按身份去重.
+     * 即使当前 View 没有可见槽, 也必须保留其 backing Root 供 {@link #refresh()} 使用.
+     *
+     * @param roots 接收事务根的集合
+     */
+    abstract void collectRoots(@NotNull LinkedHashSet<RootInventory> roots);
+
+    /**
+     * 收集一个 View 子节点背后的事务根.
+     * Root 节点直接加入集合, View 节点继续按自身结构展开.
+     *
+     * @param inventory 要展开的子 Inventory
+     * @param roots 接收事务根的集合
+     */
+    static void collectRootsFrom(@NotNull SparrowInventory inventory, @NotNull LinkedHashSet<RootInventory> roots) {
+        switch (inventory) {
+            case RootInventory root -> roots.add(root);
+            case ViewInventory view -> view.collectRoots(roots);
+        }
+    }
+
     @Override
     @NotNull
     PlanContext openPlan() {

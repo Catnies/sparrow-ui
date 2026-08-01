@@ -11,7 +11,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -59,11 +58,6 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     @NotNull
     SlotKey rootPhysicalKey(@NotNull SlotKey.Anchor anchor) {
         return anchor;
-    }
-
-    @Override
-    void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
-        roots.add(this);
     }
 
     @Override

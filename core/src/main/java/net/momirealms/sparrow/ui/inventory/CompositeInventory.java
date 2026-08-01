@@ -76,7 +76,7 @@ public final class CompositeInventory extends ViewInventory {
     @Override
     void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
         for (int i = 0; i < this.members.length; i++) {
-            this.members[i].collectRoots(roots);
+            collectRootsFrom(this.members[i], roots);
         }
     }
 

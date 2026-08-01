@@ -55,7 +55,7 @@ public final class ObscuredInventory extends ViewInventory {
 
     @Override
     void collectRoots(@NotNull LinkedHashSet<RootInventory> roots) {
-        this.underlying.collectRoots(roots);
+        collectRootsFrom(this.underlying, roots);
     }
 
     /**

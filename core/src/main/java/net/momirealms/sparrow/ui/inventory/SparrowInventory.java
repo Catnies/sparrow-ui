@@ -22,7 +22,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -103,13 +102,6 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().rootPhysicalKey(anchor);
     }
-
-    /**
-     * 按遍历顺序收集本Inventory背后全部去重后的 RootInventory.
-     *
-     * @param roots 接收结果的集合,   RootInventory 按遍历顺序放入
-     */
-    abstract void collectRoots(@NotNull LinkedHashSet<RootInventory> roots);
 
     /**
      * 返回指定类别的操作挑选目标 Inventory 时使用的优先级, 数值越大越优先.
