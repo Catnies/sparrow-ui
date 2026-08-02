@@ -23,6 +23,9 @@ public interface AbstractContainerMenuProxy {
     @MethodInvoker(name = "sendAllDataToRemote")
     void sendAllDataToRemote(Object target);
 
+    @MethodInvoker(name = "resumeRemoteUpdates")
+    void resumeRemoteUpdates(Object target);
+
     @MethodInvoker(name = "getCarried")
     Object getCarried(Object target);
 

@@ -158,6 +158,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         );
         this.session = openedSession;
         AbstractContainerMenuProxy.INSTANCE.setCarried(this.replacedMenu, ItemStackProxy.EMPTY);
+        // 从玩家背包打开菜单时, 恢复背包同步, 避免之后的物品变化不显示
+        AbstractContainerMenuProxy.INSTANCE.resumeRemoteUpdates(this.replacedMenu);
         this.cursorClaimed = true;
         PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
 
