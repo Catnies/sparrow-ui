@@ -140,6 +140,7 @@ public final class ClickSemantics {
         ClickExecutor.handleDrag(context, clickType, windowSlots);
     }
 
+    @ApiStatus.Internal
     public interface Context {
 
         /**

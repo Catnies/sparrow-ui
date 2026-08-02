@@ -306,6 +306,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         this.lifecycle = Lifecycle.CLOSED;
         Throwable failure = ThrowableUtils.captureUnchecked(null, this::closeSession);
+        Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
         // 菜单还没有进入已打开状态, 只需把原菜单换回去并归还光标
         if (previous != Lifecycle.COMMITTED) {
             if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
@@ -315,7 +316,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         // 活动菜单已经不是代理了, 关闭流程已被别人接管
         else if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
-            Object inventoryMenu = PlayerProxy.INSTANCE.inventoryMenu(this.serverPlayer); // NMS AbstractContainerMenu
             try {
                 // 玩家关闭/断线只发 Bukkit 事件, 其他原因走服务端主动关闭
                 if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
@@ -334,16 +334,16 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                     failure = ThrowableUtils.combine(failure, throwable);
                 }
             }
-            // 回到玩家背包菜单后重发完整状态, 清掉 Window 留下的客户端显示状态
-            if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
-                try {
-                    AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
-                } catch (RuntimeException | Error throwable) {
-                    failure = ThrowableUtils.combine(failure, throwable);
-                }
-            }
         }
         ThrowableUtils.throwIfUnchecked(failure);
+        // 回到玩家背包菜单后重发完整状态, 清掉 Window 留下的客户端显示状态
+        if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
+            try {
+                AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
+            } catch (RuntimeException | Error throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
+            }
+        }
         // 在旧容器关闭后, 把没有新菜单接手的客户端内容恢复为原版数据.
         if (releasedProjection != null) {
             this.packets.send(this.player, List.of(releasedProjection.createNativeRestorePacket()));
