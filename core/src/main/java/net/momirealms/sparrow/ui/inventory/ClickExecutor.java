@@ -147,7 +147,7 @@ final class ClickExecutor {
             }
         }
 
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>();
+        List<TransactionScope> scopes = new ArrayList<>();
         for (Map.Entry<SparrowInventory, List<SlotChange>> entry : deltasByInventory.entrySet()) {
             scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
         }
@@ -306,7 +306,7 @@ final class ClickExecutor {
         if (sourceItem == null && targetItem == null) {
             return;
         }
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
+        List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
                 new SlotChange(source.slot(), sourceItem, targetItem)
         )));
         scopes.addAll(targetPlan.scoper().apply(List.of(
@@ -375,7 +375,7 @@ final class ClickExecutor {
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.DOUBLE_CLICK, -1);
         int collected = 0;
         HashSet<SlotKey> coveredSlots = new HashSet<>();
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>();
+        List<TransactionScope> scopes = new ArrayList<>();
 
         List<SparrowInventory> domain = new ArrayList<>(context.linkedInventories());
         domain.sort((left, right) -> Integer.compare(
@@ -465,7 +465,7 @@ final class ClickExecutor {
                 current,
                 left > 0 ? ItemUtils.copyWithAmount(current, left) : null
         ));
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
+        List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
         scopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
         TransactionResult result = InventoryTransactions.commit(reason, scopes, false);
         if (result instanceof TransactionResult.Committed) {

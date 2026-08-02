@@ -734,7 +734,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      */
     record PlanContext(
             @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotChange>, List<InventoryTransactions.Scope>> scoper
+            @NotNull Function<List<SlotChange>, List<TransactionScope>> scoper
     ) {
     }
 

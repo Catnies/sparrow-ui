@@ -19,7 +19,10 @@ import java.util.function.UnaryOperator;
  * <p>本类集中实现 ViewInventory 共有的单槽转发, 多 RootInventory 规划和刷新行为;
  * 具体子类只需定义固定的槽位映射, 内容副本和遍历顺序.
  */
-abstract non-sealed class ViewInventory extends SparrowInventory {
+public abstract non-sealed class ViewInventory extends SparrowInventory {
+
+    ViewInventory() {
+    }
 
     @Override
     @Nullable
@@ -144,7 +147,7 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
      * @param logicalDeltas 当前 Inventory 中要进行的槽位变更
      * @return 每个 RootInventory 实际需要执行的槽位变更
      */
-    private static List<InventoryTransactions.Scope> toScopes(
+    private static List<TransactionScope> toScopes(
             Map<RootInventory, @Nullable ItemStack[]> plannedByRoot,
             InventoryTopology topology,
             List<SlotChange> logicalDeltas
@@ -156,9 +159,9 @@ abstract non-sealed class ViewInventory extends SparrowInventory {
             deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.withSlot(anchor.rootSlot()));
         }
 
-        List<InventoryTransactions.Scope> scopes = new ArrayList<>(deltasByRoot.size());
+        List<TransactionScope> scopes = new ArrayList<>(deltasByRoot.size());
         for (Map.Entry<RootInventory, List<SlotChange>> entry : deltasByRoot.entrySet()) {
-            scopes.add(new InventoryTransactions.Scope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
+            scopes.add(new TransactionScope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));
         }
         return scopes;
     }

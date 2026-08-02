@@ -18,7 +18,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.UnaryOperator;
 
-abstract non-sealed class RootInventory extends SparrowInventory {
+/**
+ * 持有 Sparrow 内部状态数组, 并参与事务加锁, 并发校验和状态交换的 Inventory.
+ * <p>一次操作经过 ViewInventory 后, 最终会展开到一个或多个 RootInventory.
+ * RootInventory 不等于 "最终真实容器": ReferencingInventory 也是 RootInventory,
+ * 但它的内部状态是 Bukkit 容器内容在 Sparrow 中的一份镜像.
+ */
+public abstract non-sealed class RootInventory extends SparrowInventory {
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong();   // 锁序号发号器, 每创建一个 Inventory 发一个号
 
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
@@ -107,7 +113,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         return new PlanContext(planned, deltas -> deltas.isEmpty()
                 ? List.of()
-                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
+                : List.of(new TransactionScope(this, planned, deltas)));
     }
 
     /**
@@ -122,7 +128,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         return new PlanContext(planned, deltas -> deltas.isEmpty()
                 ? List.of()
-                : List.of(new InventoryTransactions.Scope(this, planned, deltas)));
+                : List.of(new TransactionScope(this, planned, deltas)));
     }
 
     @Override
@@ -175,7 +181,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
         SlotChange delta = new SlotChange(slot, planned[slot], item);
         return InventoryTransactions.commit(
                 reason,
-                List.of(new InventoryTransactions.Scope(this, planned, List.of(delta))),
+                List.of(new TransactionScope(this, planned, List.of(delta))),
                 bypassPre
         );
     }
@@ -267,7 +273,7 @@ abstract non-sealed class RootInventory extends SparrowInventory {
     private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotChange> deltas) {
         return InventoryTransactions.commit(
                 reason,
-                List.of(new InventoryTransactions.Scope(this, planned, deltas)),
+                List.of(new TransactionScope(this, planned, deltas)),
                 false
         );
     }

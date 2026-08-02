@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -11,12 +12,12 @@ import java.util.List;
 
 /**
  * 当前 Inventory 与其 RootInventory 之间的槽位映射表.
- *
  * <p>写入时, 用它将当前 Inventory 槽位换算成 RootInventory 槽地址.
  * RootInventory 更新时, 用它反向筛选并投影为当前 Inventory 槽位.
  * 被隐藏的槽位没有对应关系, 因此不会触发当前 Inventory 的更新通知.
  */
-final class InventoryTopology {
+@ApiStatus.Internal
+public final class InventoryTopology {
     private final SlotKey.Anchor[] anchors;                                   // 每个当前 Inventory 槽位对应的 RootInventory 槽地址
     private final RootInventory[] roots;                                      // 当前 Inventory 使用到的所有 RootInventory
     private final IdentityHashMap<RootInventory, int[]> logicalSlotsByRoot;   // 每个 RootInventory 槽位在当前 Inventory 中的位置, -1 表示不可见
@@ -73,6 +74,29 @@ final class InventoryTopology {
     }
 
     /**
+     * 查找当前 Inventory 槽位所属的 RootInventory.
+     *
+     * @param slot 当前 Inventory 的槽位
+     * @return 该槽位所属的 RootInventory
+     * @throws ArrayIndexOutOfBoundsException 当槽位越界时
+     */
+    @NotNull
+    public RootInventory rootOf(int slot) {
+        return this.anchors[slot].root();
+    }
+
+    /**
+     * 把当前 Inventory 槽位换算成所属 RootInventory 中的槽位.
+     *
+     * @param slot 当前 Inventory 的槽位
+     * @return 换算后的 RootInventory 槽位
+     * @throws ArrayIndexOutOfBoundsException 当槽位越界时
+     */
+    public int rootSlotOf(int slot) {
+        return this.anchors[slot].rootSlot();
+    }
+
+    /**
      * 返回当前 Inventory 使用了多少个 RootInventory.
      *
      * @return RootInventory 数量
@@ -100,7 +124,7 @@ final class InventoryTopology {
      * @return 当前 Inventory 能看到的槽位变更; 没有可见槽位变更时返回空列表
      */
     @NotNull
-    List<SlotChange> project(@NotNull List<RootInventoryChange> rootChanges) {
+    public List<SlotChange> project(@NotNull List<RootInventoryChange> rootChanges) {
         List<SlotChange> projected = new ArrayList<>();
         for (int i = 0; i < rootChanges.size(); i++) {
             RootInventoryChange rootChange = rootChanges.get(i);

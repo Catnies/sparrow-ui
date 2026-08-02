@@ -233,7 +233,7 @@ public final class ReferencingInventory extends RootInventory {
 
         TransactionResult result = InventoryTransactions.commit(
                 UpdateReason.External.INSTANCE,
-                List.of(new InventoryTransactions.Scope(this, mirror, deltas)),
+                List.of(new TransactionScope(this, mirror, deltas)),
                 true
         );
         // 冲突在调用方保证的串行访问下不该发生, 视为调用边界被破坏并上报

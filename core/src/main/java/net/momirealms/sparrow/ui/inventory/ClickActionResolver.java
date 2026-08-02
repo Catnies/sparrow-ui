@@ -15,9 +15,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-final class InventoryActionResolver {
+/**
+ * 把一次点击的只读状态预估为 Paper {@link InventoryAction}.
+ */
+final class ClickActionResolver {
 
-    private InventoryActionResolver() {
+    private ClickActionResolver() {
     }
 
     // 根据当前点击 Context 推导出正确的 Paper InventoryAction.
@@ -141,7 +144,8 @@ final class InventoryActionResolver {
                     ? InventoryAction.NOTHING
                     : InventoryAction.SWAP_WITH_CURSOR;
         }
-        ClickSlotRules.Outcome outcome = ClickSlotRules.computeRightClick(current, cursor, link.inventory().slotMaxStackSize(link.slot()));
+        // 预估路径没有 Window 本地 Bundle 选择状态, 观察快照与索引都传空值.
+        ClickSlotRules.Outcome outcome = ClickSlotRules.computeRightClick(current, cursor, link.inventory().slotMaxStackSize(link.slot()), null, -1);
         if (outcome == null) {
             return InventoryAction.NOTHING;
         }

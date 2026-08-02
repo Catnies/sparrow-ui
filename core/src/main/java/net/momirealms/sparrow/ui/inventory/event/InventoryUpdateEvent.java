@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /**
  * Inventory 在一笔事务中的公共更新数据.
@@ -82,6 +83,28 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
+     * 返回满足给定条件的槽位变更.
+     * <p>例如 {@code slotChanges(SlotChange::isAdd)} 返回所有存在物品流入的槽位变更,
+     * {@code slotChanges(SlotChange::isRemoveOnly)} 返回只有物品流出的槽位变更.
+     *
+     * @param filter 变更需要满足的条件
+     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
+     */
+    @NotNull
+    public final List<SlotChange> slotChanges(@NotNull Predicate<? super SlotChange> filter) {
+        // 先抓 volatile 引用, 避免过滤途中候选快照被替换造成前后不一致.
+        List<SlotChange> slotChanges = this.slotChanges;
+        List<SlotChange> matches = new ArrayList<>();
+        for (int i = 0; i < slotChanges.size(); i++) {
+            SlotChange change = slotChanges.get(i);
+            if (filter.test(change)) {
+                matches.add(change);
+            }
+        }
+        return List.copyOf(matches);
+    }
+
+    /**
      * 返回指定逻辑槽位的变更记录.
      *
      * @param slot 当前 Inventory 的逻辑槽位
@@ -98,112 +121,6 @@ public abstract class InventoryUpdateEvent {
             }
         }
         return null;
-    }
-
-    /**
-     * 返回存在物品流入的逻辑槽位变更.
-     * <p>替换同时存在物品流入与流出, 因此对应槽位也会包含在本列表中.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> addChangeSlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isAdd()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    /**
-     * 返回只有物品流入而没有物品流出的逻辑槽位变更.
-     * <p>不相似物品替换同时存在物品流入与流出, 因此不会包含在本列表中.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> addOnlySlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isAddOnly()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    /**
-     * 返回存在物品流出的逻辑槽位变更.
-     * <p>替换同时存在物品流入与流出, 因此对应槽位也会包含在本列表中.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> removeChangeSlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isRemove()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    /**
-     * 返回只有物品流出而没有物品流入的逻辑槽位变更.
-     * <p>不相似物品替换同时存在物品流入与流出, 因此不会包含在本列表中.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> removeOnlySlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isRemoveOnly()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    /**
-     * 返回显式写入前后内容没有变化的逻辑槽位变更.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> unchangedSlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isUnchanged()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
-    }
-
-    /**
-     * 返回发生不相似物品替换的逻辑槽位变更.
-     *
-     * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
-     */
-    @NotNull
-    public final List<SlotChange> replacementChangeSlots() {
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isReplacement()) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
     }
 
     /**

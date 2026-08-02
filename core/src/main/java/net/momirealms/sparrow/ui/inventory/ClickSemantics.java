@@ -43,7 +43,7 @@ public final class ClickSemantics {
             int hotbarButton,
             int windowSlot
     ) {
-        return InventoryActionResolver.resolve(context, clickType, hotbarButton, windowSlot);
+        return ClickActionResolver.resolve(context, clickType, hotbarButton, windowSlot);
     }
 
     /**

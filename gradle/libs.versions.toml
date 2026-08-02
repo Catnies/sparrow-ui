@@ -1,18 +1,16 @@
 [versions]
 project-version = "beta.2"
 kotlin = "2.3.10"
-shadow = "9.3.2"
 paper-api = "1.21.8-R0.1-SNAPSHOT"
-netty = "4.2.7.Final"
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+shadow = { id = "com.gradleup.shadow", version = "9.3.2" }
 
 [libraries]
 paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
 sparrow-reflection = { module = "net.momirealms:sparrow-reflection", version = "0.34" }
-netty-transport = { module = "io.netty:netty-transport", version.ref = "netty" }
+netty-transport = { module = "io.netty:netty-transport", version = "4.2.7.Final" }
 
 asm = { module = "org.ow2.asm:asm", version = "9.9.1" }
 datafixerupper = { module = "com.mojang:datafixerupper", version = "8.0.16" }

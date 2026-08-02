@@ -52,16 +52,6 @@ final class ClickSlotRules {
         return computeSwap(current, cursor, slotLimit);
     }
 
-    // 算出右键点击后槽位与光标各自的新内容.
-    @Nullable
-    static Outcome computeRightClick(
-            @Nullable ItemStack current,
-            ItemStack cursor,
-            int slotLimit
-    ) {
-        return computeRightClick(current, cursor, slotLimit, null, -1);
-    }
-
     // 算出带 Window 本地 Bundle 选择状态的右键结果.
     @Nullable
     static Outcome computeRightClick(
