@@ -197,6 +197,11 @@ final class WindowLayout {
         return this.lowerStart + 27 + hotbarSlot;
     }
 
+    @NotNull
+    Gui lowerGui() {
+        return this.links[this.lowerStart].gui();
+    }
+
     /**
      * 返回布局引用的全部根 GUI.
      *

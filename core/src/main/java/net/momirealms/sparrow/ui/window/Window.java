@@ -333,6 +333,32 @@ public interface Window {
     boolean isCloseable();
 
     /**
+     * 返回占据玩家物品栏区域的下部 GUI.
+     * <p>合并窗口的 upper 与 lower 区域会返回同一个根 GUI.
+     *
+     * @return 下部 GUI
+     */
+    @NotNull
+    Gui lowerGui();
+
+    /**
+     * 返回下部 GUI 按默认布局引用的 ReferencingInventory.
+     *
+     * @return 默认 ReferencingInventory
+     */
+    @Nullable
+    default ReferencingInventory defaultLowerInventory() {
+        Gui lowerGui = this.lowerGui();
+        if (lowerGui.width() != 9 || lowerGui.height() != 4) {
+            return null;
+        }
+        // 默认 lower 由首槽标识; 只有需要区分同形自定义 GUI 时才记录构建来源.
+        return lowerGui.element(0) instanceof SlotElement.InventoryLink(ReferencingInventory inventory, int slot) && slot == 0
+                ? inventory
+                : null;
+    }
+
+    /**
      * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
      *
      * @return 根 GUI 列表

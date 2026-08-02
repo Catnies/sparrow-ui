@@ -464,6 +464,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
+    public Gui lowerGui() {
+        return this.layout.lowerGui();
+    }
+
+    @NotNull
+    @Override
     public List<Gui> guis() {
         return this.layout.guis();
     }
