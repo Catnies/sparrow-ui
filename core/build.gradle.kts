@@ -30,8 +30,8 @@ publishing {
 
     repositories {
         maven {
-            name = "Catnies"
-            url = uri("https://repo.catnies.top/snapshots")
+            name = "XiaoMoMi"
+            url = uri("https://repo.momirealms.net/snapshots")
             credentials(PasswordCredentials::class)
             authentication {
                 create<BasicAuthentication>("basic")

@@ -6,7 +6,7 @@ plugins {
 
 val libs = the<LibrariesForLibs>()
 group = "net.momirealms"
-version = "1.0.0"
+version = libs.versions.project.version.get()
 
 java {
     withSourcesJar()

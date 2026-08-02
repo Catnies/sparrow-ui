@@ -44,6 +44,18 @@ public final class NormalGui extends AbstractGui {
     }
 
     /**
+     * 为指定尺寸创建 Builder.
+     *
+     * @param width GUI 宽度
+     * @param height GUI 高度
+     * @return 普通 GUI Builder
+     */
+    @NotNull
+    public static Gui.Builder<NormalGui, ?> builder(int width, int height) {
+        return new Builder(Structure.of(GuiSize.of(width, height)));
+    }
+
+    /**
      * 为已有布局创建 Builder.
      *
      * @param structure GUI 布局

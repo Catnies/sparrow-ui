@@ -18,8 +18,8 @@ import java.util.Objects;
 public abstract class InventoryUpdateEvent {
     private final SparrowInventory inventory;              // 当前事件使用其逻辑槽位坐标的 Inventory
     private final UpdateReason reason;                     // 整笔事务的触发原因
-    private final List<SlotChange> slotChanges;            // 投影到当前 Inventory 后的槽位变更
-    private final List<RootInventoryChange> rootChanges;   // 整笔事务的完整 RootInventory 变更
+    private volatile List<SlotChange> slotChanges;            // 投影到当前 Inventory 后的槽位变更
+    private volatile List<RootInventoryChange> rootChanges;   // 整笔事务的完整 RootInventory 变更
 
     @Nullable private volatile NetItems netItems;          // 第一次查询净变化时计算
 
@@ -33,6 +33,22 @@ public abstract class InventoryUpdateEvent {
         this.reason = Objects.requireNonNull(reason, "reason");
         this.slotChanges = List.copyOf(slotChanges);
         this.rootChanges = List.copyOf(rootChanges);
+    }
+
+    /**
+     * 替换当前事件展示的候选事务快照.
+     * <p>只有提交前事件会在其同步回调期间调用本方法; 提交后事件的快照始终固定.
+     *
+     * @param slotChanges 投影到当前 Inventory 后的槽位变更
+     * @param rootChanges 整笔事务的完整 RootInventory 变更
+     */
+    final synchronized void replaceChanges(
+            @NotNull List<SlotChange> slotChanges,
+            @NotNull List<RootInventoryChange> rootChanges
+    ) {
+        this.slotChanges = List.copyOf(slotChanges);
+        this.rootChanges = List.copyOf(rootChanges);
+        this.netItems = null;
     }
 
     /**

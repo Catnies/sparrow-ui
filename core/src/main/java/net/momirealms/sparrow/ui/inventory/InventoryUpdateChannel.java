@@ -170,9 +170,9 @@ final class InventoryUpdateChannel {
     }
 
     /**
-     * 记录本笔事务开始时的订阅者名单, 并把 RootInventory 槽位变更投影为当前 Inventory 槽位变更.
-     * <p>PreUpdateEvent 和 PostUpdateEvent 订阅者会同时记录, 所以 PreUpdateEvent 处理器中新加的订阅者要从下一笔事务开始接收事件.
-     * 当前 Inventory 没有可见槽位变更时不创建事件.
+     * 记录本笔事务开始时的订阅者名单, 并确定原始事务是否会向当前 Inventory 派发 PreUpdateEvent.
+     * <p>PreUpdateEvent 处理器新增的槽位不会递归产生新的 PreUpdateEvent. PostUpdateEvent 订阅者始终先记录,
+     * 等全部 PreUpdateEvent 完成后再按最终变更投影, 使 PreUpdateEvent 新增的可见槽位不会漏掉提交后通知.
      *
      * @param reason 事务触发原因
      * @param rootChanges 整笔事务的 RootInventory 变更组
@@ -195,20 +195,14 @@ final class InventoryUpdateChannel {
             return null;
         }
 
-        // 每个 Inventory 只投影一次; ObscuredInventory 中只有被遮槽位发生变更时会得到空结果.
+        // Pre 接收者只按原始事务投影确定, 之后的编辑不会补派或递归派发 Pre.
         List<SlotChange> deltas = this.topology.project(rootChanges);
         if (deltas.isEmpty()) {
-            return null;
+            preRecipients = List.of();
         }
-
-        // 没有对应订阅者时, 不创建该事件.
-        InventoryPreUpdateEvent preEvent = preRecipients.isEmpty()
+        return preRecipients.isEmpty() && postRecipients.isEmpty()
                 ? null
-                : new InventoryPreUpdateEvent(this.inventory, reason, deltas, rootChanges);
-        PostDelivery post = postRecipients.isEmpty()
-                ? null
-                : new PostDelivery(postRecipients, new InventoryPostUpdateEvent(this.inventory, reason, deltas, rootChanges));
-        return new Prepared(preRecipients, preEvent, post);
+                : new Prepared(reason, preRecipients, postRecipients);
     }
 
     /**
@@ -277,40 +271,89 @@ final class InventoryUpdateChannel {
      * 等所有 RootInventory 完成提交后处理后才能派发.
      */
     final class Prepared {
+        private final UpdateReason reason;                                     // 整笔事务的触发原因
         private final List<Subscriber<InventoryPreUpdateEvent>> preRecipients; // 本笔事务需要通知的 PreUpdateEvent 订阅者
-        @Nullable private final InventoryPreUpdateEvent preEvent;              // 没有 PreUpdateEvent 订阅者时为 null
-        @Nullable private final PostDelivery post;                             // 没有 PostUpdateEvent 订阅者时为 null
+        private final List<Subscriber<InventoryPostUpdateEvent>> postRecipients; // 事务开始时记录的 PostUpdateEvent 订阅者
+        private final SparrowInventory[] rootsBySlot;                          // 当前 Inventory 每个逻辑槽位对应的 RootInventory
+        private final int[] rootSlotsBySlot;                                   // 当前 Inventory 每个逻辑槽位对应的 RootInventory 槽位
+
+        @Nullable private PostDelivery post;                                   // 最终投影为空或没有订阅者时为 null
 
         /**
-         * 保存本笔事务的 PreUpdateEvent 和 PostUpdateEvent 事件.
+         * 保存本笔事务的事件接收者和当前 Inventory 的槽位映射.
          *
+         * @param reason 事务触发原因
          * @param preRecipients 需要通知的 PreUpdateEvent 订阅者
-         * @param preEvent  PreUpdateEvent 事件, 或 {@code null}
-         * @param post  PostUpdateEvent 事件, 或 {@code null}
+         * @param postRecipients 可能需要通知的 PostUpdateEvent 订阅者
          */
         private Prepared(
+                @NotNull UpdateReason reason,
                 @NotNull List<Subscriber<InventoryPreUpdateEvent>> preRecipients,
-                @Nullable InventoryPreUpdateEvent preEvent,
-                @Nullable PostDelivery post
+                @NotNull List<Subscriber<InventoryPostUpdateEvent>> postRecipients
         ) {
+            this.reason = reason;
             this.preRecipients = preRecipients;
-            this.preEvent = preEvent;
-            this.post = post;
+            this.postRecipients = postRecipients;
+            this.rootsBySlot = new SparrowInventory[InventoryUpdateChannel.this.inventory.size()];
+            this.rootSlotsBySlot = new int[this.rootsBySlot.length];
+            for (int slot = 0; slot < this.rootsBySlot.length; slot++) {
+                SlotKey.Anchor anchor = InventoryUpdateChannel.this.topology.anchorAt(slot);
+                this.rootsBySlot[slot] = anchor.root();
+                this.rootSlotsBySlot[slot] = anchor.rootSlot();
+            }
         }
 
         /**
          * 派发 PreUpdateEvent 事件, 并返回所有处理器执行后的取消状态.
+         * <p>每个处理器拿到独立的候选快照; 正常返回后才合并修改, 抛出异常时整批修改丢弃.
          *
          * @param cancelled 前一个 Inventory 事件留下的取消状态
+         * @param draft 整笔事务当前的候选值
          * @return 当前事件处理完成后的取消状态
          */
-        boolean publishPre(boolean cancelled) {
-            if (this.preEvent != null) {
-                this.preEvent.setCancelled(cancelled);
-                InventoryUpdateChannel.publish(this.preRecipients, this.preEvent, "Failed to handle Inventory pre-update");
-                return this.preEvent.cancelled();
+        boolean publishPre(boolean cancelled, @NotNull InventoryTransactions.TransactionDraft draft) {
+            for (int i = 0; i < this.preRecipients.size(); i++) {
+                Observer<? super InventoryPreUpdateEvent> observer = this.preRecipients.get(i).observer.get();
+                if (observer == null) continue;
+
+                List<RootInventoryChange> rootChanges = draft.rootChanges();
+                InventoryPreUpdateEvent event = new InventoryPreUpdateEvent(
+                        InventoryUpdateChannel.this.inventory,
+                        this.reason,
+                        InventoryUpdateChannel.this.topology.project(rootChanges),
+                        rootChanges,
+                        draft.plannedStates(),
+                        this.rootsBySlot,
+                        this.rootSlotsBySlot
+                );
+                event.setCancelled(cancelled);
+                try {
+                    observer.onUpdate(event);
+                    draft.accept(event.rootChanges());
+                } catch (Throwable exception) {
+                    SparrowUI.getInstance().handleException("Failed to handle Inventory pre-update", exception);
+                }
+                cancelled = event.cancelled();
             }
             return cancelled;
+        }
+
+        /**
+         * 按全部 PreUpdateEvent 完成后的最终变更构造 PostUpdateEvent.
+         *
+         * @param rootChanges 已经冻结的完整 RootInventory 变更
+         */
+        void preparePost(@NotNull List<RootInventoryChange> rootChanges) {
+            if (this.postRecipients.isEmpty()) {
+                return;
+            }
+            List<SlotChange> slotChanges = InventoryUpdateChannel.this.topology.project(rootChanges);
+            if (!slotChanges.isEmpty()) {
+                this.post = new PostDelivery(
+                        this.postRecipients,
+                        new InventoryPostUpdateEvent(InventoryUpdateChannel.this.inventory, this.reason, slotChanges, rootChanges)
+                );
+            }
         }
 
         /**

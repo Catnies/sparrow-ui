@@ -59,21 +59,27 @@ final class InventoryTransactions {
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<Scope> scopes, boolean bypassPre) {
         List<Scope> declared = validateAndMerge(scopes);
-        List<Scope> ordered = sortByLockOrder(declared);
-        List<RootInventoryChange> rootChanges = changesOf(declared);
+        TransactionDraft draft = new TransactionDraft(declared);
 
         // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
         boolean cancelled = false;
-        List<InventoryUpdateChannel.Prepared> updates = prepareUpdates(reason, declared, rootChanges, !bypassPre);
+        List<InventoryUpdateChannel.Prepared> updates = prepareUpdates(reason, declared, draft.rootChanges(), !bypassPre);
 
         // 按顺序派发 PreUpdateEvent, 每个 Inventory 处理后的取消状态会交给下一个 Inventory.
         if (!bypassPre) {
             for (int i = 0; i < updates.size(); i++) {
-                cancelled = updates.get(i).publishPre(cancelled);
+                cancelled = updates.get(i).publishPre(cancelled, draft);
             }
             if (cancelled) {
                 return TransactionResult.Cancelled.INSTANCE;
             }
+        }
+
+        List<Scope> declaredFinal = draft.scopes();
+        List<Scope> ordered = sortByLockOrder(declaredFinal);
+        List<RootInventoryChange> rootChanges = draft.rootChanges();
+        for (int i = 0; i < updates.size(); i++) {
+            updates.get(i).preparePost(rootChanges);
         }
 
         int locked = 0;
@@ -239,7 +245,8 @@ final class InventoryTransactions {
     /**
      * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
      * <p>Composite 可能同时使用多个被修改的 RootInventory, 但它仍然只处理一次.
-     * 当前 Inventory 没有可见槽位变更或没有订阅者时, 不会创建对应事件.
+     * PreUpdateEvent 接收者只按原始事务投影确定; PostUpdateEvent 接收者会先记录,
+     * 等 PreUpdateEvent 完成后再按最终变更决定是否创建事件.
      *
      * @param reason 事务触发原因
      * @param scopes 本笔事务修改到的 RootInventory
@@ -281,5 +288,61 @@ final class InventoryTransactions {
             next[delta.slot()] = delta.rawAfter();
         }
         return next;
+    }
+
+    /**
+     * 保存 Pre 阶段正在编辑的整笔事务候选值.
+     * <p>参与 RootInventory 及其规划基准引用固定, 每个成功处理器只能替换或扩展这些 RootInventory 内的写集.
+     */
+    static final class TransactionDraft {
+        private List<Scope> scopes;
+        private List<RootInventoryChange> rootChanges;
+        private final ItemStack[][] plannedStates;
+
+        private TransactionDraft(@NotNull List<Scope> scopes) {
+            this.scopes = scopes;
+            this.rootChanges = changesOf(scopes);
+            this.plannedStates = new ItemStack[scopes.size()][];
+            for (int i = 0; i < scopes.size(); i++) {
+                this.plannedStates[i] = scopes.get(i).planned();
+            }
+        }
+
+        @NotNull
+        List<Scope> scopes() {
+            return this.scopes;
+        }
+
+        @NotNull
+        List<RootInventoryChange> rootChanges() {
+            return this.rootChanges;
+        }
+
+        @NotNull
+        ItemStack[][] plannedStates() {
+            return this.plannedStates;
+        }
+
+        void accept(@NotNull List<RootInventoryChange> rootChanges) {
+            if (rootChanges == this.rootChanges) {
+                return;
+            }
+            if (rootChanges.size() != this.scopes.size()) {
+                throw new IllegalArgumentException("pre-update edit changed the participating RootInventory count");
+            }
+
+            List<Scope> rewritten = new ArrayList<>(this.scopes.size());
+            for (int i = 0; i < this.scopes.size(); i++) {
+                Scope scope = this.scopes.get(i);
+                RootInventoryChange rootChange = rootChanges.get(i);
+                if (rootChange.inventory() != scope.inventory()) {
+                    throw new IllegalArgumentException("pre-update edit changed a participating RootInventory");
+                }
+                rewritten.add(new Scope(scope.inventory(), scope.planned(), rootChange.slotChanges()));
+            }
+            List<Scope> validated = validateAndMerge(rewritten);
+            this.scopes = validated;
+            this.rootChanges = changesOf(validated);
+        }
     }
 }
