@@ -22,7 +22,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -440,6 +442,8 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     /**
      * 按 ADD 遍历顺序把物品尽量放进 Inventory , 先合并相似物品堆, 再占用空槽.
      * 整个放入过程作为一次事务提交.
+     * <p>PreUpdateEvent 取消某个可见 Inventory 的候选方案后, 会排除该 Inventory 的物理槽并重新规划;
+     * 取消轮不会提交变更或派发 PostUpdateEvent, 最终成功方案仍只提交一次.
      *
      * @param reason 本次修改的原因
      * @param item 要放入的物品
@@ -452,20 +456,39 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
-        PlanContext context = this.openPlanForWrite();
-        // 在当前 Inventory 的规划内容上计算: 先合并相似的未满堆, 再占空槽
-        InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
-                context.snapshot(),
-                input,
-                this.iterationOrder(OperationCategory.ADD),
-                this::slotMaxStackSize
-        );
-        if (plan.deltas().isEmpty()) {
-            return new AddResult(EMPTY_COMMITTED, plan.remaining());
+        Set<SlotKey> rejected = new HashSet<>();
+        while (true) {
+            PlanContext context = this.openPlanForWrite();
+            // 在当前 Inventory 的规划内容上计算: 先合并相似的未满堆, 再占空槽
+            InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
+                    context.snapshot(),
+                    input,
+                    this.iterationOrder(OperationCategory.ADD),
+                    slot -> rejected.contains(this.physicalKey(slot)) ? 0 : this.slotMaxStackSize(slot)
+            );
+            if (plan.deltas().isEmpty()) {
+                TransactionResult result = rejected.isEmpty() ? EMPTY_COMMITTED : TransactionResult.Cancelled.INSTANCE;
+                return new AddResult(result, rejected.isEmpty() ? plan.remaining() : input.getAmount());
+            }
+            // 把当前 Inventory 的槽位变更按 RootInventory 分组后整体提交; 没提交成功视为一个都没放进去
+            InventoryTransactions.CommitAttempt attempt = InventoryTransactions.commitDetailed(reason, context.scoper().apply(plan.deltas()), false, rejected);
+            TransactionResult result = attempt.result();
+            if (result instanceof TransactionResult.Committed) {
+                return new AddResult(result, plan.remaining());
+            }
+            SparrowInventory cancelledBy = attempt.cancelledBy();
+            if (cancelledBy == null) {
+                return new AddResult(result, input.getAmount());
+            }
+
+            boolean progressed = false;
+            for (int slot = 0; slot < cancelledBy.size(); slot++) {
+                progressed |= rejected.add(cancelledBy.physicalKey(slot));
+            }
+            if (!progressed) {
+                return new AddResult(TransactionResult.Cancelled.INSTANCE, input.getAmount());
+            }
         }
-        // 把当前 Inventory 的槽位变更按 RootInventory 分组后整体提交; 没提交成功视为一个都没放进去
-        TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
-        return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
 
     /**

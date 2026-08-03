@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
@@ -40,24 +41,54 @@ final class InventoryTransactions {
      */
     @NotNull
     static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<TransactionScope> scopes, boolean bypassPre) {
+        return commitDetailed(reason, scopes, bypassPre, Set.of()).result();
+    }
+
+    /**
+     * 提交一笔事务, 并在取消时返回最终留下取消的 Inventory.
+     *
+     * @param reason 变更原因
+     * @param scopes 各 RootInventory 写集
+     * @param bypassPre 为 {@code true} 时跳过 pre 阶段
+     * @param rejected 不允许最终草稿重新写入的物理槽位
+     * @return 事务结果及取消来源; 非事件取消或没有取消时来源为 {@code null}
+     */
+    @NotNull
+    static CommitAttempt commitDetailed(
+            @NotNull UpdateReason reason,
+            @NotNull List<TransactionScope> scopes,
+            boolean bypassPre,
+            @NotNull Set<SlotKey> rejected
+    ) {
         List<TransactionScope> declared = TransactionValidator.validateAndMerge(scopes);
         TransactionDraft draft = new TransactionDraft(declared);
 
         // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
-        boolean cancelled = false;
+        @Nullable SparrowInventory cancelledBy = null;
         List<TransactionNotification> updates = prepareUpdates(reason, declared, draft.rootChanges(), !bypassPre);
 
         // 按顺序派发 PreUpdateEvent, 每个 Inventory 处理后的取消状态会交给下一个 Inventory.
         if (!bypassPre) {
             for (int i = 0; i < updates.size(); i++) {
-                cancelled = updates.get(i).publishPre(cancelled, draft);
+                cancelledBy = updates.get(i).publishPre(cancelledBy, draft);
             }
-            if (cancelled) {
-                return TransactionResult.Cancelled.INSTANCE;
+            if (cancelledBy != null) {
+                return new CommitAttempt(TransactionResult.Cancelled.INSTANCE, cancelledBy);
             }
         }
 
         List<TransactionScope> declaredFinal = draft.scopes();
+        if (!rejected.isEmpty()) {
+            for (int i = 0; i < declaredFinal.size(); i++) {
+                TransactionScope scope = declaredFinal.get(i);
+                List<SlotChange> changes = scope.slotChanges();
+                for (int j = 0; j < changes.size(); j++) {
+                    if (rejected.contains(scope.inventory().physicalKey(changes.get(j).slot()))) {
+                        return new CommitAttempt(TransactionResult.Cancelled.INSTANCE, null);
+                    }
+                }
+            }
+        }
         List<TransactionScope> ordered = sortByLockOrder(declaredFinal);
         List<RootInventoryChange> rootChanges = draft.rootChanges();
         for (int i = 0; i < updates.size(); i++) {
@@ -75,7 +106,7 @@ final class InventoryTransactions {
             for (int i = 0; i < ordered.size(); i++) {
                 TransactionScope scope = ordered.get(i);
                 if (scope.inventory().currentState() != scope.planned()) {
-                    return TransactionResult.Conflicted.INSTANCE;
+                    return new CommitAttempt(TransactionResult.Conflicted.INSTANCE, null);
                 }
             }
 
@@ -119,7 +150,7 @@ final class InventoryTransactions {
             }
         }
         ThrowableUtils.throwIfUnchecked(afterCommitFailure);
-        return new TransactionResult.Committed(rootChanges);
+        return new CommitAttempt(new TransactionResult.Committed(rootChanges), null);
     }
 
     /**
@@ -182,5 +213,8 @@ final class InventoryTransactions {
             next[delta.slot()] = delta.unsafeAfter();
         }
         return next;
+    }
+
+    record CommitAttempt(@NotNull TransactionResult result, @Nullable SparrowInventory cancelledBy) {
     }
 }

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -70,6 +71,20 @@ public abstract class InventoryUpdateEvent {
     @NotNull
     public final UpdateReason reason() {
         return this.reason;
+    }
+
+
+    /**
+     * 返回本次事务的参与玩家, 如果没有玩家参与则返回 {@code null}.
+     *
+     * @return 参与事务的玩家
+     */
+    @Nullable
+    public Player player() {
+        if (this.reason instanceof PlayerUpdateReason playerUpdateReason) {
+            return playerUpdateReason.player();
+        }
+        return null;
     }
 
     /**

@@ -419,12 +419,13 @@ final class ClickExecutor {
         }
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
         SlotKey sourceKey = link.physicalKey();
+        HashSet<SlotKey> rejected = new HashSet<>();
 
         List<SparrowInventory> targets = addTargets(context, link.inventory());
         for (int i = 0; i < targets.size(); i++) {
-            MoveOutcome outcome = moveIntoInventory(reason, link, targets.get(i), sourceKey);
+            MoveOutcome outcome = moveIntoInventory(reason, link, targets.get(i), sourceKey, rejected);
             if (outcome == MoveOutcome.MOVED || outcome == MoveOutcome.REJECTED) {
-                // 有进展即停; 事务被取消或冲突同样终止本次转移
+                // 有进展即停; 无法归因的取消、源侧取消或冲突同样终止本次转移
                 context.markDirty(windowSlot);
                 return;
             }
@@ -437,41 +438,62 @@ final class ClickExecutor {
             UpdateReason reason,
             ClickSemantics.LinkedSlot source,
             SparrowInventory targetInventory,
-            SlotKey sourceKey
+            SlotKey sourceKey,
+            HashSet<SlotKey> rejected
     ) {
-        SparrowInventory sourceInventory = source.inventory();
-        SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
-        SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-        @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
-        if (current == null) return MoveOutcome.FULL;
+        while (true) {
+            SparrowInventory sourceInventory = source.inventory();
+            SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
+            SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
+            @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
+            if (current == null) return MoveOutcome.FULL;
 
-        // 与源槽具有相同 SlotKey 的目标槽上限报 0, 在规划里等于不可用
-        InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
-                targetPlan.snapshot(),
-                current,
-                targetInventory.iterationOrder(OperationCategory.ADD),
-                slot -> targetInventory.physicalKey(slot).equals(sourceKey)
-                        ? 0
-                        : targetInventory.slotMaxStackSize(slot)
-        );
-        int moved = current.getAmount() - addPlan.remaining();
-        if (moved <= 0) {
-            return MoveOutcome.FULL;
-        }
+            // 与源槽同址或已被目标事件拒绝的槽位上限报 0, 在新规划里等于不可用
+            InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
+                    targetPlan.snapshot(),
+                    current,
+                    targetInventory.iterationOrder(OperationCategory.ADD),
+                    slot -> {
+                        SlotKey targetKey = targetInventory.physicalKey(slot);
+                        return targetKey.equals(sourceKey) || rejected.contains(targetKey)
+                                ? 0
+                                : targetInventory.slotMaxStackSize(slot);
+                    }
+            );
+            int moved = current.getAmount() - addPlan.remaining();
+            if (moved <= 0) {
+                return MoveOutcome.FULL;
+            }
 
-        int left = current.getAmount() - moved;
-        List<SlotChange> sourceDeltas = List.of(new SlotChange(
-                source.slot(),
-                current,
-                left > 0 ? ItemUtils.copyWithAmount(current, left) : null
-        ));
-        List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
-        scopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
-        TransactionResult result = InventoryTransactions.commit(reason, scopes, false);
-        if (result instanceof TransactionResult.Committed) {
-            return MoveOutcome.MOVED;
+            int left = current.getAmount() - moved;
+            List<SlotChange> sourceDeltas = List.of(new SlotChange(
+                    source.slot(),
+                    current,
+                    left > 0 ? ItemUtils.copyWithAmount(current, left) : null
+            ));
+            List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
+            scopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
+            InventoryTransactions.CommitAttempt attempt = InventoryTransactions.commitDetailed(reason, scopes, false, rejected);
+            if (attempt.result() instanceof TransactionResult.Committed) {
+                return MoveOutcome.MOVED;
+            }
+            SparrowInventory cancelledBy = attempt.cancelledBy();
+            if (cancelledBy == null) {
+                return MoveOutcome.REJECTED;
+            }
+
+            boolean added = false;
+            for (int slot = 0; slot < cancelledBy.size(); slot++) {
+                SlotKey cancelledKey = cancelledBy.physicalKey(slot);
+                if (cancelledKey.equals(sourceKey)) {
+                    return MoveOutcome.REJECTED;
+                }
+                added |= rejected.add(cancelledKey);
+            }
+            if (!added) {
+                return MoveOutcome.REJECTED;
+            }
         }
-        return MoveOutcome.REJECTED;
     }
 
     // 快速转移的候选目标
