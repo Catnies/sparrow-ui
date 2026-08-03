@@ -1,7 +1,9 @@
 package net.momirealms.sparrow.ui.gui;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -50,6 +52,19 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
     @NotNull
     static InventoryLink inventory(@NotNull SparrowInventory inventory, int slot) {
         return new InventoryLink(inventory, slot);
+    }
+
+    /**
+     * 创建连接到库存槽位的元素, 并指定槽位为空时显示的占位物品.
+     *
+     * @param inventory 库存
+     * @param slot 库存槽位编号
+     * @param background 槽位为空时的占位物品, 仅作显示, 槽位交互不受影响
+     * @return 库存连接元素
+     */
+    @NotNull
+    static InventoryLink inventory(@NotNull SparrowInventory inventory, int slot, @NotNull ItemProvider background) {
+        return new InventoryLink(inventory, slot, background);
     }
 
     /**
@@ -128,12 +143,17 @@ public sealed interface SlotElement permits SlotElement.Empty, SlotElement.Item,
      *
      * @param inventory 库存
      * @param slot 库存槽位编号
+     * @param background 槽位为空时显示的占位物品, null 表示回退到 GUI 背景
      */
-    record InventoryLink(@NotNull SparrowInventory inventory, int slot) implements SlotElement {
+    record InventoryLink(@NotNull SparrowInventory inventory, int slot, @Nullable ItemProvider background) implements SlotElement {
 
         public InventoryLink {
             Objects.requireNonNull(inventory);
             Objects.checkIndex(slot, inventory.size());
+        }
+
+        public InventoryLink(@NotNull SparrowInventory inventory, int slot) {
+            this(inventory, slot, null);
         }
     }
 }
