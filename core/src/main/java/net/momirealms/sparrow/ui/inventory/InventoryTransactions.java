@@ -179,7 +179,7 @@ final class InventoryTransactions {
         List<SlotChange> deltas = scope.slotChanges();
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
-            next[delta.slot()] = delta.rawAfter();
+            next[delta.slot()] = delta.unsafeAfter();
         }
         return next;
     }

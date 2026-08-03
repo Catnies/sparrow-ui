@@ -80,6 +80,14 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     @Override
+    @Nullable
+    public ItemStack unsafeItemAt(int slot) {
+        // 先把 volatile 引用抓到局部变量
+        @Nullable ItemStack[] snapshot = this.state;
+        return snapshot[slot];
+    }
+
+    @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
         // 先把 volatile 引用抓到局部变量
         @Nullable ItemStack[] snapshot = this.state;
@@ -88,6 +96,11 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
             copy[i] = ItemUtils.copyOrNull(snapshot[i]);
         }
         return copy;
+    }
+
+    @Override
+    public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
+        return this.state;
     }
 
     @Override

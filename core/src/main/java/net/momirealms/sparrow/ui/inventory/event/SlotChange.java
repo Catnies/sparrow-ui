@@ -149,14 +149,28 @@ public final class SlotChange {
         return ItemUtils.copyOrNull(this.after);
     }
 
+    /**
+     * 零拷贝地返回变更前的物品, 原本为空槽时返回 {@code null}.
+     * <p>返回值属于事务记录内部. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
+     * 违反约定会污染事件历史, 净变化计算以及后续读取结果.
+     *
+     * @return 变更前的内部物品引用, 原本为空槽时为 {@code null}
+     */
     @Nullable
-    ItemStack rawBefore() {
+    ItemStack unsafeBefore() {
         return this.before;
     }
 
+    /**
+     * 零拷贝地返回变更后的物品, 清空槽位时返回 {@code null}.
+     * <p>该实例可能在提交后成为 Inventory 的实际槽位内容. 调用方只能在当前调用栈内读取,
+     * 不得修改或保存引用; 违反约定会绕过事务, 事件, Window 刷新和外部容器同步,
+     * 并污染事件历史与净变化计算.
+     *
+     * @return 变更后的内部物品引用, 清空槽位时为 {@code null}
+     */
     @Nullable
-    @ApiStatus.Internal
-    public ItemStack rawAfter() {
+    public ItemStack unsafeAfter() {
         return this.after;
     }
 }

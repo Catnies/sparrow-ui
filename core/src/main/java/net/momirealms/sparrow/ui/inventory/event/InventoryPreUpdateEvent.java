@@ -134,7 +134,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         for (int i = 0; i < current.size(); i++) {
             SlotChange change = current.get(i);
             if (change.slot() == rootSlot) {
-                updated.add(new SlotChange(rootSlot, change.rawBefore(), after));
+                updated.add(new SlotChange(rootSlot, change.unsafeBefore(), after));
                 replaced = true;
             } else {
                 updated.add(change);

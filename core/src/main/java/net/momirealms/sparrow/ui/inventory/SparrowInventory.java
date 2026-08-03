@@ -32,7 +32,7 @@ import java.util.function.UnaryOperator;
  * <p>所有实现都遵守三条约定:
  * <ul>
  *   <li>空槽只用 {@code null} 表示, Inventory 中不会保留 AIR 物品或数量不大于 0 的物品;</li>
- *   <li>读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
+ *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
  *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
  * <p>读操作直接读取当前内部状态版本, 任何线程都可以安全调用. 写操作遇到并发冲突时返回{@link TransactionResult.Conflicted} 且不产生修改;
@@ -72,6 +72,18 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      */
     @Nullable
     public abstract ItemStack @NotNull [] snapshot();
+
+    /**
+     * 零物品拷贝地读出全部槽位.
+     * <p>RootInventory 直接返回当前内部状态数组; ViewInventory 会为槽位映射分配新的投影数组,
+     * 但其中的非空元素仍是底层 Inventory 内部持有的 {@link ItemStack} 实例.
+     * <p>调用方只能在当前调用栈内只读数组及其中的物品, 不得修改或保存这些引用. 违反约定会绕过事务,
+     * 事件, Window 刷新和外部容器同步, 并可能破坏并发冲突检测.
+     *
+     * @return 按槽号排列的内部物品引用, 空槽位置为 {@code null}
+     */
+    @Nullable
+    public abstract ItemStack @NotNull [] unsafeSnapshot();
 
     /**
      * 返回指定类别的批量操作按什么顺序遍历槽位.
@@ -177,6 +189,18 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     public abstract ItemStack itemAt(int slot);
 
     /**
+     * 零拷贝地读取指定槽位的物品, 空槽返回 {@code null}.
+     * <p>返回值是底层 Inventory 内部持有的实例. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
+     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @return 槽内的内部物品引用, 空槽为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public abstract ItemStack unsafeItemAt(int slot);
+
+    /**
      * 指定槽位自身的堆叠上限, 不含物品自带的堆叠上限.
      * 放入物品时真正生效的上限是两者的较小值.
      *
@@ -250,6 +274,25 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
+     * 零物品拷贝地判断是否存在 matcher 选中的物品.
+     * <p>matcher 会直接收到内部 {@link ItemStack} 实例. matcher 只能读取当前入参, 不得修改或保存引用;
+     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
+     *
+     * @param matcher 判断物品是否符合条件的只读函数
+     * @return 至少有一个物品符合条件时返回 {@code true}
+     */
+    public boolean unsafeContains(@NotNull Predicate<? super ItemStack> matcher) {
+        ItemStack[] snapshot = this.unsafeSnapshot();
+        for (int i = 0; i < snapshot.length; i++) {
+            ItemStack item = snapshot[i];
+            if (item != null && matcher.test(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 判断是否存在与 template 相似的物品堆, 不比较数量.
      *
      * @param template 用于相似判断的物品样板
@@ -267,6 +310,26 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      */
     public int count(@NotNull Predicate<? super ItemStack> matcher) {
         ItemStack[] snapshot = this.snapshot();
+        int count = 0;
+        for (int i = 0; i < snapshot.length; i++) {
+            ItemStack item = snapshot[i];
+            if (item != null && matcher.test(item)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 零物品拷贝地统计 matcher 选中的物品堆数量, 不累加堆内物品数量.
+     * <p>matcher 会直接收到内部 {@link ItemStack} 实例. matcher 只能读取当前入参, 不得修改或保存引用;
+     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
+     *
+     * @param matcher 判断物品是否符合条件的只读函数
+     * @return 符合条件的非空槽数量
+     */
+    public int unsafeCount(@NotNull Predicate<? super ItemStack> matcher) {
+        ItemStack[] snapshot = this.unsafeSnapshot();
         int count = 0;
         for (int i = 0; i < snapshot.length; i++) {
             ItemStack item = snapshot[i];

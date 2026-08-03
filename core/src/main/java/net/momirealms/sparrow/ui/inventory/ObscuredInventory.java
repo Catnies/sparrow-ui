@@ -76,6 +76,21 @@ public final class ObscuredInventory extends ViewInventory {
     /**
      * {@inheritDoc}
      *
+     * <p>为可见槽投影分配新数组, 但不复制底层返回的物品实例.
+     */
+    @Override
+    public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
+        @Nullable ItemStack[] full = this.underlying.unsafeSnapshot();
+        @Nullable ItemStack[] projected = new ItemStack[this.visibleSlots.length];
+        for (int i = 0; i < this.visibleSlots.length; i++) {
+            projected[i] = full[this.visibleSlots[i]];
+        }
+        return projected;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * <p>把底层遍历顺序投影到当前 Inventory: 保持底层配置的访问偏好, 只过滤被遮槽.
      */
     @Override

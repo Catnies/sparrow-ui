@@ -32,6 +32,13 @@ public abstract non-sealed class ViewInventory extends SparrowInventory {
     }
 
     @Override
+    @Nullable
+    public ItemStack unsafeItemAt(int slot) {
+        SlotKey.Anchor anchor = this.resolveSlot(slot);
+        return anchor.root().unsafeItemAt(anchor.rootSlot());
+    }
+
+    @Override
     public int slotMaxStackSize(int slot) {
         SlotKey.Anchor anchor = this.resolveSlot(slot);
         return anchor.root().slotMaxStackSize(anchor.rootSlot());

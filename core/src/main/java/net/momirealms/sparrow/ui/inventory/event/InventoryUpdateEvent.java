@@ -229,12 +229,12 @@ public abstract class InventoryUpdateEvent {
         for (int i = 0; i < slotChanges.size(); i++) {
             SlotChange change = slotChanges.get(i);
             int removedAmount = change.removedAmount();
-            ItemStack before = change.rawBefore();
+            ItemStack before = change.unsafeBefore();
             if (removedAmount > 0 && before != null) {
                 balance(removedItems, addedItems, before, removedAmount);
             }
             int addedAmount = change.addedAmount();
-            ItemStack after = change.rawAfter();
+            ItemStack after = change.unsafeAfter();
             if (addedAmount > 0 && after != null) {
                 balance(addedItems, removedItems, after, addedAmount);
             }

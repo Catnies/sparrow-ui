@@ -95,6 +95,21 @@ public final class CompositeInventory extends ViewInventory {
         return combined;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>为拼接结果分配新数组, 但不复制成员返回的物品实例.
+     */
+    @Override
+    public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
+        @Nullable ItemStack[] combined = new ItemStack[this.size];
+        for (int i = 0; i < this.members.length; i++) {
+            @Nullable ItemStack[] part = this.members[i].unsafeSnapshot();
+            System.arraycopy(part, 0, combined, this.memberOffsets[i], part.length);
+        }
+        return combined;
+    }
+
     @NotNull
     @Override
     public SlotOrder iterationOrder(@NotNull OperationCategory category) {
