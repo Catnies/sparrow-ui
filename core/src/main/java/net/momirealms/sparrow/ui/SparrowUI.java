@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
@@ -20,6 +21,7 @@ public class SparrowUI implements Listener {
     private Plugin plugin;
     private WindowManager windowManager;
     private boolean fireBukkitInventoryEvents = true;
+    private Consumer<? super String> warningHandler = msg -> this.getPlugin().getComponentLogger().warn(msg);
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
     private final List<Runnable> disableHandlers = new ArrayList<>();
 
@@ -117,6 +119,27 @@ public class SparrowUI implements Listener {
                 Objects.requireNonNull(message, "message"),
                 Objects.requireNonNull(throwable, "throwable")
         );
+    }
+
+    /**
+     * 设置用于处理 UI 用法警告的处理器.
+     *
+     * @param warningHandler 新的警告处理器
+     */
+    public void setWarningHandler(Consumer<? super String> warningHandler) {
+        this.warningHandler = Objects.requireNonNull(warningHandler, "warningHandler");
+    }
+
+    // todo: 引入debug模式, 才触发这个提示. 支持jvm参数开启.
+    /**
+     * 报告一条 UI 用法警告.
+     * <p>用于那些不会抛异常, 但插件作者多半想不到的行为: 交互被静默丢弃, 写入没有落点等等.
+     * 这类问题在被发现时肇事者早已返回, 堆栈没有价值, 所以只带一段说明文本.
+     *
+     * @param message 警告内容
+     */
+    public void warn(String message) {
+        this.warningHandler.accept(Objects.requireNonNull(message, "message"));
     }
 
     /**

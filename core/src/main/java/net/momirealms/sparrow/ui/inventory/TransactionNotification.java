@@ -60,12 +60,12 @@ final class TransactionNotification {
      * 按订阅顺序调用本轮所有 Pre 处理器.
      * 回调结束后, 该事件也不能再修改事务.
      *
-     * @param cancelledBy 上一个 Inventory 通知结束后留下的取消来源, null 表示未取消
+     * @param cancelled 上一个 Inventory 通知结束后留下的取消状态
      * @param draft 目前已经被正常处理器接受的最终提交内容
-     * @return 本组 Pre 处理器全部执行后留下的取消来源, null 表示未取消
+     * @param interaction 触发本笔事务的交互副作用草稿, 非玩家交互为 {@code null}
+     * @return 本组 Pre 处理器全部执行后留下的取消状态
      */
-    @Nullable
-    SparrowInventory publishPre(@Nullable SparrowInventory cancelledBy, @NotNull TransactionDraft draft) {
+    boolean publishPre(boolean cancelled, @NotNull TransactionDraft draft, @Nullable InteractionDraft interaction) {
         for (int i = 0; i < this.preRecipients.size(); i++) {
             Observer<? super InventoryPreUpdateEvent> observer = this.preRecipients.get(i).observer();
             // 弱引用指向的观察者已经被回收时, 本轮直接跳过它.
@@ -79,20 +79,17 @@ final class TransactionNotification {
                     this.topology.project(rootChanges),
                     rootChanges,
                     draft.plannedStates(),
-                    this.topology
+                    this.topology,
+                    draft::baselineOf,
+                    interaction
             );
-            boolean cancelled = cancelledBy != null;
             event.setCancelled(cancelled);
             try {
                 observer.onUpdate(event);
                 // 处理器正常返回后, 先检查并接纳它修改的最终值.
                 draft.accept(event.rootChanges());
                 // 最终值成功接纳后才接受取消改动, 失败的处理器不能影响事务是否提交.
-                if (!cancelled && event.cancelled()) {
-                    cancelledBy = this.inventory;
-                } else if (cancelled && !event.cancelled()) {
-                    cancelledBy = null;
-                }
+                cancelled = event.cancelled();
             } catch (Throwable exception) {
                 SparrowUI.getInstance().handleException("Failed to handle Inventory pre-update", exception);
             } finally {
@@ -100,7 +97,7 @@ final class TransactionNotification {
                 event.closeEditing();
             }
         }
-        return cancelledBy;
+        return cancelled;
     }
 
     /**

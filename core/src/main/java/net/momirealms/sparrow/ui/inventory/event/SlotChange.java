@@ -157,7 +157,7 @@ public final class SlotChange {
      * @return 变更前的内部物品引用, 原本为空槽时为 {@code null}
      */
     @Nullable
-    ItemStack unsafeBefore() {
+    public ItemStack unsafeBefore() {
         return this.before;
     }
 

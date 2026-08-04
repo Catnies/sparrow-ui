@@ -33,10 +33,12 @@ final class ProtocolInventoryView implements InventoryView {
     private final InventoryType inventoryType;
     private final MenuType menuType;
     private final ItemStack[] lowerItems;
-    private final BitSet touchedSlots = new BitSet();
+    private final BitSet touchedSlots = new BitSet();      // 本 tick 写过的槽位, 留给最终同步纠正客户端
+    private final BitSet eventTouchedSlots = new BitSet(); // 最近一次事件写过的槽位, 由 resetForEvent 清空
     private Component title = Component.empty();
     private ItemStack cursor = ItemStack.empty();
-    private boolean cursorTouched;
+    private boolean cursorTouched;      // 本 tick 是否写过光标, 留给最终同步纠正客户端
+    private boolean eventCursorTouched; // 最近一次事件是否写过光标, 由 resetForEvent 清空
 
     /**
      * 创建一个初始为空的 Bukkit 事件用的 InventoryView.
@@ -102,6 +104,25 @@ final class ProtocolInventoryView implements InventoryView {
      */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
         this.title = title;
+        this.replaceContents(slots, cursor);
+        this.touchedSlots.clear();
+        this.eventTouchedSlots.clear();
+        this.cursorTouched = false;
+        this.eventCursorTouched = false;
+    }
+
+    /**
+     * 用服务端渲染结果和菜单实际光标重置 Bukkit 事件状态副本, 但保留此前事件的触碰记录供最终同步纠正客户端.
+     * <p>只有事件粒度的写入记录会被清掉: 它描述的是"上一个事件写了什么", 内容一旦被服务端渲染结果覆盖就失效了.
+     */
+    void resetForEvent(ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
+        this.replaceContents(slots, cursor);
+        this.eventTouchedSlots.clear();
+        this.eventCursorTouched = false;
+    }
+
+    // 用服务端渲染结果和菜单实际光标覆盖上下两半的槽位与光标; 协议槽位要先换算成上下容器各自的下标.
+    private void replaceContents(ItemStack[] slots, ItemStack cursor) {
         for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
             int upperSlot = this.upperSlot(rawSlot);
             if (upperSlot >= 0) {
@@ -111,8 +132,6 @@ final class ProtocolInventoryView implements InventoryView {
             }
         }
         this.cursor = ItemUtils.copyOrEmpty(cursor);
-        this.touchedSlots.clear();
-        this.cursorTouched = false;
     }
 
     /**
@@ -168,6 +187,19 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
+     * 把最近一次 Bukkit 事件写过的槽位转移到调用方复用的位图, 并清空该事件的写入记录.
+     * <p>与 {@link #drainTouchedSlots} 的累积位图相互独立: 那份覆盖整个 tick, 只用来纠正客户端;
+     * 这份只覆盖最近一次事件, 供调用方把写入合并进当前交互的草稿.
+     *
+     * @param destination 接收本次事件写入槽位的可变位图
+     */
+    void drainEventTouchedSlots(@NotNull BitSet destination) {
+        destination.clear();
+        destination.or(this.eventTouchedSlots);
+        this.eventTouchedSlots.clear();
+    }
+
+    /**
      * 取出并清空 Bukkit 事件是否写入过光标的标记.
      *
      * @return 需要恢复菜单实际光标时返回 {@code true}
@@ -176,6 +208,22 @@ final class ProtocolInventoryView implements InventoryView {
         boolean touched = this.cursorTouched;
         this.cursorTouched = false;
         return touched;
+    }
+
+    /**
+     * 取出最近一次 Bukkit 事件写入的光标, 并清空该事件的写入记录.
+     * <p>与 {@link #takeCursorTouched()} 的累积标记相互独立: 那份标记覆盖整个 tick, 只用来纠正客户端;
+     * 这份只覆盖最近一次事件, 供调用方把写入合并进当前交互的草稿.
+     *
+     * @return 最近一次事件写过光标时返回写入值, 没写过时返回 {@code null}
+     */
+    @Nullable
+    ItemStack takeEventCursor() {
+        if (!this.eventCursorTouched) {
+            return null;
+        }
+        this.eventCursorTouched = false;
+        return ItemUtils.copyOrEmpty(this.cursor);
     }
 
     @Override
@@ -214,6 +262,7 @@ final class ProtocolInventoryView implements InventoryView {
             this.lowerItems[lowerSlot] = ItemUtils.copyOrEmpty(item);
         }
         this.touchedSlots.set(rawSlot);
+        this.eventTouchedSlots.set(rawSlot);
     }
 
     @Nullable
@@ -237,6 +286,7 @@ final class ProtocolInventoryView implements InventoryView {
     public void setCursor(@Nullable ItemStack item) {
         this.cursor = ItemUtils.copyOrEmpty(item);
         this.cursorTouched = true;
+        this.eventCursorTouched = true;
     }
 
     @Override

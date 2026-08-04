@@ -6,6 +6,7 @@ import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.BitSet;
 import java.util.List;
@@ -82,7 +83,6 @@ public interface MenuHandle extends AutoCloseable {
     void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * todo: 检查是否必须, 能否继续收窄.
      * 给客户端发一个协议 Ping, 用来确认 Window 的某个状态已经被客户端收到并处理.
      *
      * @param id Ping 标识
@@ -146,6 +146,34 @@ public interface MenuHandle extends AutoCloseable {
      */
     @NotNull
     InventoryView view();
+
+    /**
+     * 用当前服务端渲染结果和菜单实际光标重置下一次 Bukkit 事件读取的 Bukkit 事件状态副本.
+     * Bukkit 监听器此前触碰过的标记仍需保留, 供本 tick 最终同步纠正客户端.
+     *
+     * @param slots 按协议槽位排列的当前服务端渲染结果
+     * @param cursor 当前菜单实际光标
+     */
+    void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull ItemStack cursor);
+
+    /**
+     * 取出最近一次 Bukkit 事件写进 Bukkit 事件状态副本的光标, 并清空该事件的写入记录.
+     * <p>这份副本的内容会被下一次 {@link #resetBukkitEventView} 覆盖, 所以事件一返回就要取走.
+     * 本 tick 最终同步用的累积触碰标记不受影响.
+     *
+     * @return 最近一次事件写过光标时返回写入值, 没写过时返回 {@code null}
+     */
+    @Nullable
+    ItemStack takeBukkitEventCursor();
+
+    /**
+     * 把最近一次 Bukkit 事件写进 Bukkit 事件状态副本的槽位转移到调用方的位图, 并清空该事件的写入记录.
+     * <p>写入的内容仍然从 {@link #view()} 上读, 这里只负责告诉调用方哪些槽位被写过.
+     * 本 tick 最终同步用的累积位图不受影响.
+     *
+     * @param destination 接收本次事件写入槽位的可变位图
+     */
+    void drainBukkitEventSlots(@NotNull BitSet destination);
 
     /**
      * 返回这一会话的 Minecraft 容器编号.

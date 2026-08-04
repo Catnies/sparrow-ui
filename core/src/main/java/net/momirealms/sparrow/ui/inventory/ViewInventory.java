@@ -137,13 +137,21 @@ public abstract non-sealed class ViewInventory extends SparrowInventory {
         @Nullable ItemStack[] logical = new ItemStack[size];
         for (int slot = 0; slot < size; slot++) {
             SlotKey.Anchor anchor = topology.anchorAt(slot);
+            // 每个 RootInventory 只在这里取一次基准状态引用, prepareWrite 也因此每个 root 只跑一次
             @Nullable ItemStack[] planned = plannedByRoot.computeIfAbsent(anchor.root(), root -> {
                 if (forWrite) root.prepareWrite();
                 return root.currentState();
             });
             logical[slot] = planned[anchor.rootSlot()];
         }
-        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, topology, logicalDeltas));
+        // 记下本次读到的每个基准状态版本, 候选提交前靠它确认规划依据还没被并发改写
+        // todo 这个神秘的结构经常使用, 看看能不能提取到 util.
+        // todo 把一些只有一个包用的util方法, 其实可以单独提取到一个包访问级别的util类里.
+        List<PlannedRoot> plannedRoots = new ArrayList<>(plannedByRoot.size());
+        for (Map.Entry<RootInventory, @Nullable ItemStack[]> entry : plannedByRoot.entrySet()) {
+            plannedRoots.add(new PlannedRoot(entry.getKey(), entry.getValue()));
+        }
+        return new PlanContext(logical, logicalDeltas -> toScopes(plannedByRoot, topology, logicalDeltas), List.copyOf(plannedRoots));
     }
 
     /**
@@ -159,6 +167,7 @@ public abstract non-sealed class ViewInventory extends SparrowInventory {
             InventoryTopology topology,
             List<SlotChange> logicalDeltas
     ) {
+        // 逻辑槽变更按归属的 RootInventory 分组, 槽号同时换算成该 root 的物理槽号
         Map<RootInventory, List<SlotChange>> deltasByRoot = new LinkedHashMap<>();
         for (int i = 0; i < logicalDeltas.size(); i++) {
             SlotChange delta = logicalDeltas.get(i);
@@ -166,6 +175,7 @@ public abstract non-sealed class ViewInventory extends SparrowInventory {
             deltasByRoot.computeIfAbsent(anchor.root(), root -> new ArrayList<>()).add(delta.withSlot(anchor.rootSlot()));
         }
 
+        // 每个写集都带上规划时读到的基准状态, 事务引擎在锁内用它做乐观校验
         List<TransactionScope> scopes = new ArrayList<>(deltasByRoot.size());
         for (Map.Entry<RootInventory, List<SlotChange>> entry : deltasByRoot.entrySet()) {
             scopes.add(new TransactionScope(entry.getKey(), plannedByRoot.get(entry.getKey()), entry.getValue()));

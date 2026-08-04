@@ -17,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -82,6 +83,8 @@ final class DisplayedSlotPath implements AutoCloseable {
 
         // 准备成功: 退役旧路径, 候选转正; 准备期间攒下的更新补一个脏标记
         PathState previous = this.current;
+        boolean interactionChanged = previous != null
+                && (previous.frozen != candidate.frozen || !Objects.equals(previous.inventoryLink, candidate.inventoryLink));
         try {
             if (previous != null) {
                 previous.retire();
@@ -89,6 +92,10 @@ final class DisplayedSlotPath implements AutoCloseable {
             }
         } finally {
             this.current = candidate;
+            // todo 这里是不是有点牵强, 我的意思是调用方法.
+            if (interactionChanged && this.window instanceof AbstractWindow<?> abstractWindow) {
+                abstractWindow.notifyInteractionPathChanged();
+            }
             if (candidate.activate()) { // 如果在准备阶段有更新请求过来, 则标记脏位.
                 this.window.notifyUpdate(this.windowSlot);
             }
@@ -185,6 +192,11 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     boolean frozen() {
         return this.currentState().frozen;
+    }
+
+    // 强制处理尚未解析的 GUI 变化, 让 Window 在提交旧候选前看到交互终点或冻结状态的改变.
+    void refreshInteractionState() {
+        this.currentState();
     }
 
     /**
@@ -385,8 +397,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                     }
                     // 当前路径收到结构通知: 标记下次读取前重建; 两种通知都要标脏
                     case ACTIVE -> {
-                        if (resolveRequired
-                                && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
+                        if (resolveRequired && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
                             continue;
                         }
                         this.window.notifyUpdate(this.windowSlot);

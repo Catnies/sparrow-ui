@@ -1,27 +1,34 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
-import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
-import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import org.bukkit.GameMode;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
+/**
+ * 点击语义的执行端: 拿 {@link ClickPlanner} 算好的候选, 依次过闸门, 最后提交事务.
+ * <p>候选在每道闸门前后重新校验. Bukkit 闸门之后是唯一的重规划点: 那里作废时按闸门跑完之后的现场
+ * 重算一次候选再继续, 而不是丢弃. 监听器自己留下的写入只要落点不与新候选相撞就原样搬到新候选上,
+ * 相撞才整体放弃. 重规划至多一次, 也不会重新派发 Bukkit 事件. 其余位置的校验失败一律整体放弃.
+ */
 final class ClickExecutor {
+
     private ClickExecutor() {
     }
 
-    // 处理一次已经解析好的单击
+    // 先形成精确候选, 再依次经过 Bukkit 和 Sparrow 点击事件, 最后提交候选事务.
+    // 引擎接管的槽位一律派发 Bukkit 点击事件, 即使这次点击算不出候选; 只有冻结槽完全不派发.
     static boolean handleClick(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType,
@@ -29,142 +36,57 @@ final class ClickExecutor {
             int windowSlot,
             @Nullable ItemStack observedBundle,
             int selectedIndex,
-            @NotNull Runnable afterCommit
+            @NotNull Runnable afterCommit,
+            @NotNull ClickSemantics.InteractionGate gate
     ) {
-        ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-
-        // Item 或 空槽: 只有双击收集与槽位无关.
-        if (link == null) {
-            if (clickType == ClickType.DOUBLE_CLICK && !context.cursor().isEmpty()) {
-                collectToCursor(context);
-                return true;
-            }
-            return false;
+        // 首次规划与闸门之后的重规划用同一份参数, 提成一个供给器免得把这串实参抄两遍.
+        Supplier<ClickPlanner.PreparedClick> plan = () -> ClickPlanner.prepareClick(
+                context,
+                clickType,
+                hotbarButton,
+                windowSlot,
+                observedBundle,
+                selectedIndex,
+                afterCommit,
+                true
+        );
+        Supplier<ClickCandidate> replan = () -> plan.get().candidate();
+        ClickPlanner.PreparedClick prepared = plan.get();
+        ClickCandidate candidate = prepared.candidate();
+        Supplier<String> describe = () -> "点击 " + clickType + " @ windowSlot " + windowSlot;
+        if (candidate != null) {
+            executeCandidate(context, candidate, gate, edits -> gate.allowClick(candidate.action(), edits), replan, describe);
+        } else if (prepared.handled() && !context.frozenAt(windowSlot)) {
+            // 空操作和被放入规则拒绝的点击同样是一次真实交互: 监听器看得到, 它们的写入也照样能落地.
+            executeUnplanned(context, clickType, hotbarButton, prepared.action(), gate, replan, describe);
         }
-
-        if (context.frozenAt(windowSlot)) {
+        if (prepared.handled() && windowSlot != InventoryView.OUTSIDE) {
             context.markDirty(windowSlot);
-            return true;
         }
-
-        switch (clickType) {
-            case LEFT -> pickupOrPlace(context, link, windowSlot, ClickType.LEFT, null, -1, () -> {});
-            case RIGHT -> pickupOrPlace(context, link, windowSlot, ClickType.RIGHT, observedBundle, selectedIndex, afterCommit);
-            case SHIFT_LEFT, SHIFT_RIGHT -> shiftFromLink(context, link, windowSlot, clickType);
-            case NUMBER_KEY -> swapWithHotbar(context, link, windowSlot, hotbarButton);
-            case SWAP_OFFHAND -> swapWithOffhand(context, link, windowSlot);
-            case DROP, CONTROL_DROP -> dropFromSlot(context, link, windowSlot, clickType == ClickType.CONTROL_DROP);
-            case DOUBLE_CLICK -> {
-                // 光标非空且被点槽为空时才收集
-                if (!context.cursor().isEmpty() && link.inventory().itemAt(link.slot()) == null) {
-                    collectToCursor(context);
-                } else {
-                    context.markDirty(windowSlot);
-                }
-            }
-            case MIDDLE -> creativeClone(context, link, windowSlot);
-            default -> context.markDirty(windowSlot);
-        }
-        return true;
+        return prepared.handled();
     }
 
-    // 处理一次已经完成的拖拽分配
+    // 拖拽同样先形成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
     static void handleDrag(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType,
-            @NotNull List<Integer> windowSlots
+            @NotNull List<Integer> windowSlots,
+            @NotNull ClickSemantics.InteractionGate gate
     ) {
-        ItemStack cursor = context.cursor();
-        boolean creative = clickType == ClickType.MIDDLE;
-        if (cursor.isEmpty() || (creative && context.viewer().getGameMode() != GameMode.CREATIVE)) {
-            markAllDirty(context, windowSlots);
-            return;
-        }
-
-        // 跨 InventoryLink 按 SlotKey 去重
-        LinkedHashMap<SlotKey, ClickSemantics.LinkedSlot> candidates = new LinkedHashMap<>();
-        for (int i = 0; i < windowSlots.size(); i++) {
-            int windowSlot = windowSlots.get(i);
-            ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-            if (link == null) {
-                continue;
-            }
-            if (context.frozenAt(windowSlot)) {
-                continue;
-            }
-
-            candidates.putIfAbsent(link.physicalKey(), link);
-        }
-
-        // 按 Inventory 分组取得写规划上下文, 所有读取都发生在外部容器对账之后
-        Map<SparrowInventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
-        List<DragTarget> targets = new ArrayList<>(candidates.size());
-        for (ClickSemantics.LinkedSlot link : candidates.values()) {
-            SparrowInventory inventory = link.inventory();
-            SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> inventory.openPlanForWrite());
-            @Nullable ItemStack current = plan.snapshot()[link.slot()];
-            if (current != null && !ItemUtils.isSimilar(current, cursor)) {
-                continue;
-            }
-            int capacity = effectiveCapacity(link, cursor) - ItemUtils.amountOf(current);
-            if (capacity <= 0) {
-                continue;
-            }
-            targets.add(new DragTarget(link, current, capacity));
-        }
-        if (targets.isEmpty()) {
-            markAllDirty(context, windowSlots);
-            return;
-        }
-
-        // 每槽配额: 左键均分, 右键每槽一个, 创造中键每槽整堆且不消耗光标
-        int perSlot = switch (clickType) {
-            case LEFT -> cursor.getAmount() / targets.size();
-            case RIGHT -> 1;
-            default -> cursor.getMaxStackSize();
-        };
-        if (perSlot <= 0) {
-            markAllDirty(context, windowSlots);
-            return;
-        }
-
-        // 逐槽计算实放量, 槽位变更归入各自规划
-        Map<SparrowInventory, List<SlotChange>> deltasByInventory = new LinkedHashMap<>();
-        int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
-        int placedTotal = 0;
-        for (int i = 0; i < targets.size() && budget > 0; i++) {
-            DragTarget target = targets.get(i);
-            int placed = Math.min(Math.min(perSlot, target.capacity()), budget);
-            if (placed <= 0) {
-                continue;
-            }
-            ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
-            deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
-                    .add(new SlotChange(target.link().slot(), target.current(), after));
-            if (!creative) {
-                budget -= placed;
-                placedTotal += placed;
-            }
-        }
-
-        List<TransactionScope> scopes = new ArrayList<>();
-        for (Map.Entry<SparrowInventory, List<SlotChange>> entry : deltasByInventory.entrySet()) {
-            scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
-        }
-        TransactionResult result = InventoryTransactions.commit(
-                new PlayerUpdateReason.Drag(context.viewer(), clickType, List.copyOf(candidates.values())),
-                scopes,
-                false
-        );
-        if (!(result instanceof TransactionResult.Committed)) {
-            markAllDirty(context, windowSlots);
-            return;
-        }
-        if (creative) {
-            context.cursor(ItemStack.empty());
-        } else {
-            int left = cursor.getAmount() - placedTotal;
-            context.cursor(left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty());
+        ClickPlanner.PreparedDrag prepared = ClickPlanner.prepareDrag(context, clickType, windowSlots);
+        if (prepared != null) {
+            executeCandidate(
+                    context,
+                    prepared.candidate(),
+                    gate,
+                    edits -> gate.allowDrag(prepared.newCursor().clone(), prepared.newItems(), edits),
+                    () -> {
+                        // 重规划后的分配结果可能与 Bukkit 事件看到的 newItems 不同; 事件只派发一次, 不再重发.
+                        ClickPlanner.PreparedDrag replanned = ClickPlanner.prepareDrag(context, clickType, windowSlots);
+                        return replanned == null ? null : replanned.candidate();
+                    },
+                    () -> "拖拽 " + clickType + " @ windowSlots " + windowSlots
+            );
         }
         markAllDirty(context, windowSlots);
     }
@@ -188,349 +110,202 @@ final class ClickExecutor {
         }
     }
 
-    // 左右键的取放入口: 写规划 → 读取槽位 → 计算结果 → 提交 → 更新光标
-    private static void pickupOrPlace(
+    // 候选先经过 Bukkit 事件, 再经过 Sparrow 事件, 最后提交; 每道闸门前后都重新校验 Window 状态与候选基准.
+    // 只有在闸门跑过用户代码之后才需要重新同步外部容器, 规划刚结束时用 staleReason 做纯身份校验就够了.
+    // 两份草稿在第一道闸门之前就建好, 让途中的每个监听器都写进同一份结果.
+    private static void executeCandidate(
             ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot link,
-            int windowSlot,
+            ClickCandidate candidate,
+            ClickSemantics.InteractionGate gate,
+            Predicate<InteractionEdits> bukkitStage,
+            Supplier<@Nullable ClickCandidate> replan,
+            Supplier<String> describe
+    ) {
+        if (candidate.staleReason(context) != null) {
+            return;
+        }
+        InteractionEdits edits = editsFor(context, candidate, describe);
+        if (!passGate(gate, () -> bukkitStage.test(edits))) {
+            return;
+        }
+        @Nullable ClickCandidate.StaleReason stale = stale(candidate.revalidate(context), edits);
+        if (stale == null) {
+            finishCandidate(context, candidate, edits, gate, describe);
+            return;
+        }
+        // Bukkit 监听器改掉了本次结论所依据的前提, 按闸门跑完之后的现场重算一次 —— 原版语义本来就是
+        // "事件之后的现场说了算". 监听器自己留下的写入只要落点不与新候选相撞就原样搬过去; 相撞才整体
+        // 放弃并告警: 两边写的都是提交后的最终值, 谁盖谁都不对.
+        @Nullable ClickCandidate replanned = replan.get();
+        if (!edits.replayableOnto(replanned)) {
+            survived(stale, describe);
+            return;
+        }
+        if (replanned == null) {
+            // 新现场算不出候选. 监听器的写入与候选无关, 不该跟着候选一起丢掉, 让它自成一笔事务.
+            commitEdits(context, candidate.reason(), replayed(edits, context, null, describe), gate, describe);
+            return;
+        }
+        if (replanned.staleReason(context) != null) {
+            return;
+        }
+        finishCandidate(context, replanned, replayed(edits, context, replanned, describe), gate, describe);
+    }
+
+    // Sparrow 点击事件与提交. 重规划之后从这里继续, 因此这一段不含任何 Bukkit 事件.
+    private static void finishCandidate(
+            ClickSemantics.Context context,
+            ClickCandidate candidate,
+            InteractionEdits edits,
+            ClickSemantics.InteractionGate gate,
+            Supplier<String> describe
+    ) {
+        ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
+        if (eventTarget != null
+                && (!passGate(gate, () -> gate.allowInventoryClick(eventTarget, candidate.action(), edits))
+                || !survived(stale(candidate.revalidate(context), edits), describe))) {
+            return;
+        }
+        @Nullable TransactionDraft draft = edits.transaction();
+        if (draft == null) {
+            if (survived(stale(candidate.staleReason(context), edits), describe) && gate.stillValid()) {
+                candidate.draft().seal();
+                candidate.applyAfterCommit(context);
+            }
+            return;
+        }
+        InventoryTransactions.commit(
+                candidate.reason(),
+                draft,
+                candidate.draft(),
+                false,
+                () -> candidate.applyAfterCommit(context),
+                candidate.plannedRoots(),
+                () -> survived(stale(candidate.staleReason(context), edits), describe) && gate.stillValid()
+        );
+    }
+
+    // 候选自身的前提之外再兜一层: 候选不复核光标(shift, 数字键, 换副手)时, 监听器写进草稿的光标同样是
+    // 相对某一份现场算出的最终值, 被人直接换掉照样不能合并.
+    @Nullable
+    private static ClickCandidate.StaleReason stale(@Nullable ClickCandidate.StaleReason reason, InteractionEdits edits) {
+        return reason != null ? reason : edits.staleCursor();
+    }
+
+    // 为候选建好两份草稿的写入句柄. 写集非空的候选必须在闸门之前就建好草稿: 形状非法的事务要赶在任何监听器
+    // 写入之前被拒绝. 写集为空的候选(创造模式复制等)本身不进事务, 但闸门写入仍可能给它懒建出一份.
+    @NotNull
+    private static InteractionEdits editsFor(ClickSemantics.Context context, ClickCandidate candidate, Supplier<String> describe) {
+        @Nullable TransactionDraft planned = candidate.scopes().isEmpty()
+                ? null
+                : new TransactionDraft(candidate.scopes());
+        return new InteractionEdits(context, planned, candidate.draft(), describe);
+    }
+
+    // 把监听器留下的写入搬到按新现场重建的句柄上. 新现场算不出候选时不能沿用旧句柄: 那里挂着作废候选
+    // 自己的副作用草稿, 会把它规划期算的光标一起提交掉.
+    @NotNull
+    private static InteractionEdits replayed(
+            InteractionEdits edits,
+            ClickSemantics.Context context,
+            @Nullable ClickCandidate replanned,
+            Supplier<String> describe
+    ) {
+        InteractionEdits target = replanned == null
+                ? new InteractionEdits(context, null, null, describe)
+                : editsFor(context, replanned, describe);
+        edits.replayInto(target);
+        return target;
+    }
+
+    // 算不出候选的点击没有规划基准, 也就没有候选可以作废. 两份草稿都等到第一次写入才建, 没人写就什么都不提交.
+    private static void executeUnplanned(
+            ClickSemantics.Context context,
             ClickType clickType,
-            @Nullable ItemStack observedBundle,
-            int selectedIndex,
-            Runnable afterCommit
+            int hotbarButton,
+            InventoryAction action,
+            ClickSemantics.InteractionGate gate,
+            Supplier<@Nullable ClickCandidate> replan,
+            Supplier<String> describe
     ) {
-        ItemStack cursor = context.cursor();
-        SparrowInventory inventory = link.inventory();
-        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
-        ClickSlotRules.Outcome outcome = clickType == ClickType.LEFT
-                ? ClickSlotRules.computeLeftClick(current, cursor, inventory.slotMaxStackSize(link.slot()))
-                : ClickSlotRules.computeRightClick(
-                        current,
-                        cursor,
-                        inventory.slotMaxStackSize(link.slot()),
-                        observedBundle,
-                        selectedIndex
-                );
-        if (outcome == null) {
-            context.markDirty(windowSlot);
+        InteractionEdits edits = new InteractionEdits(context, null, null, describe);
+        ItemStack plannedCursor = context.cursor();
+        if (!passGate(gate, () -> gate.allowClick(action, edits))) {
             return;
         }
-
-        TransactionResult result = InventoryTransactions.commit(
-                new PlayerUpdateReason.Click(context.viewer(), clickType, -1),
-                plan.scoper().apply(List.of(new SlotChange(link.slot(), current, outcome.slotAfter()))),
-                false
-        );
-        if (result instanceof TransactionResult.Committed) {
-            context.cursor(outcome.cursorAfter());
-            afterCommit.run();
-        }
-        context.markDirty(windowSlot);
-    }
-
-    // 数字键交换处理
-    private static void swapWithHotbar(
-            ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot source,
-            int windowSlot,
-            int hotbarButton
-    ) {
-        ClickSemantics.LinkedSlot target = context.hotbarLink(hotbarButton);
-        if (target == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        if (source.physicalKey().equals(target.physicalKey())) {
-            context.markDirty(windowSlot);
-            return;
-        }
-
-        swapLinks(new PlayerUpdateReason.Click(context.viewer(), ClickType.NUMBER_KEY, hotbarButton), source, target);
-        context.markDirty(windowSlot);
-    }
-
-    // 副手交换
-    private static void swapWithOffhand(
-            ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot source,
-            int windowSlot
-    ) {
-        SparrowInventory inventory = source.inventory();
-        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        @Nullable ItemStack current = plan.snapshot()[source.slot()];
-        @Nullable ItemStack offhand = context.offhand();
-        if (current == null && offhand == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        TransactionResult result = InventoryTransactions.commit(
-                new PlayerUpdateReason.Click(context.viewer(), ClickType.SWAP_OFFHAND, -1),
-                plan.scoper().apply(List.of(new SlotChange(source.slot(), current, offhand))),
-                false
-        );
-        if (result instanceof TransactionResult.Committed) {
-            context.offhand(current);
-        }
-        context.markDirty(windowSlot);
-    }
-
-    // 把两个 Inventory 槽在一笔事务里整堆互换
-    private static void swapLinks(
-            UpdateReason reason,
-            ClickSemantics.LinkedSlot source,
-            ClickSemantics.LinkedSlot target
-    ) {
-        SparrowInventory sourceInventory = source.inventory();
-        SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
-        @Nullable ItemStack sourceItem = sourcePlan.snapshot()[source.slot()];
-
-        if (source.inventory() == target.inventory()) {
-            @Nullable ItemStack targetItem = sourcePlan.snapshot()[target.slot()];
-            if (sourceItem == null && targetItem == null) {
+        // 规划期算不出候选往往只是因为当时光标为空或者装不下. 闸门把光标换掉了就按新现场重算一次:
+        // 这次可能真的有事可做. 容器变化在这条路径上检测不到 —— 没有候选就没有读集当基准.
+        if (!plannedCursor.equals(context.cursor())) {
+            @Nullable ClickCandidate replanned = replan.get();
+            if (replanned != null && replanned.staleReason(context) == null && edits.replayableOnto(replanned)) {
+                finishCandidate(context, replanned, replayed(edits, context, replanned, describe), gate, describe);
                 return;
             }
-            InventoryTransactions.commit(
-                    reason,
-                    sourcePlan.scoper().apply(List.of(
-                            new SlotChange(source.slot(), sourceItem, targetItem),
-                            new SlotChange(target.slot(), targetItem, sourceItem)
-                    )),
-                    false
-            );
-            return;
         }
-
-        SparrowInventory targetInventory = target.inventory();
-        SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-        @Nullable ItemStack targetItem = targetPlan.snapshot()[target.slot()];
-        if (sourceItem == null && targetItem == null) {
-            return;
-        }
-        List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
-                new SlotChange(source.slot(), sourceItem, targetItem)
-        )));
-        scopes.addAll(targetPlan.scoper().apply(List.of(
-                new SlotChange(target.slot(), targetItem, sourceItem)
-        )));
-        InventoryTransactions.commit(reason, scopes, false);
+        commitEdits(
+                context,
+                new PlayerUpdateReason.Click(context.viewer(), clickType, clickType == ClickType.NUMBER_KEY ? hotbarButton : -1),
+                edits,
+                gate,
+                describe
+        );
     }
 
-    // 从槽内丢出一个或整堆物品
-    private static void dropFromSlot(
+    // 提交一笔只有监听器写入的交互. 没有候选就没有规划基准可以复核, 唯一要确认的是没有人在监听器写完之后
+    // 又直接换掉菜单实际光标 —— 草稿写的是最终值, 会悄悄盖掉那次改动.
+    private static void commitEdits(
             ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot link,
-            int windowSlot,
-            boolean fullStack
+            UpdateReason reason,
+            InteractionEdits edits,
+            ClickSemantics.InteractionGate gate,
+            Supplier<String> describe
     ) {
-        if (!context.cursor().isEmpty()) {
-            context.markDirty(windowSlot);
+        @Nullable InteractionDraft interaction = edits.interaction();
+        @Nullable TransactionDraft draft = edits.transaction();
+        if (draft == null) {
+            if (interaction != null && survived(edits.staleCursor(), describe) && gate.stillValid()) {
+                interaction.seal();
+                interaction.apply(context);
+            }
             return;
         }
-
-        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), fullStack ? ClickType.CONTROL_DROP : ClickType.DROP, -1);
-        SparrowInventory inventory = link.inventory();
-        SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
-        if (current == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        int take = fullStack ? current.getAmount() : 1;
-        int left = current.getAmount() - take;
-        TransactionResult result = InventoryTransactions.commit(
+        InventoryTransactions.commit(
                 reason,
-                plan.scoper().apply(List.of(new SlotChange(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null))),
-                false
+                draft,
+                interaction,
+                false,
+                interaction == null ? null : () -> interaction.apply(context),
+                List.of(),
+                () -> survived(edits.staleCursor(), describe) && gate.stillValid()
         );
-        if (result instanceof TransactionResult.Committed) {
-            context.drop(ItemUtils.copyWithAmount(current, take));
-        }
-        context.markDirty(windowSlot);
     }
 
-    // 创造模式中键复制
-    private static void creativeClone(
-            ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot link,
-            int windowSlot
-    ) {
-        @Nullable ItemStack current = link.inventory().itemAt(link.slot());
-        if (context.viewer().getGameMode() != GameMode.CREATIVE || !context.cursor().isEmpty() || current == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        context.cursor(ItemUtils.copyWithAmount(current, current.getMaxStackSize()));
-        context.markDirty(windowSlot);
+    // 事件派发前后各复核一次 Window 状态: 处理器自己可能关掉或重开 Window.
+    private static boolean passGate(ClickSemantics.InteractionGate gate, BooleanSupplier stage) {
+        return gate.stillValid() && stage.getAsBoolean() && gate.stillValid();
     }
 
-    // 双击收集物品
-    private static void collectToCursor(
-            ClickSemantics.Context context
-    ) {
-        ItemStack cursor = context.cursor();
-        int space = cursor.getMaxStackSize() - cursor.getAmount();
-        if (space <= 0) {
-            return;
+    // 把复核结果转成布尔, 顺便在候选被静默丢弃时给插件作者留一条线索.
+    // 三处复核只要有一处失败就直接返回, 所以一次交互至多报出一条.
+    private static boolean survived(@Nullable ClickCandidate.StaleReason reason, Supplier<String> describe) {
+        if (reason == null) {
+            return true;
         }
-        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.DOUBLE_CLICK, -1);
-        int collected = 0;
-        HashSet<SlotKey> coveredSlots = new HashSet<>();
-        List<TransactionScope> scopes = new ArrayList<>();
-
-        List<SparrowInventory> domain = new ArrayList<>(context.linkedInventories());
-        domain.sort((left, right) -> Integer.compare(
-                right.guiPriority(OperationCategory.COLLECT),
-                left.guiPriority(OperationCategory.COLLECT)
-        ));
-        for (int i = 0; i < domain.size() && collected < space; i++) {
-            SparrowInventory inventory = domain.get(i);
-            SparrowInventory.PlanContext plan = inventory.openPlanForWrite();
-            InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
-                    plan.snapshot(),
-                    cursor,
-                    space - collected,
-                    inventory.iterationOrder(OperationCategory.COLLECT),
-                    slot -> coveredSlots.add(inventory.physicalKey(slot)),
-                    inventory::slotMaxStackSize
-            );
-            scopes.addAll(plan.scoper().apply(takePlan.deltas()));
-            collected += takePlan.taken();
+        // 基准状态变了是正常并发(另一笔事务提交, 或者刷新引用根拉进了外部变更), 报了只是噪音.
+        // 光标对不上走到这里, 说明监听器直接换掉了菜单实际光标, 而按新光标重算出的结论又与它自己
+        // 用交互写入句柄留下的内容撞在同一个位置上 —— 两边写的都是提交后的最终值, 谁盖谁都不对,
+        // 只能整体放弃, 值得说一声. // todo 改英文
+        if (reason == ClickCandidate.StaleReason.CURSOR) {
+            SparrowUI.getInstance().warn(describe.get() + " 被丢弃: 事件处理期间直接改掉了菜单实际光标"
+                    + "(如 HumanEntity#setItemOnCursor), 按新光标重算出的结论又与事件自己写入的位置相撞,"
+                    + " 两种意图无法合并. 请统一改用交互写入句柄的 cursor(...) 与 slot(...).");
         }
-        if (!scopes.isEmpty() && !(InventoryTransactions.commit(reason, scopes, false) instanceof TransactionResult.Committed)) {
-            return;
-        }
-
-        if (collected > 0) {
-            context.cursor(ItemUtils.copyWithAmount(cursor, cursor.getAmount() + collected));
-        }
-    }
-
-    // Shift 快速转移物品
-    private static void shiftFromLink(
-            ClickSemantics.Context context,
-            ClickSemantics.LinkedSlot link,
-            int windowSlot,
-            ClickType clickType
-    ) {
-        // 快速空判可以读取可能滞后的 Bukkit 内容镜像, 真正的读取在各目标的事务窗口内完成
-        if (link.inventory().itemAt(link.slot()) == null) {
-            context.markDirty(windowSlot);
-            return;
-        }
-        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
-        SlotKey sourceKey = link.physicalKey();
-        HashSet<SlotKey> rejected = new HashSet<>();
-
-        List<SparrowInventory> targets = addTargets(context, link.inventory());
-        for (int i = 0; i < targets.size(); i++) {
-            MoveOutcome outcome = moveIntoInventory(reason, link, targets.get(i), sourceKey, rejected);
-            if (outcome == MoveOutcome.MOVED || outcome == MoveOutcome.REJECTED) {
-                // 有进展即停; 无法归因的取消、源侧取消或冲突同样终止本次转移
-                context.markDirty(windowSlot);
-                return;
-            }
-        }
-        context.markDirty(windowSlot);
-    }
-
-    // 尝试把源槽的物品堆转移进一个目标 Inventory.
-    private static MoveOutcome moveIntoInventory(
-            UpdateReason reason,
-            ClickSemantics.LinkedSlot source,
-            SparrowInventory targetInventory,
-            SlotKey sourceKey,
-            HashSet<SlotKey> rejected
-    ) {
-        while (true) {
-            SparrowInventory sourceInventory = source.inventory();
-            SparrowInventory.PlanContext sourcePlan = sourceInventory.openPlanForWrite();
-            SparrowInventory.PlanContext targetPlan = targetInventory.openPlanForWrite();
-            @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
-            if (current == null) return MoveOutcome.FULL;
-
-            // 与源槽同址或已被目标事件拒绝的槽位上限报 0, 在新规划里等于不可用
-            InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
-                    targetPlan.snapshot(),
-                    current,
-                    targetInventory.iterationOrder(OperationCategory.ADD),
-                    slot -> {
-                        SlotKey targetKey = targetInventory.physicalKey(slot);
-                        return targetKey.equals(sourceKey) || rejected.contains(targetKey)
-                                ? 0
-                                : targetInventory.slotMaxStackSize(slot);
-                    }
-            );
-            int moved = current.getAmount() - addPlan.remaining();
-            if (moved <= 0) {
-                return MoveOutcome.FULL;
-            }
-
-            int left = current.getAmount() - moved;
-            List<SlotChange> sourceDeltas = List.of(new SlotChange(
-                    source.slot(),
-                    current,
-                    left > 0 ? ItemUtils.copyWithAmount(current, left) : null
-            ));
-            List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(sourceDeltas));
-            scopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
-            InventoryTransactions.CommitAttempt attempt = InventoryTransactions.commitDetailed(reason, scopes, false, rejected);
-            if (attempt.result() instanceof TransactionResult.Committed) {
-                return MoveOutcome.MOVED;
-            }
-            SparrowInventory cancelledBy = attempt.cancelledBy();
-            if (cancelledBy == null) {
-                return MoveOutcome.REJECTED;
-            }
-
-            boolean added = false;
-            for (int slot = 0; slot < cancelledBy.size(); slot++) {
-                SlotKey cancelledKey = cancelledBy.physicalKey(slot);
-                if (cancelledKey.equals(sourceKey)) {
-                    return MoveOutcome.REJECTED;
-                }
-                added |= rejected.add(cancelledKey);
-            }
-            if (!added) {
-                return MoveOutcome.REJECTED;
-            }
-        }
-    }
-
-    // 快速转移的候选目标
-    private static List<SparrowInventory> addTargets(ClickSemantics.Context context, @Nullable SparrowInventory exclude) {
-        List<SparrowInventory> targets = new ArrayList<>(context.linkedInventories());
-        if (exclude != null) {
-            targets.remove(exclude);
-        }
-        targets.sort((left, right) -> Integer.compare(
-                right.guiPriority(OperationCategory.ADD),
-                left.guiPriority(OperationCategory.ADD)
-        ));
-        return targets;
-    }
-
-    private static int effectiveCapacity(ClickSemantics.LinkedSlot link, ItemStack item) {
-        return Math.min(link.inventory().slotMaxStackSize(link.slot()), item.getMaxStackSize());
+        return false;
     }
 
     private static void markAllDirty(ClickSemantics.Context context, List<Integer> windowSlots) {
-        for (int i = 0; i < windowSlots.size(); i++) {
-            context.markDirty(windowSlots.get(i));
+        for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {
+            context.markDirty(windowSlots.get(windowIndex));
         }
-    }
-
-    // 单次目标 Inventory 转移的结果.
-    private enum MoveOutcome {
-        MOVED,
-        FULL,
-        REJECTED
-    }
-
-    // 拖拽分配中一个还能接收物品的槽位.
-    private record DragTarget(
-            @NotNull ClickSemantics.LinkedSlot link,
-            @Nullable ItemStack current,
-            int capacity
-    ) {
     }
 }

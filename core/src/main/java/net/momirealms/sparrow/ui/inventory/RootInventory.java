@@ -16,6 +16,8 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
@@ -33,6 +35,8 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
     private final CopyOnWriteArrayList<InventoryUpdateChannel> updateChannels = new CopyOnWriteArrayList<>(); // 所有能访问当前 RootInventory 且拥有订阅者的 Inventory 事务订阅器
 
     private volatile @Nullable ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
+    @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
+    private volatile @Nullable Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
 
     /**
      * 以给定数组为初始内容创建 Inventory.
@@ -47,6 +51,9 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
         }
         this.state = slots;
         this.naturalOrder = SlotOrder.natural(initial.length);
+        @SuppressWarnings("unchecked")
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = (Predicate<ItemStack>[]) new Predicate<?>[initial.length];
+        this.placementRulesBySlot = placementRulesBySlot;
     }
 
     @NotNull
@@ -116,6 +123,73 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
     }
 
     /**
+     * 替换适用于所有未声明逐槽规则的槽位放入规则.
+     * 规则收到的是完整原始输入; 传入 {@code null} 表示这些槽位一律放行.
+     * 规则异常会原样传播, 当前规划不会派发事件或提交事务.
+     * <p>规则拿到的是零拷贝的内部引用, 同一次规划中会跨多个槽位复用同一个实例.
+     * 规则只能读取它, 不得修改或保存引用; 违反约定会污染规划快照, 事件历史与后续读取结果.
+     *
+     * @param rule 新的全局放入规则, {@code null} 表示放行
+     */
+    public void setPlacementRule(@Nullable Predicate<@NotNull ItemStack> rule) {
+        this.placementRule = rule;
+    }
+
+    /**
+     * 返回当前的全局放入规则.
+     *
+     * @return 全局放入规则; 没有设置过时为 {@code null}, 表示这些槽位一律放行
+     */
+    @Nullable
+    public Predicate<ItemStack> getPlacementRule() {
+        return this.placementRule;
+    }
+
+    /**
+     * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则;
+     * 传入 {@code null} 会清除逐槽覆盖, 使该槽重新使用全局规则.
+     * <p>与全局规则一样, 规则拿到的是零拷贝的内部引用, 只能读取, 不得修改或保存;
+     * 详见 {@link #setPlacementRule(Predicate)}.
+     *
+     * @param slot 槽位序号
+     * @param rule 新的逐槽放入规则, {@code null} 表示回退到全局规则
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setPlacementRule(int slot, @Nullable Predicate<@NotNull ItemStack> rule) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot.clone();
+        placementRulesBySlot[slot] = rule;
+        this.placementRulesBySlot = placementRulesBySlot;
+    }
+
+    /**
+     * 返回某个槽位的显式放入规则; 不含回退到的全局规则.
+     *
+     * @param slot 槽位序号
+     * @return 该槽的逐槽放入规则; 没有覆盖时为 {@code null}, 表示这个槽用的是全局规则
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public Predicate<ItemStack> getPlacementRule(int slot) {
+        Objects.checkIndex(slot, this.size());
+        return this.placementRulesBySlot[slot];
+    }
+
+    @NotNull
+    @Override
+    IntPredicate placementPredicate(@NotNull ItemStack item) {
+        @Nullable Predicate<ItemStack> placementRule = this.placementRule;
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
+        return slot -> {
+            @Nullable Predicate<ItemStack> rule = placementRulesBySlot[slot];
+            if (rule == null) {
+                rule = placementRule;
+            }
+            return rule == null || rule.test(item);
+        };
+    }
+
+    /**
      * {@inheritDoc}
      *
      * <p>本类直接持有事务状态, 规划内容就是当前内部状态版本, 无需逐槽换算.
@@ -126,7 +200,7 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
         @Nullable ItemStack[] planned = this.currentState();
         return new PlanContext(planned, deltas -> deltas.isEmpty()
                 ? List.of()
-                : List.of(new TransactionScope(this, planned, deltas)));
+                : List.of(new TransactionScope(this, planned, deltas)), List.of(new PlannedRoot(this, planned)));
     }
 
     /**
@@ -138,10 +212,7 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
     @Override
     PlanContext openPlanForWrite() {
         this.prepareWrite();
-        @Nullable ItemStack[] planned = this.currentState();
-        return new PlanContext(planned, deltas -> deltas.isEmpty()
-                ? List.of()
-                : List.of(new TransactionScope(this, planned, deltas)));
+        return this.openPlan();
     }
 
     @Override
@@ -223,7 +294,7 @@ public abstract non-sealed class RootInventory extends SparrowInventory {
             return new AddResult(EMPTY_COMMITTED, amount);
         }
         int moved = Math.clamp(space, 0, amount);
-        if (moved == 0) {
+        if (moved == 0 || !this.placementPredicate(input).test(slot)) {
             return new AddResult(EMPTY_COMMITTED, amount);
         }
 
