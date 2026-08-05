@@ -133,7 +133,7 @@ final class ClickExecutor {
         if (candidate.staleReason(context) != null) {
             return;
         }
-        InteractionEdits edits = editsFor(context, candidate, describe, overlay);
+        InteractionEdits edits = editsFor(context, candidate, overlay);
         if (!passGate(gate, () -> bukkitStage.test(edits))) {
             return;
         }
@@ -150,13 +150,13 @@ final class ClickExecutor {
         @Nullable ClickCandidate replanned = replan.get();
         if (replanned == null) {
             // 新现场算不出候选. 监听器的写入与候选无关, 不该跟着候选一起丢掉, 让它自成一笔事务.
-            commitEdits(context, candidate.reason(), settled(context, null, overlay, describe), gate, describe);
+            commitEdits(context, candidate.reason(), settled(context, null, overlay), gate, describe);
             return;
         }
         if (replanned.staleReason(context) != null) {
             return;
         }
-        finishCandidate(context, replanned, settled(context, replanned, overlay, describe), gate, describe);
+        finishCandidate(context, replanned, settled(context, replanned, overlay), gate, describe);
     }
 
     // Sparrow 点击事件与提交. 重规划之后从这里继续, 因此这一段不含任何 Bukkit 事件.
@@ -206,13 +206,12 @@ final class ClickExecutor {
     private static InteractionEdits editsFor(
             ClickSemantics.Context context,
             ClickCandidate candidate,
-            Supplier<String> describe,
             @Nullable InteractionOverlay overlay
     ) {
         @Nullable TransactionDraft planned = candidate.scopes().isEmpty()
                 ? null
                 : new TransactionDraft(candidate.scopes());
-        return new InteractionEdits(context, planned, candidate.draft(), describe, overlay);
+        return new InteractionEdits(context, planned, candidate.draft(), overlay);
     }
 
     // 把闸门留下的现场覆盖结算进按新现场重建的句柄. 新现场算不出候选时不能沿用旧句柄: 那里挂着作废候选
@@ -221,12 +220,11 @@ final class ClickExecutor {
     private static InteractionEdits settled(
             ClickSemantics.Context context,
             @Nullable ClickCandidate replanned,
-            InteractionOverlay overlay,
-            Supplier<String> describe
+            InteractionOverlay overlay
     ) {
         InteractionEdits target = replanned == null
-                ? new InteractionEdits(context, null, null, describe, null)
-                : editsFor(context, replanned, describe, null);
+                ? new InteractionEdits(context, null, null, null)
+                : editsFor(context, replanned, null);
         target.settle(overlay, replanned);
         return target;
     }
@@ -242,7 +240,7 @@ final class ClickExecutor {
             Supplier<String> describe,
             InteractionOverlay overlay
     ) {
-        InteractionEdits edits = new InteractionEdits(context, null, null, describe, overlay);
+        InteractionEdits edits = new InteractionEdits(context, null, null, overlay);
         ItemStack plannedCursor = context.cursor();
         if (!passGate(gate, () -> gate.allowClick(action, edits))) {
             return;
@@ -253,14 +251,14 @@ final class ClickExecutor {
         if (!overlay.isEmpty() || !plannedCursor.equals(context.cursor())) {
             @Nullable ClickCandidate replanned = replan.get();
             if (replanned != null && replanned.staleReason(context) == null) {
-                finishCandidate(context, replanned, settled(context, replanned, overlay, describe), gate, describe);
+                finishCandidate(context, replanned, settled(context, replanned, overlay), gate, describe);
                 return;
             }
         }
         commitEdits(
                 context,
                 new PlayerUpdateReason.Click(context.viewer(), clickType, clickType == ClickType.NUMBER_KEY ? hotbarButton : -1),
-                settled(context, null, overlay, describe),
+                settled(context, null, overlay),
                 gate,
                 describe
         );

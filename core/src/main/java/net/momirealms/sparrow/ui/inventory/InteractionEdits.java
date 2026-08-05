@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
@@ -9,7 +8,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * 交互事件把自己的写入合并进当前候选草稿的句柄.
@@ -30,32 +28,24 @@ public final class InteractionEdits {
     @Nullable private TransactionDraft transaction;         // 写集草稿, 规划期没有写集时等到第一次槽位写入才建
     @Nullable private InteractionDraft interaction;         // 副作用草稿, 没有候选时等到第一次光标写入才建
     @Nullable private ItemStack expectedCursor;             // 第一次写入那一刻的光标, 提交前要复核没有别人换掉它
-    private final Supplier<String> describe;                // 报警时用来指认这次交互
-    private boolean warned;                                 // 已经就丢弃写入报过一次
 
     InteractionEdits(
             @Nullable ClickSemantics.Context context,
             @Nullable TransactionDraft transaction,
             @Nullable InteractionDraft interaction,
-            @NotNull Supplier<String> describe,
             @Nullable InteractionOverlay overlay
     ) {
         this.context = context;
         this.transaction = transaction;
         this.interaction = interaction;
-        this.describe = describe;
         this.overlay = overlay;
     }
 
-    /**
-     * 创建一个一律丢弃写入的句柄, 供在语义引擎之外单独派发事件, 因而没有任何草稿可用的调用方使用.
-     *
-     * @param describe 报警时用来指认这次交互
-     * @return 只会丢弃写入的句柄
-     */
+    // 创建一个一律丢弃写入的 Edits, 供测试与在语义引擎之外单独派发事件, 因而没有任何草稿可用的调用方使用.
     @NotNull
-    public static InteractionEdits discarding(@NotNull Supplier<String> describe) {
-        return new InteractionEdits(null, null, null, describe, null);
+    @ApiStatus.Internal
+    public static InteractionEdits discarding() {
+        return new InteractionEdits(null, null, null, null);
     }
 
     /**
@@ -67,9 +57,7 @@ public final class InteractionEdits {
      * @return 本次交互存在落点时返回 {@code true}
      */
     public boolean cursor(@Nullable ItemStack cursor) {
-        if (this.context == null) {
-            return this.discarded("这次交互没有落点, 对光标的写入无处可去");
-        }
+        if (this.context == null) return false;
         // 无论草稿是不是刚建的都记一次: 候选自己不复核光标(shift, 数字键, 换副手)时, 这是唯一能发现
         // "监听器写了最终值, 又有人直接换掉菜单实际光标"的地方.
         this.rememberCursor();
@@ -99,16 +87,13 @@ public final class InteractionEdits {
      */
     public boolean slot(int windowSlot, @Nullable ItemStack item) {
         ClickSemantics.Context context = this.context;
-        if (context == null) {
-            return this.discarded("这次交互没有落点, windowSlot " + windowSlot + " 的写入无处可去");
-        }
         // 冻结槽在语义上不参与交互; Item 槽与空槽背后根本没有 Inventory 可写.
-        if (context.frozenAt(windowSlot)) {
-            return this.discarded("windowSlot " + windowSlot + " 是冻结槽, 不参与交互");
+        if (context == null || context.frozenAt(windowSlot)) {
+            return false;
         }
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
         if (link == null) {
-            return this.discarded("windowSlot " + windowSlot + " 背后没有 Inventory(Item 槽或空槽)");
+            return false;
         }
         @Nullable ItemStack written = ItemUtils.nullIfEmpty(item);
         InteractionOverlay overlay = this.overlay;
@@ -196,16 +181,6 @@ public final class InteractionEdits {
         if (this.expectedCursor == null && context != null) {
             this.expectedCursor = context.cursor().clone();
         }
-    }
-
-    // 报告一次没有落点的写入并返回 false. "我改了但什么都没发生"最常见的来源, 每次交互至多报一条.
-    private boolean discarded(@NotNull String cause) {
-        if (!this.warned) {
-            this.warned = true;
-            SparrowUI.getInstance().warn(this.describe.get() + ": 事件写入被丢弃, " + cause
-                    + ". 客户端会收到一次全量重发以纠正显示; 本次交互后续的同类写入不再重复告警.");
-        }
-        return false;
     }
 
     // 一组写集里有没有碰过这个 Inventory 槽位.
