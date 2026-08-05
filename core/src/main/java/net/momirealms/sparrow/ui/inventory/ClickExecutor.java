@@ -308,7 +308,7 @@ final class ClickExecutor {
         }
         // 基准状态变了是正常并发(另一笔事务提交, 或者刷新引用根拉进了外部变更), 报了只是噪音.
         // 光标对不上走到这里, 说明有人在最后一道闸门之后才直接换掉菜单实际光标 —— 重规划已经过去了,
-        // 本次结论算的仍是换掉之前那份光标, 提交它会悄悄盖掉那次改动, 只能整体放弃, 值得说一声. // todo 改英文
+        // 本次结论算的仍是换掉之前那份光标, 提交它会悄悄盖掉那次改动, 只能整体放弃, 值得说一声.
         if (reason == ClickCandidate.StaleReason.CURSOR) {
             SparrowUI.getInstance().warn(describe.get() + " 被丢弃: 提交之前直接改掉了菜单实际光标"
                     + "(如 HumanEntity#setItemOnCursor), 本次结论依据的是改动之前那份光标, 提交它会盖掉这次改动."

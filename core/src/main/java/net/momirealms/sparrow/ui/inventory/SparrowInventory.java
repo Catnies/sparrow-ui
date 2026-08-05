@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
-import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
+import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
@@ -62,7 +62,7 @@ public abstract class SparrowInventory {
     private volatile int collectGuiPriority;
     private volatile int otherGuiPriority;
 
-    private final ObservableDispatcher<InventoryClickEvent> clickEvents = new ObservableDispatcher<>();
+    private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
@@ -739,6 +739,79 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 判断 Inventory 能否完整装下给定物品.
+     *
+     * @param item 要检查的物品
+     * @return 能完整装下时返回 {@code true}
+     */
+    public boolean mayPlace(@NotNull ItemStack item) {
+        return this.simulateAdd(item) == 0;
+    }
+
+    /**
+     * 判断 Inventory 能否按参数顺序完整装下全部物品.
+     *
+     * @param items 要检查的物品
+     * @return 全部能装下时返回 {@code true}
+     */
+    public boolean mayPlace(ItemStack @NotNull ... items) {
+        int[] remaining = this.simulateAdd(items);
+        for (int i = 0; i < remaining.length; i++) {
+            if (remaining[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断 Inventory 能否完整取出给定物品.
+     * <p>与 {@link #mayPlace(ItemStack)} 相对, {@code item} 既参与相似判断, 也提供需要取出的数量;
+     * {@link #simulateCollect(ItemStack, int)} 的样板则只管相似判断, 数量单独由 {@code upTo} 指定.
+     * <p>取出侧没有与放入规则对应的过滤, 结果只取决于 Inventory 里现有的内容.
+     *
+     * @param item 要检查的物品, 它的数量就是需要取出的数量
+     * @return 能完整取出时返回 {@code true}
+     */
+    public boolean mayPickup(@NotNull ItemStack item) {
+        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (sample == null) {
+            return true;
+        }
+        return this.simulateCollect(sample, sample.getAmount()) == sample.getAmount();
+    }
+
+    /**
+     * 判断 Inventory 能否按参数顺序完整取出全部物品.
+     * <p>多个物品共用同一份规划内容: 前面已经算作取走的部分, 后面不会再认领一次.
+     *
+     * @param items 要检查的物品, 各自的数量就是需要取出的数量
+     * @return 全部能取出时返回 {@code true}
+     */
+    public boolean mayPickup(ItemStack @NotNull ... items) {
+        @Nullable ItemStack[] working = this.openPlan().planned().clone();
+        for (int i = 0; i < items.length; i++) {
+            @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(items[i]));
+            if (sample == null) {
+                continue;
+            }
+            int required = sample.getAmount();
+            InventoryPlanner.TakePlan plan = InventoryPlanner
+                    .planCollect(working, sample, required, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize);
+            if (plan.taken() != required) {
+                return false;
+            }
+            // 把这一件取走的结果写回规划内容, 同一堆物品不会被后面的物品重复认领.
+            List<SlotChange> deltas = plan.deltas();
+            for (int j = 0; j < deltas.size(); j++) {
+                SlotChange delta = deltas.get(j);
+                working[delta.slot()] = delta.after();
+            }
+        }
+        return true;
+    }
+
+    /**
      * 试算现在放入给定物品后会有多少数量剩余.
      *
      * @param item 要试算的物品
@@ -809,32 +882,6 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 判断 Inventory 能否完整装下给定物品.
-     *
-     * @param item 要检查的物品
-     * @return 能完整装下时返回 {@code true}
-     */
-    public boolean canHold(@NotNull ItemStack item) {
-        return this.simulateAdd(item) == 0;
-    }
-
-    /**
-     * 判断 Inventory 能否按参数顺序完整装下全部物品.
-     *
-     * @param items 要检查的物品
-     * @return 全部能装下时返回 {@code true}
-     */
-    public boolean canHold(ItemStack @NotNull ... items) {
-        int[] remaining = this.simulateAdd(items);
-        for (int i = 0; i < remaining.length; i++) {
-            if (remaining[i] != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
      * 让 ReferencingInventory 同步最新内容.
      * 自己持有数据的 Inventory 调用它没有效果;
      * ReferencingInventory 的调用方必须保证当前线程可以访问外部容器;
@@ -893,7 +940,7 @@ public abstract class SparrowInventory {
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
-    public Subscription subscribeClick(@NotNull Observer<? super InventoryClickEvent> observer) {
+    public Subscription subscribeClick(@NotNull Observer<? super SparrowInventoryClickEvent> observer) {
         return this.clickEvents.subscribe(observer);
     }
 
@@ -911,7 +958,7 @@ public abstract class SparrowInventory {
     /**
      * 向当前 Inventory 的观察者派发一次点击.
      */
-    void publishClick(@NotNull InventoryClickEvent event) {
+    void publishClick(@NotNull SparrowInventoryClickEvent event) {
         this.clickEvents.publish(event);
     }
 

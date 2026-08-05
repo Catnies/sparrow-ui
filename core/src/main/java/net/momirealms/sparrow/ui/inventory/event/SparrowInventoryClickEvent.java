@@ -8,15 +8,13 @@ import org.bukkit.event.inventory.InventoryAction;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
-// todo 改名 SparrowInventoryClickEvent
-// todo 本事件存在的意义?
 /**
  * 玩家点到某个 Inventory 槽位时, 在 Bukkit 点击事件之后, 事务提交前发出的点击事件.
  * <p>只有被 InventoryLink 直接连接的 Inventory 收得到, 因此监听者拿到的槽位就是自己的坐标,
  * 不必关心这个 Window 长什么样. 取消它会让整次点击零变更.
  * <p>想改动这次点击的结果而不是拦掉它, 用 {@link #edits()}: 写进去的内容与前后两道事件共用同一份草稿.
  */
-public final class InventoryClickEvent {
+public final class SparrowInventoryClickEvent {
     private final SparrowInventory inventory; // 被点击的 Inventory
     private final int slot;                    // 被点击的 Slot
     private final Player player;               // 点击的玩家
@@ -27,7 +25,7 @@ public final class InventoryClickEvent {
     private volatile boolean cancelled;        // 是否被取消
 
     @ApiStatus.Internal
-    public InventoryClickEvent(
+    public SparrowInventoryClickEvent(
             @NotNull SparrowInventory inventory,
             int slot,
             @NotNull Player player,

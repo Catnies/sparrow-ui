@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
-import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
+import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -121,7 +121,7 @@ public final class ClickSemantics {
             @NotNull InventoryAction action,
             @NotNull InteractionEdits edits
     ) {
-        InventoryClickEvent event = new InventoryClickEvent(inventory, slot, player, clickType, hotbarButton, action, edits);
+        SparrowInventoryClickEvent event = new SparrowInventoryClickEvent(inventory, slot, player, clickType, hotbarButton, action, edits);
         inventory.publishClick(event);
         return !event.cancelled();
     }
