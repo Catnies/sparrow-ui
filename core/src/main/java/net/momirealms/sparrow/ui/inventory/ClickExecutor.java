@@ -18,9 +18,11 @@ import java.util.function.Supplier;
 
 /**
  * 点击语义的执行端: 拿 {@link ClickPlanner} 算好的候选, 依次过闸门, 最后提交事务.
- * <p>候选在每道闸门前后重新校验. Bukkit 闸门之后是唯一的重规划点: 那里作废时按闸门跑完之后的现场
- * 重算一次候选再继续, 而不是丢弃. 监听器自己留下的写入只要落点不与新候选相撞就原样搬到新候选上,
- * 相撞才整体放弃. 重规划至多一次, 也不会重新派发 Bukkit 事件. 其余位置的校验失败一律整体放弃.
+ * <p>候选在每道闸门前后重新校验. Bukkit 闸门之后是唯一的重规划点: 监听器在那里写下的槽位与光标先攒进
+ * {@link InteractionOverlay}, 表达的是"这一格现在就是这个值"; 只要有覆盖或候选前提变了, 就按闸门跑完
+ * 之后的现场重算一次候选再继续, 与原版"事件之后的现场说了算"一致. 覆盖里没有被新结论消费掉的部分在
+ * 结算时追加成最终值, 与结论进同一笔事务. 重规划至多一次, 也不会重新派发 Bukkit 事件.
+ * 其余位置的校验失败一律整体放弃.
  */
 final class ClickExecutor {
 
@@ -40,6 +42,8 @@ final class ClickExecutor {
             @NotNull ClickSemantics.InteractionGate gate
     ) {
         // 首次规划与闸门之后的重规划用同一份参数, 提成一个供给器免得把这串实参抄两遍.
+        // 覆盖层在首次规划时还是空的, 那时读到的就是 Inventory 自己的规划基准.
+        InteractionOverlay overlay = InteractionOverlay.forClick();
         Supplier<ClickPlanner.PreparedClick> plan = () -> ClickPlanner.prepareClick(
                 context,
                 clickType,
@@ -48,17 +52,18 @@ final class ClickExecutor {
                 observedBundle,
                 selectedIndex,
                 afterCommit,
-                true
+                true,
+                overlay
         );
         Supplier<ClickCandidate> replan = () -> plan.get().candidate();
         ClickPlanner.PreparedClick prepared = plan.get();
         ClickCandidate candidate = prepared.candidate();
         Supplier<String> describe = () -> "点击 " + clickType + " @ windowSlot " + windowSlot;
         if (candidate != null) {
-            executeCandidate(context, candidate, gate, edits -> gate.allowClick(candidate.action(), edits), replan, describe);
+            executeCandidate(context, candidate, gate, edits -> gate.allowClick(candidate.action(), edits), replan, describe, overlay);
         } else if (prepared.handled() && !context.frozenAt(windowSlot)) {
             // 空操作和被放入规则拒绝的点击同样是一次真实交互: 监听器看得到, 它们的写入也照样能落地.
-            executeUnplanned(context, clickType, hotbarButton, prepared.action(), gate, replan, describe);
+            executeUnplanned(context, clickType, hotbarButton, prepared.action(), gate, replan, describe, overlay);
         }
         if (prepared.handled() && windowSlot != InventoryView.OUTSIDE) {
             context.markDirty(windowSlot);
@@ -73,7 +78,9 @@ final class ClickExecutor {
             @NotNull List<Integer> windowSlots,
             @NotNull ClickSemantics.InteractionGate gate
     ) {
-        ClickPlanner.PreparedDrag prepared = ClickPlanner.prepareDrag(context, clickType, windowSlots);
+        // 拖拽的分配在派发之前就算好, 事件写的光标是最终值; 只有槽位写入才是需要重新解释的现场.
+        InteractionOverlay overlay = InteractionOverlay.forDrag();
+        ClickPlanner.PreparedDrag prepared = ClickPlanner.prepareDrag(context, clickType, windowSlots, overlay);
         if (prepared != null) {
             executeCandidate(
                     context,
@@ -82,10 +89,11 @@ final class ClickExecutor {
                     edits -> gate.allowDrag(prepared.newCursor().clone(), prepared.newItems(), edits),
                     () -> {
                         // 重规划后的分配结果可能与 Bukkit 事件看到的 newItems 不同; 事件只派发一次, 不再重发.
-                        ClickPlanner.PreparedDrag replanned = ClickPlanner.prepareDrag(context, clickType, windowSlots);
+                        ClickPlanner.PreparedDrag replanned = ClickPlanner.prepareDrag(context, clickType, windowSlots, overlay);
                         return replanned == null ? null : replanned.candidate();
                     },
-                    () -> "拖拽 " + clickType + " @ windowSlots " + windowSlots
+                    () -> "拖拽 " + clickType + " @ windowSlots " + windowSlots,
+                    overlay
             );
         }
         markAllDirty(context, windowSlots);
@@ -119,37 +127,36 @@ final class ClickExecutor {
             ClickSemantics.InteractionGate gate,
             Predicate<InteractionEdits> bukkitStage,
             Supplier<@Nullable ClickCandidate> replan,
-            Supplier<String> describe
+            Supplier<String> describe,
+            InteractionOverlay overlay
     ) {
         if (candidate.staleReason(context) != null) {
             return;
         }
-        InteractionEdits edits = editsFor(context, candidate, describe);
+        InteractionEdits edits = editsFor(context, candidate, describe, overlay);
         if (!passGate(gate, () -> bukkitStage.test(edits))) {
             return;
         }
+        // Bukkit 闸门是覆盖层的唯一写入者, 之后每一道闸门写进来的都是提交后的最终值.
+        edits.closeOverlay();
         @Nullable ClickCandidate.StaleReason stale = stale(candidate.revalidate(context), edits);
-        if (stale == null) {
+        if (stale == null && overlay.isEmpty()) {
             finishCandidate(context, candidate, edits, gate, describe);
             return;
         }
-        // Bukkit 监听器改掉了本次结论所依据的前提, 按闸门跑完之后的现场重算一次 —— 原版语义本来就是
-        // "事件之后的现场说了算". 监听器自己留下的写入只要落点不与新候选相撞就原样搬过去; 相撞才整体
-        // 放弃并告警: 两边写的都是提交后的最终值, 谁盖谁都不对.
+        // 监听器改掉了本次结论所依据的现场 —— 或是往覆盖层里写了内容, 或是直接换掉了光标和容器 ——
+        // 按闸门跑完之后的现场重算一次. 覆盖层里的内容是新结论的规划输入; 新结论没碰过的格子在结算时
+        // 追加成最终值, 与结论进同一笔事务.
         @Nullable ClickCandidate replanned = replan.get();
-        if (!edits.replayableOnto(replanned)) {
-            survived(stale, describe);
-            return;
-        }
         if (replanned == null) {
             // 新现场算不出候选. 监听器的写入与候选无关, 不该跟着候选一起丢掉, 让它自成一笔事务.
-            commitEdits(context, candidate.reason(), replayed(edits, context, null, describe), gate, describe);
+            commitEdits(context, candidate.reason(), settled(context, null, overlay, describe), gate, describe);
             return;
         }
         if (replanned.staleReason(context) != null) {
             return;
         }
-        finishCandidate(context, replanned, replayed(edits, context, replanned, describe), gate, describe);
+        finishCandidate(context, replanned, settled(context, replanned, overlay, describe), gate, describe);
     }
 
     // Sparrow 点击事件与提交. 重规划之后从这里继续, 因此这一段不含任何 Bukkit 事件.
@@ -194,27 +201,33 @@ final class ClickExecutor {
 
     // 为候选建好两份草稿的写入句柄. 写集非空的候选必须在闸门之前就建好草稿: 形状非法的事务要赶在任何监听器
     // 写入之前被拒绝. 写集为空的候选(创造模式复制等)本身不进事务, 但闸门写入仍可能给它懒建出一份.
+    // 挂上覆盖层的句柄用于 Bukkit 闸门, 那一段的写入先攒进现场; 结算之后的句柄一律不挂.
     @NotNull
-    private static InteractionEdits editsFor(ClickSemantics.Context context, ClickCandidate candidate, Supplier<String> describe) {
+    private static InteractionEdits editsFor(
+            ClickSemantics.Context context,
+            ClickCandidate candidate,
+            Supplier<String> describe,
+            @Nullable InteractionOverlay overlay
+    ) {
         @Nullable TransactionDraft planned = candidate.scopes().isEmpty()
                 ? null
                 : new TransactionDraft(candidate.scopes());
-        return new InteractionEdits(context, planned, candidate.draft(), describe);
+        return new InteractionEdits(context, planned, candidate.draft(), describe, overlay);
     }
 
-    // 把监听器留下的写入搬到按新现场重建的句柄上. 新现场算不出候选时不能沿用旧句柄: 那里挂着作废候选
+    // 把闸门留下的现场覆盖结算进按新现场重建的句柄. 新现场算不出候选时不能沿用旧句柄: 那里挂着作废候选
     // 自己的副作用草稿, 会把它规划期算的光标一起提交掉.
     @NotNull
-    private static InteractionEdits replayed(
-            InteractionEdits edits,
+    private static InteractionEdits settled(
             ClickSemantics.Context context,
             @Nullable ClickCandidate replanned,
+            InteractionOverlay overlay,
             Supplier<String> describe
     ) {
         InteractionEdits target = replanned == null
-                ? new InteractionEdits(context, null, null, describe)
-                : editsFor(context, replanned, describe);
-        edits.replayInto(target);
+                ? new InteractionEdits(context, null, null, describe, null)
+                : editsFor(context, replanned, describe, null);
+        target.settle(overlay, replanned);
         return target;
     }
 
@@ -226,26 +239,28 @@ final class ClickExecutor {
             InventoryAction action,
             ClickSemantics.InteractionGate gate,
             Supplier<@Nullable ClickCandidate> replan,
-            Supplier<String> describe
+            Supplier<String> describe,
+            InteractionOverlay overlay
     ) {
-        InteractionEdits edits = new InteractionEdits(context, null, null, describe);
+        InteractionEdits edits = new InteractionEdits(context, null, null, describe, overlay);
         ItemStack plannedCursor = context.cursor();
         if (!passGate(gate, () -> gate.allowClick(action, edits))) {
             return;
         }
-        // 规划期算不出候选往往只是因为当时光标为空或者装不下. 闸门把光标换掉了就按新现场重算一次:
-        // 这次可能真的有事可做. 容器变化在这条路径上检测不到 —— 没有候选就没有读集当基准.
-        if (!plannedCursor.equals(context.cursor())) {
+        edits.closeOverlay();
+        // 规划期算不出候选往往只是因为当时光标为空或者装不下. 闸门改掉了现场就按新现场重算一次:
+        // 这次可能真的有事可做. 容器自己被换掉在这条路径上检测不到 —— 没有候选就没有读集当基准.
+        if (!overlay.isEmpty() || !plannedCursor.equals(context.cursor())) {
             @Nullable ClickCandidate replanned = replan.get();
-            if (replanned != null && replanned.staleReason(context) == null && edits.replayableOnto(replanned)) {
-                finishCandidate(context, replanned, replayed(edits, context, replanned, describe), gate, describe);
+            if (replanned != null && replanned.staleReason(context) == null) {
+                finishCandidate(context, replanned, settled(context, replanned, overlay, describe), gate, describe);
                 return;
             }
         }
         commitEdits(
                 context,
                 new PlayerUpdateReason.Click(context.viewer(), clickType, clickType == ClickType.NUMBER_KEY ? hotbarButton : -1),
-                edits,
+                settled(context, null, overlay, describe),
                 gate,
                 describe
         );
@@ -292,13 +307,12 @@ final class ClickExecutor {
             return true;
         }
         // 基准状态变了是正常并发(另一笔事务提交, 或者刷新引用根拉进了外部变更), 报了只是噪音.
-        // 光标对不上走到这里, 说明监听器直接换掉了菜单实际光标, 而按新光标重算出的结论又与它自己
-        // 用交互写入句柄留下的内容撞在同一个位置上 —— 两边写的都是提交后的最终值, 谁盖谁都不对,
-        // 只能整体放弃, 值得说一声. // todo 改英文
+        // 光标对不上走到这里, 说明有人在最后一道闸门之后才直接换掉菜单实际光标 —— 重规划已经过去了,
+        // 本次结论算的仍是换掉之前那份光标, 提交它会悄悄盖掉那次改动, 只能整体放弃, 值得说一声. // todo 改英文
         if (reason == ClickCandidate.StaleReason.CURSOR) {
-            SparrowUI.getInstance().warn(describe.get() + " 被丢弃: 事件处理期间直接改掉了菜单实际光标"
-                    + "(如 HumanEntity#setItemOnCursor), 按新光标重算出的结论又与事件自己写入的位置相撞,"
-                    + " 两种意图无法合并. 请统一改用交互写入句柄的 cursor(...) 与 slot(...).");
+            SparrowUI.getInstance().warn(describe.get() + " 被丢弃: 提交之前直接改掉了菜单实际光标"
+                    + "(如 HumanEntity#setItemOnCursor), 本次结论依据的是改动之前那份光标, 提交它会盖掉这次改动."
+                    + " 请改用交互写入句柄的 cursor(...).");
         }
         return false;
     }

@@ -53,7 +53,8 @@ public final class ClickSemantics {
             int windowSlot
     ) {
         // 只取规划器算出的操作类型: write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
-        return ClickPlanner.prepareClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {}, false).action();
+        // 预估跑在任何交互事件之前, 现场上没有覆盖可言.
+        return ClickPlanner.prepareClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {}, false, InteractionOverlay.forClick()).action();
     }
 
     /**

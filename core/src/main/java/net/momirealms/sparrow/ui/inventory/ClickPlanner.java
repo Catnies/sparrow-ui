@@ -25,6 +25,8 @@ import java.util.function.IntPredicate;
 /**
  * 点击与拖拽的规划器: 把一次交互算成精确候选, 不派发任何事件, 也不提交事务.
  * <p>{@code write} 为 {@code false} 时只用于预估 {@link InventoryAction}, 规划全程走只读快照.
+ * <p>规划读到的现场由 {@link InteractionOverlay} 决定: 首次规划时覆盖层是空的, 读的就是 Inventory
+ * 的规划基准; Bukkit 闸门之后的重规划则读叠加了事件写入的现场, 与原版"事件之后的现场说了算"一致.
  */
 final class ClickPlanner {
 
@@ -40,10 +42,11 @@ final class ClickPlanner {
             @Nullable ItemStack observedBundle,
             int selectedIndex,
             Runnable afterCommit,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
         if (windowSlot == InventoryView.OUTSIDE) {
-            return new PreparedClick(false, ClickActions.outsideAction(context.cursor(), clickType), null);
+            return new PreparedClick(false, ClickActions.outsideAction(overlay.cursorOr(context.cursor()), clickType), null);
         }
         // 冻结槽彻底不参与交互: 不算候选, 不派发任何事件, 也不分派 Item 点击, 只让客户端预测被纠正回来.
         if (context.frozenAt(windowSlot)) {
@@ -55,11 +58,11 @@ final class ClickPlanner {
 
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
         if (link == null) {
-            if (clickType != ClickType.DOUBLE_CLICK || context.cursor().isEmpty()) {
+            if (clickType != ClickType.DOUBLE_CLICK || overlay.cursorOr(context.cursor()).isEmpty()) {
                 return new PreparedClick(false, InventoryAction.NOTHING, null);
             }
-            ClickCandidate collect = prepareCollect(context, null, write, new IdentityHashMap<>());
-            return new PreparedClick(true, actionOf(collect), collect);
+            ClickCandidate collect = prepareCollect(context, null, write, new IdentityHashMap<>(), overlay);
+            return new PreparedClick(true, actionOf(collect), withRealBefore(collect, overlay));
         }
 
         ClickCandidate candidate = switch (clickType) {
@@ -70,20 +73,21 @@ final class ClickPlanner {
                     observedBundle,
                     selectedIndex,
                     afterCommit,
-                    write
+                    write,
+                    overlay
             );
-            case SHIFT_LEFT, SHIFT_RIGHT -> prepareShift(context, link, clickType, write);
-            case NUMBER_KEY -> prepareHotbarSwap(context, link, hotbarButton, write);
-            case SWAP_OFFHAND -> prepareOffhandSwap(context, link, write);
-            case DROP, CONTROL_DROP -> prepareDrop(context, link, clickType == ClickType.CONTROL_DROP, write);
-            case DOUBLE_CLICK -> prepareLinkedCollect(context, link, write);
-            case MIDDLE -> prepareCreativeClone(context, link, write);
+            case SHIFT_LEFT, SHIFT_RIGHT -> prepareShift(context, link, clickType, write, overlay);
+            case NUMBER_KEY -> prepareHotbarSwap(context, link, hotbarButton, write, overlay);
+            case SWAP_OFFHAND -> prepareOffhandSwap(context, link, write, overlay);
+            case DROP, CONTROL_DROP -> prepareDrop(context, link, clickType == ClickType.CONTROL_DROP, write, overlay);
+            case DOUBLE_CLICK -> prepareLinkedCollect(context, link, write, overlay);
+            case MIDDLE -> prepareCreativeClone(context, link, write, overlay);
             default -> null;
         };
         InventoryAction action = clickType == ClickType.NUMBER_KEY && (hotbarButton < 0 || hotbarButton > 8)
                 ? InventoryAction.UNKNOWN
                 : actionOf(candidate);
-        return new PreparedClick(true, action, candidate);
+        return new PreparedClick(true, action, withRealBefore(candidate, overlay));
     }
 
     @Nullable
@@ -94,13 +98,15 @@ final class ClickPlanner {
             @Nullable ItemStack observedBundle,
             int selectedIndex,
             Runnable afterCommit,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
+        ItemStack actualCursor = context.cursor();
+        ItemStack cursor = overlay.cursorOr(actualCursor);
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
         SparrowInventory inventory = link.inventory();
-        SparrowInventory.PlanContext plan = openPlan(inventory, write);
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
+        SparrowInventory.PlannedRoot plan = openPlan(inventory, write);
+        @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
         ClickSlotRules.Outcome outcome = clickType == ClickType.LEFT
                 ? ClickSlotRules.computeLeftClick(current, cursor, inventory.slotMaxStackSize(link.slot()))
                 : ClickSlotRules.computeRightClick(
@@ -122,15 +128,15 @@ final class ClickPlanner {
         InventoryAction action = clickType == ClickType.LEFT
                 ? ClickActions.leftAction(current, cursor, outcome)
                 : ClickActions.rightAction(current, cursor);
-        List<TransactionScope> scopes = plan.scoper().apply(List.of(
+        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 new SlotChange(link.slot(), current, outcome.slotAfter())
-        ));
+        )));
         return ClickCandidate.of(
                 action,
                 link,
                 reason,
                 scopes,
-                cursor,
+                actualCursor,
                 true,
                 null,
                 false,
@@ -168,7 +174,8 @@ final class ClickPlanner {
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot source,
             int hotbarButton,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
         if (hotbarButton < 0 || hotbarButton > 8) {
             return null;
@@ -179,12 +186,12 @@ final class ClickPlanner {
         }
 
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.NUMBER_KEY, hotbarButton);
-        SparrowInventory.PlanContext sourcePlan = openPlan(source.inventory(), write);
-        SparrowInventory.PlanContext targetPlan = source.inventory() == target.inventory()
+        SparrowInventory.PlannedRoot sourcePlan = openPlan(source.inventory(), write);
+        SparrowInventory.PlannedRoot targetPlan = source.inventory() == target.inventory()
                 ? sourcePlan
                 : openPlan(target.inventory(), write);
-        @Nullable ItemStack sourceItem = sourcePlan.snapshot()[source.slot()];
-        @Nullable ItemStack targetItem = targetPlan.snapshot()[target.slot()];
+        @Nullable ItemStack sourceItem = overlay.viewOf(sourcePlan)[source.slot()];
+        @Nullable ItemStack targetItem = overlay.viewOf(targetPlan)[target.slot()];
         if (Objects.equals(sourceItem, targetItem)) {
             return null;
         }
@@ -197,17 +204,15 @@ final class ClickPlanner {
 
         List<TransactionScope> scopes;
         if (source.inventory() == target.inventory()) {
-            scopes = sourcePlan.scoper().apply(List.of(
+            scopes = List.of(new TransactionScope(sourcePlan, List.of(
                     new SlotChange(source.slot(), sourceItem, targetItem),
                     new SlotChange(target.slot(), targetItem, sourceItem)
-            ));
+            )));
         } else {
-            scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(
-                    new SlotChange(source.slot(), sourceItem, targetItem)
-            )));
-            scopes.addAll(targetPlan.scoper().apply(List.of(
-                    new SlotChange(target.slot(), targetItem, sourceItem)
-            )));
+            scopes = List.of(
+                    new TransactionScope(sourcePlan, List.of(new SlotChange(source.slot(), sourceItem, targetItem))),
+                    new TransactionScope(targetPlan, List.of(new SlotChange(target.slot(), targetItem, sourceItem)))
+            );
         }
         return ClickCandidate.of(
                 InventoryAction.HOTBAR_SWAP,
@@ -229,11 +234,12 @@ final class ClickPlanner {
     private static ClickCandidate prepareOffhandSwap(
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot source,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.SWAP_OFFHAND, -1);
-        SparrowInventory.PlanContext plan = openPlan(source.inventory(), write);
-        @Nullable ItemStack current = plan.snapshot()[source.slot()];
+        SparrowInventory.PlannedRoot plan = openPlan(source.inventory(), write);
+        @Nullable ItemStack current = overlay.viewOf(plan)[source.slot()];
         @Nullable ItemStack offhand = ItemUtils.nullIfEmpty(context.offhand());
         if (Objects.equals(current, offhand)) {
             return null;
@@ -242,9 +248,9 @@ final class ClickPlanner {
             return null;
         }
 
-        List<TransactionScope> scopes = plan.scoper().apply(List.of(
+        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 new SlotChange(source.slot(), current, offhand)
-        ));
+        )));
         @Nullable ItemStack expectedOffhand = ItemUtils.copyOrNull(offhand);
         return ClickCandidate.of(
                 InventoryAction.HOTBAR_SWAP,
@@ -282,32 +288,33 @@ final class ClickPlanner {
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot link,
             boolean fullStack,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
-        if (!cursor.isEmpty()) {
+        ItemStack actualCursor = context.cursor();
+        if (!overlay.cursorOr(actualCursor).isEmpty()) {
             return null;
         }
         ClickType clickType = fullStack ? ClickType.CONTROL_DROP : ClickType.DROP;
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
-        SparrowInventory.PlanContext plan = openPlan(link.inventory(), write);
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
+        SparrowInventory.PlannedRoot plan = openPlan(link.inventory(), write);
+        @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
         if (current == null) {
             return null;
         }
         int take = fullStack ? current.getAmount() : 1;
         int left = current.getAmount() - take;
-        List<TransactionScope> scopes = plan.scoper().apply(List.of(new SlotChange(
+        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(new SlotChange(
                 link.slot(),
                 current,
                 left > 0 ? ItemUtils.copyWithAmount(current, left) : null
-        )));
+        ))));
         return ClickCandidate.of(
                 fullStack ? InventoryAction.DROP_ALL_SLOT : InventoryAction.DROP_ONE_SLOT,
                 link,
                 reason,
                 scopes,
-                cursor,
+                actualCursor,
                 true,
                 null,
                 false,
@@ -322,14 +329,15 @@ final class ClickPlanner {
     private static ClickCandidate prepareCreativeClone(
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot link,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
-        if (context.viewer().getGameMode() != GameMode.CREATIVE || !cursor.isEmpty()) {
+        ItemStack actualCursor = context.cursor();
+        if (context.viewer().getGameMode() != GameMode.CREATIVE || !overlay.cursorOr(actualCursor).isEmpty()) {
             return null;
         }
-        SparrowInventory.PlanContext plan = openPlan(link.inventory(), write);
-        @Nullable ItemStack current = plan.snapshot()[link.slot()];
+        SparrowInventory.PlannedRoot plan = openPlan(link.inventory(), write);
+        @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
         if (current == null) {
             return null;
         }
@@ -338,7 +346,7 @@ final class ClickPlanner {
                 link,
                 new PlayerUpdateReason.Click(context.viewer(), ClickType.MIDDLE, -1),
                 List.of(),
-                cursor,
+                actualCursor,
                 true,
                 null,
                 false,
@@ -353,19 +361,19 @@ final class ClickPlanner {
     private static ClickCandidate prepareLinkedCollect(
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot clicked,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
-        if (cursor.isEmpty()) {
+        if (overlay.cursorOr(context.cursor()).isEmpty()) {
             return null;
         }
-        IdentityHashMap<SparrowInventory, SparrowInventory.PlanContext> plans = new IdentityHashMap<>();
-        SparrowInventory.PlanContext clickedPlan = openPlan(clicked.inventory(), write);
+        IdentityHashMap<SparrowInventory, SparrowInventory.PlannedRoot> plans = new IdentityHashMap<>();
+        SparrowInventory.PlannedRoot clickedPlan = openPlan(clicked.inventory(), write);
         plans.put(clicked.inventory(), clickedPlan);
-        if (clickedPlan.snapshot()[clicked.slot()] != null) {
+        if (overlay.viewOf(clickedPlan)[clicked.slot()] != null) {
             return null;
         }
-        return prepareCollect(context, clicked, write, plans);
+        return prepareCollect(context, clicked, write, plans, overlay);
     }
 
     @Nullable
@@ -373,9 +381,11 @@ final class ClickPlanner {
             ClickSemantics.Context context,
             @Nullable ClickSemantics.LinkedSlot clicked,
             boolean write,
-            IdentityHashMap<SparrowInventory, SparrowInventory.PlanContext> plans
+            IdentityHashMap<SparrowInventory, SparrowInventory.PlannedRoot> plans,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
+        ItemStack actualCursor = context.cursor();
+        ItemStack cursor = overlay.cursorOr(actualCursor);
         int space = cursor.getMaxStackSize() - cursor.getAmount();
         if (space <= 0) {
             return null;
@@ -392,16 +402,18 @@ final class ClickPlanner {
         ));
         for (int inventoryIndex = 0; inventoryIndex < domain.size() && collected < space; inventoryIndex++) {
             SparrowInventory inventory = domain.get(inventoryIndex);
-            SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> openPlan(key, write));
+            SparrowInventory.PlannedRoot plan = plans.computeIfAbsent(inventory, key -> openPlan(key, write));
             InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
-                    plan.snapshot(),
+                    overlay.viewOf(plan),
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
                     slot -> coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
-            scopes.addAll(plan.scoper().apply(takePlan.deltas()));
+            if (!takePlan.deltas().isEmpty()) {
+                scopes.add(new TransactionScope(plan, takePlan.deltas()));
+            }
             collected += takePlan.taken();
         }
         if (collected <= 0) {
@@ -414,7 +426,7 @@ final class ClickPlanner {
                 clicked,
                 reason,
                 scopes,
-                cursor,
+                actualCursor,
                 true,
                 null,
                 false,
@@ -426,7 +438,7 @@ final class ClickPlanner {
     }
 
     /**
-     * 规划一次 shift 点击: 按 GUI 优先级依次尝试每个不共用源 RootInventory 的目标, 跨所有目标累积,
+     * 规划一次 shift 点击: 按 GUI 优先级依次尝试每个不是源 Inventory 的目标, 跨所有目标累积,
      * 直到源槽物品全部装完或目标全部试过为止. 这与原版一致 —— 一个目标装不下的剩余部分继续流向下一个目标,
      * 而不是在第一个有进展的目标处停下.
      * <p>每个被查询过的目标都进读集, 包括一件都没接下的目标: 目标是否装得下直接决定了后面的物品往哪走,
@@ -440,38 +452,39 @@ final class ClickPlanner {
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot source,
             ClickType clickType,
-            boolean write
+            boolean write,
+            InteractionOverlay overlay
     ) {
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
-        SparrowInventory.PlanContext sourcePlan = openPlan(source.inventory(), write);
-        @Nullable ItemStack current = sourcePlan.snapshot()[source.slot()];
+        SparrowInventory.PlannedRoot sourcePlan = openPlan(source.inventory(), write);
+        @Nullable ItemStack current = overlay.viewOf(sourcePlan)[source.slot()];
         if (current == null) {
             return null;
         }
 
-        SlotKey.Anchor sourceAnchor = source.inventory().resolveSlot(source.slot());
-        RootInventory sourceRoot = sourceAnchor.root();
         HashSet<SlotKey> coveredSlots = new HashSet<>();
         coveredSlots.add(source.physicalKey());
         List<TransactionScope> targetScopes = new ArrayList<>();
-        List<SparrowInventory.PlanContext> readPlans = new ArrayList<>();
+        List<SparrowInventory.PlannedRoot> readPlans = new ArrayList<>();
         readPlans.add(sourcePlan);
         int remaining = current.getAmount();
 
-        List<SparrowInventory> targets = addTargets(context, sourceRoot);
+        List<SparrowInventory> targets = addTargets(context, source.inventory());
         for (int targetIndex = 0; targetIndex < targets.size() && remaining > 0; targetIndex++) {
             SparrowInventory target = targets.get(targetIndex);
-            SparrowInventory.PlanContext targetPlan = openPlan(target, write);
+            SparrowInventory.PlannedRoot targetPlan = openPlan(target, write);
             readPlans.add(targetPlan);
             IntPredicate placement = target.placementPredicate(current);
             InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
-                    targetPlan.snapshot(),
+                    overlay.viewOf(targetPlan),
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
                     slot -> coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
             );
-            targetScopes.addAll(targetPlan.scoper().apply(addPlan.deltas()));
+            if (!addPlan.deltas().isEmpty()) {
+                targetScopes.add(new TransactionScope(targetPlan, addPlan.deltas()));
+            }
             remaining = addPlan.remaining();
         }
         int moved = current.getAmount() - remaining;
@@ -479,7 +492,8 @@ final class ClickPlanner {
             return null;
         }
 
-        List<TransactionScope> scopes = new ArrayList<>(sourcePlan.scoper().apply(List.of(new SlotChange(
+        List<TransactionScope> scopes = new ArrayList<>(targetScopes.size() + 1);
+        scopes.add(new TransactionScope(sourcePlan, List.of(new SlotChange(
                 source.slot(),
                 current,
                 remaining > 0 ? ItemUtils.copyWithAmount(current, remaining) : null
@@ -504,13 +518,13 @@ final class ClickPlanner {
     @NotNull
     private static List<SparrowInventory> addTargets(
             ClickSemantics.Context context,
-            RootInventory sourceRoot
+            SparrowInventory source
     ) {
         List<SparrowInventory> targets = new ArrayList<>();
         List<SparrowInventory> linked = context.linkedInventories();
         for (int inventoryIndex = 0; inventoryIndex < linked.size(); inventoryIndex++) {
             SparrowInventory inventory = linked.get(inventoryIndex);
-            if (!usesRoot(inventory, sourceRoot)) {
+            if (inventory != source) {
                 targets.add(inventory);
             }
         }
@@ -521,23 +535,15 @@ final class ClickPlanner {
         return targets;
     }
 
-    private static boolean usesRoot(SparrowInventory inventory, RootInventory root) {
-        InventoryTopology topology = inventory.topology();
-        for (int rootIndex = 0; rootIndex < topology.rootCount(); rootIndex++) {
-            if (topology.rootAt(rootIndex) == root) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     @Nullable
     static PreparedDrag prepareDrag(
             ClickSemantics.Context context,
             ClickType clickType,
-            List<Integer> windowSlots
+            List<Integer> windowSlots,
+            InteractionOverlay overlay
     ) {
-        ItemStack cursor = context.cursor();
+        ItemStack actualCursor = context.cursor();
+        ItemStack cursor = overlay.cursorOr(actualCursor);
         boolean creative = clickType == ClickType.MIDDLE;
         if (cursor.isEmpty() || (creative && context.viewer().getGameMode() != GameMode.CREATIVE)) {
             return null;
@@ -564,14 +570,14 @@ final class ClickPlanner {
             reasonSlots.add(candidate.link());
         }
         UpdateReason reason = new PlayerUpdateReason.Drag(context.viewer(), clickType, reasonSlots);
-        Map<SparrowInventory, SparrowInventory.PlanContext> plans = new LinkedHashMap<>();
+        Map<SparrowInventory, SparrowInventory.PlannedRoot> plans = new LinkedHashMap<>();
         Map<SparrowInventory, IntPredicate> placements = new LinkedHashMap<>();
         List<DragTarget> targets = new ArrayList<>(candidates.size());
         for (DragLink candidate : candidates.values()) {
             ClickSemantics.LinkedSlot link = candidate.link();
             SparrowInventory inventory = link.inventory();
-            SparrowInventory.PlanContext plan = plans.computeIfAbsent(inventory, key -> openPlan(key, true));
-            @Nullable ItemStack current = plan.snapshot()[link.slot()];
+            SparrowInventory.PlannedRoot plan = plans.computeIfAbsent(inventory, key -> openPlan(key, true));
+            @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
             if (current != null && !ItemUtils.isSimilar(current, cursor)) {
                 continue;
             }
@@ -626,7 +632,7 @@ final class ClickPlanner {
 
         List<TransactionScope> scopes = new ArrayList<>();
         for (Map.Entry<SparrowInventory, List<SlotChange>> entry : deltasByInventory.entrySet()) {
-            scopes.addAll(plans.get(entry.getKey()).scoper().apply(entry.getValue()));
+            scopes.add(new TransactionScope(plans.get(entry.getKey()), entry.getValue()));
         }
         ItemStack newCursor;
         if (creative) {
@@ -640,7 +646,7 @@ final class ClickPlanner {
                 null,
                 reason,
                 scopes,
-                cursor,
+                actualCursor,
                 true,
                 null,
                 false,
@@ -649,11 +655,48 @@ final class ClickPlanner {
                 InteractionDraft.cursorAfter(newCursor),
                 () -> {}
         );
-        return new PreparedDrag(candidate, newCursor, Map.copyOf(newItems));
+        return new PreparedDrag(withRealBefore(candidate, overlay), newCursor, Map.copyOf(newItems));
+    }
+
+    // 覆盖层只改变规划期读到的现场, 不改变容器里的真账. 写集记下的 before 因此换回规划基准的真实内容,
+    // 让 Pre, Post 处理器和净变化统计看到这一格实际从什么变成什么, 而不是一份容器从来没有过的账.
+    // 提交只用 after, 并发校验只比对基准数组本身, 所以这一步不影响事务本身的结果.
+    @Nullable
+    private static ClickCandidate withRealBefore(@Nullable ClickCandidate candidate, InteractionOverlay overlay) {
+        if (candidate == null || overlay.isEmpty() || candidate.scopes().isEmpty()) {
+            return candidate;
+        }
+        List<TransactionScope> scopes = candidate.scopes();
+        List<TransactionScope> rewritten = new ArrayList<>(scopes.size());
+        for (int scopeIndex = 0; scopeIndex < scopes.size(); scopeIndex++) {
+            TransactionScope scope = scopes.get(scopeIndex);
+            @Nullable ItemStack[] planned = scope.planned();
+            List<SlotChange> changes = scope.slotChanges();
+            List<SlotChange> restored = new ArrayList<>(changes.size());
+            for (int changeIndex = 0; changeIndex < changes.size(); changeIndex++) {
+                SlotChange change = changes.get(changeIndex);
+                restored.add(new SlotChange(change.slot(), planned[change.slot()], change.unsafeAfter()));
+            }
+            rewritten.add(new TransactionScope(scope.inventory(), planned, restored));
+        }
+        return new ClickCandidate(
+                candidate.action(),
+                candidate.eventTarget(),
+                candidate.reason(),
+                List.copyOf(rewritten),
+                candidate.plannedRoots(),
+                candidate.expectedCursor(),
+                candidate.checkCursor(),
+                candidate.expectedOffhand(),
+                candidate.checkOffhand(),
+                candidate.requireCreative(),
+                candidate.draft(),
+                candidate.afterCommit()
+        );
     }
 
     @NotNull
-    private static SparrowInventory.PlanContext openPlan(SparrowInventory inventory, boolean write) {
+    private static SparrowInventory.PlannedRoot openPlan(SparrowInventory inventory, boolean write) {
         return write ? inventory.openPlanForWrite() : inventory.openPlan();
     }
 

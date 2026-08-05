@@ -1,45 +1,60 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
+import net.momirealms.sparrow.ui.inventory.event.InventoryChange;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
 /**
- * 记录一笔事务准备怎样修改一个 RootInventory.
+ * 记录一笔事务准备怎样修改一个 Inventory.
  * <p>{@code change} 说明哪些槽位要从什么物品变成什么物品. {@code planned} 是计算这些变化时,
- * RootInventory 当时正在使用的内容数组, 它不是后来重新复制的一份快照. 真正提交前会检查 RootInventory
+ * Inventory 当时正在使用的内容数组, 它不是后来重新复制的一份快照. 真正提交前会检查 Inventory
  * 是否仍然使用同一个数组: 如果已经换成其他数组, 说明期间有另一笔事务先提交了, 当前事务必须放弃,
  * 以免用过期结果覆盖新内容.
  *
- * @param change 这个 RootInventory 准备提交的槽位变化
- * @param planned 计算这些变化时 RootInventory 使用的内容数组
+ * <p>本类型只对 Sparrow 内部有意义: {@code planned} 是 Inventory 正在使用的活数组, 改写它会绕过
+ * 整套事务保护. 它公开只是为了让事件包能与事务引擎共用同一个二元组, 外部代码不应该构造或读取它.
+ *
+ * @param change 这个 Inventory 准备提交的槽位变化
+ * @param planned 计算这些变化时 Inventory 使用的内容数组
  */
-record TransactionScope(@NotNull RootInventoryChange change, @Nullable ItemStack @NotNull [] planned) {
+@ApiStatus.Internal
+public record TransactionScope(@NotNull InventoryChange change, @Nullable ItemStack @NotNull [] planned) {
 
     /**
-     * 根据 RootInventory 和槽位变化创建一组待提交内容.
+     * 把一次规划算出的槽位变化整理成待提交内容.
      *
-     * @param inventory 要修改的 RootInventory
-     * @param planned 计算槽位变化时该 RootInventory 使用的内容数组
-     * @param slotChanges 准备写入的槽位及其前后值
+     * @param basis 本次规划读到的状态版本
+     * @param slotChanges 规划算出的槽位变化, 不能为空
      */
-    TransactionScope(@NotNull RootInventory inventory, @Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> slotChanges) {
-        this(new RootInventoryChange(inventory, slotChanges), planned);
+    TransactionScope(@NotNull SparrowInventory.PlannedRoot basis, @NotNull List<SlotChange> slotChanges) {
+        this(new InventoryChange(basis.inventory(), slotChanges), basis.planned());
     }
 
-    // 返回这组修改所属的 RootInventory.
+    /**
+     * 根据 Inventory 和槽位变化创建一组待提交内容, 供 Pre 阶段改写已经参与事务的 Inventory.
+     *
+     * @param inventory 要修改的 Inventory
+     * @param planned 计算槽位变化时该 Inventory 使用的内容数组
+     * @param slotChanges 准备写入的槽位及其前后值
+     */
+    public TransactionScope(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> slotChanges) {
+        this(new InventoryChange(inventory, slotChanges), planned);
+    }
+
+    // 返回这组修改所属的 Inventory.
     @NotNull
-    RootInventory inventory() {
+    public SparrowInventory inventory() {
         return this.change.inventory();
     }
 
-    // 返回准备写入该 RootInventory 的槽位变化.
+    // 返回准备写入该 Inventory 的槽位变化.
     @NotNull
-    List<SlotChange> slotChanges() {
+    public List<SlotChange> slotChanges() {
         return this.change.slotChanges();
     }
 }

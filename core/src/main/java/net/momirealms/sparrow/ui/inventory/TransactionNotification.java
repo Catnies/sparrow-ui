@@ -4,8 +4,6 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.RootInventoryChange;
-import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -14,15 +12,14 @@ import java.util.List;
 
 /**
  * 负责一笔事务向某个 Inventory 发送 Pre 和 Post 事件.
- * <p>同一笔事务可能同时影响 RootInventory 和多个视图, 每个需要接收事件的 Inventory 都会有一个
+ * <p>一笔事务可能同时修改多个 Inventory, 每个需要接收事件的 Inventory 都会有一个
  * {@code TransactionNotification}. 它在事务开始时记住本轮订阅者, 因此 Pre 处理器新增的订阅或槽位修改
  * 不会让本轮 Pre 事件递归派发.
  * <p>Pre 事件会在提交前立即逐个调用. Post 事件则根据所有 Pre 修改后的最终结果创建,
- * 等内容真正写入且各个 RootInventory 都完成提交后的工作, 再按事务提交顺序发送.
+ * 等内容真正写入且各个 Inventory 都完成提交后的工作, 再按事务提交顺序发送.
  */
 final class TransactionNotification {
     private final SparrowInventory inventory;       // 接收本组事件的 Inventory
-    private final InventoryTopology topology;       // 把整笔事务的根槽位变化换算成当前 Inventory 能看到的槽位
     private final PostDeliveryQueue postDeliveries; // 保证当前 Inventory 的 Post 事件按提交顺序发送
     private final UpdateReason reason;              // 这笔事务为什么发生
     private final List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients;   // 事务开始时已经订阅且能看到原始变化的 Pre 接收者
@@ -34,7 +31,6 @@ final class TransactionNotification {
      * 记录某个 Inventory 在本次事务中需要通知的人和发送事件所需的信息.
      *
      * @param inventory 接收事件的 Inventory
-     * @param topology 当前 Inventory 与各个 RootInventory 的槽位对应关系
      * @param postDeliveries 当前 Inventory 的 Post 事件发送队列
      * @param reason 这笔事务的触发原因
      * @param preRecipients 本轮需要调用的 Pre 订阅者
@@ -42,14 +38,12 @@ final class TransactionNotification {
      */
     TransactionNotification(
             @NotNull SparrowInventory inventory,
-            @NotNull InventoryTopology topology,
             @NotNull PostDeliveryQueue postDeliveries,
             @NotNull UpdateReason reason,
             @NotNull List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients,
             @NotNull List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients
     ) {
         this.inventory = inventory;
-        this.topology = topology;
         this.postDeliveries = postDeliveries;
         this.reason = reason;
         this.preRecipients = preRecipients;
@@ -72,14 +66,11 @@ final class TransactionNotification {
             if (observer == null) continue;
 
             // 每个处理器都从最新草稿创建独立事件, 失败时不会污染其他处理器.
-            List<RootInventoryChange> rootChanges = draft.rootChanges();
             InventoryPreUpdateEvent event = new InventoryPreUpdateEvent(
                     this.inventory,
                     this.reason,
-                    this.topology.project(rootChanges),
-                    rootChanges,
-                    draft.plannedStates(),
-                    this.topology,
+                    draft.scopes(),
+                    true,
                     draft::baselineOf,
                     interaction
             );
@@ -87,7 +78,7 @@ final class TransactionNotification {
             try {
                 observer.onUpdate(event);
                 // 处理器正常返回后, 先检查并接纳它修改的最终值.
-                draft.accept(event.rootChanges());
+                draft.accept(event.scopes());
                 // 最终值成功接纳后才接受取消改动, 失败的处理器不能影响事务是否提交.
                 cancelled = event.cancelled();
             } catch (Throwable exception) {
@@ -102,23 +93,26 @@ final class TransactionNotification {
 
     /**
      * 根据所有 Pre 处理器修改后的最终结果准备 Post 事件.
-     * <p>只有当前 Inventory 最终能看到变化且存在 Post 订阅者时才创建事件.
-     * Pre 新增到可见槽位的修改也会包含在这里.
+     * <p>只有当前 Inventory 最终存在变化且存在 Post 订阅者时才创建事件.
+     * Pre 新增到当前 Inventory 的修改也会包含在这里.
      *
-     * @param rootChanges 不会再被 Pre 处理器修改的最终变更
+     * @param scopes 不会再被 Pre 处理器修改的最终写集
      */
-    void preparePost(@NotNull List<RootInventoryChange> rootChanges) {
-        // 没有接收者时不做槽位换算, 也不创建事件.
+    void preparePost(@NotNull List<TransactionScope> scopes) {
+        // 没有接收者时不做查找, 也不创建事件.
         if (this.postRecipients.isEmpty()) {
             return;
         }
-        List<SlotChange> slotChanges = this.topology.project(rootChanges);
-        // 最终变化全部位于当前 Inventory 看不到的槽位时, 不发送空事件.
-        if (!slotChanges.isEmpty()) {
-            this.post = new PostDeliveryQueue.PostDelivery(
-                    this.postRecipients,
-                    new InventoryPostUpdateEvent(this.inventory, this.reason, slotChanges, rootChanges)
-            );
+        // 最终变化全部位于其他 Inventory 时, 不发送空事件.
+        for (int i = 0; i < scopes.size(); i++) {
+            TransactionScope scope = scopes.get(i);
+            if (scope.inventory() == this.inventory && !scope.slotChanges().isEmpty()) {
+                this.post = new PostDeliveryQueue.PostDelivery(
+                        this.postRecipients,
+                        new InventoryPostUpdateEvent(this.inventory, this.reason, scopes)
+                );
+                return;
+            }
         }
     }
 

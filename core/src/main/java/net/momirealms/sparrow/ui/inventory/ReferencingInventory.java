@@ -18,7 +18,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * 引用 Bukkit 容器的 RootInventory 实现: Bukkit 容器是外部数据来源, 本类只维护一份 Bukkit 内容镜像.
+ * 引用 Bukkit 容器的 Inventory 实现: Bukkit 容器是外部数据来源, 本类只维护一份 Bukkit 内容镜像.
  * <p><strong>线程安全由调用方负责.</strong> 工厂构造, {@link #refresh()} 与所有写操作都会直接访问
  * 被引用的 Bukkit 容器. 调用方必须保证当前执行上下文可以合法访问该容器, 且同一笔事务里的所有
  * ReferencingInventory 都能在该上下文访问. 本类不判断平台或容器的 Folia 执行所有者, 也不调度到其线程,
@@ -32,10 +32,10 @@ import java.util.function.UnaryOperator;
  * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册调度任务.
  */
 @ApiStatus.Experimental
-public final class ReferencingInventory extends RootInventory {
+public final class ReferencingInventory extends SparrowInventory {
     private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 即外部数据来源
     private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
-    private final SlotKey.ExternalSlot[] externalSlots; // 当前 Inventory 槽位 -> Bukkit 容器槽位, 同步与写回共用
+    private final SlotKey[] externalSlots; // 当前 Inventory 槽位 -> Bukkit 容器槽位, 同步与写回共用
     private final int bukkitMaxStackSize;           // 容器的堆叠上限, 构造时缓存
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
@@ -178,8 +178,8 @@ public final class ReferencingInventory extends RootInventory {
      */
     @Override
     @NotNull
-    SlotKey rootPhysicalKey(@NotNull SlotKey.Anchor anchor) {
-        return this.externalSlots[anchor.rootSlot()];
+    SlotKey physicalKey(int slot) {
+        return this.externalSlots[slot];
     }
 
     /**
@@ -295,10 +295,10 @@ public final class ReferencingInventory extends RootInventory {
      * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
      * @return 每个当前 Inventory 槽位的 SlotKey
      */
-    private static SlotKey.ExternalSlot[] externalSlots(Inventory inventory, SlotOrder slotMapping) {
-        SlotKey.ExternalSlot[] externalSlots = new SlotKey.ExternalSlot[slotMapping.size()];
+    private static SlotKey[] externalSlots(Inventory inventory, SlotOrder slotMapping) {
+        SlotKey[] externalSlots = new SlotKey[slotMapping.size()];
         for (int slot = 0; slot < slotMapping.size(); slot++) {
-            externalSlots[slot] = new SlotKey.ExternalSlot(inventory, slotMapping.slotAt(slot));
+            externalSlots[slot] = new SlotKey(inventory, slotMapping.slotAt(slot));
         }
         return externalSlots;
     }

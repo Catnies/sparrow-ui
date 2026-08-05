@@ -16,16 +16,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <E> 事件类型
  */
 final class InventoryUpdateSubscriber<E> implements Subscription {
-    private final InventoryUpdateChannel owner;                                   // 所属 InventoryUpdateChannel
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<E>> subscribers; // 当前订阅所在的列表
     private final AtomicReference<Observer<? super E>> observer;                  // null 表示已经取消订阅
 
     InventoryUpdateSubscriber(
-            @NotNull InventoryUpdateChannel owner,
             @NotNull CopyOnWriteArrayList<InventoryUpdateSubscriber<E>> subscribers,
             @NotNull Observer<? super E> observer
     ) {
-        this.owner = owner;
         this.subscribers = subscribers;
         this.observer = new AtomicReference<>(observer);
     }
@@ -34,11 +31,6 @@ final class InventoryUpdateSubscriber<E> implements Subscription {
     @Nullable
     Observer<? super E> observer() {
         return this.observer.get();
-    }
-
-    // 清空观察者, 让已经记住本订阅的事务跳过回调.
-    void invalidate() {
-        this.observer.set(null);
     }
 
     @Override
@@ -50,7 +42,7 @@ final class InventoryUpdateSubscriber<E> implements Subscription {
     public void close() {
         // 先让正在处理的事务看到订阅已经关闭, 再从列表中移除.
         if (this.observer.getAndSet(null) != null) {
-            this.owner.removeSubscriber(this.subscribers, this);
+            this.subscribers.remove(this);
         }
     }
 }

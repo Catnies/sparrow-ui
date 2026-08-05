@@ -1,9 +1,11 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.inventory.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,42 +16,41 @@ import java.util.function.Predicate;
 
 /**
  * Inventory 在一笔事务中的公共更新数据.
- * <p>{@link #slotChanges()} 使用当前订阅 Inventory 的逻辑槽位坐标,
- * {@link #rootChanges()} 则保留整笔事务涉及的所有 RootInventory 变更.
+ * <p>{@link #slotChanges()} 只含当前订阅 Inventory 自己的槽位变更,
+ * {@link #rootChanges()} 则保留整笔事务涉及的所有 Inventory 变更.
  */
 public abstract class InventoryUpdateEvent {
-    private final SparrowInventory inventory;              // 当前事件使用其逻辑槽位坐标的 Inventory
+    private final SparrowInventory inventory;              // 当前事件所属的 Inventory
     private final UpdateReason reason;                     // 整笔事务的触发原因
-    private volatile List<SlotChange> slotChanges;            // 投影到当前 Inventory 后的槽位变更
-    private volatile List<RootInventoryChange> rootChanges;   // 整笔事务的完整 RootInventory 变更
+    private volatile List<TransactionScope> scopes;        // 整笔事务的完整写集
 
-    @Nullable private volatile NetItems netItems;          // 第一次查询净变化时计算
+    // 以下三项都从 scopes 派生, 第一次查询时计算, 候选快照被替换后重算.
+    @Nullable private volatile NetItems netItems;                 // 当前 Inventory 的净变化
+    @Nullable private volatile InventoryChange ownChange;         // 当前 Inventory 自己那一组变更
+    @Nullable private volatile List<InventoryChange> rootChanges; // 面向订阅者的完整变更视图
 
     InventoryUpdateEvent(
             @NotNull SparrowInventory inventory,
             @NotNull UpdateReason reason,
-            @NotNull List<SlotChange> slotChanges,
-            @NotNull List<RootInventoryChange> rootChanges
+            @NotNull List<TransactionScope> scopes
     ) {
         this.inventory = Objects.requireNonNull(inventory, "inventory");
         this.reason = Objects.requireNonNull(reason, "reason");
-        this.slotChanges = List.copyOf(slotChanges);
-        this.rootChanges = List.copyOf(rootChanges);
+        this.scopes = List.copyOf(scopes);
     }
 
-    /**
-     * 替换当前事件展示的候选事务快照.
-     * <p>只有提交前事件会在其同步回调期间调用本方法; 提交后事件的快照始终固定.
-     *
-     * @param slotChanges 投影到当前 Inventory 后的槽位变更
-     * @param rootChanges 整笔事务的完整 RootInventory 变更
-     */
-    final synchronized void replaceChanges(
-            @NotNull List<SlotChange> slotChanges,
-            @NotNull List<RootInventoryChange> rootChanges
-    ) {
-        this.slotChanges = List.copyOf(slotChanges);
-        this.rootChanges = List.copyOf(rootChanges);
+    // 返回本事件当前展示的事务写集, 供事务引擎接纳 PreUpdateEvent 处理器留下的改写.
+    @NotNull
+    @ApiStatus.Internal
+    public final List<TransactionScope> scopes() {
+        return this.scopes;
+    }
+
+    // 替换当前事件展示的候选事务快照, 只有 PreUpdateEvent 会在其同步回调期间调用本方法
+    final synchronized void replaceScopes(@NotNull List<TransactionScope> scopes) {
+        this.scopes = List.copyOf(scopes);
+        this.rootChanges = null;
+        this.ownChange = null;
         this.netItems = null;
     }
 
@@ -73,7 +74,6 @@ public abstract class InventoryUpdateEvent {
         return this.reason;
     }
 
-
     /**
      * 返回本次事务的参与玩家, 如果没有玩家参与则返回 {@code null}.
      *
@@ -88,13 +88,13 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
-     * 返回投影到当前订阅 Inventory 后的槽位变更.
+     * 返回当前订阅 Inventory 自己的槽位变更.
      *
-     * @return 使用当前 Inventory 槽位坐标的变更记录
+     * @return 当前 Inventory 的槽位变更记录
      */
     @NotNull
     public final List<SlotChange> slotChanges() {
-        return this.slotChanges;
+        return this.ownChange().slotChanges();
     }
 
     /**
@@ -107,16 +107,7 @@ public abstract class InventoryUpdateEvent {
      */
     @NotNull
     public final List<SlotChange> slotChanges(@NotNull Predicate<? super SlotChange> filter) {
-        // 先抓 volatile 引用, 避免过滤途中候选快照被替换造成前后不一致.
-        List<SlotChange> slotChanges = this.slotChanges;
-        List<SlotChange> matches = new ArrayList<>();
-        for (int i = 0; i < slotChanges.size(); i++) {
-            SlotChange change = slotChanges.get(i);
-            if (filter.test(change)) {
-                matches.add(change);
-            }
-        }
-        return List.copyOf(matches);
+        return this.ownChange().slotChanges(filter);
     }
 
     /**
@@ -129,8 +120,9 @@ public abstract class InventoryUpdateEvent {
     @Nullable
     public final SlotChange changeAt(int slot) {
         Objects.checkIndex(slot, this.inventory.size());
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
+        List<SlotChange> slotChanges = this.ownChange().slotChanges();
+        for (int i = 0; i < slotChanges.size(); i++) {
+            SlotChange change = slotChanges.get(i);
             if (change.slot() == slot) {
                 return change;
             }
@@ -146,17 +138,7 @@ public abstract class InventoryUpdateEvent {
      * @return 是否只有物品流入
      */
     public final boolean isAddOnly() {
-        boolean hasAdd = false;
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isRemove()) {
-                return false;
-            }
-            if (change.isAdd()) {
-                hasAdd = true;
-            }
-        }
-        return hasAdd;
+        return this.ownChange().isAddOnly();
     }
 
     /**
@@ -167,17 +149,7 @@ public abstract class InventoryUpdateEvent {
      * @return 是否只有物品流出
      */
     public final boolean isRemoveOnly() {
-        boolean hasRemove = false;
-        for (int i = 0; i < this.slotChanges.size(); i++) {
-            SlotChange change = this.slotChanges.get(i);
-            if (change.isAdd()) {
-                return false;
-            }
-            if (change.isRemove()) {
-                hasRemove = true;
-            }
-        }
-        return hasRemove;
+        return this.ownChange().isRemoveOnly();
     }
 
     /**
@@ -213,15 +185,64 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
-     * 返回整笔事务涉及的所有 RootInventory 变更组.
+     * 返回整笔事务涉及的所有 Inventory 变更组.
      *
-     * @return 使用 RootInventory 槽位坐标的完整事务变更
+     * @return 使用 Inventory 槽位坐标的完整事务变更
      */
     @NotNull
-    public final List<RootInventoryChange> rootChanges() {
-        return this.rootChanges;
+    public final List<InventoryChange> rootChanges() {
+        List<InventoryChange> rootChanges = this.rootChanges;
+        if (rootChanges == null) {
+            synchronized (this) {
+                rootChanges = this.rootChanges;
+                if (rootChanges == null) {
+                    rootChanges = changesOf(this.scopes);
+                    this.rootChanges = rootChanges;
+                }
+            }
+        }
+        return rootChanges;
     }
 
+    // 从整笔事务的写集里定位当前 Inventory 自己那一组, 当前 Inventory 没有变化时是一个空变更组.
+    @NotNull
+    private InventoryChange ownChange() {
+        InventoryChange ownChange = this.ownChange;
+        if (ownChange == null) {
+            synchronized (this) {
+                ownChange = this.ownChange;
+                if (ownChange == null) {
+                    ownChange = ownChangeOf(this.inventory, this.scopes);
+                    this.ownChange = ownChange;
+                }
+            }
+        }
+        return ownChange;
+    }
+
+    // 在写集里按实例找出指定 Inventory 的那一组变更, 它没有参与本次事务时返回一个空变更组.
+    @NotNull
+    private static InventoryChange ownChangeOf(@NotNull SparrowInventory inventory, @NotNull List<TransactionScope> scopes) {
+        for (int i = 0; i < scopes.size(); i++) {
+            TransactionScope scope = scopes.get(i);
+            if (scope.inventory() == inventory) {
+                return scope.change();
+            }
+        }
+        return new InventoryChange(inventory, List.of());
+    }
+
+    // 把整份写集转成面向订阅者的变更视图, 顺序与各个 Inventory 参与事务的顺序一致.
+    @NotNull
+    private static List<InventoryChange> changesOf(@NotNull List<TransactionScope> scopes) {
+        List<InventoryChange> changes = new ArrayList<>(scopes.size());
+        for (int i = 0; i < scopes.size(); i++) {
+            changes.add(scopes.get(i).change());
+        }
+        return List.copyOf(changes);
+    }
+
+    // 取得当前 Inventory 的净变化, 首次查询时按自己那一组槽位变更算出并缓存.
     @NotNull
     private NetItems netItems() {
         NetItems netItems = this.netItems;
@@ -229,7 +250,7 @@ public abstract class InventoryUpdateEvent {
             synchronized (this) {
                 netItems = this.netItems;
                 if (netItems == null) {
-                    netItems = calculateNetItems(this.slotChanges);
+                    netItems = calculateNetItems(this.ownChange().slotChanges());
                     this.netItems = netItems;
                 }
             }
@@ -237,10 +258,18 @@ public abstract class InventoryUpdateEvent {
         return netItems;
     }
 
+    /**
+     * 把一组槽位变更折算成整个 Inventory 的净增减.
+     * <p>同一批物品只是在两个槽位之间搬动时, 一边的流出会抵掉另一边的流入, 因此不计入净变化.
+     *
+     * @param slotChanges 当前 Inventory 自己那一组槽位变更
+     * @return 净变化类型, 以及净增加和净移除的物品
+     */
     @NotNull
     private static NetItems calculateNetItems(@NotNull List<SlotChange> slotChanges) {
         List<NetItem> addedItems = new ArrayList<>();
         List<NetItem> removedItems = new ArrayList<>();
+        // 逐个槽位把流出和流入累加进各自方向, 由 balance 负责与反方向已有记录相互抵消.
         for (int i = 0; i < slotChanges.size(); i++) {
             SlotChange change = slotChanges.get(i);
             int removedAmount = change.removedAmount();
@@ -254,7 +283,7 @@ public abstract class InventoryUpdateEvent {
                 balance(addedItems, removedItems, after, addedAmount);
             }
         }
-
+        // 抵消之后两个方向都有剩余, 说明既拿进来又拿出去; 只剩一个方向时才是纯粹的增加或移除.
         InventoryNetChange change;
         if (addedItems.isEmpty()) {
             change = removedItems.isEmpty() ? InventoryNetChange.NONE : InventoryNetChange.REMOVAL;
@@ -264,8 +293,17 @@ public abstract class InventoryUpdateEvent {
         return new NetItems(change, List.copyOf(addedItems), List.copyOf(removedItems));
     }
 
+    /**
+     * 把一次物品流动累加到它所属的方向, 并优先抵消反方向已经记录的相同物品.
+     *
+     * @param sameDirection 本次流动所属方向的累计列表
+     * @param oppositeDirection 反方向的累计列表, 相同物品会在这里被抵消
+     * @param template 用来判断物品是否相似的模板
+     * @param amount 本次流动的数量
+     */
     private static void balance(@NotNull List<NetItem> sameDirection, @NotNull List<NetItem> oppositeDirection, @NotNull ItemStack template, int amount) {
         int remaining = amount;
+        // 先与反方向相互抵消: 一进一出的那部分对整个 Inventory 没有净影响.
         for (int i = 0; i < oppositeDirection.size() && remaining > 0; ) {
             NetItem opposite = oppositeDirection.get(i);
             if (!template.isSimilar(opposite.template())) {
@@ -274,6 +312,7 @@ public abstract class InventoryUpdateEvent {
             }
             int matched = Math.min(remaining, opposite.amount());
             remaining -= matched;
+            // 整条被抵消干净时移除它, 后面的元素会往前顶, 因此这一轮不能推进下标.
             if (matched == opposite.amount()) {
                 oppositeDirection.remove(i);
             } else {
@@ -281,6 +320,7 @@ public abstract class InventoryUpdateEvent {
                 i++;
             }
         }
+        // 抵消不掉的部分先塞进同方向已有条目的剩余堆叠空间.
         for (int i = 0; i < sameDirection.size() && remaining > 0; i++) {
             NetItem same = sameDirection.get(i);
             if (!template.isSimilar(same.template())) {
@@ -292,6 +332,7 @@ public abstract class InventoryUpdateEvent {
                 remaining -= accepted;
             }
         }
+        // 仍有剩余就按最大堆叠拆成新条目, 让净变化的堆叠形状与真实物品保持一致.
         while (remaining > 0) {
             int stackAmount = Math.min(remaining, template.getMaxStackSize());
             sameDirection.add(new NetItem(template, stackAmount));
@@ -299,6 +340,7 @@ public abstract class InventoryUpdateEvent {
         }
     }
 
+    // 按累计结果生成独立的物品副本, 订阅者拿到后怎么改都不会影响事件内部记录.
     @NotNull
     private static List<ItemStack> copyItems(@NotNull List<NetItem> items) {
         if (items.isEmpty()) {

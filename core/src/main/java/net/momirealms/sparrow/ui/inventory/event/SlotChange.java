@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.inventory.event;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class SlotChange {
@@ -16,20 +15,6 @@ public final class SlotChange {
         this.slot = slot;
         this.before = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
         this.after = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
-    }
-
-    @ApiStatus.Internal
-    private SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after, boolean trusted) {
-        this.slot = slot;
-        this.before = trusted ? before : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
-        this.after = trusted ? after : ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
-    }
-
-    // 用另一个坐标空间的槽位编号表示同一条槽位变更记录.
-    @NotNull
-    @ApiStatus.Internal
-    public SlotChange withSlot(int slot) {
-        return new SlotChange(slot, this.before, this.after, true);
     }
 
     public int slot() {

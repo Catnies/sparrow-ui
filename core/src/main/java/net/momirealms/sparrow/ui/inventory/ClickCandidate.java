@@ -8,8 +8,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -22,7 +20,7 @@ import java.util.Objects;
  * @param eventTarget 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
  * @param reason 提交时使用的变更原因
  * @param scopes 候选的写集, 空写集表示只改光标等 Window 侧状态
- * @param plannedRoots 规划所依据的 RootInventory 基准状态
+ * @param plannedRoots 规划所依据的 Inventory 基准状态
  * @param expectedCursor 规划时的光标物品
  * @param checkCursor 是否需要复核光标
  * @param expectedOffhand 规划时的副手物品
@@ -46,7 +44,7 @@ record ClickCandidate(
         @NotNull Runnable afterCommit
 ) {
 
-    // 从各 Inventory 的规划上下文汇总基准状态, 并对光标与副手做防御复制.
+    // 汇总规划期读过的基准状态, 并对光标与副手做防御复制.
     @NotNull
     static ClickCandidate of(
             InventoryAction action,
@@ -57,21 +55,17 @@ record ClickCandidate(
             boolean checkCursor,
             @Nullable ItemStack expectedOffhand,
             boolean checkOffhand,
-            List<SparrowInventory.PlanContext> readPlans,
+            List<SparrowInventory.PlannedRoot> readPlans,
             boolean requireCreative,
             InteractionDraft draft,
             Runnable afterCommit
     ) {
-        List<SparrowInventory.PlannedRoot> plannedRoots = new ArrayList<>();
-        for (int planIndex = 0; planIndex < readPlans.size(); planIndex++) {
-            plannedRoots.addAll(readPlans.get(planIndex).plannedRoots());
-        }
         return new ClickCandidate(
                 action,
                 eventTarget,
                 reason,
                 List.copyOf(scopes),
-                List.copyOf(plannedRoots),
+                List.copyOf(readPlans),
                 expectedCursor.clone(),
                 checkCursor,
                 ItemUtils.copyOrNull(expectedOffhand),
@@ -83,19 +77,16 @@ record ClickCandidate(
     }
 
     // 先把外部容器的变更同步进 Bukkit 内容镜像, 再复核候选是否仍然成立.
+    // 规划期的目标列表已经排除源 Inventory 并按身份去重, 每个 Inventory 在这里至多刷新一次.
     @Nullable
     StaleReason revalidate(ClickSemantics.Context context) {
-        IdentityHashMap<RootInventory, Boolean> refreshed = new IdentityHashMap<>();
         for (int rootIndex = 0; rootIndex < this.plannedRoots.size(); rootIndex++) {
-            RootInventory root = this.plannedRoots.get(rootIndex).inventory();
-            if (refreshed.put(root, Boolean.TRUE) == null) {
-                root.prepareWrite();
-            }
+            this.plannedRoots.get(rootIndex).inventory().prepareWrite();
         }
         return this.staleReason(context);
     }
 
-    // 不触发任何刷新, 只比对规划时记下的光标, 副手, 游戏模式和各 RootInventory 的基准状态引用.
+    // 不触发任何刷新, 只比对规划时记下的光标, 副手, 游戏模式和各 Inventory 的基准状态引用.
     // 说明是哪个前置条件变了; 候选仍然成立时返回 null.
     // 光标和副手只在规划时真的读过它们时才复核: 没读过就不是本次结论的前提, 换掉了也不影响结论.
     @Nullable
@@ -128,13 +119,9 @@ record ClickCandidate(
      * 候选作废的原因.
      */
     enum StaleReason {
-        /** 菜单实际光标已经不是规划时看到的那一份. */
-        CURSOR,
-        /** 副手物品已经不是规划时看到的那一份. */
-        OFFHAND,
-        /** 玩家已经不在候选要求的游戏模式. */
-        GAME_MODE,
-        /** 某个 RootInventory 的基准状态被另一笔写操作换掉了. */
-        ROOT_STATE
+        CURSOR,     // 菜单实际光标已经不是规划时看到的那一份
+        OFFHAND,    // 副手物品已经不是规划时看到的那一份
+        GAME_MODE,  // 玩家已经不在候选要求的游戏模式
+        ROOT_STATE  // 某个 Inventory 的基准状态被另一笔写操作换掉了
     }
 }

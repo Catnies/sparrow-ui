@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 一个 Inventory 的 PostUpdateEvent 顺序派发队列.
- * <p>事件在事务提交时按提交顺序入队, 但要等所有 RootInventory 都完成提交后处理才允许派发,
+ * <p>事件在事务提交时按提交顺序入队, 但要等所有 Inventory 都完成提交后处理才允许派发,
  * 保证后提交的事务不会先发出通知.
  */
 final class PostDeliveryQueue {
@@ -83,7 +83,7 @@ final class PostDeliveryQueue {
 
     /**
      * 队列中的一个 PostUpdateEvent 事件.
-     * <p>加入队列时还不能派发, 所有 RootInventory 完成提交后处理后才会允许派发.
+     * <p>加入队列时还不能派发, 所有 Inventory 完成提交后处理后才会允许派发.
      */
     static final class PostDelivery {
         private final List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> recipients; // 本笔事务需要通知的 PostUpdateEvent 订阅者
@@ -101,9 +101,7 @@ final class PostDeliveryQueue {
             this.event = event;
         }
 
-        /**
-         * 标记所有 RootInventory 已经完成提交后处理, 允许派发当前事件.
-         */
+        // 标记所有 Inventory 已经完成提交后处理, 允许派发当前事件.
         void markReady() {
             this.ready = true;
         }
