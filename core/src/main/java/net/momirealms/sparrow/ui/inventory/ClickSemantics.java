@@ -149,7 +149,7 @@ public final class ClickSemantics {
     /**
      * 处理一次已经完成的拖拽分配: 所有碰到的当前 Inventory 槽位进入同一笔事务, 分不完的部分留在光标上.
      * <p>拖拽经过的 Item 槽, 空槽和冻结槽不参与分配, 也不会出现在事件的分配结果里; 整趟拖拽全落在
-     * 这些槽位上时不派发任何事件.
+     * 这些槽位上时本方法不派发任何事件.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 拖拽按键(LEFT 均分, RIGHT 每槽一个, MIDDLE 创造模式每槽整堆且不消耗光标)

@@ -6,6 +6,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -22,6 +23,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsPr
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.*;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -451,6 +453,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
+    public ItemStack displayedAt(int windowSlot) {
+        ItemStack[] localSlots = this.localSlots;
+        if (localSlots == null || windowSlot < 0 || windowSlot >= localSlots.length) {
+            return ItemStack.empty();
+        }
+        ItemStack displayed = localSlots[windowSlot];
+        return displayed == null ? ItemStack.empty() : displayed.clone();
+    }
+
+    @NotNull
+    @Override
     public Player viewer() {
         return this.viewer;
     }
@@ -743,19 +756,48 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理一次完成的 QUICK_CRAFT 拖拽: 先规划并按放入规则过滤, 再把真实分配候选交给 Bukkit 事件.
+     * 处理一次完成的 QUICK_CRAFT 拖拽: 先规划并按放入规则过滤, 再把真实分配候选交给 Bukkit 事件,
+     * 最后把手势本身通知给途经的每个 Item.
      * <p>未取消时, 参与的 Inventory 槽位构成一个事务; Item 槽位不参与分配.
+     * <p>Item 通知只看手势成不成立: 引擎是否接管, 分配是否被放入规则全部过滤, Bukkit 事件是否被取消, 都不影响它.
      *
      * @param drag 解释好的拖拽
      * @param menu 当前菜单
      */
     private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
+        // 引擎会提交事务并扣减光标, 手势光标必须在它之前快照
+        ItemStack cursor = menu.cursor();
         ClickSemantics.handleDrag(
                 this.semanticsContext,
                 drag.clickType(),
                 drag.slots(),
                 new DragGuard(menu, drag.clickType())
         );
+        this.dispatchItemDrag(drag, cursor);
+    }
+
+    // 把拖拽手势通知给途经的每个 Item. 手势本身不成立时不打扰 Item: 空光标没有东西可分发,
+    // 非创造模式的中键拖拽在原版语义里不存在. 两个条件与 ClickPlanner 判定拖拽候选时一致.
+    private void dispatchItemDrag(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
+        if (cursor.isEmpty() || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
+            return;
+        }
+
+        List<Integer> windowSlots = drag.slots();
+        List<ItemDragClick.Stop> path = new ArrayList<>(windowSlots.size());
+        for (int index = 0; index < windowSlots.size(); index++) {
+            int windowSlot = windowSlots.get(index);
+            path.add(new ItemDragClick.Stop(windowSlot, this.requirePath(windowSlot).kind()));
+        }
+        for (int index = 0; index < path.size(); index++) {
+            ItemDragClick.Stop stop = path.get(index);
+            if (stop.kind() != ItemDragClick.Kind.ITEM) {
+                continue;
+            }
+            this.requirePath(stop.windowSlot()).handleDrag(
+                    new ItemDragClick(drag.clickType(), this.viewer, this, cursor, stop.windowSlot(), path)
+            );
+        }
     }
 
     // 让同一 tick 的下一个 Bukkit 事件看见刚提交的服务端渲染结果, 而不是上一个监听器改过的 Bukkit 事件状态副本.

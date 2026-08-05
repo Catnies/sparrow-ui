@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
@@ -19,6 +20,7 @@ final class ConfiguredItem implements ObservableItem {
     private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与自带刷新计划
     private final RefreshPlan refreshPlan; // 显示来源自带计划与显式计划合并后的周期刷新计划
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler;     // 点击处理器链
+    private final BiConsumer<? super Item, ? super ItemDragClick> dragHandler;       // 拖拽处理器链
     private final BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler; // Bundle 选择处理器链
     private final boolean updateOnClick; // 点击成功后是否主动失效
     @Nullable private final ThrottleConfig throttleConfig; // null 表示未启用节流
@@ -29,6 +31,7 @@ final class ConfiguredItem implements ObservableItem {
             @NotNull ItemBuilder.SourceSpec source,
             @NotNull RefreshPlan explicitRefreshPlan,
             @NotNull BiConsumer<? super Item, ? super ItemClick> clickHandler,
+            @NotNull BiConsumer<? super Item, ? super ItemDragClick> dragHandler,
             @NotNull BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler,
             boolean updateOnClick,
             @Nullable ThrottleConfig throttleConfig
@@ -37,6 +40,7 @@ final class ConfiguredItem implements ObservableItem {
         // 合并显示来源自带的刷新计划(如轮播帧周期)与构建器显式配置的计划
         this.refreshPlan = this.displaySource.refreshPlan().or(explicitRefreshPlan);
         this.clickHandler = Objects.requireNonNull(clickHandler, "clickHandler");
+        this.dragHandler = Objects.requireNonNull(dragHandler, "dragHandler");
         this.bundleHandler = Objects.requireNonNull(bundleHandler, "bundleHandler");
         this.updateOnClick = updateOnClick;
         this.throttleConfig = throttleConfig;
@@ -85,6 +89,12 @@ final class ConfiguredItem implements ObservableItem {
         if (this.updateOnClick) {
             this.notifyWindows();
         }
+    }
+
+    // 拖拽不走节流: 一次手势可能同时命中同一个 Item 的多个槽位, 节流会把第二站之后全部拦掉.
+    @Override
+    public void handleDrag(ItemDragClick drag) {
+        this.dragHandler.accept(this, drag);
     }
 
     @Override

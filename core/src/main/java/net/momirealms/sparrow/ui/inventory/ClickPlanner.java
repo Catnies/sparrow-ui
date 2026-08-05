@@ -551,7 +551,7 @@ final class ClickPlanner {
 
         // 约定: 拖拽只认背后有 Inventory 且未冻结的窗口槽, Item 槽, 空槽和冻结槽直接从候选里剔除.
         // 因此混合拖拽(一半 Item 槽一半 Inventory 槽)照常派发事件, 但 newItems 只有 Inventory 槽那一半,
-        // 被剔除的槽位在插件视角里凭空消失; 整趟拖拽全落在这些槽上时候选为空, 什么事件都不派发.
+        // 被剔除的槽位在插件视角里凭空消失; 整趟拖拽全落在这些槽上时候选为空, 不派发 Bukkit 事件.
         // 两者都是预期行为: 引擎接管不了的槽位没有分配结果可以呈现, 也没有事务可以取消.
         LinkedHashMap<SlotKey, DragLink> candidates = new LinkedHashMap<>();
         for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {

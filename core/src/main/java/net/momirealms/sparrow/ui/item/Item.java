@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
@@ -63,6 +64,14 @@ public interface Item {
      * @param click 点击事件上下文
      */
     default void handleClick(ItemClick click) {
+    }
+
+    /**
+     * 处理玩家拖拽经过此物品的事件.
+     *
+     * @param drag 拖拽上下文
+     */
+    default void handleDrag(ItemDragClick drag) {
     }
 
     /**

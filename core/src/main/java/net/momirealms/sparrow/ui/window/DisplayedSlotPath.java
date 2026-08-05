@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
@@ -156,6 +157,19 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
+     * 把拖拽手势转发给路径终点的 Item.
+     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
+     *
+     * @param drag 拖拽上下文
+     */
+    void handleDrag(@NotNull ItemDragClick drag) {
+        PathState state = this.currentState();
+        if (!state.frozen && state.item != null) {
+            state.item.handleDrag(drag);
+        }
+    }
+
+    /**
      * 把收纳袋选择转发给路径终点的 Item.
      * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
      *
@@ -192,6 +206,20 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     boolean frozen() {
         return this.currentState().frozen;
+    }
+
+    /**
+     * 返回显示路径终点的类型.
+     * 路径经过已冻结 GUI 时一律返回 {@link ItemDragClick.Kind#FROZEN}, 不再区分终点.
+     *
+     * @return 路径终点类型
+     */
+    @NotNull
+    ItemDragClick.Kind kind() {
+        PathState state = this.currentState();
+        if (state.frozen) return ItemDragClick.Kind.FROZEN;
+        if (state.inventoryLink != null) return ItemDragClick.Kind.INVENTORY;
+        return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
     }
 
     // 强制处理尚未解析的 GUI 变化, 让 Window 在提交旧候选前看到交互终点或冻结状态的改变.

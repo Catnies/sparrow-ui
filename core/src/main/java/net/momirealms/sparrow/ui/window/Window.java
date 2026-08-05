@@ -312,6 +312,16 @@ public interface Window {
     void notifyUpdateAll();
 
     /**
+     * 读取某个 Window 槽位最近一次推给客户端的显示内容.
+     * <p>返回的是渲染缓存的副本, 不会触发重新渲染. 槽位越界或尚未渲染时返回空物品.
+     *
+     * @param windowSlot Window 槽位
+     * @return 显示内容的副本, 没有内容时为空物品
+     */
+    @NotNull
+    ItemStack displayedAt(int windowSlot);
+
+    /**
      * 此 Window 的所属玩家.
      *
      * @return 查看者

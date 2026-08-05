@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.Bukkit;
@@ -25,6 +26,7 @@ public final class ItemBuilder {
     private boolean sourceConfigured; // 显示来源是否已完成配置
 
     private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器链
+    private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器链
     private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器链
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
     private RefreshPlan explicitRefreshPlan = RefreshPlan.none();   // 显式配置的周期刷新计划
@@ -214,6 +216,28 @@ public final class ItemBuilder {
     }
 
     /**
+     * 添加拖拽处理器. 处理器按添加顺序执行.
+     * <p>拖拽不受节流影响: 一次手势可能同时命中同一个 Item 的多个槽位.
+     *
+     * @param dragHandler 拖拽处理器
+     * @return 此构建器
+     */
+    public ItemBuilder addDragHandler(@NotNull Consumer<? super ItemDragClick> dragHandler) {
+        return this.addDragHandler((ignoredItem, drag) -> dragHandler.accept(drag));
+    }
+
+    /**
+     * 添加可以访问 Item 自身的拖拽处理器, 供处理逻辑同时读取物品和拖拽事件.
+     *
+     * @param dragHandler 同时接收物品和拖拽事件的处理器
+     * @return 此构建器
+     */
+    public ItemBuilder addDragHandler(@NotNull BiConsumer<? super Item, ? super ItemDragClick> dragHandler) {
+        this.dragHandler = this.dragHandler.andThen(dragHandler);
+        return this;
+    }
+
+    /**
      * 添加 Bundle 选择处理器. 处理器按添加顺序执行.
      *
      * @param selectHandler 选择处理器
@@ -265,6 +289,7 @@ public final class ItemBuilder {
                 this.source,
                 this.explicitRefreshPlan,
                 this.clickHandler,
+                this.dragHandler,
                 this.bundleHandler,
                 this.updateOnClick,
                 throttleConfig
