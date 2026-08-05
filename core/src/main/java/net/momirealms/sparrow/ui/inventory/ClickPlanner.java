@@ -57,12 +57,9 @@ final class ClickPlanner {
         }
 
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
+        // 背后没有 Inventory 的槽位一件真实物品都拿不出来, 双击收集要求被点的槽有物品可拿, 这里一律不成立.
         if (link == null) {
-            if (clickType != ClickType.DOUBLE_CLICK || overlay.cursorOr(context.cursor()).isEmpty()) {
-                return new PreparedClick(false, InventoryAction.NOTHING, null);
-            }
-            ClickCandidate collect = prepareCollect(context, null, write, new IdentityHashMap<>(), overlay);
-            return new PreparedClick(true, actionOf(collect), withRealBefore(collect, overlay));
+            return new PreparedClick(false, InventoryAction.NOTHING, null);
         }
 
         ClickCandidate candidate = switch (clickType) {
@@ -80,7 +77,7 @@ final class ClickPlanner {
             case NUMBER_KEY -> prepareHotbarSwap(context, link, hotbarButton, write, overlay);
             case SWAP_OFFHAND -> prepareOffhandSwap(context, link, write, overlay);
             case DROP, CONTROL_DROP -> prepareDrop(context, link, clickType == ClickType.CONTROL_DROP, write, overlay);
-            case DOUBLE_CLICK -> prepareLinkedCollect(context, link, write, overlay);
+            case DOUBLE_CLICK -> prepareLinkedCollect(context, link, windowSlot, write, overlay);
             case MIDDLE -> prepareCreativeClone(context, link, write, overlay);
             default -> null;
         };
@@ -357,14 +354,24 @@ final class ClickPlanner {
         );
     }
 
+    /**
+     * 规划一次双击收集, 对齐原版 {@code !carried.isEmpty() && !slot.hasItem()} 的前提.
+     * <p>客户端的双击发的是 PICKUP 与 PICKUP_ALL 两个包: 第一个包拿起被点槽的物品, 第二个包才收集同类.
+     * 因此收集成立时被点的槽恰好是空的, 而玩家握着物品去双击时第一个包会把物品放回去, 那一格不再为空.
+     * <p>被点的槽要同时满足两个条件: 内容为空, 且玩家看到的也是一格空位. 前者对应原版的槽位内容,
+     * 后者拦住内容为空却铺着背景的槽 —— 玩家眼里那一格有东西, 双击它不该凭空收走别处的物品.
+     *
+     * @return 被点的槽拿得出收集资格时返回候选, 否则返回 {@code null}
+     */
     @Nullable
     private static ClickCandidate prepareLinkedCollect(
             ClickSemantics.Context context,
             ClickSemantics.LinkedSlot clicked,
+            int windowSlot,
             boolean write,
             InteractionOverlay overlay
     ) {
-        if (overlay.cursorOr(context.cursor()).isEmpty()) {
+        if (overlay.cursorOr(context.cursor()).isEmpty() || !context.displayedEmptyAt(windowSlot)) {
             return null;
         }
         IdentityHashMap<SparrowInventory, SparrowInventory.PlannedRoot> plans = new IdentityHashMap<>();
@@ -379,7 +386,7 @@ final class ClickPlanner {
     @Nullable
     private static ClickCandidate prepareCollect(
             ClickSemantics.Context context,
-            @Nullable ClickSemantics.LinkedSlot clicked,
+            ClickSemantics.LinkedSlot clicked,
             boolean write,
             IdentityHashMap<SparrowInventory, SparrowInventory.PlannedRoot> plans,
             InteractionOverlay overlay

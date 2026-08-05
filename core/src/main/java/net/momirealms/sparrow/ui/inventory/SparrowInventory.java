@@ -933,6 +933,13 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 判断当前 Inventory 有没有点击订阅者, 供派发方在无人监听时跳过事件构造.
+     */
+    boolean hasClickObservers() {
+        return this.clickEvents.subscriptionCount() != 0;
+    }
+
+    /**
      * 订阅玩家点击本 Inventory 连接槽的事件.
      * 事件在候选形成后、事务 Pre 前派发, 取消会阻止候选提交.
      *
@@ -945,6 +952,20 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 向当前 Inventory 的观察者派发一次点击.
+     */
+    void publishClick(@NotNull SparrowInventoryClickEvent event) {
+        this.clickEvents.publish(event);
+    }
+
+    /**
+     * 判断当前 Inventory 有没有 Bundle 选择事件订阅者, 供派发方在无人监听时跳过事件构造.
+     */
+    boolean hasBundleSelectObservers() {
+        return this.bundleSelectEvents.subscriptionCount() != 0;
+    }
+
+    /**
      * 订阅玩家在本 Inventory 连接槽中的 Bundle 选择事件.
      *
      * @param observer 事件处理器
@@ -953,13 +974,6 @@ public abstract class SparrowInventory {
     @NotNull
     public Subscription subscribeBundleSelect(@NotNull Observer<? super InventoryBundleSelectEvent> observer) {
         return this.bundleSelectEvents.subscribe(observer);
-    }
-
-    /**
-     * 向当前 Inventory 的观察者派发一次点击.
-     */
-    void publishClick(@NotNull SparrowInventoryClickEvent event) {
-        this.clickEvents.publish(event);
     }
 
     /**

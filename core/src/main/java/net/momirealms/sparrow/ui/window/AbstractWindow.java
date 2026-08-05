@@ -773,12 +773,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 drag.slots(),
                 new DragGuard(menu, drag.clickType())
         );
-        this.dispatchItemDrag(drag, cursor);
+        this.dispatchItemDragClick(drag, cursor);
     }
 
     // 把拖拽手势通知给途经的每个 Item. 手势本身不成立时不打扰 Item: 空光标没有东西可分发,
     // 非创造模式的中键拖拽在原版语义里不存在. 两个条件与 ClickPlanner 判定拖拽候选时一致.
-    private void dispatchItemDrag(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
+    private void dispatchItemDragClick(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
         if (cursor.isEmpty() || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
             return;
         }
@@ -1395,6 +1395,26 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         @Override
         public boolean frozenAt(int windowSlot) {
             return AbstractWindow.this.requirePath(windowSlot).frozen();
+        }
+
+        // 当场渲染而不是读本地快照: 双击的两个包可能落在同一 tick 里, 那时快照还停在第一个包之前的样子.
+        @Override
+        public boolean displayedEmptyAt(int windowSlot) {
+            DisplayedSlotPath[] paths = AbstractWindow.this.paths;
+            if (paths == null || windowSlot < 0 || windowSlot >= paths.length) {
+                return true;
+            }
+            @Nullable DisplayedSlotPath path = paths[windowSlot];
+            if (path == null) {
+                return true;
+            }
+            try {
+                return path.render().isEmpty();
+            } catch (Throwable throwable) {
+                // 读不出这一格显示什么就当它有东西: 收集的前提是玩家看到一格空位, 存疑时不放行.
+                AbstractWindow.this.manager.report("Failed to render Window slot " + windowSlot, throwable);
+                return false;
+            }
         }
 
         @Override

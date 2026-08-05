@@ -97,7 +97,7 @@ public record ItemDragClick(
      * 显示路径终点的类型.
      */
     public enum Kind {
-        ITEM,       // 终点是 Item, 会收到 ItemDrag
+        ITEM,       // 终点是 Item, 会收到 ItemDragClick
         INVENTORY,  // 终点连着 Inventory, 是否真的收到物品由放入规则和引擎决定
         EMPTY,      // 终点是空槽, 只有背景
         FROZEN      // 路径经过已冻结 GUI, 不参与任何交互

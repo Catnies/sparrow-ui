@@ -121,6 +121,10 @@ public final class ClickSemantics {
             @NotNull InventoryAction action,
             @NotNull InteractionEdits edits
     ) {
+        // 没有订阅者时事件构造出来也无人可改, 直接放行; 引擎自己的复核不在这里, 短路不会跳过它们.
+        if (!inventory.hasClickObservers()) {
+            return true;
+        }
         SparrowInventoryClickEvent event = new SparrowInventoryClickEvent(inventory, slot, player, clickType, hotbarButton, action, edits);
         inventory.publishClick(event);
         return !event.cancelled();
@@ -198,6 +202,16 @@ public final class ClickSemantics {
          * @return 路径经过已冻结 GUI 时返回 {@code true}
          */
         boolean frozenAt(int windowSlot);
+
+        /**
+         * 判断某个 Window 槽位此刻渲染出来是不是一格空位.
+         * <p>问的是最终显示结果, 因此不区分这一格空着的原因是没有内容, 还是内容被渲染成了空气;
+         * 同样地, 背景与占位物品无论挂在哪一层, 只要玩家看得见就算这一格非空.
+         *
+         * @param windowSlot Window 槽位
+         * @return 玩家看到的是一格空位时返回 {@code true}
+         */
+        boolean displayedEmptyAt(int windowSlot);
 
         /**
          * 查出数字键要交换的目标: 当前 lower 快捷栏某个按键位置实际连接的当前 Inventory 槽位;

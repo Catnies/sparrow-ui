@@ -63,7 +63,7 @@ final class ClickExecutor {
             executeCandidate(context, candidate, gate, edits -> gate.allowClick(candidate.action(), edits), replan, describe, overlay);
         } else if (prepared.handled() && !context.frozenAt(windowSlot)) {
             // 空操作和被放入规则拒绝的点击同样是一次真实交互: 监听器看得到, 它们的写入也照样能落地.
-            executeUnplanned(context, clickType, hotbarButton, prepared.action(), gate, replan, describe, overlay);
+            executeUnplanned(context, clickType, hotbarButton, windowSlot, prepared.action(), gate, replan, describe, overlay);
         }
         if (prepared.handled() && windowSlot != InventoryView.OUTSIDE) {
             context.markDirty(windowSlot);
@@ -150,7 +150,15 @@ final class ClickExecutor {
         @Nullable ClickCandidate replanned = replan.get();
         if (replanned == null) {
             // 新现场算不出候选. 监听器的写入与候选无关, 不该跟着候选一起丢掉, 让它自成一笔事务.
-            commitEdits(context, candidate.reason(), settled(context, null, overlay), gate, describe);
+            // 结论没了但交互还在: 与 executeUnplanned 一样, 被点的那一格照样收到一次点击事件.
+            // action 跟着最终结论走, 这里已经没有结论可言, 因此是 NOTHING 而不是作废候选原来的那个.
+            InteractionEdits settled = settled(context, null, overlay);
+            ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
+            if (eventTarget != null
+                    && !passGate(gate, () -> gate.allowInventoryClick(eventTarget, InventoryAction.NOTHING, settled))) {
+                return;
+            }
+            commitEdits(context, candidate.reason(), settled, gate, describe);
             return;
         }
         if (replanned.staleReason(context) != null) {
@@ -230,10 +238,12 @@ final class ClickExecutor {
     }
 
     // 算不出候选的点击没有规划基准, 也就没有候选可以作废. 两份草稿都等到第一次写入才建, 没人写就什么都不提交.
+    // 这一格背后有 Inventory 时, 它照样参与了这次交互, 因此 Sparrow 点击事件与 Bukkit 点击事件一起派发.
     private static void executeUnplanned(
             ClickSemantics.Context context,
             ClickType clickType,
             int hotbarButton,
+            int windowSlot,
             InventoryAction action,
             ClickSemantics.InteractionGate gate,
             Supplier<@Nullable ClickCandidate> replan,
@@ -251,14 +261,21 @@ final class ClickExecutor {
         if (!overlay.isEmpty() || !plannedCursor.equals(context.cursor())) {
             @Nullable ClickCandidate replanned = replan.get();
             if (replanned != null && replanned.staleReason(context) == null) {
+                // 重算出的候选自带事件目标, Sparrow 点击事件跟着它派发, 这条路径不再重复派发一次.
                 finishCandidate(context, replanned, settled(context, replanned, overlay), gate, describe);
                 return;
             }
         }
+        // 结算要赶在 Sparrow 事件之前: 事件读到的是 Bukkit 监听器留下的结果, 写下的又交给随后的提交.
+        InteractionEdits settled = settled(context, null, overlay);
+        @Nullable ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
+        if (link != null && !passGate(gate, () -> gate.allowInventoryClick(link, action, settled))) {
+            return;
+        }
         commitEdits(
                 context,
                 new PlayerUpdateReason.Click(context.viewer(), clickType, clickType == ClickType.NUMBER_KEY ? hotbarButton : -1),
-                settled(context, null, overlay),
+                settled,
                 gate,
                 describe
         );
