@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
-import net.momirealms.sparrow.ui.inventory.event.InventoryClickEvent;
+import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
@@ -14,6 +14,7 @@ import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
@@ -22,10 +23,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
@@ -37,27 +40,61 @@ import java.util.function.UnaryOperator;
  *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
  *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
+ * <p>每个实例直接持有自己的内部状态数组, 并参与事务加锁, 并发校验和状态交换.
+ * 持有内部状态不等于"最终真实容器": ReferencingInventory 的内部状态是 Bukkit 容器内容在 Sparrow 中的一份镜像.
  * <p>读操作直接读取当前内部状态版本, 任何线程都可以安全调用. 写操作遇到并发冲突时返回{@link TransactionResult.Conflicted} 且不产生修改;
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
- * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例, 不向其 RootInventory 或外层 ViewInventory 传播.
+ * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例.
  */
-public abstract sealed class SparrowInventory permits RootInventory, ViewInventory {
+public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
+    public static final int ALL_SLOTS = -1; // 视觉映射变更通知中表示"全部槽位"的载荷
     static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
+    private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
 
-    // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; null 表示没有显式设置, 读取时回退到 fallbackGuiPriority.
-    // 用 Integer 是为了允许 null 值可以被视为 "未设置".
-    @Nullable private volatile Integer addGuiPriority;
-    @Nullable private volatile Integer collectGuiPriority;
-    @Nullable private volatile Integer otherGuiPriority;
-    private final ObservableDispatcher<InventoryClickEvent> clickEvents = new ObservableDispatcher<>();
+    private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
+    private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
+    private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
+
+    private volatile @Nullable ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
+    @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
+    private volatile @Nullable Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
+
+    @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer; // 容器全局视觉映射, 逐槽映射放行时使用
+    @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> @NotNull [] visualizersBySlot; // 容器逐槽视觉映射, 层级最高
+    @Nullable private volatile ItemProvider background; // 空槽占位背景, 独立于视觉映射的最底层
+
+    // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; 没有设置过时是 0.
+    private volatile int addGuiPriority;
+    private volatile int collectGuiPriority;
+    private volatile int otherGuiPriority;
+
+    private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
-    @Nullable private volatile InventoryTopology topology;             // 第一次读取槽位关系或订阅更新时创建
+    private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
 
-    SparrowInventory() {
+    /**
+     * 以给定数组为初始内容创建 Inventory.
+     *
+     * @param initial 初始槽位内容, 空槽位置为 {@code null}.
+     */
+    SparrowInventory(@Nullable ItemStack @NotNull [] initial) {
+        // 构造时复制每个物品, 并把空物品转为 null
+        @Nullable ItemStack[] slots = new ItemStack[initial.length];
+        for (int i = 0; i < initial.length; i++) {
+            slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
+        }
+        this.state = slots;
+        this.naturalOrder = SlotOrder.natural(initial.length);
+        @SuppressWarnings("unchecked")
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = (Predicate<ItemStack>[]) new Predicate<?>[initial.length];
+        this.placementRulesBySlot = placementRulesBySlot;
+        @SuppressWarnings("unchecked")
+        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizersBySlot = (Function<@Nullable ItemStack, @Nullable ItemProvider>[]) new Function<?, ?>[initial.length];
+        this.visualizersBySlot = visualizersBySlot;
     }
 
     /**
@@ -65,27 +102,35 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      *
      * @return 槽位数量
      */
-    public abstract int size();
+    public int size() {
+        return this.state.length;
+    }
 
     /**
      * 一次性读出全部槽位, 得到当前时刻的独立副本.
      *
      * @return 按槽号排列的物品副本数组, 空槽位置为 {@code null}
      */
-    @Nullable
-    public abstract ItemStack @NotNull [] snapshot();
+    public @Nullable ItemStack @NotNull [] snapshot() {
+        // 先把 volatile 引用抓到局部变量
+        @Nullable ItemStack[] snapshot = this.state;
+        @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
+        for (int i = 0; i < snapshot.length; i++) {
+            copy[i] = ItemUtils.copyOrNull(snapshot[i]);
+        }
+        return copy;
+    }
 
     /**
-     * 零物品拷贝地读出全部槽位.
-     * <p>RootInventory 直接返回当前内部状态数组; ViewInventory 会为槽位映射分配新的投影数组,
-     * 但其中的非空元素仍是底层 Inventory 内部持有的 {@link ItemStack} 实例.
+     * 零物品拷贝地读出全部槽位, 直接返回当前内部状态数组.
      * <p>调用方只能在当前调用栈内只读数组及其中的物品, 不得修改或保存这些引用. 违反约定会绕过事务,
      * 事件, Window 刷新和外部容器同步, 并可能破坏并发冲突检测.
      *
      * @return 按槽号排列的内部物品引用, 空槽位置为 {@code null}
      */
-    @Nullable
-    public abstract ItemStack @NotNull [] unsafeSnapshot();
+    public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
+        return this.state;
+    }
 
     /**
      * 返回指定类别的批量操作按什么顺序遍历槽位.
@@ -94,27 +139,208 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @return 该类别使用的遍历顺序
      */
     @NotNull
-    public abstract SlotOrder iterationOrder(@NotNull OperationCategory category);
+    public SlotOrder iterationOrder(@NotNull OperationCategory category) {
+        return this.naturalOrder;
+    }
 
     /**
-     * 把当前 Inventory 槽位换算成 RootInventory 槽地址.
+     * 把槽位换算成 SlotKey.
      *
-     * @param slot 当前 Inventory 槽位
-     * @return 对应的 RootInventory 槽地址
-     */
-    @NotNull
-    abstract SlotKey.Anchor resolveSlot(int slot);
-
-    /**
-     * 把当前 Inventory 槽位换算成 SlotKey.
-     *
-     * @param slot 当前 Inventory 槽位
+     * @param slot 槽位序号, 从 0 开始
      * @return 该槽的 SlotKey
      */
     @NotNull
-    final SlotKey physicalKey(int slot) {
-        SlotKey.Anchor anchor = this.resolveSlot(slot);
-        return anchor.root().rootPhysicalKey(anchor);
+    SlotKey physicalKey(int slot) {
+        return new SlotKey(this, slot);
+    }
+
+    /**
+     * 替换适用于所有未声明逐槽规则的槽位放入规则.
+     * 规则收到的是完整原始输入; 传入 {@code null} 表示这些槽位一律放行.
+     * 规则异常会原样传播, 当前规划不会派发事件或提交事务.
+     * <p>规则拿到的是零拷贝的内部引用, 同一次规划中会跨多个槽位复用同一个实例.
+     * 规则只能读取它, 不得修改或保存引用; 违反约定会污染规划快照, 事件历史与后续读取结果.
+     *
+     * @param rule 新的全局放入规则, {@code null} 表示放行
+     */
+    public void setPlacementRule(@Nullable Predicate<@NotNull ItemStack> rule) {
+        this.placementRule = rule;
+    }
+
+    /**
+     * 返回当前的全局放入规则.
+     *
+     * @return 全局放入规则; 没有设置过时为 {@code null}, 表示这些槽位一律放行
+     */
+    @Nullable
+    public Predicate<ItemStack> getPlacementRule() {
+        return this.placementRule;
+    }
+
+    /**
+     * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则;
+     * 传入 {@code null} 会清除逐槽覆盖, 使该槽重新使用全局规则.
+     * <p>与全局规则一样, 规则拿到的是零拷贝的内部引用, 只能读取, 不得修改或保存;
+     * 详见 {@link #setPlacementRule(Predicate)}.
+     *
+     * @param slot 槽位序号
+     * @param rule 新的逐槽放入规则, {@code null} 表示回退到全局规则
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setPlacementRule(int slot, @Nullable Predicate<@NotNull ItemStack> rule) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot.clone();
+        placementRulesBySlot[slot] = rule;
+        this.placementRulesBySlot = placementRulesBySlot;
+    }
+
+    /**
+     * 返回某个槽位的显式放入规则; 不含回退到的全局规则.
+     *
+     * @param slot 槽位序号
+     * @return 该槽的逐槽放入规则; 没有覆盖时为 {@code null}, 表示这个槽用的是全局规则
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public Predicate<ItemStack> getPlacementRule(int slot) {
+        Objects.checkIndex(slot, this.size());
+        return this.placementRulesBySlot[slot];
+    }
+
+    /**
+     * 捕获当前 Inventory 的放入规则, 返回本次规划使用的槽位过滤器.
+     * <p>{@code item} 会被零拷贝地交给规则, 并在整个过滤器生命周期内跨槽位复用同一个实例;
+     * 调用方与规则都不得修改它.
+     */
+    @NotNull
+    IntPredicate placementPredicate(@NotNull ItemStack item) {
+        @Nullable Predicate<ItemStack> placementRule = this.placementRule;
+        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
+        return slot -> {
+            @Nullable Predicate<ItemStack> rule = placementRulesBySlot[slot];
+            if (rule == null) {
+                rule = placementRule;
+            }
+            return rule == null || rule.test(item);
+        };
+    }
+
+    /**
+     * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
+     * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
+     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 GUI 背景.
+     * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
+     * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
+     * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
+     * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
+     *
+     * @param visualizer 新的全局视觉映射, {@code null} 表示不参与这一层
+     */
+    public void setVisualizer(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer) {
+        this.visualizer = visualizer;
+        this.visualInvalidations.publish(ALL_SLOTS);
+    }
+
+    /**
+     * 返回当前的全局视觉映射.
+     *
+     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
+     */
+    @Nullable
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizer() {
+        return this.visualizer;
+    }
+
+    /**
+     * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层:
+     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
+     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
+     * <p>映射的输入输出约定与 {@link #setVisualizer(Function)} 相同.
+     *
+     * @param slot 槽位序号
+     * @param visualizer 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setVisualizer(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizersBySlot = this.visualizersBySlot.clone();
+        visualizersBySlot[slot] = visualizer;
+        this.visualizersBySlot = visualizersBySlot;
+        this.visualInvalidations.publish(slot);
+    }
+
+    /**
+     * 返回某个槽位的显式视觉映射; 不含回退到的全局映射.
+     *
+     * @param slot 槽位序号
+     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizer(int slot) {
+        Objects.checkIndex(slot, this.size());
+        return this.visualizersBySlot[slot];
+    }
+
+    /**
+     * 给所有空槽设置占位背景. 它是视觉层级的最底层, 独立于视觉映射:
+     * 只有空槽在逐槽与全局映射都放行后才显示背景, 设置映射不会覆盖背景, 反之亦然.
+     * <p>空槽没有背景或背景也缺席时, 继续回退 GUI 背景.
+     *
+     * @param background 空槽占位背景, {@code null} 表示清除背景
+     */
+    public void setBackground(@Nullable ItemProvider background) {
+        this.background = background;
+        this.visualInvalidations.publish(ALL_SLOTS);
+    }
+
+    /**
+     * 使用 ItemStack 给所有空槽设置占位背景.
+     *
+     * @param background 空槽占位背景
+     */
+    public void setBackground(@NotNull ItemStack background) {
+        this.setBackground(ItemProvider.constant(background));
+    }
+
+    /**
+     * 返回当前的空槽占位背景.
+     *
+     * @return 空槽占位背景; 没有设置过时为 {@code null}
+     */
+    @Nullable
+    public ItemProvider getBackground() {
+        return this.background;
+    }
+
+    /**
+     * 返回一个槽位生效的视觉层级结果, 从高到低逐层询问, 上层放行才轮到下层:
+     * 逐槽映射, 全局映射, 空槽的占位背景.
+     * <p>{@code actual} 由调用方提供, 应当是该槽当前内容的副本; 渲染层用它避免重复读取.
+     *
+     * @param slot 槽位序号
+     * @param actual 该槽当前真实内容, 空槽为 {@code null}
+     * @return 展示用的提供器; 所有层都缺席或放行时为 {@code null}, 表示按真实内容显示
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
+        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> slotVisualizer = this.visualizersBySlot[slot];
+        if (slotVisualizer != null) {
+            ItemProvider mapped = slotVisualizer.apply(actual);
+            if (mapped != null) {
+                return mapped;
+            }
+        }
+        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> globalVisualizer = this.visualizer;
+        if (globalVisualizer != null) {
+            ItemProvider mapped = globalVisualizer.apply(actual);
+            if (mapped != null) {
+                return mapped;
+            }
+        }
+        // 背景只垫在空槽下面, 非空槽由渲染层按真实内容显示
+        return actual == null ? this.background : null;
     }
 
     /**
@@ -124,22 +350,11 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @return 该类别的优先级
      */
     public int guiPriority(@NotNull OperationCategory category) {
-        Integer explicit = switch (category) {
+        return switch (category) {
             case ADD -> this.addGuiPriority;
             case COLLECT -> this.collectGuiPriority;
             case OTHER -> this.otherGuiPriority;
         };
-        return explicit != null ? explicit : this.fallbackGuiPriority(category);
-    }
-
-    /**
-     * 没有显式设置优先级时使用的回退值.
-     *
-     * @param category 操作类别
-     * @return 该类别的回退优先级
-     */
-    int fallbackGuiPriority(@NotNull OperationCategory category) {
-        return 0;
     }
 
     /**
@@ -168,16 +383,25 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
-     * 清除指定类别显式设置的优先级, 让它回到回退值.
+     * 把指定类别的优先级恢复成默认的 0.
      *
      * @param category 操作类别
      */
     public void clearGuiPriority(@NotNull OperationCategory category) {
         switch (category) {
-            case ADD -> this.addGuiPriority = null;
-            case COLLECT -> this.collectGuiPriority = null;
-            case OTHER -> this.otherGuiPriority = null;
+            case ADD -> this.addGuiPriority = 0;
+            case COLLECT -> this.collectGuiPriority = 0;
+            case OTHER -> this.otherGuiPriority = 0;
         }
+    }
+
+    /**
+     * 一次把全部三个类别的优先级恢复成默认的 0.
+     */
+    public void clearGuiPriority() {
+        this.addGuiPriority = 0;
+        this.collectGuiPriority = 0;
+        this.otherGuiPriority = 0;
     }
 
     /**
@@ -188,11 +412,14 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public abstract ItemStack itemAt(int slot);
+    public ItemStack itemAt(int slot) {
+        @Nullable ItemStack[] snapshot = this.state;
+        return ItemUtils.copyOrNull(snapshot[slot]);
+    }
 
     /**
      * 零拷贝地读取指定槽位的物品, 空槽返回 {@code null}.
-     * <p>返回值是底层 Inventory 内部持有的实例. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
+     * <p>返回值是 Inventory 内部持有的实例. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
      * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
      *
      * @param slot 槽位序号, 从 0 开始
@@ -200,7 +427,11 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public abstract ItemStack unsafeItemAt(int slot);
+    public ItemStack unsafeItemAt(int slot) {
+        // 先把 volatile 引用抓到局部变量
+        @Nullable ItemStack[] snapshot = this.state;
+        return snapshot[slot];
+    }
 
     /**
      * 指定槽位自身的堆叠上限, 不含物品自带的堆叠上限.
@@ -210,7 +441,10 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @return 该槽位的堆叠上限
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public abstract int slotMaxStackSize(int slot);
+    public int slotMaxStackSize(int slot) {
+        Objects.checkIndex(slot, this.size());
+        return DEFAULT_MAX_STACK_SIZE;
+    }
 
     /**
      * 每个槽位是否都装有达到有效堆叠上限的物品.
@@ -386,7 +620,9 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public abstract TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item);
+    public TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
+        return this.commitSingle(reason, slot, item, false);
+    }
 
     /**
      * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消;
@@ -399,7 +635,30 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public abstract TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item);
+    public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
+        return this.commitSingle(reason, slot, item, true);
+    }
+
+    /**
+     * 提交一次单槽覆盖写入, {@link #setItem} 与 {@link #forceSetItem} 共用.
+     *
+     * @param reason 变更原因
+     * @param slot 槽号
+     * @param item 新物品, {@code null} 表示清空
+     * @param bypassPre 为 {@code true} 时跳过 pre 观察者
+     * @return 事务结果
+     */
+    private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
+        Objects.checkIndex(slot, this.size());
+        this.prepareWrite();
+        @Nullable ItemStack[] planned = this.currentState();
+        SlotChange delta = new SlotChange(slot, planned[slot], item);
+        return InventoryTransactions.commit(
+                reason,
+                List.of(new TransactionScope(this, planned, List.of(delta))),
+                bypassPre
+        );
+    }
 
     /**
      * 往指定槽位尽量放入物品.
@@ -412,7 +671,37 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public abstract AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item);
+    public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
+        // 越界检查先于空输入短路生效, 行为不随物品内容摇摆
+        Objects.checkIndex(slot, this.size());
+        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (input == null) {
+            return new AddResult(EMPTY_COMMITTED, 0);
+        }
+        this.prepareWrite();
+        @Nullable ItemStack[] planned = this.currentState();
+        @Nullable ItemStack current = planned[slot];
+        int amount = input.getAmount();
+
+        // 计算本槽还能接纳多少: 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳
+        int space;
+        if (current == null) {
+            space = Math.min(this.slotMaxStackSize(slot), input.getMaxStackSize());
+        } else if (ItemUtils.isSimilar(current, input)) {
+            space = Math.min(this.slotMaxStackSize(slot), current.getMaxStackSize()) - current.getAmount();
+        } else {
+            return new AddResult(EMPTY_COMMITTED, amount);
+        }
+        int moved = Math.clamp(space, 0, amount);
+        if (moved == 0 || !this.placementPredicate(input).test(slot)) {
+            return new AddResult(EMPTY_COMMITTED, amount);
+        }
+
+        ItemStack after = current != null ? current.clone() : input.clone();
+        after.setAmount((current != null ? current.getAmount() : 0) + moved);
+        TransactionResult result = this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
+        return new AddResult(result, result instanceof TransactionResult.Committed ? amount - moved : amount);
+    }
 
     /**
      * 读, 改, 写指定槽位.
@@ -425,7 +714,14 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public abstract TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier);
+    public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+        Objects.checkIndex(slot, this.size());
+        this.prepareWrite();
+        @Nullable ItemStack[] planned = this.currentState();
+        // modifier 收到物品副本并在锁外执行; SlotChange 会再次复制返回值, 并把空物品转为 null
+        @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
+        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, planned[slot], modified)));
+    }
 
     /**
      * 增减槽内物品数量. 减少时最低到 0, 增加时最高到有效堆叠上限;
@@ -437,14 +733,54 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public abstract TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change);
+    public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
+        Objects.checkIndex(slot, this.size());
+        this.prepareWrite();
+        @Nullable ItemStack[] planned = this.currentState();
+        @Nullable ItemStack current = planned[slot];
+        if (current == null || change == 0) {
+            return EMPTY_COMMITTED;
+        }
+
+        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则直接写入的超上限堆
+        // 会在"减 1"时被静默压回上限, 凭空销毁物品. long 算术防止 int 边界溢出.
+        long desired = (long) current.getAmount() + change;
+        int target;
+        if (change < 0) {
+            target = (int) Math.max(0L, desired);
+        } else {
+            int cap = Math.min(this.slotMaxStackSize(slot), current.getMaxStackSize());
+            if (current.getAmount() >= cap) {
+                return EMPTY_COMMITTED;
+            }
+            target = (int) Math.min(desired, cap);
+        }
+        if (target == current.getAmount()) {
+            return EMPTY_COMMITTED;
+        }
+        @Nullable ItemStack after = target > 0 ? ItemUtils.copyWithAmount(current, target) : null;
+        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
+    }
+
+    /**
+     * 把当前 Inventory 上已规划好的变更作为单 Inventory 事务提交.
+     *
+     * @param reason 变更原因
+     * @param planned 规划基准状态引用, 提交时用它做并发校验
+     * @param deltas 槽位变更
+     * @return 事务结果
+     */
+    private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotChange> deltas) {
+        return InventoryTransactions.commit(
+                reason,
+                List.of(new TransactionScope(this, planned, deltas)),
+                false
+        );
+    }
 
     /**
      * 按 ADD 遍历顺序把物品尽量放进 Inventory , 先合并相似物品堆, 再占用空槽.
      * 整个放入过程作为一次事务提交.
-     * <p>PreUpdateEvent 取消某个可见 Inventory 的候选方案后, 会排除该 Inventory 的物理槽并重新规划;
-     * 取消轮不会提交变更或派发 PostUpdateEvent, 最终成功方案仍只提交一次.
-     *
      * @param reason 本次修改的原因
      * @param item 要放入的物品
      * @return 放入结果, 其中 remaining 是没能放入的数量
@@ -456,39 +792,21 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
-        Set<SlotKey> rejected = new HashSet<>();
-        while (true) {
-            PlanContext context = this.openPlanForWrite();
-            // 在当前 Inventory 的规划内容上计算: 先合并相似的未满堆, 再占空槽
-            InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
-                    context.snapshot(),
-                    input,
-                    this.iterationOrder(OperationCategory.ADD),
-                    slot -> rejected.contains(this.physicalKey(slot)) ? 0 : this.slotMaxStackSize(slot)
-            );
-            if (plan.deltas().isEmpty()) {
-                TransactionResult result = rejected.isEmpty() ? EMPTY_COMMITTED : TransactionResult.Cancelled.INSTANCE;
-                return new AddResult(result, rejected.isEmpty() ? plan.remaining() : input.getAmount());
-            }
-            // 把当前 Inventory 的槽位变更按 RootInventory 分组后整体提交; 没提交成功视为一个都没放进去
-            InventoryTransactions.CommitAttempt attempt = InventoryTransactions.commitDetailed(reason, context.scoper().apply(plan.deltas()), false, rejected);
-            TransactionResult result = attempt.result();
-            if (result instanceof TransactionResult.Committed) {
-                return new AddResult(result, plan.remaining());
-            }
-            SparrowInventory cancelledBy = attempt.cancelledBy();
-            if (cancelledBy == null) {
-                return new AddResult(result, input.getAmount());
-            }
-
-            boolean progressed = false;
-            for (int slot = 0; slot < cancelledBy.size(); slot++) {
-                progressed |= rejected.add(cancelledBy.physicalKey(slot));
-            }
-            if (!progressed) {
-                return new AddResult(TransactionResult.Cancelled.INSTANCE, input.getAmount());
-            }
+        PlannedRoot basis = this.openPlanForWrite();
+        // 在规划内容上计算: 先合并相似的未满堆, 再占空槽
+        InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
+                basis.planned(),
+                input,
+                this.iterationOrder(OperationCategory.ADD),
+                this::slotMaxStackSize,
+                this.placementPredicate(input)
+        );
+        if (plan.deltas().isEmpty()) {
+            return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
+        // 整组槽位变更一次提交; 没提交成功视为一个都没放进去
+        TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
+        return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
 
     /**
@@ -506,10 +824,10 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (sample == null || upTo <= 0) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
-        PlanContext context = this.openPlanForWrite();
-        // 在当前 Inventory 的规划内容上计算: 先收未满堆, 不够再收满堆
+        PlannedRoot basis = this.openPlanForWrite();
+        // 在规划内容上计算: 先收未满堆, 不够再收满堆
         InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
-                context.snapshot(),
+                basis.planned(),
                 sample,
                 upTo,
                 this.iterationOrder(OperationCategory.COLLECT),
@@ -519,8 +837,8 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
-        // 按 RootInventory 分组整体提交; 没提交成功视为一个都没收到
-        TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
+        // 整组槽位变更一次提交; 没提交成功视为一个都没收到
+        TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new CollectResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
 
@@ -538,15 +856,88 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (upTo <= 0) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
-        PlanContext context = this.openPlanForWrite();
-        // 在当前 Inventory 的规划内容上计算要动哪些槽; matcher 由规划器在锁外逐个调用
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(context.snapshot(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
+        PlannedRoot basis = this.openPlanForWrite();
+        // 在规划内容上计算要动哪些槽; matcher 由规划器在锁外逐个调用
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
-        // 按 RootInventory 分组整体提交; 没提交成功视为一个都没移除
-        TransactionResult result = InventoryTransactions.commit(reason, context.scoper().apply(plan.deltas()), false);
+        // 整组槽位变更一次提交; 没提交成功视为一个都没移除
+        TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
+    }
+
+    /**
+     * 判断 Inventory 能否完整装下给定物品.
+     *
+     * @param item 要检查的物品
+     * @return 能完整装下时返回 {@code true}
+     */
+    public boolean mayPlace(@NotNull ItemStack item) {
+        return this.simulateAdd(item) == 0;
+    }
+
+    /**
+     * 判断 Inventory 能否按参数顺序完整装下全部物品.
+     *
+     * @param items 要检查的物品
+     * @return 全部能装下时返回 {@code true}
+     */
+    public boolean mayPlace(ItemStack @NotNull ... items) {
+        int[] remaining = this.simulateAdd(items);
+        for (int i = 0; i < remaining.length; i++) {
+            if (remaining[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断 Inventory 能否完整取出给定物品.
+     * <p>与 {@link #mayPlace(ItemStack)} 相对, {@code item} 既参与相似判断, 也提供需要取出的数量;
+     * {@link #simulateCollect(ItemStack, int)} 的样板则只管相似判断, 数量单独由 {@code upTo} 指定.
+     * <p>取出侧没有与放入规则对应的过滤, 结果只取决于 Inventory 里现有的内容.
+     *
+     * @param item 要检查的物品, 它的数量就是需要取出的数量
+     * @return 能完整取出时返回 {@code true}
+     */
+    public boolean mayPickup(@NotNull ItemStack item) {
+        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (sample == null) {
+            return true;
+        }
+        return this.simulateCollect(sample, sample.getAmount()) == sample.getAmount();
+    }
+
+    /**
+     * 判断 Inventory 能否按参数顺序完整取出全部物品.
+     * <p>多个物品共用同一份规划内容: 前面已经算作取走的部分, 后面不会再认领一次.
+     *
+     * @param items 要检查的物品, 各自的数量就是需要取出的数量
+     * @return 全部能取出时返回 {@code true}
+     */
+    public boolean mayPickup(ItemStack @NotNull ... items) {
+        @Nullable ItemStack[] working = this.openPlan().planned().clone();
+        for (int i = 0; i < items.length; i++) {
+            @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(items[i]));
+            if (sample == null) {
+                continue;
+            }
+            int required = sample.getAmount();
+            InventoryPlanner.TakePlan plan = InventoryPlanner
+                    .planCollect(working, sample, required, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize);
+            if (plan.taken() != required) {
+                return false;
+            }
+            // 把这一件取走的结果写回规划内容, 同一堆物品不会被后面的物品重复认领.
+            List<SlotChange> deltas = plan.deltas();
+            for (int j = 0; j < deltas.size(); j++) {
+                SlotChange delta = deltas.get(j);
+                working[delta.slot()] = delta.after();
+            }
+        }
+        return true;
     }
 
     /**
@@ -560,7 +951,9 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (input == null) {
             return 0;
         }
-        return InventoryPlanner.planAdd(this.openPlan().snapshot(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize).remaining();
+        return InventoryPlanner
+                .planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(input))
+                .remaining();
     }
 
     /**
@@ -580,7 +973,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
      * @return 与列表顺序一致的剩余数量数组
      */
     public int[] simulateAdd(@NotNull List<? extends ItemStack> items) {
-        @Nullable ItemStack[] working = this.openPlan().snapshot().clone();
+        @Nullable ItemStack[] working = this.openPlan().planned().clone();
         int[] remaining = new int[items.size()];
         int index = 0;
         for (ItemStack item : items) {
@@ -589,7 +982,8 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
                 index++;
                 continue;
             }
-            InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize);
+            InventoryPlanner.AddPlan plan = InventoryPlanner
+                    .planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(input));
             remaining[index] = plan.remaining();
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
@@ -613,59 +1007,35 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
         if (sample == null || upTo <= 0) {
             return 0;
         }
-        return InventoryPlanner.planCollect(this.openPlan().snapshot(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize).taken();
-    }
-
-    /**
-     * 判断 Inventory 能否完整装下给定物品.
-     *
-     * @param item 要检查的物品
-     * @return 能完整装下时返回 {@code true}
-     */
-    public boolean canHold(@NotNull ItemStack item) {
-        return this.simulateAdd(item) == 0;
-    }
-
-    /**
-     * 判断 Inventory 能否按参数顺序完整装下全部物品.
-     *
-     * @param items 要检查的物品
-     * @return 全部能装下时返回 {@code true}
-     */
-    public boolean canHold(ItemStack @NotNull ... items) {
-        int[] remaining = this.simulateAdd(items);
-        for (int i = 0; i < remaining.length; i++) {
-            if (remaining[i] != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 判断 Inventory 能否按列表顺序完整装下全部物品.
-     *
-     * @param items 要检查的物品
-     * @return 全部能装下时返回 {@code true}
-     */
-    public boolean canHold(@NotNull List<? extends ItemStack> items) {
-        int[] remaining = this.simulateAdd(items);
-        for (int i = 0; i < remaining.length; i++) {
-            if (remaining[i] != 0) {
-                return false;
-            }
-        }
-        return true;
+        return InventoryPlanner.planCollect(this.openPlan().planned(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize).taken();
     }
 
     /**
      * 让 ReferencingInventory 同步最新内容.
-     * 自己持有数据的 RootInventory 调用它没有效果;
-     * ViewInventory 会把调用转发给背后的全部 RootInventory.
+     * 自己持有数据的 Inventory 调用它没有效果;
      * ReferencingInventory 的调用方必须保证当前线程可以访问外部容器;
      * 平台拒绝访问时异常会直接传播.
      */
-    public abstract void refresh();
+    public void refresh() {
+    }
+
+    /**
+     * 为一次写规划做准备, 触发写前同步.
+     * 任何写入口在读取规划内容之前都会经过这里, simulate 等纯读路径不会触发.
+     */
+    void prepareWrite() {
+    }
+
+    /**
+     * 事务提交成功之后, post 事件派发之前, 对每个参与的 Inventory 携带其槽位变更调用一次.
+     * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
+     * 保证观察者在事件里重入写入时外部状态已经同步. 此方法抛出的异常会直接传播,
+     * 此时 Sparrow 内部状态已经提交;
+     *
+     * @param deltas 本次事务在当前 Inventory 上的槽位变更
+     */
+    void afterCommit(@NotNull List<SlotChange> deltas) {
+    }
 
     /**
      * 把 SparrowInventory 包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例.
@@ -692,15 +1062,36 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
+     * 判断当前 Inventory 有没有点击订阅者, 供派发方在无人监听时跳过事件构造.
+     */
+    boolean hasClickObservers() {
+        return this.clickEvents.subscriptionCount() != 0;
+    }
+
+    /**
      * 订阅玩家点击本 Inventory 连接槽的事件.
-     * 事件在事务规划前派发, 取消会阻止本次点击进入规划与提交.
+     * 事件在候选形成后、事务 Pre 前派发, 取消会阻止候选提交.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
      */
     @NotNull
-    public Subscription subscribeClick(@NotNull Observer<? super InventoryClickEvent> observer) {
+    public Subscription subscribeClick(@NotNull Observer<? super SparrowInventoryClickEvent> observer) {
         return this.clickEvents.subscribe(observer);
+    }
+
+    /**
+     * 向当前 Inventory 的观察者派发一次点击.
+     */
+    void publishClick(@NotNull SparrowInventoryClickEvent event) {
+        this.clickEvents.publish(event);
+    }
+
+    /**
+     * 判断当前 Inventory 有没有 Bundle 选择事件订阅者, 供派发方在无人监听时跳过事件构造.
+     */
+    boolean hasBundleSelectObservers() {
+        return this.bundleSelectEvents.subscriptionCount() != 0;
     }
 
     /**
@@ -715,13 +1106,6 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
-     * 向当前 Inventory 的观察者派发一次点击.
-     */
-    void publishClick(@NotNull InventoryClickEvent event) {
-        this.clickEvents.publish(event);
-    }
-
-    /**
      * 向当前 Inventory 的观察者派发一次 Bundle 选择.
      */
     void publishBundleSelect(@NotNull InventoryBundleSelectEvent event) {
@@ -731,7 +1115,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     /**
      * 订阅事务提交前的事件, 处理器可以取消整个事务.
      * 一笔事务对本次订阅最多通知一次. {@link InventoryPreUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory,
-     * 当前 Inventory 没有可见槽位变更时不会通知.
+     * 当前 Inventory 没有槽位变更时不会通知.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
@@ -743,8 +1127,8 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
 
     /**
      * 订阅事务提交后的事件. 一笔事务对本次订阅最多通知一次.
-     * {@link InventoryPostUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory, 没有可见槽位变更时不会通知.
-     * 连续修改同一个 RootInventory 时, 事件顺序与事务提交顺序一致.
+     * {@link InventoryPostUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory, 没有槽位变更时不会通知.
+     * 连续修改同一个 Inventory 时, 事件顺序与事务提交顺序一致.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
@@ -755,41 +1139,15 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
-     * 打开纯读用途的规划上下文: 给 simulate 这类零副作用的路径使用;
+     * 订阅视觉映射变更通知, 载荷为受影响的槽位序号, {@link #ALL_SLOTS} 表示全部槽位.
+     * 显示端收到通知后应重新渲染对应槽位; 通知可能来自任意调用配置方法的线程.
      *
-     * @return 规划上下文
+     * @param observer 通知处理器
+     * @return 订阅凭证, 关闭后不再接收通知
      */
     @NotNull
-    abstract PlanContext openPlan();
-
-    /**
-     * 打开写路径的规划上下文: 在读取规划内容之前, 先让每个参与的 RootInventory 做一次写前准备.
-     * (ReferencingInventory 在这个方法完成外部内容同步).
-     *
-     * @return 规划上下文
-     */
-    @NotNull
-    abstract PlanContext openPlanForWrite();
-
-    /**
-     * 返回当前 Inventory 与 RootInventory 之间的槽位关系, 第一次调用时计算.
-     *
-     * @return 当前 Inventory 的槽位映射
-     */
-    @NotNull
-    final InventoryTopology topology() {
-        InventoryTopology topology = this.topology;
-        if (topology == null) {
-            synchronized (this) {
-                // 再检查一次, 避免两个线程同时计算相同的槽位关系.
-                topology = this.topology;
-                if (topology == null) {
-                    topology = InventoryTopology.compile(this);
-                    this.topology = topology;
-                }
-            }
-        }
-        return topology;
+    public Subscription subscribeVisualInvalidation(@NotNull Observer<? super Integer> observer) {
+        return this.visualInvalidations.subscribe(observer);
     }
 
     /**
@@ -804,7 +1162,7 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
             synchronized (this) {
                 channel = this.updateChannel;
                 if (channel == null) {
-                    channel = new InventoryUpdateChannel(this, this.topology());
+                    channel = new InventoryUpdateChannel(this);
                     this.updateChannel = channel;
                 }
             }
@@ -813,15 +1171,83 @@ public abstract sealed class SparrowInventory permits RootInventory, ViewInvento
     }
 
     /**
-     * 一次批量规划的上下文, 包含当前 Inventory 的规划内容和把槽位变更换算成各 RootInventory 写集的函数.
+     * 返回当前 Inventory 已经创建的事务订阅器, 不触发创建.
+     * <p>事务引擎用它找出本笔事务要通知谁: 从未订阅过的 Inventory 不需要为它建一个空订阅器.
      *
-     * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽位置为 {@code null}
-     * @param scoper 把当前 Inventory 的槽位变更拆成各 RootInventory 写集的函数
+     * @return 事务订阅器; 从未订阅过时为 {@code null}
      */
-    record PlanContext(
-            @Nullable ItemStack @NotNull [] snapshot,
-            @NotNull Function<List<SlotChange>, List<TransactionScope>> scoper
-    ) {
+    @Nullable
+    InventoryUpdateChannel updateChannelIfPresent() {
+        return this.updateChannel;
     }
 
+    /**
+     * 打开纯读用途的规划基准: 给 simulate 这类零副作用的路径使用.
+     *
+     * @return 本次规划读到的状态版本
+     */
+    @NotNull
+    PlannedRoot openPlan() {
+        return new PlannedRoot(this, this.currentState());
+    }
+
+    /**
+     * 打开写路径的规划基准: 在读取规划内容之前先做一次写前准备.
+     * (ReferencingInventory 在这个方法完成外部内容同步).
+     *
+     * @return 本次规划读到的状态版本
+     */
+    @NotNull
+    PlannedRoot openPlanForWrite() {
+        this.prepareWrite();
+        return this.openPlan();
+    }
+
+    /**
+     * 本 Inventory 的锁序号, 跨 Inventory 事务按它确定加锁顺序.
+     *
+     * @return 锁序号
+     */
+    long lockOrder() {
+        return this.lockOrder;
+    }
+
+    /**
+     * 本 Inventory 的写锁, 由事务引擎使用.
+     *
+     * @return 写锁
+     */
+    @NotNull
+    ReentrantLock writeLock() {
+        return this.writeLock;
+    }
+
+    /**
+     * 返回当前内部状态版本的引用本身:
+     * 规划以它为基准, 提交时比对它有没有被换掉, 以此发现并发冲突.
+     *
+     * @return 当前内部状态版本引用
+     */
+    @Nullable
+    ItemStack @NotNull [] currentState() {
+        return this.state;
+    }
+
+    /**
+     * 把当前内部状态版本换成新数组, 只允许在持有写锁时调用.
+     *
+     * @param newState 新的内部状态版本
+     */
+    void swapState(@Nullable ItemStack @NotNull [] newState) {
+        this.state = newState;
+    }
+
+    /**
+     * 一次规划实际读取的 Inventory 状态版本, 用于候选提交前确认所有规划依据仍然有效.
+     */
+    record PlannedRoot(
+            @NotNull SparrowInventory inventory,
+            @Nullable ItemStack @NotNull [] planned
+    ) {
+    }
 }

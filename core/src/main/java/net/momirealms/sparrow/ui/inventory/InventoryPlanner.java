@@ -27,10 +27,11 @@ final class InventoryPlanner {
      * @param item 要放入的物品
      * @param order 槽位遍历顺序
      * @param slotLimit 各槽位的堆叠上限
+     * @param includedSlot 槽位过滤器, 只会对结构上能接收物品的槽位调用
      * @return 放入方案与放不下的余量
      */
     @NotNull
-    static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit) {
+    static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
         List<SlotChange> deltas = new ArrayList<>();
         int remaining = item.getAmount();
 
@@ -42,7 +43,7 @@ final class InventoryPlanner {
                 continue;
             }
             int space = effectiveMaxStackSize(slotLimit, slot, current) - current.getAmount();
-            if (space <= 0) {
+            if (space <= 0 || !includedSlot.test(slot)) {
                 continue;
             }
             int moved = Math.min(space, remaining);
@@ -56,10 +57,11 @@ final class InventoryPlanner {
             if (snapshot[slot] != null) {
                 continue;
             }
-            int moved = Math.min(effectiveMaxStackSize(slotLimit, slot, item), remaining);
-            if (moved <= 0) {
+            int capacity = effectiveMaxStackSize(slotLimit, slot, item);
+            if (capacity <= 0 || !includedSlot.test(slot)) {
                 continue;
             }
+            int moved = Math.min(capacity, remaining);
             deltas.add(new SlotChange(slot, null, ItemUtils.copyWithAmount(item, moved)));
             remaining -= moved;
         }

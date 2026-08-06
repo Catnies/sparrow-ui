@@ -4,7 +4,6 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemSta
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsMutableProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -28,10 +27,10 @@ final class ClickSlotRules {
         if (cursor.isEmpty()) {
             return current == null ? null : new Outcome(null, current);
         }
-        if (current != null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+        if (current != null && ClickActions.isBundle(cursor)) {
             return computeInsertionIntoCursorBundle(current, cursor);
         }
-        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
+        if (ClickActions.isBundle(current)) {
             return computeBundleInsertion(current, cursor);
         }
         if (current == null) {
@@ -61,10 +60,10 @@ final class ClickSlotRules {
             @Nullable ItemStack observedBundle,
             int selectedIndex
     ) {
-        if (current == null && ItemUtils.isType(cursor, ItemsProxy.BUNDLE)) {
+        if (current == null && ClickActions.isBundle(cursor)) {
             return computeExtractionFromCursorBundle(cursor, slotLimit);
         }
-        if (ItemUtils.isType(current, ItemsProxy.BUNDLE)) {
+        if (ClickActions.isBundle(current)) {
             if (!cursor.isEmpty()) {
                 return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
             }
@@ -187,7 +186,7 @@ final class ClickSlotRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new Outcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter);
+        return new Outcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter, taken);
     }
 
     // 使用原版 BundleContents 规则把光标物品尽量插入 Bundle.
@@ -239,7 +238,13 @@ final class ClickSlotRules {
         return left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty();
     }
 
-    // 槽位与光标的点击结果.
-    record Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter) {
+    // 槽位与光标的点击结果. placementInput 是这次真正被放进槽位的物品, 只有从收纳袋里掏东西时才与
+    // 光标本身不同: 光标拿着袋子, 落进槽位的却是袋子里的某一件, 槽级放入规则要检查的是后者.
+    record Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter, @Nullable ItemStack placementInput) {
+
+        // 放入物就是光标本身的常规结果, 由调用方自己从光标取值.
+        Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter) {
+            this(slotAfter, cursorAfter, null);
+        }
     }
 }

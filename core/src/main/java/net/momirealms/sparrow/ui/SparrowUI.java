@@ -13,13 +13,17 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 public class SparrowUI implements Listener {
+    private static final String WARNINGS_PROPERTY = "sparrow.ui.warnings";
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
     private WindowManager windowManager;
     private boolean fireBukkitInventoryEvents = true;
+    private boolean warningsEnabled = Boolean.parseBoolean(System.getProperty(WARNINGS_PROPERTY, "true"));
+    private Consumer<? super String> warningHandler = msg -> this.getPlugin().getComponentLogger().warn(msg);
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
     private final List<Runnable> disableHandlers = new ArrayList<>();
 
@@ -117,6 +121,49 @@ public class SparrowUI implements Listener {
                 Objects.requireNonNull(message, "message"),
                 Objects.requireNonNull(throwable, "throwable")
         );
+    }
+
+    /**
+     * 是否报告 UI 用法警告.
+     * <p>默认开启, 可以用 JVM 参数 {@code -Dsparrow.ui.warnings=false} 改掉默认值.
+     * 只有值恰好是 {@code true}(忽略大小写)才算开启.
+     *
+     * @return 是否报告 UI 用法警告
+     */
+    public boolean warningsEnabled() {
+        return this.warningsEnabled;
+    }
+
+    /**
+     * 设置是否报告 UI 用法警告.
+     *
+     * @param warningsEnabled 是否报告 UI 用法警告
+     */
+    public void setWarningsEnabled(boolean warningsEnabled) {
+        this.warningsEnabled = warningsEnabled;
+    }
+
+    /**
+     * 设置用于处理 UI 用法警告的处理器.
+     *
+     * @param warningHandler 新的警告处理器
+     */
+    public void setWarningHandler(Consumer<? super String> warningHandler) {
+        this.warningHandler = Objects.requireNonNull(warningHandler, "warningHandler");
+    }
+
+    /**
+     * 报告一条 UI 用法警告.
+     * <p>用于那些不会抛异常, 但插件作者多半想不到的行为, 例如交互在提交前被整体丢弃.
+     * 这类问题在被发现时肇事者早已返回, 堆栈没有价值, 所以只带一段说明文本.
+     * <p>{@link #warningsEnabled()} 关闭时本方法什么都不做.
+     *
+     * @param message 警告内容
+     */
+    public void warn(String message) {
+        if (this.warningsEnabled) {
+            this.warningHandler.accept(Objects.requireNonNull(message, "message"));
+        }
     }
 
     /**

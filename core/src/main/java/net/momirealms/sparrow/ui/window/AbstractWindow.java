@@ -6,6 +6,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.click.ItemDragClick;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -13,6 +14,7 @@ import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
+import net.momirealms.sparrow.ui.inventory.InteractionEdits;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
@@ -21,6 +23,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsPr
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.*;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -34,6 +37,7 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -79,6 +83,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final Player viewer;
     private final WindowLayout layout;
     private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
+    private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
@@ -448,6 +453,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
+    public ItemStack displayedAt(int windowSlot) {
+        ItemStack[] localSlots = this.localSlots;
+        if (localSlots == null || windowSlot < 0 || windowSlot >= localSlots.length) {
+            return ItemStack.empty();
+        }
+        ItemStack displayed = localSlots[windowSlot];
+        return displayed == null ? ItemStack.empty() : displayed.clone();
+    }
+
+    @NotNull
+    @Override
     public Player viewer() {
         return this.viewer;
     }
@@ -621,7 +637,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
-        // 刷新连接的 Inventory: ReferencingInventory 把 Bukkit 容器变更同步进 Bukkit 内容镜像并生成 External 事件, 其他 RootInventory 不处理.
+        // 刷新连接的 Inventory: ReferencingInventory 把 Bukkit 容器变更同步进镜像并生成 External 事件, 其他 Inventory 不处理.
         // 因为刷新不是点击语义, 所以 GUI 冻结槽和 Window 虚拟槽位连接的 Inventory 也要同步.
         this.refreshLinkedInventories(this.paths);
         // 标脏刷新周期到了的显示路径.
@@ -678,63 +694,54 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理一次已经解释好的单击: 先过 Bukkit 事件, 再复核交互是否被取消, 最后分发.
-     * <p>Inventory 槽位交给点击语义引擎走事务; Item 和空槽位按普通 Item 点击分发.
+     * 处理一次已经解释好的单击: Inventory 槽位先形成精确候选, 再依次派发 Bukkit 和 Sparrow 事件并提交.
+     * <p>无论是否算出候选, 每一次点击都会派发一次 Bukkit 事件; Item 和空槽位仍按原有顺序先过 Bukkit 事件再分派.
      * 语义动过的槽位已经标脏, 客户端预测会在同一 tick 的 flush 中被服务端渲染结果纠正.
      *
      * @param click 解释好的单击
      * @param menu 当前菜单
      */
     private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
-        long interactionGeneration = this.generation;
-        int interactionStateId = menu.stateId();
-        // 先过 Bukkit 桥接, 插件可能会拦截这次点击
-        InventoryAction action = ClickSemantics.estimateInventoryAction(this.semanticsContext, click.clickType(), click.hotbarButton(), click.rawSlot());
-        if (!this.manager.bukkitBridge().allowClick(this, click, action)) {
-            return;
-        }
-        // 桥接的事件处理器可能已经关了或重开了 Window, 复核交互还有效
-        if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
-            return;
-        }
+        ClickGuard guard = new ClickGuard(menu, click);
         int rawSlot = click.rawSlot();
         if (rawSlot != InventoryView.OUTSIDE) {
             DisplayedSlotPath path = this.requirePath(rawSlot);
-            SlotElement.InventoryLink inventoryLink = path.inventoryLink();
-            if (inventoryLink != null && !path.frozen()) {
-                InventoryAction currentAction = ClickSemantics.estimateInventoryAction(this.semanticsContext, click.clickType(), click.hotbarButton(), rawSlot);
-                boolean allowed = ClickSemantics.dispatchClickEvent(
-                        inventoryLink.inventory(),
-                        inventoryLink.slot(),
-                        this.viewer,
-                        click.clickType(),
-                        click.hotbarButton(),
-                        currentAction
-                );
-                if (!allowed) {
-                    this.forceFull = true;
-                    return;
-                }
-                if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
-                    return;
-                }
-            }
             // Inventory 槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
             BundleSelectionState bundleSelection = this.bundleSelections[rawSlot];
-            if (!ClickSemantics.handleClick(
+            boolean handled = ClickSemantics.handleClick(
                     this.semanticsContext,
                     click.clickType(),
                     click.hotbarButton(),
                     rawSlot,
                     bundleSelection == null ? null : bundleSelection.observedBundle(),
                     bundleSelection == null ? -1 : bundleSelection.selectedIndex(),
-                    () -> this.bundleSelections[rawSlot] = null
-            )) {
-                path.handleClick(new ItemClick(click.clickType(), this.viewer, this, menu.cursor(), rawSlot, click.hotbarButton()));
+                    () -> this.bundleSelections[rawSlot] = null,
+                    guard
+            );
+            if (handled) return;
+
+            InventoryAction action = ClickSemantics.estimateInventoryAction(
+                    this.semanticsContext,
+                    click.clickType(),
+                    click.hotbarButton(),
+                    rawSlot
+            );
+            if (!guard.refreshEventView() || !this.manager.bukkitBridge().allowClick(this, click, action) || !guard.stillValid()) {
+                return;
             }
+            path.handleClick(new ItemClick(click.clickType(), this.viewer, this, menu.cursor(), rawSlot, click.hotbarButton()));
             return;
         }
 
+        InventoryAction action = ClickSemantics.estimateInventoryAction(
+                this.semanticsContext,
+                click.clickType(),
+                click.hotbarButton(),
+                rawSlot
+        );
+        if (!guard.refreshEventView() || !this.manager.bukkitBridge().allowClick(this, click, action) || !guard.stillValid()) {
+            return;
+        }
         // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
         WindowOutsideClick event = new WindowOutsideClick(this.viewer, this, click.clickType(), menu.cursor(), click.hotbarButton());
         this.outsideClickHandlers.forEachIsolated(
@@ -742,31 +749,70 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 "Failed to handle Window outside click",
                 this.manager::report
         );
-        if (event.isCancelled() || !this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
+        if (event.isCancelled() || !guard.stillValid()) {
             return;
         }
         ClickSemantics.handleOutsideClick(this.semanticsContext, click.clickType());
     }
 
     /**
-     * 处理一次完成的 QUICK_CRAFT 拖拽: 先过 Bukkit 事件, 复核后按拖拽规则分配.
-     * <p>参与的 Inventory 槽位构成一个事务, Item 槽位不参与分配.
+     * 处理一次完成的 QUICK_CRAFT 拖拽: 先规划并按放入规则过滤, 再把真实分配候选交给 Bukkit 事件,
+     * 最后把手势本身通知给途经的每个 Item.
+     * <p>未取消时, 参与的 Inventory 槽位构成一个事务; Item 槽位不参与分配.
+     * <p>Item 通知只看手势成不成立: 引擎是否接管, 分配是否被放入规则全部过滤, Bukkit 事件是否被取消, 都不影响它.
      *
      * @param drag 解释好的拖拽
      * @param menu 当前菜单
      */
     private void handleDrag(ClickInterpreter.Result.Drag drag, MenuHandle menu) {
-        long interactionGeneration = this.generation;
-        int interactionStateId = menu.stateId();
-        // 先过 Bukkit 桥接
-        if (!this.manager.bukkitBridge().allowDrag(this, drag.clickType(), drag.slots())) {
+        // 引擎会提交事务并扣减光标, 手势光标必须在它之前快照
+        ItemStack cursor = menu.cursor();
+        ClickSemantics.handleDrag(
+                this.semanticsContext,
+                drag.clickType(),
+                drag.slots(),
+                new DragGuard(menu, drag.clickType())
+        );
+        this.dispatchItemDragClick(drag, cursor);
+    }
+
+    // 把拖拽手势通知给途经的每个 Item. 手势本身不成立时不打扰 Item: 空光标没有东西可分发,
+    // 非创造模式的中键拖拽在原版语义里不存在. 两个条件与 ClickPlanner 判定拖拽候选时一致.
+    private void dispatchItemDragClick(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
+        if (cursor.isEmpty() || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
             return;
         }
-        // 复核交互仍然有效
-        if (!this.isInteractionCurrent(interactionGeneration, menu, interactionStateId)) {
+
+        List<Integer> windowSlots = drag.slots();
+        List<ItemDragClick.Stop> path = new ArrayList<>(windowSlots.size());
+        for (int index = 0; index < windowSlots.size(); index++) {
+            int windowSlot = windowSlots.get(index);
+            path.add(new ItemDragClick.Stop(windowSlot, this.requirePath(windowSlot).kind()));
+        }
+        for (int index = 0; index < path.size(); index++) {
+            ItemDragClick.Stop stop = path.get(index);
+            if (stop.kind() != ItemDragClick.Kind.ITEM) {
+                continue;
+            }
+            this.requirePath(stop.windowSlot()).handleDrag(
+                    new ItemDragClick(drag.clickType(), this.viewer, this, cursor, stop.windowSlot(), path)
+            );
+        }
+    }
+
+    // 让同一 tick 的下一个 Bukkit 事件看见刚提交的服务端渲染结果, 而不是上一个监听器改过的 Bukkit 事件状态副本.
+    private void resetBukkitEventView(MenuHandle menu) {
+        DisplayedSlotPath[] paths = this.paths;
+        ItemStack[] localSlots = this.localSlots;
+        if (paths == null || localSlots == null) {
             return;
         }
-        ClickSemantics.handleDrag(this.semanticsContext, drag.clickType(), drag.slots());
+        BitSet pending;
+        synchronized (this.dirtyLock) {
+            pending = (BitSet) this.dirtySlots.clone();
+        }
+        this.renderDirtySlots(pending, paths, localSlots);
+        menu.resetBukkitEventView(this.protocolSlots(localSlots), menu.cursor());
     }
 
     /**
@@ -823,7 +869,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
         ItemStack bundle = localSlots[rawSlot];
-        if (!ItemUtils.isType(bundle, ItemsProxy.BUNDLE)) {
+        // 空槽必然不是收纳袋, 先挡掉再查 NMS 物品类型
+        if (ItemUtils.isNullOrEmpty(bundle) || !ItemUtils.isType(bundle, ItemsProxy.BUNDLE)) {
             this.bundleSelections[rawSlot] = null;
             return;
         }
@@ -896,20 +943,50 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 确认过完 Bukkit 桥接后这次交互还有效.
-     * 事件处理器可能已经把 Window 关了或重开了: generation, 菜单实例, state id 任何一个变了,
-     * 这次交互就作废.
+     * 确认候选经过事件或 Pre 后仍属于当前交互.
+     * 处理器可能已经关闭或重开 Window, 改变菜单状态, 或替换任一协议槽位的 InventoryLink / 冻结语义;
+     * 任一条件变化都会让旧候选作废, 不重新规划.
      *
      * @param interactionGeneration 交互开始时的 generation
      * @param interactionMenu 交互开始时的菜单
      * @param interactionStateId 交互开始时的 state id
+     * @param interactionPathRevision 交互开始时的路径语义版本
      * @return 交互仍然有效时返回 true
      */
-    private boolean isInteractionCurrent(long interactionGeneration, MenuHandle interactionMenu, int interactionStateId) {
+    private boolean isInteractionCurrent(
+            long interactionGeneration,
+            MenuHandle interactionMenu,
+            int interactionStateId,
+            long interactionPathRevision
+    ) {
+        if (!(this.open
+                && this.generation == interactionGeneration
+                && this.menuHandle == interactionMenu
+                && interactionMenu.stateId() == interactionStateId)) {
+            return false;
+        }
+        if (this.interactionPathRevision.get() != interactionPathRevision) {
+            return false;
+        }
+        DisplayedSlotPath[] paths = this.paths;
+        if (paths == null) {
+            return false;
+        }
+        // 强制处理每条路径攒下的 GUI 结构变化, 让下面的复核看到最新的交互终点与冻结语义.
+        // 没有待处理变化的路径只是读一次自己的状态, 不会重新解析.
+        for (int windowSlot = 0; windowSlot < this.layout.protocolSize(); windowSlot++) {
+            paths[windowSlot].refreshInteractionState();
+        }
         return this.open
                 && this.generation == interactionGeneration
                 && this.menuHandle == interactionMenu
-                && interactionMenu.stateId() == interactionStateId;
+                && interactionMenu.stateId() == interactionStateId
+                && this.interactionPathRevision.get() == interactionPathRevision;
+    }
+
+    // DisplayedSlotPath 在重新解析后发现 InventoryLink 终点或冻结语义改变时调用.
+    void notifyInteractionPathChanged() {
+        this.interactionPathRevision.incrementAndGet();
     }
 
     /**
@@ -1320,6 +1397,26 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return AbstractWindow.this.requirePath(windowSlot).frozen();
         }
 
+        // 当场渲染而不是读本地快照: 双击的两个包可能落在同一 tick 里, 那时快照还停在第一个包之前的样子.
+        @Override
+        public boolean displayedEmptyAt(int windowSlot) {
+            DisplayedSlotPath[] paths = AbstractWindow.this.paths;
+            if (paths == null || windowSlot < 0 || windowSlot >= paths.length) {
+                return true;
+            }
+            @Nullable DisplayedSlotPath path = paths[windowSlot];
+            if (path == null) {
+                return true;
+            }
+            try {
+                return path.render().isEmpty();
+            } catch (Throwable throwable) {
+                // 读不出这一格显示什么就当它有东西: 收集的前提是玩家看到一格空位, 存疑时不放行.
+                AbstractWindow.this.manager.report("Failed to render Window slot " + windowSlot, throwable);
+                return false;
+            }
+        }
+
         @Override
         @Nullable
         public ClickSemantics.LinkedSlot hotbarLink(int hotbarButton) {
@@ -1373,6 +1470,127 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         @Override
         public void markDirty(int windowSlot) {
             AbstractWindow.this.notifyUpdate(windowSlot);
+        }
+    }
+
+    /**
+     * 一次交互开始时的 Window 状态快照.
+     * 语义引擎在每次派发前后都会调用 {@link #stillValid()}, 子类只负责派发事件本身.
+     */
+    private abstract class InteractionGuard implements ClickSemantics.InteractionGate {
+        private final MenuHandle menu;
+        private final long generation;
+        private final int stateId;
+        private final long pathRevision;
+
+        InteractionGuard(MenuHandle menu) {
+            this.menu = menu;
+            this.generation = AbstractWindow.this.generation;
+            this.stateId = menu.stateId();
+            this.pathRevision = AbstractWindow.this.interactionPathRevision.get();
+        }
+
+        @Override
+        public boolean stillValid() {
+            return AbstractWindow.this.isInteractionCurrent(this.generation, this.menu, this.stateId, this.pathRevision);
+        }
+
+        // 派发 Bukkit 事件前先让 Bukkit 事件状态副本对齐服务端渲染结果; 渲染本身可能跑用户代码, 之后要重新复核.
+        boolean refreshEventView() {
+            AbstractWindow.this.resetBukkitEventView(this.menu);
+            return this.stillValid();
+        }
+
+        // 取走事件写进 Bukkit 事件状态副本的光标和槽位并合并进草稿. 这些写入会被下一次 refreshEventView 覆盖, 事件一返回就得取.
+        void drainEventEdits(InteractionEdits edits) {
+            ItemStack cursor = this.menu.takeBukkitEventCursor();
+            if (cursor != null) {
+                edits.cursor(cursor);
+            }
+            BitSet touched = new BitSet();
+            this.menu.drainBukkitEventSlots(touched);
+            if (touched.isEmpty()) {
+                return;
+            }
+            InventoryView view = this.menu.view();
+            for (int rawSlot = touched.nextSetBit(0); rawSlot >= 0; rawSlot = touched.nextSetBit(rawSlot + 1)) {
+                // 写不进事务的槽位(Item 槽, 冻结槽, 或者本次交互没有写集草稿)只能靠全量重发纠正客户端.
+                if (!edits.slot(rawSlot, view.getItem(rawSlot))) {
+                    AbstractWindow.this.forceFull = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * 单击的交互闸门: 先派发 Bukkit 点击事件, 再派发被直接连接 Inventory 的点击事件.
+     */
+    private final class ClickGuard extends InteractionGuard {
+        private final ClickInterpreter.Result.SingleClick click;
+
+        ClickGuard(MenuHandle menu, ClickInterpreter.Result.SingleClick click) {
+            super(menu);
+            this.click = click;
+        }
+
+        @Override
+        public boolean allowClick(@NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+            if (!this.refreshEventView()) {
+                return false;
+            }
+            boolean allowed = AbstractWindow.this.manager.bukkitBridge().allowClick(AbstractWindow.this, this.click, action);
+            // 取消与否都要把 Bukkit 事件状态副本的写入记录清空, 否则这些写入会被下一个事件误当成自己的.
+            // 取消时它们不会被提交: 引擎见到 false 就整体放弃, 攒下的草稿一并作废.
+            this.drainEventEdits(edits);
+            if (!allowed) {
+                AbstractWindow.this.forceFull = true;
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public boolean allowInventoryClick(@NotNull ClickSemantics.LinkedSlot link, @NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+            boolean allowed = ClickSemantics.dispatchClickEvent(
+                    link.inventory(),
+                    link.slot(),
+                    AbstractWindow.this.viewer,
+                    this.click.clickType(),
+                    this.click.hotbarButton(),
+                    action,
+                    edits
+            );
+            if (!allowed) {
+                AbstractWindow.this.forceFull = true;
+            }
+            return allowed;
+        }
+    }
+
+    /**
+     * 拖拽的交互闸门: 只派发 Bukkit 拖拽事件, 拖拽候选没有单一事件目标.
+     */
+    private final class DragGuard extends InteractionGuard {
+        private final ClickType clickType;
+
+        DragGuard(MenuHandle menu, ClickType clickType) {
+            super(menu);
+            this.clickType = clickType;
+        }
+
+        @Override
+        public boolean allowDrag(@NotNull ItemStack newCursor, @NotNull Map<Integer, ItemStack> newItems, @NotNull InteractionEdits edits) {
+            if (!this.refreshEventView()) {
+                return false;
+            }
+            boolean allowed = AbstractWindow.this.manager.bukkitBridge().allowDrag(AbstractWindow.this, this.clickType, newCursor, newItems, edits);
+            // 监听器也可能绕开事件自己的 setCursor, 直接写 InventoryView; 那份写入后到, 覆盖事件回传值.
+            this.drainEventEdits(edits);
+            if (!allowed) {
+                AbstractWindow.this.forceFull = true;
+                return false;
+            }
+            return true;
         }
     }
 

@@ -65,6 +65,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private @Nullable PacketListener.Session session;       // 当前入站捕获会话, 打开前和关闭后为空
     private Object actualCarried = ItemStackProxy.EMPTY;    // NMS ItemStack, 代理菜单实际持有的光标
     private boolean predictedCarried;   // 客户端预测是否要求重新核对光标
+    private boolean externalCarried;    // 外部直接写过菜单光标, 它多半自带一个协议包会改掉客户端显示
     private boolean offHandDirty;       // 客户端 F 键预测要求无条件重发服务端副手物品
     private boolean cursorClaimed;      // 来源菜单的实际光标是否已经被清空
     private Lifecycle lifecycle = Lifecycle.CREATED; // 菜单会话的生命周期状态
@@ -263,6 +264,40 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     /**
      * {@inheritDoc}
      *
+     * <p>与后面两个取回方法不同, 这里会检查菜单是否已经提交: 重置的是下一次事件要读的 Bukkit 事件状态副本,
+     * 菜单都没了就不该再往里写.
+     */
+    @Override
+    public void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
+        this.checkCommitted();
+        this.checkSlotCount(slots);
+        this.view.resetForEvent(slots, cursor);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>只读取 Bukkit 事件状态副本, 不检查菜单是否已经提交: 监听器完全可以在事件里关掉 Window, 那份写入照样要取回来.
+     */
+    @Override
+    @Nullable
+    public ItemStack takeBukkitEventCursor() {
+        return this.view.takeEventCursor();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>同样只读取 Bukkit 事件状态副本, 不检查菜单是否已经提交.
+     */
+    @Override
+    public void drainBukkitEventSlots(@NotNull BitSet destination) {
+        this.view.drainEventTouchedSlots(destination);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * <p>客户端没有单独更新标题的包, 只能重发 OpenScreen 加完整内容.
      */
     @Override
@@ -440,9 +475,13 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return this.actualCarried;
     }
 
+    // 只从代理菜单的 setCarried 覆盖进来, 也就是只有外部 NMS/CraftBukkit 调用会走到这里.
+    // HumanEntity#setItemOnCursor 这类写法在写完之后会自己发一个光标包, 把客户端显示改成实际光标 ——
+    // 而 Window 展示的可能是另一份视觉光标. 标记下来, 让本轮同步重新核对一次, 否则这次错位会一直留着.
     @Override
     public void carried(Object item) {
         this.actualCarried = item;
+        this.externalCarried = true;
     }
 
     @Override
@@ -543,6 +582,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         // 预测, 强制重发等标记随客户端已知状态的全量更新清零
         this.predictedSlots.clear();
         this.predictedCarried = false;
+        this.externalCarried = false;
         this.offHandDirty = false;
         this.forcedSlots.clear();
         this.commitPackets();
@@ -609,8 +649,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 sentOffHand = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
             }
 
-            // 光标: 明确脏了, 被客户端预测过或被 Bukkit 事件状态副本碰过才核对
-            boolean checkCursor = cursorDirty || this.predictedCarried || viewCursorTouched;
+            // 光标: 明确脏了, 被客户端预测过, 被外部直接写过或被 Bukkit 事件状态副本碰过才核对
+            boolean checkCursor = cursorDirty || this.predictedCarried || this.externalCarried || viewCursorTouched;
             boolean cursorChanged = false;
             Object sentVisualCursor = ItemStackProxy.EMPTY; // NMS ItemStack
             if (checkCursor) {
@@ -651,6 +691,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             // 预测已消化; 强制标记只保留本轮没发出去的
             this.predictedSlots.clear();
             this.predictedCarried = false;
+            this.externalCarried = false;
             this.forcedSlots.andNot(changedSlots);
             this.commitPackets();
         } finally {

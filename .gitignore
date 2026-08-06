@@ -42,5 +42,8 @@ bin/
 ### Mac OS ###
 .DS_Store
 /buildSrc/settings.gradle.kts
+
+### Custom ###
 /.agent/
 /docs/
+/plugin/
