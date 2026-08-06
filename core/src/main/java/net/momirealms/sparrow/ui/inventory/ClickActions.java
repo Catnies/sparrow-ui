@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.tags.ItemTagsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -88,13 +89,14 @@ final class ClickActions {
 
     /**
      * 判断物品是不是收纳袋. 点击语义里所有的收纳袋判定都走这里.
-     * <p>空槽和空光标必然不是收纳袋, 先挡掉再取 {@link ItemsProxy#BUNDLE}:
-     * NMS 物品类型是方法实参, 不先短路就会在每一次普通点击上都解析一遍收纳袋物品类型.
+     * <p>家族判定走 NMS 物品标签 {@code #minecraft:bundles}, 彩色收纳袋与数据包扩展同样命中,
+     * 袋内数据仍由深层分支按 BUNDLE_CONTENTS 组件读取.
+     * 空槽和空光标必然不是收纳袋, 先挡掉再解析 NMS, 普通空点击不触碰代理.
      *
      * @param item 待判定的物品, 空槽传 {@code null}
      * @return 是收纳袋时返回 {@code true}
      */
     static boolean isBundle(@Nullable ItemStack item) {
-        return !ItemUtils.isNullOrEmpty(item) && ItemUtils.isType(item, ItemsProxy.BUNDLE);
+        return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
     }
 }

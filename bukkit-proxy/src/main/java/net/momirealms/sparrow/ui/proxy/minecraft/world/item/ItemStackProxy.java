@@ -48,6 +48,9 @@ public interface ItemStackProxy {
     @MethodInvoker(name = "typeHolder", activeIf = "min_version=26.1")
     Object typeHolder(Object target);
 
+    @MethodInvoker(name = "is")
+    boolean is(Object target, @Type(name = "net.minecraft.tags.TagKey") Object tag);
+
     @MethodInvoker(name = "transmuteCopy")
     Object transmuteCopy(Object target, @Type(name = "net.minecraft.world.level.ItemLike") Object item);
 

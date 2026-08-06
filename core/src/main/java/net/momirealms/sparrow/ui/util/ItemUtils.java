@@ -62,6 +62,11 @@ public final class ItemUtils {
         return a != null && b != null && a.isSimilar(b);
     }
 
+    // 判断两个物品是否表示同一份内容, 空物品与 null 视为相同.
+    public static boolean isContentEqual(@Nullable ItemStack a, @Nullable ItemStack b) {
+        return isNullOrEmpty(a) ? isNullOrEmpty(b) : a.equals(b);
+    }
+
     public static boolean isType(@Nullable ItemStack itemStack, @NotNull Object item) {
         return !isNullOrEmpty(itemStack) && ItemStackProxy.INSTANCE.getItem(ItemUtils.getItemStackHandle(itemStack)) == item;
     }

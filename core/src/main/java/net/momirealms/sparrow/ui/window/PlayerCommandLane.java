@@ -101,7 +101,10 @@ final class PlayerCommandLane {
             this.drain();
         } else if (schedule) {
             try {
-                this.scheduler.entity().run(this.player, this::runScheduled, this::retire);
+                // Paper 对已退役实体的调度直接返回 null, run 与 retired 回调都不会被调用, 拒绝必须由提交方转成注销.
+                if (this.scheduler.entity().run(this.player, this::runScheduled, this::retire) == null) {
+                    this.retire();
+                }
             } catch (Throwable throwable) {
                 this.fail(throwable);
             }
