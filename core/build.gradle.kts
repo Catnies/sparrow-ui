@@ -3,9 +3,6 @@ plugins {
     id("common-conventions")
 }
 
-// 与远程仓库的快照坐标一致, publishToMavenLocal 后可被本地项目优先解析
-version = "beta.5-SNAPSHOT"
-
 dependencies {
     compileOnly(project(":bukkit-proxy"))
     compileOnly(libs.datafixerupper)

@@ -353,7 +353,7 @@ public interface Window {
             return null;
         }
         // 默认 lower 由首槽标识; 只有需要区分同形自定义 GUI 时才记录构建来源.
-        return lowerGui.element(0) instanceof SlotElement.InventoryLink(ReferencingInventory inventory, int slot, var ignoredBackground) && slot == 0
+        return lowerGui.element(0) instanceof SlotElement.InventoryLink(ReferencingInventory inventory, int slot) && slot == 0
                 ? inventory
                 : null;
     }

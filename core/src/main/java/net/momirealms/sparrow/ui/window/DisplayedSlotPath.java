@@ -120,15 +120,11 @@ final class DisplayedSlotPath implements AutoCloseable {
     @NotNull ItemStack render() {
         PathState state = this.currentState();
 
-        // InventoryLink: Inventory 当前内容优先, 空槽依次回退到连接自带占位物品与背景; itemAt 返回的副本归本槽渲染独占
+        // InventoryLink: Inventory 当前内容优先, 空槽回退背景; itemAt 返回的副本归本槽渲染独占
         if (state.inventoryLink != null) {
             ItemStack stack = state.inventoryLink.inventory().itemAt(state.inventoryLink.slot());
             if (stack != null) {
                 return stack;
-            }
-            ItemProvider slotBackground = state.inventoryLink.background();
-            if (slotBackground != null) {
-                return slotBackground.provide(this.renderContext);
             }
             return state.background == null ? ItemStack.empty() : state.background.provide(this.renderContext);
         }
