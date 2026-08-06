@@ -60,4 +60,17 @@ public final class SlotOrder {
     public int slotAt(int index) {
         return this.slots[index];
     }
+
+    /**
+     * 返回访问次序与当前顺序完全相反的新顺序, 当前实例保持不变.
+     */
+    @NotNull
+    public SlotOrder reversed() {
+        // 排列的逆序仍是排列, 直接走私有构造, 不再重复校验
+        int[] reversed = new int[this.slots.length];
+        for (int i = 0; i < reversed.length; i++) {
+            reversed[i] = this.slots[reversed.length - 1 - i];
+        }
+        return new SlotOrder(reversed);
+    }
 }

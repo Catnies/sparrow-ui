@@ -119,7 +119,7 @@ public final class ReferencingInventory extends SparrowInventory {
         if (slotMapping.size() != raw.length) {
             throw new IllegalArgumentException("slot mapping size " + slotMapping.size() + " does not match contents size " + raw.length);
         }
-        @Nullable SlotOrder addOrder = reverseAddOrder ? reverseOrder(raw.length) : null;
+        @Nullable SlotOrder addOrder = reverseAddOrder ? SlotOrder.natural(raw.length).reversed() : null;
         return new ReferencingInventory(
                 inventory,
                 contentsGetter,
@@ -272,20 +272,6 @@ public final class ReferencingInventory extends SparrowInventory {
             slots[i] = i;
         }
         return slots;
-    }
-
-    /**
-     * 生成从尾到头的反向遍历顺序.
-     *
-     * @param size 槽位数量
-     * @return 反向遍历顺序
-     */
-    private static SlotOrder reverseOrder(int size) {
-        int[] slots = new int[size];
-        for (int i = 0; i < size; i++) {
-            slots[i] = size - i - 1;
-        }
-        return SlotOrder.of(slots);
     }
 
     /**

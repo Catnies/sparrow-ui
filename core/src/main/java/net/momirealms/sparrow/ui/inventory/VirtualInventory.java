@@ -144,17 +144,6 @@ public final class VirtualInventory extends SparrowInventory {
         this.slotMaxStackSizes = copy;
     }
 
-    @Override
-    @NotNull
-    public SlotOrder iterationOrder(@NotNull OperationCategory category) {
-        SlotOrder order = switch (category) {
-            case ADD -> this.addOrder;
-            case COLLECT -> this.collectOrder;
-            case OTHER -> this.otherOrder;
-        };
-        return order != null ? order : super.iterationOrder(category);
-    }
-
     /**
      * 设置指定类别的批量操作按什么顺序遍历槽位.
      *
@@ -171,6 +160,41 @@ public final class VirtualInventory extends SparrowInventory {
             case COLLECT -> this.collectOrder = order;
             case OTHER -> this.otherOrder = order;
         }
+    }
+
+    /**
+     * 获取指定类别的批量操作按什么顺序遍历槽位.
+     *
+     * @param category 操作类别
+     * @return 遍历顺序
+     */
+    @Override
+    @NotNull
+    public SlotOrder iterationOrder(@NotNull OperationCategory category) {
+        SlotOrder order = switch (category) {
+            case ADD -> this.addOrder;
+            case COLLECT -> this.collectOrder;
+            case OTHER -> this.otherOrder;
+        };
+        return order != null ? order : super.iterationOrder(category);
+    }
+
+
+    /**
+     * 反转指定类别的批量操作当前生效的遍历顺序.
+     * <p>反转基于当前顺序而非自然顺序: 之前设置过的自定义顺序同样被反转, 连续反转两次回到原顺序.
+     *
+     * @param category 操作类别
+     */
+    public synchronized void reverseIterationOrder(@NotNull OperationCategory category) {
+        this.setIterationOrder(category, this.iterationOrder(category).reversed());
+    }
+
+    /**
+     * 反转全部三个类别的批量操作当前生效的遍历顺序.
+     */
+    public synchronized void reverseIterationOrder() {
+        for (OperationCategory category : OperationCategory.values()) this.reverseIterationOrder(category);
     }
 
     // 校验尺寸不为负数
