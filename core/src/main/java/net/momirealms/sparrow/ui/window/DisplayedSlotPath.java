@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.RefreshPlan;
@@ -116,8 +117,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     /**
      * 生成当前槽位应显示的 ItemStack, 按以下优先级查找:
      * <ol>
-     *   <li>若路径终点为 InventoryLink, 显示对应当前 Inventory 槽位的内容:
-     *       若该槽为空, 回退为 Inventory 的背景</li>
+     *   <li>若路径终点为 InventoryLink, 先按 Inventory 的视觉层级取结果(逐槽映射, 全局映射, 空槽的容器背景);
+     *       全部放行时显示该 Inventory 槽位的当前内容, 空槽再回退为 GUI 背景</li>
      *   <li>若路径终点为 Item, 显示该 Item</li>
      *   <li>若以上均不存在 Item, 回退为最深层 GUI 的背景</li>
      *   <li>若仍无结果, 返回空物品作为最终兜底</li>
@@ -128,9 +129,15 @@ final class DisplayedSlotPath implements AutoCloseable {
     @NotNull ItemStack render() {
         PathState state = this.currentState();
 
-        // InventoryLink: Inventory 当前内容优先, 空槽回退背景; itemAt 返回的副本归本槽渲染独占
+        // InventoryLink: 视觉映射优先, 其次真实内容, 空槽回退背景; itemAt 返回的副本归本槽渲染独占
         if (state.inventoryLink != null) {
-            ItemStack stack = state.inventoryLink.inventory().itemAt(state.inventoryLink.slot());
+            SparrowInventory inventory = state.inventoryLink.inventory();
+            int slot = state.inventoryLink.slot();
+            ItemStack stack = inventory.itemAt(slot);
+            ItemProvider visual = inventory.visualize(slot, stack);
+            if (visual != null) {
+                return visual.provide(this.renderContext);
+            }
             if (stack != null) {
                 return stack;
             }
@@ -302,6 +309,11 @@ final class DisplayedSlotPath implements AutoCloseable {
                             }
                         }
                     });
+                    candidate.visualSubscription = link.inventory().subscribeVisualInvalidation(slot -> {
+                        if (slot == SparrowInventory.ALL_SLOTS || slot == link.slot()) {
+                            candidate.notifyWindows(false);
+                        }
+                    });
                     return;
                 }
                 case SlotElement.Empty ignoredEmpty -> {
@@ -374,6 +386,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         // Inventory 链接部分, 与 Item 互斥
         private SlotElement.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
         private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
+        private Subscription visualSubscription;         // Inventory 视觉映射变更的渲染订阅
 
         private ItemProvider background;    // 沿路径找到的最深层非 null 背景
         private boolean frozen;             // 路径上任何 GUI 冻结时都为 true
@@ -532,8 +545,10 @@ final class DisplayedSlotPath implements AutoCloseable {
             // 先断开自身持有的状态引用, 再调用外部 close
             ItemAttachment previousItemAttachment = this.itemAttachment;
             Subscription previousInventorySubscription = this.inventorySubscription;
+            Subscription previousVisualSubscription = this.visualSubscription;
             this.itemAttachment = ItemAttachment.PASSIVE;
             this.inventorySubscription = null;
+            this.visualSubscription = null;
             this.item = null;
             this.inventoryLink = null;
             this.background = null;
@@ -542,6 +557,10 @@ final class DisplayedSlotPath implements AutoCloseable {
 
             if (previousInventorySubscription != null) {
                 failure = ThrowableUtils.captureUnchecked(failure, previousInventorySubscription::close);
+            }
+
+            if (previousVisualSubscription != null) {
+                failure = ThrowableUtils.captureUnchecked(failure, previousVisualSubscription::close);
             }
 
             // 从最深层 GUI 向根 GUI 逆序取消订阅
