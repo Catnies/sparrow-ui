@@ -402,20 +402,22 @@ final class ClickPlanner {
         HashSet<SlotKey> coveredSlots = new HashSet<>();
         List<TransactionScope> scopes = new ArrayList<>();
 
-        List<SparrowInventory> domain = new ArrayList<>(context.linkedInventories());
+        List<ClickSemantics.LinkedInventory> domain = new ArrayList<>(context.linkedInventories());
         domain.sort((left, right) -> Integer.compare(
-                right.guiPriority(OperationCategory.COLLECT),
-                left.guiPriority(OperationCategory.COLLECT)
+                right.inventory().guiPriority(OperationCategory.COLLECT),
+                left.inventory().guiPriority(OperationCategory.COLLECT)
         ));
         for (int inventoryIndex = 0; inventoryIndex < domain.size() && collected < space; inventoryIndex++) {
-            SparrowInventory inventory = domain.get(inventoryIndex);
+            ClickSemantics.LinkedInventory linked = domain.get(inventoryIndex);
+            SparrowInventory inventory = linked.inventory();
             SparrowInventory.PlannedRoot plan = plans.computeIfAbsent(inventory, key -> openPlan(key, write));
             InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
                     overlay.viewOf(plan),
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    slot -> coveredSlots.add(inventory.physicalKey(slot)),
+                    // 可见性在读集去重前短路: 不可见槽不得占用 coveredSlots, 同一物理槽可能经另一个 Inventory 可见暴露
+                    slot -> linked.visible(slot) && coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
             if (!takePlan.deltas().isEmpty()) {
@@ -476,9 +478,10 @@ final class ClickPlanner {
         readPlans.add(sourcePlan);
         int remaining = current.getAmount();
 
-        List<SparrowInventory> targets = addTargets(context, source.inventory());
+        List<ClickSemantics.LinkedInventory> targets = addTargets(context, source.inventory());
         for (int targetIndex = 0; targetIndex < targets.size() && remaining > 0; targetIndex++) {
-            SparrowInventory target = targets.get(targetIndex);
+            ClickSemantics.LinkedInventory linked = targets.get(targetIndex);
+            SparrowInventory target = linked.inventory();
             SparrowInventory.PlannedRoot targetPlan = openPlan(target, write);
             readPlans.add(targetPlan);
             IntPredicate placement = target.placementPredicate(current);
@@ -487,7 +490,8 @@ final class ClickPlanner {
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
-                    slot -> coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
+                    // 可见性在读集去重前短路: 不可见槽不得占用 coveredSlots, 同一物理槽可能经另一个 Inventory 可见暴露
+                    slot -> linked.visible(slot) && coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
             );
             if (!addPlan.deltas().isEmpty()) {
                 targetScopes.add(new TransactionScope(targetPlan, addPlan.deltas()));
@@ -523,21 +527,21 @@ final class ClickPlanner {
     }
 
     @NotNull
-    private static List<SparrowInventory> addTargets(
+    private static List<ClickSemantics.LinkedInventory> addTargets(
             ClickSemantics.Context context,
             SparrowInventory source
     ) {
-        List<SparrowInventory> targets = new ArrayList<>();
-        List<SparrowInventory> linked = context.linkedInventories();
+        List<ClickSemantics.LinkedInventory> targets = new ArrayList<>();
+        List<ClickSemantics.LinkedInventory> linked = context.linkedInventories();
         for (int inventoryIndex = 0; inventoryIndex < linked.size(); inventoryIndex++) {
-            SparrowInventory inventory = linked.get(inventoryIndex);
-            if (inventory != source) {
-                targets.add(inventory);
+            ClickSemantics.LinkedInventory candidate = linked.get(inventoryIndex);
+            if (candidate.inventory() != source) {
+                targets.add(candidate);
             }
         }
         targets.sort((left, right) -> Integer.compare(
-                right.guiPriority(OperationCategory.ADD),
-                left.guiPriority(OperationCategory.ADD)
+                right.inventory().guiPriority(OperationCategory.ADD),
+                left.inventory().guiPriority(OperationCategory.ADD)
         ));
         return targets;
     }

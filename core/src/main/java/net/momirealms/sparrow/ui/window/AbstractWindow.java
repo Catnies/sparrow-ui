@@ -996,7 +996,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     private void refreshLinkedInventories(@Nullable DisplayedSlotPath[] paths) {
         LinkedHashSet<SparrowInventory> seen = new LinkedHashSet<>();
-        this.forEachLinkedInventory(paths, false, inventory -> {
+        this.forEachLinkedInventory(paths, false, link -> {
+            SparrowInventory inventory = link.inventory();
             if (seen.add(inventory)) {
                 inventory.refresh();
             }
@@ -1004,16 +1005,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 遍历指定路径数组终点连接的 Inventory.
+     * 遍历指定路径数组终点的 InventoryLink.
      *
      * @param paths 显示路径, 为 null 时不做任何事
-     * @param semanticOnly 是否只遍历参与点击的 Inventory(跳过 GUI 冻结槽与 Window 虚拟槽位)
-     * @param action 对每个 Inventory 执行的操作
+     * @param semanticOnly 是否只遍历参与点击的连接(跳过 GUI 冻结槽与 Window 虚拟槽位)
+     * @param action 对每个终点连接执行的操作
      */
     private void forEachLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
             boolean semanticOnly,
-            @NotNull Consumer<SparrowInventory> action
+            @NotNull Consumer<SlotElement.InventoryLink> action
     ) {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
@@ -1026,7 +1027,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             SlotElement.InventoryLink link = path.inventoryLink();
             if (link != null) {
-                action.accept(link.inventory());
+                action.accept(link);
             }
         }
     }
@@ -1344,15 +1345,49 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 按显示顺序收集去重后的连接 Inventory, 作为点击语义的目标域.
-     * GUI 冻结槽和 Window 虚拟槽位连接的 Inventory 不算在内; GUI 冻结槽展示的 Inventory 不能被转移或收集穿透.
+     * 按显示顺序收集去重后的连接 Inventory 及各自参与点击语义的槽位.
+     * 默认只包含经未冻结协议槽展示的 Inventory 槽位: GUI 冻结槽和 Window 虚拟槽位展示的槽位不参与,
+     * 未被 GUI 展示的槽位同样不参与, 转移与收集都不会穿透它们.
+     * 开启 Inventory 的 includeObscuredSlots 后其未展示槽位也参与, 但 GUI 冻结槽展示的槽位始终不参与.
      *
-     * @return 去重后的连接 Inventory
+     * @return 去重后的连接 Inventory 及参与槽位
      */
-    private List<SparrowInventory> collectLinkedInventories() {
-        LinkedHashSet<SparrowInventory> inventories = new LinkedHashSet<>();
-        this.forEachLinkedInventory(this.paths, true, inventories::add);
-        return List.copyOf(inventories);
+    private List<ClickSemantics.LinkedInventory> collectLinkedInventories() {
+        LinkedHashMap<SparrowInventory, BitSet> visible = new LinkedHashMap<>();
+        this.forEachLinkedInventory(this.paths, true, link ->
+                visible.computeIfAbsent(link.inventory(), inventory -> new BitSet(inventory.size())).set(link.slot()));
+        List<ClickSemantics.LinkedInventory> linked = new ArrayList<>(visible.size());
+        visible.forEach((inventory, slots) -> linked.add(new ClickSemantics.LinkedInventory(
+                inventory, inventory.includeObscuredSlots() ? this.withObscuredSlots(inventory, slots) : slots)));
+        return List.copyOf(linked);
+    }
+
+    /**
+     * 把未展示槽位扩入参与集. 仅经冻结协议槽展示的槽位仍被排除: 穿透修复不随开关放开.
+     *
+     * @param inventory 已有可见槽位的连接 Inventory
+     * @param visibleSlots 经未冻结协议槽展示的槽位
+     * @return 包含未展示槽位的参与集
+     */
+    private BitSet withObscuredSlots(@NotNull SparrowInventory inventory, @NotNull BitSet visibleSlots) {
+        DisplayedSlotPath[] paths = this.paths;
+        if (paths == null) {
+            return visibleSlots;
+        }
+        BitSet included = new BitSet(inventory.size());
+        included.set(0, inventory.size());
+        int protocolSize = this.layout.protocolSize();
+        for (int windowSlot = 0; windowSlot < protocolSize; windowSlot++) {
+            DisplayedSlotPath path = paths[windowSlot];
+            if (path == null || !path.frozen()) {
+                continue;
+            }
+            SlotElement.InventoryLink link = path.inventoryLink();
+            if (link != null && link.inventory() == inventory && !visibleSlots.get(link.slot())) {
+                included.clear(link.slot());
+            }
+        }
+        return included;
     }
 
     // 按相反的槽位顺序关闭 DisplayedSlotPath.
@@ -1431,7 +1466,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         @Override
         @NotNull
-        public List<SparrowInventory> linkedInventories() {
+        public List<ClickSemantics.LinkedInventory> linkedInventories() {
             return AbstractWindow.this.collectLinkedInventories();
         }
 

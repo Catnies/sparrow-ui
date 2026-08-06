@@ -68,6 +68,7 @@ public abstract class SparrowInventory {
     private volatile int addGuiPriority;
     private volatile int collectGuiPriority;
     private volatile int otherGuiPriority;
+    private volatile boolean includeObscuredSlots; // 未被 GUI 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
 
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
@@ -402,6 +403,26 @@ public abstract class SparrowInventory {
         this.addGuiPriority = 0;
         this.collectGuiPriority = 0;
         this.otherGuiPriority = 0;
+    }
+
+    /**
+     * 返回未被 GUI 展示的槽位是否参与快速转移与双击收集.
+     *
+     * @return 未展示槽位是否参与点击语义
+     */
+    public boolean includeObscuredSlots() {
+        return this.includeObscuredSlots;
+    }
+
+    /**
+     * 设置未被 GUI 展示的槽位是否参与快速转移与双击收集.
+     * 默认不参与: 点击语义只触及本 Inventory 经未冻结槽位展示的部分.
+     * 开启后未展示的槽位也会参与, 但 GUI 冻结槽展示的槽位始终不参与.
+     *
+     * @param includeObscuredSlots 未展示槽位是否参与点击语义
+     */
+    public void includeObscuredSlots(boolean includeObscuredSlots) {
+        this.includeObscuredSlots = includeObscuredSlots;
     }
 
     /**

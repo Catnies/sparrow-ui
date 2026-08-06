@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.gui;
 
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -121,6 +122,18 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     @NotNull
     public final B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends SlotElement> elementSupplier) {
         return this.bindIngredient(identifier, SlotElementSupplier.fromSupplier(elementSupplier));
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(@NotNull String identifier, @NotNull SparrowInventory inventory) {
+        return this.bindIngredient(identifier, SlotElementSupplier.inventory(inventory));
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(char identifier, @NotNull SparrowInventory inventory) {
+        return this.addIngredient(String.valueOf(identifier), inventory);
     }
 
     @Override

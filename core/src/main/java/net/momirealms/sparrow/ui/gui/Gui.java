@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.gui;
 
 import net.momirealms.sparrow.ui.Observer;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -891,6 +892,27 @@ public sealed interface Gui permits AbstractGui {
                 @NotNull String identifier,
                 @NotNull Supplier<? extends SlotElement> elementSupplier
         );
+
+        /**
+         * 把同一标志符的槽位按出现顺序连接到 Inventory.
+         * 标志符第 n 次出现的槽位展示并操作 Inventory 的第 n 个槽位.
+         *
+         * @param identifier 标志符
+         * @param inventory 连接的 Inventory
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull SparrowInventory inventory);
+
+        /**
+         * 把单字符标志的槽位按出现顺序连接到 Inventory.
+         *
+         * @param identifier 单字符标志
+         * @param inventory 连接的 Inventory
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull SparrowInventory inventory);
 
         /**
          * 按二维形状把同一标志符的槽位连接到子 GUI.

@@ -12,6 +12,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +32,13 @@ public final class ClickSemantics {
     public record LinkedSlot(@NotNull SparrowInventory inventory, int slot) {
         SlotKey physicalKey() {
             return this.inventory.physicalKey(this.slot);
+        }
+    }
+
+    // 参与点击语义的连接 Inventory 及其可见槽位: 只有经未冻结协议槽展示的槽位可见.
+    public record LinkedInventory(@NotNull SparrowInventory inventory, @NotNull BitSet visibleSlots) {
+        boolean visible(int slot) {
+            return this.visibleSlots.get(slot);
         }
     }
 
@@ -224,13 +232,14 @@ public final class ClickSemantics {
         LinkedSlot hotbarLink(int hotbarButton);
 
         /**
-         * 按显示顺序列出参与本次点击语义的全部Inventory(去重), 快速转移与双击收集在它们里面找目标;
-         * 只通过 GUI 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内.
+         * 按显示顺序列出参与本次点击语义的全部Inventory(去重)及各自的可见槽位, 快速转移与双击收集只在可见槽位里找目标;
+         * 只通过 GUI 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内, 已包含 Inventory 中
+         * 未经任何未冻结协议槽展示的槽位不属于可见集.
          *
-         * @return 参与语义的全部Inventory
+         * @return 参与语义的全部Inventory及可见槽位
          */
         @NotNull
-        List<SparrowInventory> linkedInventories();
+        List<LinkedInventory> linkedInventories();
 
         /**
          * 光标上正拿着的物品副本;
