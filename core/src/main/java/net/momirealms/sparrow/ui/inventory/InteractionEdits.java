@@ -83,7 +83,7 @@ public final class InteractionEdits {
      *
      * @param windowSlot 被写入的 Window 槽位
      * @param item 事件写给该槽位的物品, 空物品表示清空槽位
-     * @return 写入已经被接受时返回 {@code true}; Item 槽, 空槽与冻结槽返回 {@code false}
+     * @return 写入已经被接受时返回 {@code true}; Item 槽, 空槽, 冻结槽与玩家侧只读的 Inventory 返回 {@code false}
      */
     public boolean slot(int windowSlot, @Nullable ItemStack item) {
         ClickSemantics.Context context = this.context;
@@ -92,7 +92,8 @@ public final class InteractionEdits {
             return false;
         }
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-        if (link == null) {
+        // 玩家侧只读的 Inventory 同样拒收: 否则这笔写入并进写集后, 整笔玩家事务会被冻结兜底取消.
+        if (link == null || link.inventory().frozen()) {
             return false;
         }
         @Nullable ItemStack written = ItemUtils.nullIfEmpty(item);

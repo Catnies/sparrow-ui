@@ -61,6 +61,10 @@ final class ClickPlanner {
         if (link == null) {
             return new PreparedClick(false, InventoryAction.NOTHING, null);
         }
+        // Inventory 级冻结是玩家侧只读: 点在冻结 Inventory 展示槽上的一切动作与冻结槽同待遇.
+        if (link.inventory().frozen()) {
+            return new PreparedClick(true, InventoryAction.NOTHING, null);
+        }
 
         ClickCandidate candidate = switch (clickType) {
             case LEFT, RIGHT -> preparePickupOrPlace(
@@ -179,6 +183,10 @@ final class ClickPlanner {
         }
         ClickSemantics.LinkedSlot target = context.hotbarLink(hotbarButton);
         if (target == null || source.physicalKey().equals(target.physicalKey())) {
+            return null;
+        }
+        // 快捷栏端也可能落在冻结的 Inventory 上, 玩家侧只读时两端谁冻结都不成立.
+        if (target.inventory().frozen()) {
             return null;
         }
 
@@ -410,6 +418,10 @@ final class ClickPlanner {
         for (int inventoryIndex = 0; inventoryIndex < domain.size() && collected < space; inventoryIndex++) {
             ClickSemantics.LinkedInventory linked = domain.get(inventoryIndex);
             SparrowInventory inventory = linked.inventory();
+            // 玩家侧只读的 Inventory 不作为收集来源, 也不进读集.
+            if (inventory.frozen()) {
+                continue;
+            }
             SparrowInventory.PlannedRoot plan = plans.computeIfAbsent(inventory, key -> openPlan(key, write));
             InventoryPlanner.TakePlan takePlan = InventoryPlanner.planCollect(
                     overlay.viewOf(plan),
@@ -535,7 +547,8 @@ final class ClickPlanner {
         List<ClickSemantics.LinkedInventory> linked = context.linkedInventories();
         for (int inventoryIndex = 0; inventoryIndex < linked.size(); inventoryIndex++) {
             ClickSemantics.LinkedInventory candidate = linked.get(inventoryIndex);
-            if (candidate.inventory() != source) {
+            // 玩家侧只读的 Inventory 不作为快速转移目标.
+            if (candidate.inventory() != source && !candidate.inventory().frozen()) {
                 targets.add(candidate);
             }
         }
@@ -568,7 +581,7 @@ final class ClickPlanner {
         for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {
             int windowSlot = windowSlots.get(windowIndex);
             ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-            if (link != null && !context.frozenAt(windowSlot)) {
+            if (link != null && !context.frozenAt(windowSlot) && !link.inventory().frozen()) {
                 candidates.putIfAbsent(link.physicalKey(), new DragLink(windowSlot, link));
             }
         }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
@@ -75,6 +76,16 @@ final class InventoryTransactions {
             @NotNull List<SparrowInventory.PlannedRoot> readSet,
             @NotNull BooleanSupplier commitGuard
     ) {
+        // Inventory 级冻结兜底: 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务, 不发 Pre 也零变更.
+        if (reason instanceof PlayerUpdateReason) {
+            List<TransactionScope> frozenCheck = draft.scopes();
+            for (int i = 0; i < frozenCheck.size(); i++) {
+                if (frozenCheck.get(i).inventory().frozen()) {
+                    return TransactionResult.Cancelled.INSTANCE;
+                }
+            }
+        }
+
         // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
         boolean cancelled = false;
         List<TransactionScope> declared = draft.scopes();

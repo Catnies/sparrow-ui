@@ -61,7 +61,7 @@ final class ClickExecutor {
         Supplier<String> describe = () -> "点击 " + clickType + " @ windowSlot " + windowSlot;
         if (candidate != null) {
             executeCandidate(context, candidate, gate, edits -> gate.allowClick(candidate.action(), edits), replan, describe, overlay);
-        } else if (prepared.handled() && !context.frozenAt(windowSlot)) {
+        } else if (prepared.handled() && !context.frozenAt(windowSlot) && !inventoryFrozenAt(context, windowSlot)) {
             // 空操作和被放入规则拒绝的点击同样是一次真实交互: 监听器看得到, 它们的写入也照样能落地.
             executeUnplanned(context, clickType, hotbarButton, windowSlot, prepared.action(), gate, replan, describe, overlay);
         }
@@ -69,6 +69,12 @@ final class ClickExecutor {
             context.markDirty(windowSlot);
         }
         return prepared.handled();
+    }
+
+    // 玩家侧只读的 Inventory 与冻结槽同待遇: 点它展示槽连空操作事件都不派发, 只纠正客户端预测.
+    private static boolean inventoryFrozenAt(ClickSemantics.Context context, int windowSlot) {
+        ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
+        return link != null && link.inventory().frozen();
     }
 
     // 拖拽同样先形成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.

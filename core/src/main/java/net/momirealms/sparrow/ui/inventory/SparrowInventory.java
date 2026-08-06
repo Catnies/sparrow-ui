@@ -69,6 +69,7 @@ public abstract class SparrowInventory {
     private volatile int collectGuiPriority;
     private volatile int otherGuiPriority;
     private volatile boolean includeObscuredSlots; // 未被 GUI 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
+    private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
 
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
@@ -423,6 +424,27 @@ public abstract class SparrowInventory {
      */
     public void includeObscuredSlots(boolean includeObscuredSlots) {
         this.includeObscuredSlots = includeObscuredSlots;
+    }
+
+    /**
+     * 返回本 Inventory 是否处于玩家侧只读状态.
+     *
+     * @return 是否玩家侧只读
+     */
+    public boolean frozen() {
+        return this.frozen;
+    }
+
+    /**
+     * 设置本 Inventory 是否玩家侧只读.
+     * 冻结后玩家经任何窗口对本 Inventory 的点击与拖拽一律不成立: 不算候选, 不派发任何事件,
+     * 也不作为快速转移与双击收集的来源或目标, 客户端预测会被纠正回来.
+     * 程序写入与外部同步不受影响, 对应的事件照常派发.
+     *
+     * @param frozen 是否玩家侧只读
+     */
+    public void frozen(boolean frozen) {
+        this.frozen = frozen;
     }
 
     /**
