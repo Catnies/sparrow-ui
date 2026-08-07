@@ -123,6 +123,26 @@ public interface Window {
     void setCloseable(boolean closeable);
 
     /**
+     * 返回指定协议槽位是否被本 Window 冻结.
+     * 只反映 {@link #frozenAt(int, boolean)} 设置的窗口侧状态, 路径上 GUI 自身的冻结不计入.
+     *
+     * @param windowSlot 协议槽位(raw slot)
+     * @return 该槽位被本 Window 冻结时返回 true
+     */
+    boolean frozenAt(int windowSlot);
+
+    /**
+     * 设置指定协议槽位是否被本 Window 冻结.
+     * 冻结后该槽位与路径经过已冻结 GUI 同待遇: 不参与点击语义, 不派发任何事件, 也不分派 Item 点击,
+     * 客户端预测会被纠正回来, 显示内容不受影响.
+     * 与 {@link Gui#setFrozen} 相互独立, 任一生效该槽位即被冻结, 本方法的解冻只撤销窗口侧的这一份.
+     *
+     * @param windowSlot 协议槽位(raw slot)
+     * @param frozen true 表示冻结
+     */
+    void frozenAt(int windowSlot, boolean frozen);
+
+    /**
      * 设置玩家主动关闭时要解析并打开的后备 Window.
      * Supplier 仅在玩家主动关闭后读取.
      *
