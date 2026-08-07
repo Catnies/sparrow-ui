@@ -152,39 +152,39 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 把点击转发给路径终点的 Item.
-     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
      *
      * @param click 点击上下文
      */
     void handleClick(@NotNull ItemClick click) {
         PathState state = this.currentState();
-        if (!state.frozen && state.item != null) {
+        if (!state.frozen && !this.windowFrozen() && state.item != null) {
             state.item.handleClick(click);
         }
     }
 
     /**
      * 把拖拽手势转发给路径终点的 Item.
-     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
      *
      * @param drag 拖拽上下文
      */
     void handleDrag(@NotNull ItemDragClick drag) {
         PathState state = this.currentState();
-        if (!state.frozen && state.item != null) {
+        if (!state.frozen && !this.windowFrozen() && state.item != null) {
             state.item.handleDrag(drag);
         }
     }
 
     /**
      * 把收纳袋选择转发给路径终点的 Item.
-     * 路径经过已冻结 GUI 或终点不是 Item 时直接忽略.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
      *
      * @param select Bundle 选择上下文
      */
     void handleBundleSelect(@NotNull BundleSelectClick select) {
         PathState state = this.currentState();
-        if (state.frozen) {
+        if (state.frozen || this.windowFrozen()) {
             return;
         }
         if (state.inventoryLink != null) {
@@ -206,25 +206,30 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回路径是否经过已冻结 GUI;
-     * GUI 冻结槽不参与点击语义与 Item 分派.
+     * 返回路径是否按冻结处理: 经过已冻结 GUI, 或槽位被 Window 冻结;
+     * 冻结槽不参与点击语义与 Item 分派.
      *
-     * @return 路径经过已冻结 GUI 时返回 true
+     * @return 路径按冻结处理时返回 true
      */
     boolean frozen() {
-        return this.currentState().frozen;
+        return this.windowFrozen() || this.currentState().frozen;
+    }
+
+    // Window 侧的单槽冻结与沿途 GUI 冻结同待遇, 任一生效本路径即按冻结处理.
+    private boolean windowFrozen() {
+        return this.window.frozenAt(this.windowSlot);
     }
 
     /**
      * 返回显示路径终点的类型.
-     * 路径经过已冻结 GUI 时一律返回 {@link ItemDragClick.Kind#FROZEN}, 不再区分终点.
+     * 路径按冻结处理时一律返回 {@link ItemDragClick.Kind#FROZEN}, 不再区分终点.
      *
      * @return 路径终点类型
      */
     @NotNull
     ItemDragClick.Kind kind() {
         PathState state = this.currentState();
-        if (state.frozen) return ItemDragClick.Kind.FROZEN;
+        if (state.frozen || this.windowFrozen()) return ItemDragClick.Kind.FROZEN;
         if (state.inventoryLink != null) return ItemDragClick.Kind.INVENTORY;
         return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
     }

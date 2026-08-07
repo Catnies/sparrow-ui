@@ -88,6 +88,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
     private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
+    private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 GUI 冻结按或合成
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
@@ -132,6 +133,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.viewer = viewer;
         this.layout = layout;
         this.bundleSelections = new BundleSelectionState[layout.protocolSize()];
+        this.frozenSlots = new boolean[layout.size()];
         this.title = Component.empty();
         this.titleSupplier = settings.titleSupplier();
         this.closeable = settings.closeable();
@@ -218,6 +220,24 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(
                 () -> this.closeable = closeable,
                 "Failed to update Window closeable state"
+        );
+    }
+
+    @Override
+    public boolean frozenAt(int windowSlot) {
+        Objects.checkIndex(windowSlot, this.frozenSlots.length);
+        return this.frozenSlots[windowSlot];
+    }
+
+    @Override
+    public void frozenAt(int windowSlot, boolean frozen) {
+        Objects.checkIndex(windowSlot, this.frozenSlots.length);
+        this.submit(
+                () -> {
+                    this.frozenSlots[windowSlot] = frozen;
+                    this.notifyInteractionPathChanged();
+                },
+                "Failed to update Window slot frozen state"
         );
     }
 
