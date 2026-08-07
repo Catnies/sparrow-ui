@@ -7,6 +7,7 @@ dependencies {
     compileOnly(project(":bukkit-proxy"))
     compileOnly(libs.datafixerupper)
     testImplementation(project(":bukkit-proxy"))
+    testImplementation(libs.datafixerupper)
 }
 
 val bukkitProxyJar = project(":bukkit-proxy").tasks.named<Jar>("shadowJar")

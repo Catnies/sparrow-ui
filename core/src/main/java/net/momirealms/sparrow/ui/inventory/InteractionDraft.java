@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -21,6 +22,7 @@ import java.util.List;
  */
 public final class InteractionDraft {
     @Nullable private ItemStack cursor;      // 提交后的光标, null 表示不改动
+    private boolean cursorAdopted;           // 光标是否由规划器交出所有权, 决定提交时采纳还是复制
     @Nullable private ItemStack offhand;     // 提交后的副手, 是否生效由 offhandTouched 决定
     private boolean offhandTouched;          // 与"副手要被清空"区分开, null 副手也是一次有效改动
     @Nullable private List<ItemStack> drops; // 提交后要丢进世界的物品, 没有掉落时保持 null
@@ -51,8 +53,22 @@ public final class InteractionDraft {
     @NotNull
     static InteractionDraft cursorAfter(@NotNull ItemStack cursor) {
         InteractionDraft draft = new InteractionDraft();
-        draft.cursor(cursor);
+        draft.adoptCursor(cursor);
         return draft;
+    }
+
+    /**
+     * 采纳规划器算出的光标物品, 不复制.
+     * <p>只有规划器能走这条入口: 它交出的实例要么是本次规划新造的, 要么是被整体搬运的槽位物品,
+     * 所有权明确. 提交时这份实例会被菜单原样接管, 物品从槽位搬到光标时对象身份因此得以保持.
+     *
+     * @param cursor 提交后的光标物品
+     * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
+     */
+    void adoptCursor(@NotNull ItemStack cursor) {
+        this.checkEditable();
+        this.cursor = cursor;
+        this.cursorAdopted = true;
     }
 
     /**
@@ -82,24 +98,30 @@ public final class InteractionDraft {
     }
 
     /**
-     * 返回提交后的光标物品.
+     * 返回提交后的光标物品的副本.
+     * <p>返回副本而不是草稿实例: 搬运路径下草稿里的光标可能就是某个 Inventory 内部状态数组里的元素,
+     * 交出活引用会让处理器直接改写容器内容, 绕过事务与 Window 同步.
      *
-     * @return 光标最终值; 返回 {@code null} 表示本次交互不改动光标, 提交后光标保持交互前的样子
+     * @return 光标最终值的副本; 返回 {@code null} 表示本次交互不改动光标, 提交后光标保持交互前的样子
      */
     @Nullable
     public ItemStack cursor() {
-        return this.cursor;
+        return ItemUtils.copyOrNull(this.cursor);
     }
 
     /**
      * 覆盖提交后的光标物品.
+     * <p>写入的物品会被复制, 草稿不持有调用方实例. 处理器常常直接把 {@code Inventory#getItem} 或
+     * {@code getItemInMainHand} 的返回值写进来, 而它们在 CraftBukkit 上是与真实槽位共享底层句柄的活视图;
+     * 若原样接管, 光标就会和那个槽位变成同一件物品.
      *
      * @param cursor 新的光标最终值, 空物品表示提交后光标为空
      * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
      */
     public void cursor(@NotNull ItemStack cursor) {
         this.checkEditable();
-        this.cursor = cursor;
+        this.cursor = ItemUtils.copyOrEmpty(cursor);
+        this.cursorAdopted = false;
     }
 
     /**
@@ -166,7 +188,13 @@ public final class InteractionDraft {
     public void apply(@NotNull ClickSemantics.Context context) {
         ItemStack cursor = this.cursor;
         if (cursor != null) {
-            context.cursor(cursor);
+            // 只有规划器交出所有权的实例才整体接管, 身份因此得以保持; 处理器写入的一律走复制入口,
+            // 否则它交进来的活视图会直通菜单光标, 与来源槽位变成同一件物品.
+            if (this.cursorAdopted) {
+                context.adoptCursor(cursor);
+            } else {
+                context.cursor(cursor);
+            }
         }
         if (this.offhandTouched) {
             context.offhand(this.offhand);

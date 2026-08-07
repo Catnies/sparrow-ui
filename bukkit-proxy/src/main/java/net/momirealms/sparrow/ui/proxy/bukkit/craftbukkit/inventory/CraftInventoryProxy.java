@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 import org.bukkit.inventory.Inventory;
@@ -13,4 +14,7 @@ public interface CraftInventoryProxy {
 
     @ConstructorInvoker
     Inventory newInstance(@Type(clazz = ContainerProxy.class) Object container);
+
+    @MethodInvoker(name = "getInventory")
+    Object getInventory(Inventory inventory);
 }

@@ -48,12 +48,14 @@ final class ClickPlanner {
         if (windowSlot == InventoryView.OUTSIDE) {
             return new PreparedClick(false, ClickActions.outsideAction(overlay.cursorOr(context.cursor()), clickType), null);
         }
+        // 无法归类的点击对外恒报 UNKNOWN, 冻结与否改变不了"看不懂"这个事实; 事件闸门仍由执行器按冻结拦截,
+        // 冻结槽保持已接管, Item 分派同样不放行.
+        if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
+            return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
+        }
         // 冻结槽彻底不参与交互: 不算候选, 不派发任何事件, 也不分派 Item 点击, 只让客户端预测被纠正回来.
         if (context.frozenAt(windowSlot)) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
-        }
-        if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
-            return new PreparedClick(context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
         }
 
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
@@ -102,8 +104,9 @@ final class ClickPlanner {
             boolean write,
             InteractionOverlay overlay
     ) {
+        // actualCursor 是并发校验用的快照, 必须与光标解耦; 规划读的是活视图, 交换时光标物品原样落进槽位.
         ItemStack actualCursor = context.cursor();
-        ItemStack cursor = overlay.cursorOr(actualCursor);
+        ItemStack cursor = overlay.cursorOr(context.unsafeCursor());
         UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), clickType, -1);
         SparrowInventory inventory = link.inventory();
         SparrowInventory.PlannedRoot plan = openPlan(inventory, write);
@@ -121,7 +124,9 @@ final class ClickPlanner {
             return null;
         }
 
-        ItemStack incoming = placementInput(clickType, current, cursor, outcome);
+        // 探针交给用户注册的放入规则, 必须用快照: 规则拿到光标活视图并顺手改动, 会直接改写玩家真实光标,
+        // 而那次改动既不经事务也不经 Window 同步, 随后还会让本次点击因光标对不上而静默作废.
+        ItemStack incoming = placementInput(clickType, current, overlay.cursorOr(actualCursor), outcome);
         if (incoming != null && !inventory.placementPredicate(incoming).test(link.slot())) {
             return null;
         }
@@ -129,8 +134,9 @@ final class ClickPlanner {
         InventoryAction action = clickType == ClickType.LEFT
                 ? ClickActions.leftAction(current, cursor, outcome)
                 : ClickActions.rightAction(current, cursor);
+        // 落进槽位的要么是规则新造的物品, 要么是被整体搬过来的光标物品, 两种都该原样采纳.
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
-                new SlotChange(link.slot(), current, outcome.slotAfter())
+                SlotChange.adopt(link.slot(), current, outcome.slotAfter())
         )));
         return ClickCandidate.of(
                 action,
@@ -207,16 +213,18 @@ final class ClickPlanner {
             return null;
         }
 
+        // 数字键换位是纯搬运: 两端物品原样对调, 数量与组件都不变. 采纳实例而不复制, 让对象身份
+        // 跟着物品走, 与原版 doClick 的 inventory.setItem/slot.setByPlayer 指针对调保持一致.
         List<TransactionScope> scopes;
         if (source.inventory() == target.inventory()) {
             scopes = List.of(new TransactionScope(sourcePlan, List.of(
-                    new SlotChange(source.slot(), sourceItem, targetItem),
-                    new SlotChange(target.slot(), targetItem, sourceItem)
+                    SlotChange.adopt(source.slot(), sourceItem, targetItem),
+                    SlotChange.adopt(target.slot(), targetItem, sourceItem)
             )));
         } else {
             scopes = List.of(
-                    new TransactionScope(sourcePlan, List.of(new SlotChange(source.slot(), sourceItem, targetItem))),
-                    new TransactionScope(targetPlan, List.of(new SlotChange(target.slot(), targetItem, sourceItem)))
+                    new TransactionScope(sourcePlan, List.of(SlotChange.adopt(source.slot(), sourceItem, targetItem))),
+                    new TransactionScope(targetPlan, List.of(SlotChange.adopt(target.slot(), targetItem, sourceItem)))
             );
         }
         return ClickCandidate.of(
@@ -699,7 +707,8 @@ final class ClickPlanner {
             List<SlotChange> restored = new ArrayList<>(changes.size());
             for (int changeIndex = 0; changeIndex < changes.size(); changeIndex++) {
                 SlotChange change = changes.get(changeIndex);
-                restored.add(new SlotChange(change.slot(), planned[change.slot()], change.unsafeAfter()));
+                // 只换 before 的来源, after 原样采纳: 这一步是记账口径修正, 不该把规划器保住的对象身份洗掉.
+                restored.add(SlotChange.adopt(change.slot(), planned[change.slot()], change.unsafeAfter()));
             }
             rewritten.add(new TransactionScope(scope.inventory(), planned, restored));
         }

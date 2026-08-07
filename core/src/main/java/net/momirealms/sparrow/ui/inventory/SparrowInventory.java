@@ -43,6 +43,12 @@ import java.util.function.UnaryOperator;
  * <p>每个实例直接持有自己的内部状态数组, 并参与事务加锁, 并发校验和状态交换.
  * 持有内部状态不等于"最终真实容器": ReferencingInventory 的内部状态是 Bukkit 容器内容在 Sparrow 中的一份镜像.
  * <p>读操作直接读取当前内部状态版本, 任何线程都可以安全调用. 写操作遇到并发冲突时返回{@link TransactionResult.Conflicted} 且不产生修改;
+ * <p><strong>无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>: 提交只换数组不改元素,
+ * 因此比对数组引用就足以发现并发写入. 为了对齐原版的对象身份行为, 玩家把光标物品整堆交换进槽位时,
+ * 落进内部状态的就是菜单光标那一个实例, 于是该槽的元素可能与玩家光标同源 —— 外部经
+ * {@code HumanEntity#getItemOnCursor()} 之类拿到的活视图指向同一个底层物品, 对它就地改写数量或组件会绕过事务:
+ * 数组引用没变, 并发校验看不见, 事件与 Window 同步也不会被触发. 这是与原版指针转移语义对齐的必然代价;
+ * 需要改动物品的一方必须造新对象, 而不是就地写.
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
  * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例.
  */
@@ -1074,10 +1080,12 @@ public abstract class SparrowInventory {
      * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
      * 保证观察者在事件里重入写入时外部状态已经同步. 此方法抛出的异常会直接传播,
      * 此时 Sparrow 内部状态已经提交;
+     * <p>内容本来就取自外部容器的同步事务不需要回写, 整个步骤会被跳过, 本方法不会被调用.
      *
+     * @param planned 本次事务在当前 Inventory 上的规划基准数组, 供回写按实例身份解析纯搬运的来源槽
      * @param deltas 本次事务在当前 Inventory 上的槽位变更
      */
-    void afterCommit(@NotNull List<SlotChange> deltas) {
+    void afterCommit(@Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> deltas) {
     }
 
     /**

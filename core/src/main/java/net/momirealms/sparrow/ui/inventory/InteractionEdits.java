@@ -170,17 +170,18 @@ public final class InteractionEdits {
     ClickCandidate.StaleReason staleCursor() {
         ItemStack expectedCursor = this.expectedCursor;
         ClickSemantics.Context context = this.context;
-        if (expectedCursor == null || context == null || expectedCursor.equals(context.cursor())) {
+        if (expectedCursor == null || context == null || ItemUtils.isContentEqual(expectedCursor, context.unsafeCursor())) {
             return null;
         }
         return ClickCandidate.StaleReason.CURSOR;
     }
 
     // 第一次写入时记下光标, 之后不再更新. 这一刻是监听器算最终值时看到的那一份, 比候选的规划期原值更贴切.
+    // cursor() 按契约返回副本, 这里不再多复制一次.
     private void rememberCursor() {
         ClickSemantics.Context context = this.context;
         if (this.expectedCursor == null && context != null) {
-            this.expectedCursor = context.cursor().clone();
+            this.expectedCursor = context.cursor();
         }
     }
 

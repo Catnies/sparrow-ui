@@ -76,6 +76,38 @@ final class InventoryTransactions {
             @NotNull List<SparrowInventory.PlannedRoot> readSet,
             @NotNull BooleanSupplier commitGuard
     ) {
+        return commit(reason, draft, interaction, bypassPre, committedCallback, readSet, commitGuard, true);
+    }
+
+    /**
+     * 提交一笔内容取自外部容器的同步事务, 供 ReferencingInventory 把外部世界的既成变更吸收进 Bukkit 内容镜像.
+     * <p>这类事务的目标内容就是刚从外部容器读到的内容, 因此跳过 pre 阶段, 也跳过提交后的外部容器回写:
+     * 回写只会用等值副本换掉容器里的物品实例, 白白作废外部持有的引用.
+     *
+     * @param scope 本笔同步事务的写集
+     * @return 事务结果; 只要不是 Committed, 参与的 Inventory 就保持原样
+     */
+    @NotNull
+    static TransactionResult commitExternalSync(@NotNull TransactionScope scope) {
+        return commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false);
+    }
+
+    /**
+     * 事务提交的统一实现.
+     *
+     * @param writeBack 为 {@code true} 时在状态提交后调用各 Inventory 的提交后处理, 把内容写回外部容器
+     */
+    @NotNull
+    private static TransactionResult commit(
+            @NotNull UpdateReason reason,
+            @NotNull TransactionDraft draft,
+            @Nullable InteractionDraft interaction,
+            boolean bypassPre,
+            @Nullable Runnable committedCallback,
+            @NotNull List<SparrowInventory.PlannedRoot> readSet,
+            @NotNull BooleanSupplier commitGuard,
+            boolean writeBack
+    ) {
         // Inventory 级冻结兜底: 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务, 不发 Pre 也零变更.
         if (reason instanceof PlayerUpdateReason) {
             List<TransactionScope> frozenCheck = draft.scopes();
@@ -166,12 +198,14 @@ final class InventoryTransactions {
         // 因此提交后处理器运行时能够读到最新内容. 一个 Inventory 失败也不能跳过其他 Inventory, 最后再统一抛出异常.
         Throwable afterCommitFailure = null;
         try {
-            for (int i = 0; i < declaredFinal.size(); i++) {
-                TransactionScope scope = declaredFinal.get(i);
-                afterCommitFailure = ThrowableUtils.captureUnchecked(
-                        afterCommitFailure,
-                        () -> scope.inventory().afterCommit(scope.slotChanges())
-                );
+            if (writeBack) {
+                for (int i = 0; i < declaredFinal.size(); i++) {
+                    TransactionScope scope = declaredFinal.get(i);
+                    afterCommitFailure = ThrowableUtils.captureUnchecked(
+                            afterCommitFailure,
+                            () -> scope.inventory().afterCommit(scope.planned(), scope.slotChanges())
+                    );
+                }
             }
             if (committedCallback != null) {
                 afterCommitFailure = ThrowableUtils.captureUnchecked(afterCommitFailure, committedCallback);

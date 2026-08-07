@@ -258,6 +258,30 @@ public final class ClickSemantics {
         void cursor(@NotNull ItemStack cursor);
 
         /**
+         * 零拷贝地读取光标上正拿着的物品.
+         * <p>返回与菜单光标共享句柄的活视图, 供搬运路径保持对象身份. 只能在当前调用栈内读取或整体搬走,
+         * 需要留存, 改动或用于并发校验的快照一律改用 {@link #cursor()}.
+         * <p>默认实现退回 {@link #cursor()} 的副本, 语义仍然成立, 只是搬运时保不住对象身份.
+         *
+         * @return 与菜单光标共享句柄的物品视图, 没拿东西时返回空物品
+         */
+        @NotNull
+        default ItemStack unsafeCursor() {
+            return this.cursor();
+        }
+
+        /**
+         * 采纳给定物品作为光标内容, 不复制.
+         * <p>物品从槽位搬到光标时用它保持对象身份, 对齐原版的指针转移. 调用方交出物品后不得再持有或修改.
+         * <p>默认实现退回 {@link #cursor(ItemStack)} 的复制, 始终安全, 只是保不住对象身份.
+         *
+         * @param cursor 新的光标物品
+         */
+        default void adoptCursor(@NotNull ItemStack cursor) {
+            this.cursor(cursor);
+        }
+
+        /**
          * 副手物品的副本.
          *
          * @return 副手物品副本, 空副手为 {@code null}

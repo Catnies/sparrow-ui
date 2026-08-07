@@ -225,7 +225,9 @@ final class ClickSlotRules {
         if (cursor.getAmount() > effectiveLimit(slotLimit, cursor)) {
             return null;
         }
-        return new Outcome(cursor.clone(), current);
+        // 整堆交换是纯指针对调: 两端物品原样换位, 数量与组件都不变, 因此谁都不复制.
+        // 与原版 doClick 的 setCarried(clicked) + slot.setByPlayer(carried) 一致.
+        return new Outcome(cursor, current);
     }
 
     private static int effectiveLimit(int slotLimit, ItemStack item) {
