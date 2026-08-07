@@ -699,12 +699,12 @@ public abstract class SparrowInventory {
      */
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
         Objects.checkIndex(slot, this.size());
-        this.prepareWrite();
-        @Nullable ItemStack[] planned = this.currentState();
+        PlannedRoot basis = this.openPlanForWrite();
+        @Nullable ItemStack[] planned = basis.planned();
         SlotChange delta = new SlotChange(slot, planned[slot], item);
         return InventoryTransactions.commit(
                 reason,
-                List.of(new TransactionScope(this, planned, List.of(delta))),
+                List.of(new TransactionScope(basis, List.of(delta))),
                 bypassPre
         );
     }
@@ -727,8 +727,8 @@ public abstract class SparrowInventory {
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
-        this.prepareWrite();
-        @Nullable ItemStack[] planned = this.currentState();
+        PlannedRoot basis = this.openPlanForWrite();
+        @Nullable ItemStack[] planned = basis.planned();
         @Nullable ItemStack current = planned[slot];
         int amount = input.getAmount();
 
@@ -748,7 +748,7 @@ public abstract class SparrowInventory {
 
         ItemStack after = current != null ? current.clone() : input.clone();
         after.setAmount((current != null ? current.getAmount() : 0) + moved);
-        TransactionResult result = this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
+        TransactionResult result = this.commitScoped(reason, basis, List.of(new SlotChange(slot, current, after)));
         return new AddResult(result, result instanceof TransactionResult.Committed ? amount - moved : amount);
     }
 
@@ -765,11 +765,11 @@ public abstract class SparrowInventory {
     @NotNull
     public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
         Objects.checkIndex(slot, this.size());
-        this.prepareWrite();
-        @Nullable ItemStack[] planned = this.currentState();
+        PlannedRoot basis = this.openPlanForWrite();
+        @Nullable ItemStack[] planned = basis.planned();
         // modifier 收到物品副本并在锁外执行; SlotChange 会再次复制返回值, 并把空物品转为 null
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
-        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, planned[slot], modified)));
+        return this.commitScoped(reason, basis, List.of(new SlotChange(slot, planned[slot], modified)));
     }
 
     /**
@@ -784,8 +784,8 @@ public abstract class SparrowInventory {
     @NotNull
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
         Objects.checkIndex(slot, this.size());
-        this.prepareWrite();
-        @Nullable ItemStack[] planned = this.currentState();
+        PlannedRoot basis = this.openPlanForWrite();
+        @Nullable ItemStack[] planned = basis.planned();
         @Nullable ItemStack current = planned[slot];
         if (current == null || change == 0) {
             return EMPTY_COMMITTED;
@@ -808,23 +808,19 @@ public abstract class SparrowInventory {
             return EMPTY_COMMITTED;
         }
         @Nullable ItemStack after = target > 0 ? ItemUtils.copyWithAmount(current, target) : null;
-        return this.commitScoped(reason, planned, List.of(new SlotChange(slot, current, after)));
+        return this.commitScoped(reason, basis, List.of(new SlotChange(slot, current, after)));
     }
 
     /**
      * 把当前 Inventory 上已规划好的变更作为单 Inventory 事务提交.
      *
      * @param reason 变更原因
-     * @param planned 规划基准状态引用, 提交时用它做并发校验
+     * @param basis 本次规划读到的基准, 提交时用它做并发校验
      * @param deltas 槽位变更
      * @return 事务结果
      */
-    private TransactionResult commitScoped(UpdateReason reason, @Nullable ItemStack[] planned, List<SlotChange> deltas) {
-        return InventoryTransactions.commit(
-                reason,
-                List.of(new TransactionScope(this, planned, deltas)),
-                false
-        );
+    private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
+        return InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, deltas)), false);
     }
 
     /**
@@ -1239,7 +1235,7 @@ public abstract class SparrowInventory {
      */
     @NotNull
     PlannedRoot openPlan() {
-        return new PlannedRoot(this, this.currentState());
+        return new PlannedRoot.Stm(this, this.currentState());
     }
 
     /**
@@ -1294,11 +1290,106 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 一次规划实际读取的 Inventory 状态版本, 用于候选提交前确认所有规划依据仍然有效.
+     * // todo 或许可以去接口?
+     * 一次规划实际读取的 Inventory 状态版本, 同时是状态家族行为的宿主: 事务引擎的加锁, 校验,
+     * 构造, 交换与落地五个相位全部经由它分派, 引擎不感知具体家族.
+     * <p>{@code planned} 数组只承担内容视图职责(规划读取, 事件 before 采样, 回写来源解析);
+     * "规划依据是否仍然有效"由 {@link #isStale()} 按家族语义回答, 调用方不得再拿数组自行比对.
      */
-    record PlannedRoot(
-            @NotNull SparrowInventory inventory,
-            @Nullable ItemStack @NotNull [] planned
-    ) {
+    abstract static sealed class PlannedRoot {
+        private final SparrowInventory inventory;
+        private final @Nullable ItemStack @NotNull [] planned;
+
+        PlannedRoot(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
+            this.inventory = inventory;
+            this.planned = planned;
+        }
+
+        @NotNull
+        final SparrowInventory inventory() {
+            return this.inventory;
+        }
+
+        final @Nullable ItemStack @NotNull [] planned() {
+            return this.planned;
+        }
+
+        /**
+         * 本基准参与提交临界区的方式: 参与全序加锁的家族返回锁凭证, 不加锁的家族返回 {@code null}.
+         */
+        @Nullable
+        abstract StateLock stateLock();
+
+        /**
+         * 本基准是否已经失效. 提交临界区内的乐观校验与候选复核的 ROOT_STATE 检查共用本方法.
+         */
+        abstract boolean isStale();
+
+        /**
+         * 在提交临界区内构造应用变更后的新状态; 不参与统一交换的家族返回 {@code null}.
+         * 只允许在 {@link #isStale()} 刚刚通过的同一临界区内调用.
+         */
+        abstract @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas);
+
+        /**
+         * 在提交临界区内把构造产物设为当前状态; 产物为 {@code null} 时无事发生.
+         */
+        abstract void swapTo(@Nullable ItemStack @Nullable [] nextState);
+
+        /**
+         * 状态提交后, post 事件派发前的落地动作. 是否调用由引擎按事务属性决定(External 同步免回写).
+         */
+        abstract void land(@NotNull List<SlotChange> deltas);
+
+        /**
+         * 全序加锁凭证: 事务引擎按 {@code order} 升序逐把加锁, 消除跨 Inventory 事务的死锁可能.
+         */
+        record StateLock(@NotNull ReentrantLock lock, long order) {
+        }
+
+        /**
+         * 状态自有家族的规划基准: 内容真相是 Inventory 的内部状态数组, planned 数组同时就是
+         * 乐观校验 token —— 状态数组元素一经发布不再修改, 换数组即换版本, 比较引用即可发现并发提交.
+         */
+        static final class Stm extends PlannedRoot {
+
+            Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
+                super(inventory, planned);
+            }
+
+            @Override
+            @NotNull
+            StateLock stateLock() {
+                return new StateLock(this.inventory().writeLock(), this.inventory().lockOrder());
+            }
+
+            @Override
+            boolean isStale() {
+                return this.inventory().currentState() != this.planned();
+            }
+
+            @Override
+            @Nullable ItemStack @NotNull [] buildNextState(@NotNull List<SlotChange> deltas) {
+                // isStale 刚在同一临界区内通过, planned 与当前状态是同一个数组, 克隆它即克隆当前状态.
+                @Nullable ItemStack[] next = this.planned().clone();
+                for (int i = 0; i < deltas.size(); i++) {
+                    SlotChange delta = deltas.get(i);
+                    next[delta.slot()] = delta.unsafeAfter();
+                }
+                return next;
+            }
+
+            @Override
+            void swapTo(@Nullable ItemStack @Nullable [] nextState) {
+                if (nextState != null) {
+                    this.inventory().swapState(nextState);
+                }
+            }
+
+            @Override
+            void land(@NotNull List<SlotChange> deltas) {
+                this.inventory().afterCommit(this.planned(), deltas);
+            }
+        }
     }
 }

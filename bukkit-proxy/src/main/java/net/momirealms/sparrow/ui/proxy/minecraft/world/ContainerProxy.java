@@ -10,6 +10,9 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface ContainerProxy {
     ContainerProxy INSTANCE = ASMProxyFactory.create(ContainerProxy.class);
 
+    @MethodInvoker(name = "getContainerSize")
+    int getContainerSize(Object target);
+
     @MethodInvoker(name = "setItem")
     void setItem(Object target, int slot, @Type(clazz = ItemStackProxy.class) Object item);
 

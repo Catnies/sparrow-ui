@@ -101,8 +101,7 @@ record ClickCandidate(
             return StaleReason.GAME_MODE;
         }
         for (int rootIndex = 0; rootIndex < this.plannedRoots.size(); rootIndex++) {
-            SparrowInventory.PlannedRoot root = this.plannedRoots.get(rootIndex);
-            if (root.inventory().currentState() != root.planned()) {
+            if (this.plannedRoots.get(rootIndex).isStale()) {
                 return StaleReason.ROOT_STATE;
             }
         }

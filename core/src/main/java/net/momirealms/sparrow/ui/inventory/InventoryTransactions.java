@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
-import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
@@ -17,9 +16,10 @@ import java.util.function.BooleanSupplier;
 /**
  * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
  * <p>一笔事务走四步: plan 由调用方先做完(在规划内容上算好每个槽改成什么) → pre 在不持锁的状态下
- * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在锁内核对规划基准状态引用是否仍然相同,
- * 核对通过才换上新内容 → post 释放锁后把事件按提交顺序派出去. 一笔事务涉及多个 Inventory 时,
- * 按每个 Inventory 创建时领到的固定序号依次加锁, 即便多线程同时跑跨 Inventory 事务也不会死锁.
+ * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在临界区内核对每条规划基准仍然有效
+ * (失效语义由基准的家族决定), 核对通过才落定新内容 → post 释放锁后把事件按提交顺序派出去.
+ * 一笔事务涉及多个 Inventory 时, 按加锁凭证的固定序号依次加锁, 即便多线程同时跑跨 Inventory
+ * 事务也不会死锁; 不参与加锁的家族靠串行访问契约保证安全.
  * <p>事务形状的校验和 Pre 阶段的候选值编辑都由 {@link TransactionDraft} 保存,
  * 事件的准备和派发由 {@link TransactionNotification} 承担.
  */
@@ -142,7 +142,7 @@ final class InventoryTransactions {
         }
 
         List<TransactionScope> declaredFinal = draft.scopes();
-        List<SparrowInventory> lockOrder = lockOrder(declaredFinal, readSet);
+        List<SparrowInventory.PlannedRoot.StateLock> locks = collectLocks(declaredFinal, readSet);
 
         // Pre 期间新纳入的 Inventory 没有参加本轮 Pre, 但它们的订阅者照样要收到 Post.
         // 已参与的 Inventory 只可追加, 不可移除也不可换位, 新参与者就是写集末尾多出来的那一段.
@@ -156,32 +156,32 @@ final class InventoryTransactions {
 
         int locked = 0;
         try {
-            // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能
-            for (; locked < lockOrder.size(); locked++) {
-                lockOrder.get(locked).writeLock().lock();
+            // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能; 不参与加锁的家族没有凭证, 不在列表里.
+            for (; locked < locks.size(); locked++) {
+                locks.get(locked).lock().lock();
             }
 
-            // 乐观校验: 任一规划基准状态引用已变说明有并发提交插入, 整体放弃
+            // 乐观校验: 任一规划基准已失效说明有并发提交插入, 整体放弃; 失效语义由基准的家族决定.
             for (int i = 0; i < declaredFinal.size(); i++) {
-                TransactionScope scope = declaredFinal.get(i);
-                if (scope.inventory().currentState() != scope.planned()) {
+                if (declaredFinal.get(i).basis().isStale()) {
                     return TransactionResult.Conflicted.INSTANCE;
                 }
             }
             for (int i = 0; i < readSet.size(); i++) {
-                SparrowInventory.PlannedRoot root = readSet.get(i);
-                if (root.inventory().currentState() != root.planned()) {
+                if (readSet.get(i).isStale()) {
                     return TransactionResult.Conflicted.INSTANCE;
                 }
             }
 
-            // 先为全部 Inventory 构造新的内部状态版本再统一交换, 保证意外异常发生时尚未改动任何状态.
-            @Nullable ItemStack[][] newStates = new ItemStack[declaredFinal.size()][];
+            // 先为全部写集构造提交产物再统一交换, 保证意外异常发生时尚未改动任何状态;
+            // 不参与统一交换的家族产物为 null, 交换时无事发生.
+            @Nullable ItemStack[][] staged = new ItemStack[declaredFinal.size()][];
             for (int i = 0; i < declaredFinal.size(); i++) {
-                newStates[i] = applyDeltas(declaredFinal.get(i));
+                TransactionScope scope = declaredFinal.get(i);
+                staged[i] = scope.basis().buildNextState(scope.slotChanges());
             }
             for (int i = 0; i < declaredFinal.size(); i++) {
-                declaredFinal.get(i).inventory().swapState(newStates[i]);
+                declaredFinal.get(i).basis().swapTo(staged[i]);
             }
 
             // 更换内容时就把 PostUpdateEvent 放入队列, 防止后提交的事务先发出通知.
@@ -190,7 +190,7 @@ final class InventoryTransactions {
             }
         } finally {
             for (int i = locked - 1; i >= 0; i--) {
-                lockOrder.get(i).writeLock().unlock();
+                locks.get(i).lock().unlock();
             }
         }
 
@@ -203,7 +203,7 @@ final class InventoryTransactions {
                     TransactionScope scope = declaredFinal.get(i);
                     afterCommitFailure = ThrowableUtils.captureUnchecked(
                             afterCommitFailure,
-                            () -> scope.inventory().afterCommit(scope.planned(), scope.slotChanges())
+                            () -> scope.basis().land(scope.slotChanges())
                     );
                 }
             }
@@ -224,31 +224,39 @@ final class InventoryTransactions {
     }
 
     /**
-     * 按固定顺序排出本笔事务需要取得的写锁, 避免并发事务互相等待.
-     * <p>这个顺序只用于加锁. 写入, 提交后处理与事件中的变化都保持调用方传入的顺序.
+     * 按固定顺序排出本笔事务需要取得的锁凭证, 避免并发事务互相等待.
+     * <p>这个顺序只用于加锁. 写入, 落地与事件中的变化都保持调用方传入的顺序.
+     * 不参与加锁的家族没有凭证, 在此被自然滤除.
      *
      * @param writes 按调用方传入顺序排列的写集
      * @param reads 只做乐观校验的额外读集
-     * @return 去重并按锁序号排列的 Inventory
+     * @return 去重并按锁序号排列的锁凭证
      */
     @NotNull
-    private static List<SparrowInventory> lockOrder(List<TransactionScope> writes, List<SparrowInventory.PlannedRoot> reads) {
-        List<SparrowInventory> inventories = new ArrayList<>(writes.size() + reads.size());
+    private static List<SparrowInventory.PlannedRoot.StateLock> collectLocks(List<TransactionScope> writes, List<SparrowInventory.PlannedRoot> reads) {
+        List<SparrowInventory.PlannedRoot.StateLock> locks = new ArrayList<>(writes.size() + reads.size());
         IdentityHashMap<SparrowInventory, Boolean> seen = new IdentityHashMap<>();
         for (int i = 0; i < writes.size(); i++) {
-            SparrowInventory inventory = writes.get(i).inventory();
-            if (seen.put(inventory, Boolean.TRUE) == null) {
-                inventories.add(inventory);
-            }
+            collectLock(writes.get(i).basis(), seen, locks);
         }
         for (int i = 0; i < reads.size(); i++) {
-            SparrowInventory inventory = reads.get(i).inventory();
-            if (seen.put(inventory, Boolean.TRUE) == null) {
-                inventories.add(inventory);
-            }
+            collectLock(reads.get(i), seen, locks);
         }
-        inventories.sort(Comparator.comparingLong(SparrowInventory::lockOrder));
-        return inventories;
+        locks.sort(Comparator.comparingLong(SparrowInventory.PlannedRoot.StateLock::order));
+        return locks;
+    }
+
+    // 同一个 Inventory 在写集与读集中可能各出现一次, 只取第一份凭证.
+    private static void collectLock(
+            SparrowInventory.PlannedRoot root,
+            IdentityHashMap<SparrowInventory, Boolean> seen,
+            List<SparrowInventory.PlannedRoot.StateLock> locks
+    ) {
+        if (seen.put(root.inventory(), Boolean.TRUE) != null) return;
+        @Nullable SparrowInventory.PlannedRoot.StateLock lock = root.stateLock();
+        if (lock != null) {
+            locks.add(lock);
+        }
     }
 
     /**
@@ -281,14 +289,4 @@ final class InventoryTransactions {
         return updates;
     }
 
-    // 复制当前内部状态版本, 再应用槽位变更, 得到新的内部状态版本.
-    private static @Nullable ItemStack @NotNull [] applyDeltas(TransactionScope scope) {
-        @Nullable ItemStack[] next = scope.inventory().currentState().clone();
-        List<SlotChange> deltas = scope.slotChanges();
-        for (int i = 0; i < deltas.size(); i++) {
-            SlotChange delta = deltas.get(i);
-            next[delta.slot()] = delta.unsafeAfter();
-        }
-        return next;
-    }
 }

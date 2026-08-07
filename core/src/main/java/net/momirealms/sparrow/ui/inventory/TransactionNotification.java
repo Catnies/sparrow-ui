@@ -71,7 +71,7 @@ final class TransactionNotification {
                     this.reason,
                     draft.scopes(),
                     true,
-                    draft::baselineOf,
+                    draft::includeScope,
                     interaction
             );
             event.setCancelled(cancelled);

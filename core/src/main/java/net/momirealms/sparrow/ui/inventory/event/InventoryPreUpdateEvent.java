@@ -21,8 +21,8 @@ import java.util.function.Function;
  * 任何线程再调用 {@link #setAfter} 都会失败.
  */
 public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
-    // 取得一个尚未参与事务的 Inventory 的规划基准状态, null 表示事件不支持纳入新的 Inventory
-    @Nullable private final Function<SparrowInventory, ItemStack[]> baselines;
+    // 为尚未参与事务的 Inventory 构造带规划基准的空写集, null 表示事件不支持纳入新的 Inventory, 生产不应该出现 null
+    @Nullable private final Function<SparrowInventory, TransactionScope> includedScopes;
     @Nullable private final InteractionDraft interaction; // 触发本笔事务的交互副作用草稿, null 表示不是玩家交互
     private final Thread handlerThread;                 // 创建事件的处理器线程, setAfter 只允许它调用
     private volatile boolean editable;                  // 编辑窗口是否仍然打开
@@ -33,9 +33,9 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
      *
      * @param inventory 当前事件使用其槽位坐标的 Inventory
      * @param reason 事务触发原因
-     * @param scopes 整笔事务的写集, 每一条都自带该 Inventory 的规划基准状态
+     * @param scopes 整笔事务的写集, 每一条都自带该 Inventory 的规划基准
      * @param editable 事件是否支持在同步处理器内改写候选最终值
-     * @param baselines 取得新纳入 Inventory 基准状态的入口; 为 {@code null} 时事件不支持纳入新的 Inventory
+     * @param includedScopes 为新纳入的 Inventory 构造带规划基准空写集的入口; 为 {@code null} 时事件不支持纳入新的 Inventory
      * @param interaction 触发本笔事务的交互副作用草稿; 为 {@code null} 时事务不是玩家交互触发的
      */
     @ApiStatus.Internal
@@ -44,11 +44,11 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             @NotNull UpdateReason reason,
             @NotNull List<TransactionScope> scopes,
             boolean editable,
-            @Nullable Function<SparrowInventory, ItemStack[]> baselines,
+            @Nullable Function<SparrowInventory, TransactionScope> includedScopes,
             @Nullable InteractionDraft interaction
     ) {
         super(inventory, reason, scopes);
-        this.baselines = baselines;
+        this.includedScopes = includedScopes;
         this.interaction = interaction;
         // 事件在派发方线程上构造后立即交给处理器, 构造线程就是处理器线程.
         this.handlerThread = Thread.currentThread();
@@ -122,9 +122,9 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             updated.add(new SlotChange(rootSlot, planned[rootSlot], after));
         }
 
-        // 用重写后的写集替换事件快照, 当前 Inventory 的槽位变更跟着一起刷新.
+        // 用重写后的写集替换事件快照, 当前 Inventory 的槽位变更跟着一起刷新;
         List<TransactionScope> rewritten = new ArrayList<>(scopes);
-        rewritten.set(rootIndex, new TransactionScope(inventory, planned, updated));
+        rewritten.set(rootIndex, scope.withSlotChanges(updated));
         this.replaceScopes(rewritten);
     }
 
@@ -152,8 +152,9 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
      */
     public boolean include(@NotNull SparrowInventory inventory) {
         this.checkEditable();
-        Function<SparrowInventory, ItemStack[]> baselines = this.baselines;
-        if (baselines == null) {
+        Function<SparrowInventory, TransactionScope> includedScopes = this.includedScopes;
+        // 理论上不应该出现 null
+        if (includedScopes == null) {
             throw new IllegalStateException("pre-update event cannot bring new inventories into this transaction");
         }
 
@@ -164,9 +165,9 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             }
         }
 
-        // 基准状态与新变更组绑在同一条写集里一起追加到末尾, 不需要另外维护对应关系.
+        // 规划基准与新变更组绑在同一条写集里一起追加到末尾, 不需要另外维护对应关系.
         List<TransactionScope> expanded = new ArrayList<>(scopes);
-        expanded.add(new TransactionScope(inventory, baselines.apply(inventory), List.of()));
+        expanded.add(includedScopes.apply(inventory));
         this.replaceScopes(expanded);
         return true;
     }

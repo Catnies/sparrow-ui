@@ -710,7 +710,7 @@ final class ClickPlanner {
                 // 只换 before 的来源, after 原样采纳: 这一步是记账口径修正, 不该把规划器保住的对象身份洗掉.
                 restored.add(SlotChange.adopt(change.slot(), planned[change.slot()], change.unsafeAfter()));
             }
-            rewritten.add(new TransactionScope(scope.inventory(), planned, restored));
+            rewritten.add(scope.withSlotChanges(restored));
         }
         return new ClickCandidate(
                 candidate.action(),

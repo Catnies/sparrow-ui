@@ -18,12 +18,19 @@ public final class CraftContainerAccess {
 
     /**
      * 判断给定 Bukkit 容器是否背靠可直达的 NMS Container.
+     * <p>工作台, 铁砧这类视图由多个 NMS Container 拼成, Bukkit 层负责槽号分派, 而 {@code getInventory()}
+     * 只返回其中一个 —— 对它裸索引直写会写错格或越界. 因此尺寸与 Bukkit 视图对不上的容器一律判定为不可直达,
+     * 回写自动退回 Bukkit 写入.
      *
      * @param inventory 待探测的 Bukkit 容器
      * @return 可以通过 {@link #setItem} 零拷贝写入时返回 {@code true}
      */
     public static boolean isCraftBacked(Inventory inventory) {
-        return CRAFT_INVENTORY_CLASS != null && CRAFT_INVENTORY_CLASS.isInstance(inventory);
+        // todo 生产必过, 多余判断, 自动清理
+        if (CRAFT_INVENTORY_CLASS == null || !CRAFT_INVENTORY_CLASS.isInstance(inventory)) {
+            return false;
+        }
+        return ContainerProxy.INSTANCE.getContainerSize(CraftInventoryProxy.INSTANCE.getInventory(inventory)) == inventory.getSize();
     }
 
     /**
