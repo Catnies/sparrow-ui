@@ -17,9 +17,9 @@ import java.util.function.BooleanSupplier;
  * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
  * <p>一笔事务走四步: plan 由调用方先做完(在规划内容上算好每个槽改成什么) → pre 在不持锁的状态下
  * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在临界区内核对每条规划基准仍然有效
- * (失效语义由基准的家族决定), 核对通过才落定新内容 → post 释放锁后把事件按提交顺序派出去.
+ * (怎么算失效由基准自己定), 核对通过才落定新内容 → post 释放锁后把事件按提交顺序派出去.
  * 一笔事务涉及多个 Inventory 时, 按加锁凭证的固定序号依次加锁, 即便多线程同时跑跨 Inventory
- * 事务也不会死锁; 不参与加锁的家族靠串行访问契约保证安全.
+ * 事务也不会死锁; 不加锁的那一种靠调用方保证串行访问.
  * <p>事务形状的校验和 Pre 阶段的候选值编辑都由 {@link TransactionDraft} 保存,
  * 事件的准备和派发由 {@link TransactionNotification} 承担.
  */
@@ -156,12 +156,12 @@ final class InventoryTransactions {
 
         int locked = 0;
         try {
-            // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能; 不参与加锁的家族没有凭证, 不在列表里.
+            // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能; 不加锁的基准没有凭证, 不在列表里.
             for (; locked < locks.size(); locked++) {
                 locks.get(locked).lock().lock();
             }
 
-            // 乐观校验: 任一规划基准已失效说明有并发提交插入, 整体放弃; 失效语义由基准的家族决定.
+            // 乐观校验: 任一规划基准已失效说明有并发提交插入, 整体放弃; 怎么算失效由基准自己定.
             for (int i = 0; i < declaredFinal.size(); i++) {
                 if (declaredFinal.get(i).basis().isStale()) {
                     return TransactionResult.Conflicted.INSTANCE;
@@ -174,7 +174,7 @@ final class InventoryTransactions {
             }
 
             // 先为全部写集构造提交产物再统一交换, 保证意外异常发生时尚未改动任何状态;
-            // 不参与统一交换的家族产物为 null, 交换时无事发生.
+            // 不需要交换状态的基准产物为 null, 交换时无事发生.
             @Nullable ItemStack[][] staged = new ItemStack[declaredFinal.size()][];
             for (int i = 0; i < declaredFinal.size(); i++) {
                 TransactionScope scope = declaredFinal.get(i);
@@ -199,11 +199,13 @@ final class InventoryTransactions {
         Throwable afterCommitFailure = null;
         try {
             if (writeBack) {
+                // 先把整笔事务里的整堆搬运认全并取好句柄, 再开始写: 两个容器互相对调或者三个容器轮转, 都不会因为谁先写而出错.
+                LiveTransfers transfers = LiveTransfers.capture(declaredFinal, interaction);
                 for (int i = 0; i < declaredFinal.size(); i++) {
                     TransactionScope scope = declaredFinal.get(i);
                     afterCommitFailure = ThrowableUtils.captureUnchecked(
                             afterCommitFailure,
-                            () -> scope.basis().land(scope.slotChanges())
+                            () -> scope.basis().land(scope.slotChanges(), transfers)
                     );
                 }
             }
@@ -226,7 +228,7 @@ final class InventoryTransactions {
     /**
      * 按固定顺序排出本笔事务需要取得的锁凭证, 避免并发事务互相等待.
      * <p>这个顺序只用于加锁. 写入, 落地与事件中的变化都保持调用方传入的顺序.
-     * 不参与加锁的家族没有凭证, 在此被自然滤除.
+     * 不加锁的基准没有凭证, 在此被自然滤除.
      *
      * @param writes 按调用方传入顺序排列的写集
      * @param reads 只做乐观校验的额外读集

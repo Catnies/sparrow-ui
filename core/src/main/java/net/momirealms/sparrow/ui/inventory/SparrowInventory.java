@@ -40,15 +40,19 @@ import java.util.function.UnaryOperator;
  *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
  *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
- * <p>每个实例直接持有自己的内部状态数组, 并参与事务加锁, 并发校验和状态交换.
- * 持有内部状态不等于"最终真实容器": ReferencingInventory 的内部状态是 Bukkit 容器内容在 Sparrow 中的一份镜像.
- * <p>读操作直接读取当前内部状态版本, 任何线程都可以安全调用. 写操作遇到并发冲突时返回{@link TransactionResult.Conflicted} 且不产生修改;
- * <p><strong>无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>: 提交只换数组不改元素,
- * 因此比对数组引用就足以发现并发写入. 为了对齐原版的对象身份行为, 玩家把光标物品整堆交换进槽位时,
- * 落进内部状态的就是菜单光标那一个实例, 于是该槽的元素可能与玩家光标同源 —— 外部经
- * {@code HumanEntity#getItemOnCursor()} 之类拿到的活视图指向同一个底层物品, 对它就地改写数量或组件会绕过事务:
+ * <p>按内容放在哪里, 实现分成两种. {@link VirtualInventory} 这一种自己拿着内部状态数组, 参与事务加锁,
+ * 并发校验和状态交换, 读操作读的是当前内部状态版本, 任何线程都可以安全调用.
+ * {@link ReferencingInventory} 这一种内容放在外部存储里, 读写都直接落到那个存储, 并发校验改看 modCount,
+ * 既不加锁也不交换状态, 访问是否串行由调用方负责.
+ * 两种在写操作遇到并发冲突时都返回 {@link TransactionResult.Conflicted} 且不产生修改.
+ * <p><strong>自己拿着状态数组的那一种, 无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>:
+ * 提交只换数组不改元素, 因此比对数组引用就足以发现并发写入. 为了对齐原版的对象身份行为,
+ * 玩家把光标物品整堆交换进槽位时, 落进内部状态的就是菜单光标那一个实例, 于是该槽的元素可能与玩家光标同源 ——
+ * 外部经 {@code HumanEntity#getItemOnCursor()} 之类拿到的活视图指向同一个底层物品, 对它就地改写数量或组件会绕过事务:
  * 数组引用没变, 并发校验看不见, 事件与 Window 同步也不会被触发. 这是与原版指针转移语义对齐的必然代价;
  * 需要改动物品的一方必须造新对象, 而不是就地写.
+ * 内容放在外部存储的那一种没有这条限制: 它靠内容比对发现变更, 外部把存储里的物品就地改了数量, 组件或 PDC,
+ * 都会在下一次比对时被发现, 以 {@link UpdateReason.External} 原因派发 post 事件并同步显示.
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
  * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例.
  */
@@ -1072,19 +1076,6 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 事务提交成功之后, post 事件派发之前, 对每个参与的 Inventory 携带其槽位变更调用一次.
-     * <p>ReferencingInventory 在这里把变更写回外部容器, 因为这必须先于 post 事件派发,
-     * 保证观察者在事件里重入写入时外部状态已经同步. 此方法抛出的异常会直接传播,
-     * 此时 Sparrow 内部状态已经提交;
-     * <p>内容本来就取自外部容器的同步事务不需要回写, 整个步骤会被跳过, 本方法不会被调用.
-     *
-     * @param planned 本次事务在当前 Inventory 上的规划基准数组, 供回写按实例身份解析纯搬运的来源槽
-     * @param deltas 本次事务在当前 Inventory 上的槽位变更
-     */
-    void afterCommit(@Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> deltas) {
-    }
-
-    /**
      * 把 SparrowInventory 包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例.
      * CraftInventory 背后的 NMS Container 直接代理本 Inventory, 槽位写入会走 Sparrow 的事务流程.
      * 与 Bukkit 容器绑定的信息(观看者, 持有者, 位置)一律为 "Null", 类型固定为 CHEST.
@@ -1290,11 +1281,11 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * // todo 或许可以去接口?
-     * 一次规划实际读取的 Inventory 状态版本, 同时是状态家族行为的宿主: 事务引擎的加锁, 校验,
-     * 构造, 交换与落地五个相位全部经由它分派, 引擎不感知具体家族.
-     * <p>{@code planned} 数组只承担内容视图职责(规划读取, 事件 before 采样, 回写来源解析);
-     * "规划依据是否仍然有效"由 {@link #isStale()} 按家族语义回答, 调用方不得再拿数组自行比对.
+     * // todo 或许可以将2个不同的类分散出去, 或者将这个类单独分到一个文件
+     * 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务: 加锁, 校验, 构造新状态,
+     * 交换和落地这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
+     * <p>{@code planned} 数组只用来读内容(规划读取, 事件 before 采样, 解析搬运来源);
+     * 规划依据还成不成立要问 {@link #isStale()} —— 两种实现的判断方式不一样, 调用方不要自己拿数组比对.
      */
     abstract static sealed class PlannedRoot {
         private final SparrowInventory inventory;
@@ -1315,7 +1306,7 @@ public abstract class SparrowInventory {
         }
 
         /**
-         * 本基准参与提交临界区的方式: 参与全序加锁的家族返回锁凭证, 不加锁的家族返回 {@code null}.
+         * 本基准参与提交临界区的方式: 需要加锁的返回锁凭证, 不加锁的返回 {@code null}.
          */
         @Nullable
         abstract StateLock stateLock();
@@ -1326,7 +1317,7 @@ public abstract class SparrowInventory {
         abstract boolean isStale();
 
         /**
-         * 在提交临界区内构造应用变更后的新状态; 不参与统一交换的家族返回 {@code null}.
+         * 在提交临界区内构造应用变更后的新状态; 不需要交换状态的返回 {@code null}.
          * 只允许在 {@link #isStale()} 刚刚通过的同一临界区内调用.
          */
         abstract @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas);
@@ -1338,8 +1329,11 @@ public abstract class SparrowInventory {
 
         /**
          * 状态提交后, post 事件派发前的落地动作. 是否调用由引擎按事务属性决定(External 同步免回写).
+         *
+         * @param deltas 本写集的槽位变更
+         * @param transfers 整笔事务里认定为整堆搬运的物品, 内容放在外部存储的那一种据此转移 NMS 句柄
          */
-        abstract void land(@NotNull List<SlotChange> deltas);
+        abstract void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers);
 
         /**
          * 全序加锁凭证: 事务引擎按 {@code order} 升序逐把加锁, 消除跨 Inventory 事务的死锁可能.
@@ -1348,8 +1342,8 @@ public abstract class SparrowInventory {
         }
 
         /**
-         * 状态自有家族的规划基准: 内容真相是 Inventory 的内部状态数组, planned 数组同时就是
-         * 乐观校验 token —— 状态数组元素一经发布不再修改, 换数组即换版本, 比较引用即可发现并发提交.
+         * 内容就在 Inventory 自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身,
+         * 它同时也是并发校验的依据 —— 数组元素发布后不再修改, 换内容就是换数组, 比引用就能发现并发提交.
          */
         static final class Stm extends PlannedRoot {
 
@@ -1387,8 +1381,48 @@ public abstract class SparrowInventory {
             }
 
             @Override
-            void land(@NotNull List<SlotChange> deltas) {
-                this.inventory().afterCommit(this.planned(), deltas);
+            void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
+                // 内容就在状态数组里, 上一步换过数组就已经落地了, 这里没有别的事情要做.
+            }
+        }
+
+        /**
+         * 内容放在外部存储里时用的规划基准: planned 是新建时逐槽读存储填出来的临时数组, 每次规划都重新建一份,
+         * 只用来读内容; 并发校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
+         */
+        static final class Live extends PlannedRoot {
+            private final ReferencingInventory owner;
+            private final long modCountAtPlan;
+
+            Live(@NotNull ReferencingInventory owner, @Nullable ItemStack @NotNull [] planned, long modCountAtPlan) {
+                super(owner, planned);
+                this.owner = owner;
+                this.modCountAtPlan = modCountAtPlan;
+            }
+
+            @Override
+            @Nullable
+            StateLock stateLock() {
+                return null;
+            }
+
+            @Override
+            boolean isStale() {
+                return this.owner.liveModCount() != this.modCountAtPlan;
+            }
+
+            @Override
+            @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas) {
+                return null;
+            }
+
+            @Override
+            void swapTo(@Nullable ItemStack @Nullable [] nextState) {
+            }
+
+            @Override
+            void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
+                this.owner.liveApply(deltas, transfers);
             }
         }
     }

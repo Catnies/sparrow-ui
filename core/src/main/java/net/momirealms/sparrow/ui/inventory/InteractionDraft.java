@@ -23,6 +23,7 @@ import java.util.List;
 public final class InteractionDraft {
     @Nullable private ItemStack cursor;      // 提交后的光标, null 表示不改动
     private boolean cursorAdopted;           // 光标是否由规划器交出所有权, 决定提交时采纳还是复制
+    @Nullable private ItemStack consumedCursor; // 被整堆放进槽位的那个光标实例, 落地时据此把它的 NMS 句柄一起搬过去
     @Nullable private ItemStack offhand;     // 提交后的副手, 是否生效由 offhandTouched 决定
     private boolean offhandTouched;          // 与"副手要被清空"区分开, null 副手也是一次有效改动
     @Nullable private List<ItemStack> drops; // 提交后要丢进世界的物品, 没有掉落时保持 null
@@ -69,6 +70,30 @@ public final class InteractionDraft {
         this.checkEditable();
         this.cursor = cursor;
         this.cursorAdopted = true;
+    }
+
+    /**
+     * 记下这次规划整堆放进槽位的那个光标实例.
+     * <p>只有规划器能走这条入口: 记下的就是写集里某条变更的变更后实例. 内容放在外部存储的 Inventory
+     * 落地时靠它认出"这件物品是从光标搬过来的", 直接把 NMS 句柄接过去, 而不是写一份副本进去.
+     * <p>能这么记的前提是本草稿同时也写了新的光标最终值: 这个实例因此一定会离开光标, 不会出现光标和槽位共用一个对象.
+     *
+     * @param cursor 被放进槽位的那个光标实例
+     * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
+     */
+    void consumedCursor(@NotNull ItemStack cursor) {
+        this.checkEditable();
+        this.consumedCursor = cursor;
+    }
+
+    /**
+     * 返回这次规划整堆放进槽位的那个光标实例.
+     *
+     * @return 那个光标实例; 本次规划没有整堆搬走光标时为 {@code null}
+     */
+    @Nullable
+    ItemStack consumedCursor() {
+        return this.consumedCursor;
     }
 
     /**

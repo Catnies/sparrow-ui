@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * ReferencingInventory 引用的内容真相本体: Bukkit 容器只是它的一种实现.
+ * ReferencingInventory 的内容实际存放的地方, 读写一律以它为准: Bukkit 容器只是它的一种实现.
  * <p>槽位坐标是存储自己的坐标(Bukkit 实现即 Bukkit 容器槽位).
  * <p><strong>实现无需线程安全.</strong> 引擎只在 {@link #accessibleNow()} 放行的上下文中调用本接口;
  * 同一 Inventory 的所有访问必须串行, 串行由调用方负责, 框架不提供并发保障.

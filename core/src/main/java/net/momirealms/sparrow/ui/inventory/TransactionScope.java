@@ -34,7 +34,7 @@ public record TransactionScope(@NotNull InventoryChange change, @NotNull Sparrow
 
     /**
      * 根据 Inventory 和内容数组创建一组待提交内容, 供 Pre 阶段改写已经参与事务的 Inventory.
-     * <p>数组会被包装成状态自有家族的基准: 该家族的校验 token 就是数组引用本身, 重新包装不改变校验结果.
+     * <p>数组会被包装成 {@code PlannedRoot.Stm}: 这种基准的校验依据就是数组引用本身, 重新包装不改变校验结果.
      *
      * @param inventory 要修改的 Inventory
      * @param planned 计算槽位变化时该 Inventory 使用的内容数组

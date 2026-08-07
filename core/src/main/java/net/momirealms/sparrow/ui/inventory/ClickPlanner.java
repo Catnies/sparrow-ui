@@ -138,6 +138,11 @@ final class ClickPlanner {
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 SlotChange.adopt(link.slot(), current, outcome.slotAfter())
         )));
+        InteractionDraft draft = InteractionDraft.cursorAfter(outcome.cursorAfter());
+        // 整堆交换会把光标那一个实例原样放进槽位: 记下它, 落地时才知道这件物品是从光标来的, 可以直接搬句柄.
+        if (outcome.slotAfter() == cursor) {
+            draft.consumedCursor(cursor);
+        }
         return ClickCandidate.of(
                 action,
                 link,
@@ -149,7 +154,7 @@ final class ClickPlanner {
                 false,
                 List.of(plan),
                 false,
-                InteractionDraft.cursorAfter(outcome.cursorAfter()),
+                draft,
                 afterCommit
         );
     }
@@ -213,7 +218,7 @@ final class ClickPlanner {
             return null;
         }
 
-        // 数字键换位是纯搬运: 两端物品原样对调, 数量与组件都不变. 采纳实例而不复制, 让对象身份
+        // 数字键换位是整堆搬运: 两端物品原样对调, 数量与组件都不变. 采纳实例而不复制, 让对象身份
         // 跟着物品走, 与原版 doClick 的 inventory.setItem/slot.setByPlayer 指针对调保持一致.
         List<TransactionScope> scopes;
         if (source.inventory() == target.inventory()) {
