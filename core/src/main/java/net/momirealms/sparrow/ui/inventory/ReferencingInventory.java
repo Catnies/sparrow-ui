@@ -6,7 +6,9 @@ import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import org.bukkit.inventory.*;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -284,8 +286,8 @@ public final class ReferencingInventory extends SparrowInventory {
      * @param transfers 整笔事务里认定为整堆搬运的物品
      */
     void liveApply(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
-        @Nullable LiveCapableStorage liveStorage =
-                this.storage instanceof LiveCapableStorage capable && capable.supportsHandleTransfer() ? capable : null;
+        @Nullable LiveCapableStorage liveStorage = this.storage instanceof LiveCapableStorage capable ? capable : null;
+        boolean transferHandles = liveStorage != null && liveStorage.supportsHandleTransfer();
         boolean mutatedInPlace = false;
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
@@ -295,16 +297,19 @@ public final class ReferencingInventory extends SparrowInventory {
             @Nullable ItemStack committed = moved != null ? moved.plannedContent() : after;
             @Nullable ItemStack live = this.storage.read(externalSlot);
             if (!ItemUtils.isContentEqual(live, committed)) {
-                if (moved != null && moved.handle() != null && liveStorage != null) {
+                if (moved != null && moved.handle() != null && transferHandles) {
                     liveStorage.adoptHandle(externalSlot, moved.handle());
                 } else {
                     boolean adjusted = false;
-                    // 只差数量就直接改数量, 不换实例. 存储给的是自己那个实例时, setAmount 当场就生效;
-                    // 有些平台只给副本, 改了等于没改, 所以改完再读一次确认, 没生效就退回换新实例写入.
-                    if (live != null && committed != null && live.isSimilar(committed)) {
-                        live.setAmount(committed.getAmount());
-                        adjusted = ItemUtils.isContentEqual(this.storage.read(externalSlot), committed);
-                        mutatedInPlace |= adjusted;
+                    // 只差数量就在活视图上直接改数量, 不换实例. 活视图只有 LiveCapableStorage 能给,
+                    // 且承诺与存储共享底层实例, 改完即生效; 纯内容存储没有身份可保, 直接走替换写入; read 的返回值只读不改.
+                    if (liveStorage != null && committed != null) {
+                        @Nullable ItemStack liveView = liveStorage.liveView(externalSlot);
+                        if (liveView != null && liveView.isSimilar(committed)) {
+                            liveView.setAmount(committed.getAmount());
+                            adjusted = true;
+                            mutatedInPlace = true;
+                        }
                     }
                     if (!adjusted) {
                         this.storage.write(externalSlot, this.committedCopy(delta, moved));

@@ -153,7 +153,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     public boolean include(@NotNull SparrowInventory inventory) {
         this.checkEditable();
         Function<SparrowInventory, TransactionScope> includedScopes = this.includedScopes;
-        // 理论上不应该出现 null
+        // todo 理论上不出现 null
         if (includedScopes == null) {
             throw new IllegalStateException("pre-update event cannot bring new inventories into this transaction");
         }

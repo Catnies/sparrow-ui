@@ -8,8 +8,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * ReferencingInventory 的内容实际存放的地方, 读写一律以它为准: Bukkit 容器只是它的一种实现.
  * <p>槽位坐标是存储自己的坐标(Bukkit 实现即 Bukkit 容器槽位).
- * <p><strong>实现无需线程安全.</strong> 引擎只在 {@link #accessibleNow()} 放行的上下文中调用本接口;
- * 同一 Inventory 的所有访问必须串行, 串行由调用方负责, 框架不提供并发保障.
+ * <p>同一 Inventory 的所有访问必须串行, 串行由调用方负责, 框架不提供并发保障.
  */
 @ApiStatus.Experimental
 public interface ExternalStorage {
@@ -69,17 +68,6 @@ public interface ExternalStorage {
      * 方块实体在这里标脏, 物品背包在这里回写数据, 远端存储在这里入队保存.
      */
     default void markChanged() {
-    }
-
-    /**
-     * 当前线程能否合法访问本存储.
-     * <p>Bukkit 存储受平台属主规则约束; 线程无关的存储保持默认恒真.
-     * 引擎的属主校验入口据此拒绝非法访问, 串行责任始终在调用方.
-     *
-     * @return 可以访问时返回 {@code true}
-     */
-    default boolean accessibleNow() {
-        return true;
     }
 
     /**

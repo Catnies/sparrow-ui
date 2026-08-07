@@ -15,10 +15,10 @@ public interface LiveCapableStorage extends ExternalStorage {
 
     /**
      * 零拷贝读取槽位现值: 返回与存储共享底层句柄的活视图, 对它原地改数直接落进存储.
-     * <p>平台只能给副本时返回副本也成立 —— 回写路径写后复核, 改动没落进去就退回内容替换.
+     * <p>给不出共享底层实例时必须返回 {@code null}, 让回写自然落到内容替换;
      *
      * @param slot 存储槽位
-     * @return 槽位现值的活视图, 空槽返回 {@code null}
+     * @return 槽位现值的活视图; 空槽或给不出共享实例时返回 {@code null}
      */
     @Nullable
     ItemStack liveView(int slot);
