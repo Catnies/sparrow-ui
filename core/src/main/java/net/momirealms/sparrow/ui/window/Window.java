@@ -415,6 +415,15 @@ public interface Window {
     SlotElement.GuiLink guiAtHotbar(int hotbarSlot);
 
     /**
+     * 返回玩家快捷栏槽位对应的协议槽位.
+     *
+     * @param hotbarSlot 快捷栏索引(0-8)
+     * @return 对应的协议槽位(raw slot)
+     * @throws IndexOutOfBoundsException 快捷栏索引超出 0-8 时
+     */
+    int windowSlotAtHotbar(int hotbarSlot);
+
+    /**
      * 打开请求的执行结果.
      */
     enum OpenResult {
