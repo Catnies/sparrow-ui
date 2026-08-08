@@ -471,22 +471,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     @Override
-    @NotNull
-    public ItemStack unsafeCursor() {
-        // asCraftMirror 只做包装不复制句柄; 空句柄给出的包装器统一折成标准空物品
-        ItemStack mirror = CraftItemStackProxy.INSTANCE.asCraftMirror(this.actualCarried);
-        return mirror.isEmpty() ? ItemStack.empty() : mirror;
-    }
-
-    @Override
-    public void adoptCursor(@NotNull ItemStack cursor) {
-        // 直接接管调用方物品背后的句柄: 搬运语义下光标与它的来源必须是同一个 NMS 实例
-        this.actualCarried = cursor.isEmpty()
-                ? ItemStackProxy.EMPTY
-                : ItemUtils.getItemStackHandle(cursor);
-    }
-
-    @Override
     public Object carried() {
         return this.actualCarried;
     }

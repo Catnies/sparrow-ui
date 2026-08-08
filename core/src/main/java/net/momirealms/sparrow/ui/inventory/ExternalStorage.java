@@ -64,13 +64,6 @@ public interface ExternalStorage {
     int maxStackSize(int slot);
 
     /**
-     * 持久化钩子: 引擎绕过 {@link #write} 原地修改了存储内的物品之后调用, 每笔事务至多一次.
-     * 方块实体在这里标脏, 物品背包在这里回写数据, 远端存储在这里入队保存.
-     */
-    default void markChanged() {
-    }
-
-    /**
      * {@link SlotKey} 判等使用的存储归属: 两个 Inventory 引用同一存储的同一槽位时判定为同一存储位置.
      *
      * @return 存储归属

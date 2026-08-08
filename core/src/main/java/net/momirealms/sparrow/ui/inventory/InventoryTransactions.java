@@ -199,13 +199,11 @@ final class InventoryTransactions {
         Throwable afterCommitFailure = null;
         try {
             if (writeBack) {
-                // 先把整笔事务里的整堆搬运认全并取好句柄, 再开始写: 两个容器互相对调或者三个容器轮转, 都不会因为谁先写而出错.
-                LiveTransfers transfers = LiveTransfers.capture(declaredFinal, interaction);
                 for (int i = 0; i < declaredFinal.size(); i++) {
                     TransactionScope scope = declaredFinal.get(i);
                     afterCommitFailure = ThrowableUtils.captureUnchecked(
                             afterCommitFailure,
-                            () -> scope.basis().land(scope.slotChanges(), transfers)
+                            () -> scope.basis().land(scope.slotChanges())
                     );
                 }
             }

@@ -1512,22 +1512,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         @Override
-        @NotNull
-        public ItemStack unsafeCursor() {
-            M menu = AbstractWindow.this.menuHandle;
-            return menu != null ? menu.unsafeCursor() : ItemStack.empty();
-        }
-
-        @Override
-        public void adoptCursor(@NotNull ItemStack cursor) {
-            M menu = AbstractWindow.this.menuHandle;
-            if (menu != null) {
-                menu.adoptCursor(cursor);
-            }
-            AbstractWindow.this.cursorDirty = true;
-        }
-
-        @Override
         @Nullable
         public ItemStack offhand() {
             return ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(AbstractWindow.this.viewer.getInventory().getItemInOffHand()));

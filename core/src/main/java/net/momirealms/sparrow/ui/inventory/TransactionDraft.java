@@ -223,9 +223,6 @@ final class TransactionDraft {
         IdentityHashMap<SparrowInventory, Boolean> seenInventories = new IdentityHashMap<>();
         // 只有跨 Inventory 时, 不同 Inventory 才可能映射到同一个外部槽位.
         HashSet<SlotKey> seenPhysicalSlots = scopes.size() > 1 ? new HashSet<>() : null;
-        // 规划器可以采纳物品实例而不复制(见 SlotChange.adopt), 搬运语义下每个实例至多有一个落点.
-        // 同一实例落进两个槽位会让两处共享同一对象, 之后任何一方的改动都会串到另一处, 说明写集构造有误.
-        IdentityHashMap<ItemStack, Boolean> seenAfterItems = new IdentityHashMap<>();
         for (int i = 0; i < scopes.size(); i++) {
             TransactionScope scope = scopes.get(i);
             List<SlotChange> slotChanges = scope.slotChanges();
@@ -243,10 +240,6 @@ final class TransactionDraft {
             for (int j = 0; j < slotChanges.size(); j++) {
                 SlotChange change = slotChanges.get(j);
                 int slot = change.slot();
-                @Nullable ItemStack after = change.unsafeAfter();
-                if (after != null && seenAfterItems.put(after, Boolean.TRUE) != null) {
-                    throw new IllegalArgumentException("transaction writes the same item instance into more than one slot");
-                }
                 // 槽号必须属于规划时看到的 Inventory 大小.
                 if (slot < 0 || slot >= size) {
                     throw new IllegalArgumentException("slot " + slot + " is out of bounds for inventory size " + size);

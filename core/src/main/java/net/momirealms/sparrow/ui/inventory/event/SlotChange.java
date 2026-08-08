@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.inventory.event;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class SlotChange {
@@ -13,34 +12,9 @@ public final class SlotChange {
 
     @ApiStatus.Internal
     public SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
-        this(slot, before, after, true);
-    }
-
-    private SlotChange(int slot, @Nullable ItemStack before, @Nullable ItemStack after, boolean copy) {
         this.slot = slot;
-        this.before = ItemUtils.nullIfEmpty(copy ? ItemUtils.copyOrNull(before) : before);
-        this.after = ItemUtils.nullIfEmpty(copy ? ItemUtils.copyOrNull(after) : after);
-    }
-
-    /**
-     * 采纳调用方给出的变更后物品实例, 不复制, 让物品在搬运过程中保持对象身份以对齐原版.
-     * <p><strong>只给 Sparrow 内部规划器使用.</strong> {@code after} 必须满足三者之一: 由本次规划新造,
-     * 取自某个 Inventory 的内部状态数组, 或由菜单交出所有权的光标实例(整堆搬运, 数量与组件都不变).
-     * 采纳之后本记录与 Inventory 状态共享同一实例, 因此任何一方都不得修改它 —— 数量或组件要变就造新对象.
-     * <p>{@code before} 只用于记账, 不参与身份对齐, 因此照常复制: 它若与提交后仍在流转的实例共享引用,
-     * 事件历史与净变化统计会随该实例之后的变化而漂移, 同一笔事务对不同订阅者给出不同结果.
-     * <p>面向外部的写入口一律走复制构造器: 事件处理器写进来的物品必须与内部状态隔离,
-     * 否则处理器直接改动物品组件就会绕过事务, 并在并发事务之间互相污染.
-     *
-     * @param slot 承载本记录的 Inventory 坐标
-     * @param before 变更前的物品, 空槽为 {@code null}; 会被复制
-     * @param after 变更后的物品, 清空槽位为 {@code null}; 会被原样持有
-     * @return 直接持有给定变更后实例的槽位变更
-     */
-    @ApiStatus.Internal
-    @NotNull
-    public static SlotChange adopt(int slot, @Nullable ItemStack before, @Nullable ItemStack after) {
-        return new SlotChange(slot, ItemUtils.copyOrNull(before), after, false);
+        this.before = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(before));
+        this.after = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(after));
     }
 
     public int slot() {

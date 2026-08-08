@@ -22,8 +22,6 @@ import java.util.List;
  */
 public final class InteractionDraft {
     @Nullable private ItemStack cursor;      // 提交后的光标, null 表示不改动
-    private boolean cursorAdopted;           // 光标是否由规划器交出所有权, 决定提交时采纳还是复制
-    @Nullable private ItemStack consumedCursor; // 被整堆放进槽位的那个光标实例, 落地时据此把它的 NMS 句柄一起搬过去
     @Nullable private ItemStack offhand;     // 提交后的副手, 是否生效由 offhandTouched 决定
     private boolean offhandTouched;          // 与"副手要被清空"区分开, null 副手也是一次有效改动
     @Nullable private List<ItemStack> drops; // 提交后要丢进世界的物品, 没有掉落时保持 null
@@ -54,46 +52,8 @@ public final class InteractionDraft {
     @NotNull
     static InteractionDraft cursorAfter(@NotNull ItemStack cursor) {
         InteractionDraft draft = new InteractionDraft();
-        draft.adoptCursor(cursor);
+        draft.cursor(cursor);
         return draft;
-    }
-
-    /**
-     * 采纳规划器算出的光标物品, 不复制.
-     * <p>只有规划器能走这条入口: 它交出的实例要么是本次规划新造的, 要么是被整体搬运的槽位物品,
-     * 所有权明确. 提交时这份实例会被菜单原样接管, 物品从槽位搬到光标时对象身份因此得以保持.
-     *
-     * @param cursor 提交后的光标物品
-     * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
-     */
-    void adoptCursor(@NotNull ItemStack cursor) {
-        this.checkEditable();
-        this.cursor = cursor;
-        this.cursorAdopted = true;
-    }
-
-    /**
-     * 记下这次规划整堆放进槽位的那个光标实例.
-     * <p>只有规划器能走这条入口: 记下的就是写集里某条变更的变更后实例. 内容放在外部存储的 Inventory
-     * 落地时靠它认出"这件物品是从光标搬过来的", 直接把 NMS 句柄接过去, 而不是写一份副本进去.
-     * <p>能这么记的前提是本草稿同时也写了新的光标最终值: 这个实例因此一定会离开光标, 不会出现光标和槽位共用一个对象.
-     *
-     * @param cursor 被放进槽位的那个光标实例
-     * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
-     */
-    void consumedCursor(@NotNull ItemStack cursor) {
-        this.checkEditable();
-        this.consumedCursor = cursor;
-    }
-
-    /**
-     * 返回这次规划整堆放进槽位的那个光标实例.
-     *
-     * @return 那个光标实例; 本次规划没有整堆搬走光标时为 {@code null}
-     */
-    @Nullable
-    ItemStack consumedCursor() {
-        return this.consumedCursor;
     }
 
     /**
@@ -124,8 +84,6 @@ public final class InteractionDraft {
 
     /**
      * 返回提交后的光标物品的副本.
-     * <p>返回副本而不是草稿实例: 搬运路径下草稿里的光标可能就是某个 Inventory 内部状态数组里的元素,
-     * 交出活引用会让处理器直接改写容器内容, 绕过事务与 Window 同步.
      *
      * @return 光标最终值的副本; 返回 {@code null} 表示本次交互不改动光标, 提交后光标保持交互前的样子
      */
@@ -146,7 +104,6 @@ public final class InteractionDraft {
     public void cursor(@NotNull ItemStack cursor) {
         this.checkEditable();
         this.cursor = ItemUtils.copyOrEmpty(cursor);
-        this.cursorAdopted = false;
     }
 
     /**
@@ -213,13 +170,7 @@ public final class InteractionDraft {
     public void apply(@NotNull ClickSemantics.Context context) {
         ItemStack cursor = this.cursor;
         if (cursor != null) {
-            // 只有规划器交出所有权的实例才整体接管, 身份因此得以保持; 处理器写入的一律走复制入口,
-            // 否则它交进来的活视图会直通菜单光标, 与来源槽位变成同一件物品.
-            if (this.cursorAdopted) {
-                context.adoptCursor(cursor);
-            } else {
-                context.cursor(cursor);
-            }
+            context.cursor(cursor);
         }
         if (this.offhandTouched) {
             context.offhand(this.offhand);

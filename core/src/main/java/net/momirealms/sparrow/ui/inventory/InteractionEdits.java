@@ -170,7 +170,7 @@ public final class InteractionEdits {
     ClickCandidate.StaleReason staleCursor() {
         ItemStack expectedCursor = this.expectedCursor;
         ClickSemantics.Context context = this.context;
-        if (expectedCursor == null || context == null || ItemUtils.isContentEqual(expectedCursor, context.unsafeCursor())) {
+        if (expectedCursor == null || context == null || ItemUtils.isContentEqual(expectedCursor, context.cursor())) {
             return null;
         }
         return ClickCandidate.StaleReason.CURSOR;

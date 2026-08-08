@@ -20,9 +20,8 @@ import java.util.function.UnaryOperator;
 
 /**
  * 内容放在外部存储里的 Inventory 实现: 一切以那个存储为准, 本类自己不留一份内容.
- * 读操作直接读存储; 写操作先走事务规划, 提交后再按原版的对象身份习惯落进存储:
- * 内容已经一样就跳过, 整堆搬来的接 NMS 句柄, 同物同组件只差数量的原地改数量, 剩下的才换新实例 ——
- * 前三种都不会让外部已经拿在手上的物品引用失效.
+ * 读操作直接读存储; 写操作先走事务规划, 提交后落进存储: 存储现值与提交内容相等的槽位跳过不写,
+ * 其余槽位换成新实例写进去 —— 引擎写过的槽位一律是新实例, 没写过与等值写入的槽位实例原样不动.
  * <p>本类自己只留两样东西: 一份 <strong>lastKnown</strong>(上次见到的内容, 只用来发现外部的直接修改,
  * 永不写回存储, 永不当规划基准, 里面的实例也永不外借)和一个 <strong>modCount</strong>(并发校验用的计数,
  * 每次自己写入或吸收外部变更后加一, 让所有在途的规划全部对不上).
@@ -272,97 +271,22 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 把本写集的槽位变更落进外部存储, 尽量维持原版的对象身份习惯. 每条变更按顺序找第一条成立的做法:
-     * <ol>
-     * <li>存储里现在的内容已经和要提交的一样 → 什么都不做, 免得一次等值覆盖白白作废外部拿着的引用;</li>
-     * <li>这件物品是整堆搬来的, 而且句柄搬得过去 → 把 NMS 句柄接过去, 和原版直接对调指针一样;</li>
-     * <li>同物同组件只差数量 → 在存储原有的物品上直接改数量, 和原版的 grow/shrink 一样;</li>
-     * <li>其余 → 换成新实例写进去, 和原版给新内容新建对象(split)一样.</li>
-     * </ol>
-     * 前两条留住原实例的做法有个前提: 这一格的物品还归本存储. 物品已经被别的 Inventory 收走时
-     * ({@link LiveTransfers#handedOver}), 头一条和第三条一律跳过直接换新实例 —— 原版把物品换到别处也是
-     * 给这一格塞个新对象, 继续在老实例上改数量等于伸手改别人的东西.
-     * <p>整堆搬运的内容以 {@link LiveTransfers} 记下的规划内容为准, 不用可能已经跟着存储变过的现值.
+     * 把本写集的槽位变更落进外部存储: 存储现值已经和要提交的内容相等就跳过, 免得一次等值覆盖
+     * 白白作废外部拿着的引用; 其余槽位换成新实例写进去.
      * 写完同步 lastKnown(引擎自己写进去的东西不能在下一轮比对里被当成外部改动), 并把 modCount 加一.
      *
      * @param deltas 本写集的槽位变更
-     * @param transfers 整笔事务里认定为整堆搬运的物品
      */
-    void liveApply(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
-        @Nullable LiveCapableStorage liveStorage = this.storage instanceof LiveCapableStorage capable ? capable : null;
-        boolean transferHandles = liveStorage != null && liveStorage.supportsHandleTransfer();
-        boolean mutatedInPlace = false;
+    void liveApply(@NotNull List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             int externalSlot = this.externalSlots[delta.slot()].slot();
-            @Nullable ItemStack after = delta.unsafeAfter();
-            @Nullable LiveTransfers.Moved moved = after == null ? null : transfers.movedFor(after);
-            @Nullable ItemStack committed = moved != null ? moved.plannedContent() : after;
-            @Nullable ItemStack live = this.storage.read(externalSlot);
-            // 这一格的物品已经被别的 Inventory 收走了, 就不能再留在这里: 内容一样也要写, 而且只能换新实例
-            boolean handedOver = transfers.handedOver(delta);
-            if (handedOver || !ItemUtils.isContentEqual(live, committed)) {
-                if (moved != null && moved.handle() != null && transferHandles) {
-                    liveStorage.adoptHandle(externalSlot, moved.handle());
-                } else {
-                    boolean adjusted = false;
-                    // 只差数量就在活视图上直接改数量, 不换实例. 活视图只有 LiveCapableStorage 能给,
-                    // 且承诺与存储共享底层实例, 改完即生效; 纯内容存储没有身份可保, 直接走替换写入; read 的返回值只读不改.
-                    if (!handedOver && liveStorage != null && committed != null) {
-                        @Nullable ItemStack liveView = liveStorage.liveView(externalSlot);
-                        if (liveView != null && liveView.isSimilar(committed)) {
-                            liveView.setAmount(committed.getAmount());
-                            adjusted = true;
-                            mutatedInPlace = true;
-                        }
-                    }
-                    if (!adjusted) {
-                        this.storage.write(externalSlot, this.committedCopy(delta, moved));
-                    }
-                }
+            if (!ItemUtils.isContentEqual(this.storage.read(externalSlot), delta.unsafeAfter())) {
+                this.storage.write(externalSlot, delta.after());
             }
-            this.lastKnown[delta.slot()] = this.committedCopy(delta, moved);
-        }
-        // 原地改数量没走存储的写入口, 存储不知道自己变过, 这里补一次通知(Bukkit 适配在可直达时透传 NMS setChanged);
-        // 接句柄和换实例写入都走了存储自己的入口, 标脏归存储自己管.
-        if (mutatedInPlace) {
-            this.storage.markChanged();
+            this.lastKnown[delta.slot()] = delta.after();
         }
         this.modCount++;
-    }
-
-    // 本次提交后这一格的内容, 每次调用都给一份独立副本: 整堆搬运取记下的规划内容, 其余取变更记录里的.
-    @Nullable
-    private ItemStack committedCopy(@NotNull SlotChange delta, @Nullable LiveTransfers.Moved moved) {
-        return moved != null ? ItemUtils.copyOrNull(moved.plannedContent()) : delta.after();
-    }
-
-    /**
-     * 记下一次整堆搬运的来源: 两道检查都过, 而且存储能给出自己那个实例时带上句柄; 否则只带内容, 句柄为 {@code null}.
-     *
-     * @param sourceDelta 来源槽位自己的变更
-     * @return 搬运记录; 规划时来源槽位本来就是空的时返回 {@code null}
-     */
-    @Nullable
-    LiveTransfers.Moved captureMove(@NotNull SlotChange sourceDelta) {
-        @Nullable ItemStack plannedContent = ItemUtils.copyOrNull(sourceDelta.unsafeBefore());
-        if (plannedContent == null) {
-            return null;
-        }
-        if (!(this.storage instanceof LiveCapableStorage live) || !live.supportsHandleTransfer()) {
-            return new LiveTransfers.Moved(null, plannedContent);
-        }
-        @Nullable ItemStack liveSource = live.liveView(this.externalSlots[sourceDelta.slot()].slot());
-        // 第一道: 来源现在的内容必须还和规划时一样, 否则搬过去的句柄里装的是规划没见过的东西.
-        if (!ItemUtils.isContentEqual(liveSource, plannedContent)) {
-            return new LiveTransfers.Moved(null, plannedContent);
-        }
-        // 第二道: 来源那一格必须真的会被自己的写入盖掉. 等值跳过和原地改数量都会把实例留在原地
-        // (这两条的前提都蕴含 isSimilar), 这时候再把句柄搬走, 两格就共用同一个 NMS 对象了.
-        if (ItemUtils.isSimilar(liveSource, sourceDelta.unsafeAfter())) {
-            return new LiveTransfers.Moved(null, plannedContent);
-        }
-        return new LiveTransfers.Moved(ItemUtils.getItemStackHandle(liveSource), plannedContent);
     }
 
     /**

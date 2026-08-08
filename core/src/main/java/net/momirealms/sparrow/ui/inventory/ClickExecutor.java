@@ -264,7 +264,7 @@ final class ClickExecutor {
         edits.closeOverlay();
         // 规划期算不出候选往往只是因为当时光标为空或者装不下. 闸门改掉了现场就按新现场重算一次:
         // 这次可能真的有事可做. 容器自己被换掉在这条路径上检测不到 —— 没有候选就没有读集当基准.
-        if (!overlay.isEmpty() || !ItemUtils.isContentEqual(plannedCursor, context.unsafeCursor())) {
+        if (!overlay.isEmpty() || !ItemUtils.isContentEqual(plannedCursor, context.cursor())) {
             @Nullable ClickCandidate replanned = replan.get();
             if (replanned != null && replanned.staleReason(context) == null) {
                 // 重算出的候选自带事件目标, Sparrow 点击事件跟着它派发, 这条路径不再重复派发一次.

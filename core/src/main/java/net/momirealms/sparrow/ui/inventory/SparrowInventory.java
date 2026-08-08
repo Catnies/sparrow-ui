@@ -46,13 +46,11 @@ import java.util.function.UnaryOperator;
  * 既不加锁也不交换状态, 访问是否串行由调用方负责.
  * 两种在写操作遇到并发冲突时都返回 {@link TransactionResult.Conflicted} 且不产生修改.
  * <p><strong>自己拿着状态数组的那一种, 无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>:
- * 提交只换数组不改元素, 因此比对数组引用就足以发现并发写入. 为了对齐原版的对象身份行为,
- * 玩家把光标物品整堆交换进槽位时, 落进内部状态的就是菜单光标那一个实例, 于是该槽的元素可能与玩家光标同源 ——
- * 外部经 {@code HumanEntity#getItemOnCursor()} 之类拿到的活视图指向同一个底层物品, 对它就地改写数量或组件会绕过事务:
- * 数组引用没变, 并发校验看不见, 事件与 Window 同步也不会被触发. 这是与原版指针转移语义对齐的必然代价;
- * 需要改动物品的一方必须造新对象, 而不是就地写.
- * 内容放在外部存储的那一种没有这条限制: 它靠内容比对发现变更, 外部把存储里的物品就地改了数量, 组件或 PDC,
+ * 提交只换数组不改元素, 因此比对数组引用就足以发现并发写入.
+ * ReferencingInventory 靠内容比对发现变更: 外部把存储里的物品就地改了数量, 组件或 PDC,
  * 都会在下一次比对时被发现, 以 {@link UpdateReason.External} 原因派发 post 事件并同步显示.
+ * <p>对象身份约定对两种实现一致: 一笔事务写过的槽位, 提交后一律是新实例; 没写过的槽位与等值写入的槽位,
+ * 实例原样不动. 光标, 副手和事件负载都是副本. 跨事务追踪变化请订阅事件, 不要指望缓存的实例跟着槽位变.
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
  * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例.
  */
@@ -66,9 +64,9 @@ public abstract class SparrowInventory {
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
 
-    private volatile @Nullable ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
+    @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
     @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
-    private volatile @Nullable Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
+    @Nullable private volatile Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
 
     @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer; // 容器全局视觉映射, 逐槽映射放行时使用
     @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> @NotNull [] visualizersBySlot; // 容器逐槽视觉映射, 层级最高
@@ -135,8 +133,6 @@ public abstract class SparrowInventory {
 
     /**
      * 零物品拷贝地读出全部槽位, 直接返回当前内部状态数组.
-     * <p>调用方只能在当前调用栈内只读数组及其中的物品, 不得修改或保存这些引用. 违反约定会绕过事务,
-     * 事件, Window 刷新和外部容器同步, 并可能破坏并发冲突检测.
      *
      * @return 按槽号排列的内部物品引用, 空槽位置为 {@code null}
      */
@@ -472,8 +468,6 @@ public abstract class SparrowInventory {
 
     /**
      * 零拷贝地读取指定槽位的物品, 空槽返回 {@code null}.
-     * <p>返回值是 Inventory 内部持有的实例. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
-     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
      *
      * @param slot 槽位序号, 从 0 开始
      * @return 槽内的内部物品引用, 空槽为 {@code null}
@@ -1331,9 +1325,8 @@ public abstract class SparrowInventory {
          * 状态提交后, post 事件派发前的落地动作. 是否调用由引擎按事务属性决定(External 同步免回写).
          *
          * @param deltas 本写集的槽位变更
-         * @param transfers 整笔事务里认定为整堆搬运的物品, 内容放在外部存储的那一种据此转移 NMS 句柄
          */
-        abstract void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers);
+        abstract void land(@NotNull List<SlotChange> deltas);
 
         /**
          * 全序加锁凭证: 事务引擎按 {@code order} 升序逐把加锁, 消除跨 Inventory 事务的死锁可能.
@@ -1368,7 +1361,10 @@ public abstract class SparrowInventory {
                 @Nullable ItemStack[] next = this.planned().clone();
                 for (int i = 0; i < deltas.size(); i++) {
                     SlotChange delta = deltas.get(i);
-                    next[delta.slot()] = delta.unsafeAfter();
+                    // 等值跳过: 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
+                    @Nullable ItemStack after = delta.unsafeAfter();
+                    @Nullable ItemStack current = next[delta.slot()];
+                    next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;
                 }
                 return next;
             }
@@ -1381,7 +1377,7 @@ public abstract class SparrowInventory {
             }
 
             @Override
-            void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
+            void land(@NotNull List<SlotChange> deltas) {
                 // 内容就在状态数组里, 上一步换过数组就已经落地了, 这里没有别的事情要做.
             }
         }
@@ -1421,8 +1417,8 @@ public abstract class SparrowInventory {
             }
 
             @Override
-            void land(@NotNull List<SlotChange> deltas, @NotNull LiveTransfers transfers) {
-                this.owner.liveApply(deltas, transfers);
+            void land(@NotNull List<SlotChange> deltas) {
+                this.owner.liveApply(deltas);
             }
         }
     }

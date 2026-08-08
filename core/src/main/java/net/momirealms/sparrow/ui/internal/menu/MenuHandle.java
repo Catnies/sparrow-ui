@@ -205,33 +205,4 @@ public interface MenuHandle extends AutoCloseable {
      * @param cursor 新的菜单实际光标, 空物品表示清空
      */
     void cursor(@NotNull ItemStack cursor);
-
-    /**
-     * 零拷贝地返回菜单实际持有的光标物品.
-     * <p>返回的是与菜单光标共享底层句柄的活视图, 不是快照: 光标之后的变化会透过它可见,
-     * 对它的修改也会写回菜单光标. 调用方只能在当前调用栈内读取, 或把它整体交给搬运路径;
-     * 需要留存或改动就自己复制一份, 需要快照请改用 {@link #cursor()}.
-     * <p>默认实现退回 {@link #cursor()} 的副本: 副本同样满足"只读或整体搬走"的契约,
-     * 只是搬运时保不住对象身份. 需要对齐原版身份行为的实现覆写本方法.
-     *
-     * @return 与菜单光标共享句柄的物品视图, 没拿东西时返回空物品
-     */
-    @NotNull
-    default ItemStack unsafeCursor() {
-        return this.cursor();
-    }
-
-    /**
-     * 采纳给定物品作为菜单实际持有的光标, 不复制.
-     * <p>与 {@link #cursor(ItemStack)} 的区别只在所有权: 这里直接接管传入物品背后的句柄,
-     * 物品从槽位搬到光标时对象身份因此得以保持, 与原版 {@code setCarried} 的指针转移一致.
-     * 调用方交出物品后不得再持有或修改它. 覆盖之后的光标同步同样由调用方负责.
-     * <p>默认实现退回 {@link #cursor(ItemStack)} 的复制: 调用方既然已经交出所有权,
-     * 多复制一份始终安全, 只是搬运时保不住对象身份. 需要对齐原版身份行为的实现覆写本方法.
-     *
-     * @param cursor 新的菜单实际光标, 空物品表示清空
-     */
-    default void adoptCursor(@NotNull ItemStack cursor) {
-        this.cursor(cursor);
-    }
 }
