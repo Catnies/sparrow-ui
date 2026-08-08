@@ -279,7 +279,10 @@ public final class ReferencingInventory extends SparrowInventory {
      * <li>同物同组件只差数量 → 在存储原有的物品上直接改数量, 和原版的 grow/shrink 一样;</li>
      * <li>其余 → 换成新实例写进去, 和原版给新内容新建对象(split)一样.</li>
      * </ol>
-     * 整堆搬运的内容以 {@link LiveTransfers} 记下的规划内容为准, 不用可能已经跟着存储变过的现值.
+     * 前两条留住原实例的做法有个前提: 这一格的物品还归本存储. 物品已经被别的 Inventory 收走时
+     * ({@link LiveTransfers#handedOver}), 头一条和第三条一律跳过直接换新实例 —— 原版把物品换到别处也是
+     * 给这一格塞个新对象, 继续在老实例上改数量等于伸手改别人的东西.
+     * <p>整堆搬运的内容以 {@link LiveTransfers} 记下的规划内容为准, 不用可能已经跟着存储变过的现值.
      * 写完同步 lastKnown(引擎自己写进去的东西不能在下一轮比对里被当成外部改动), 并把 modCount 加一.
      *
      * @param deltas 本写集的槽位变更
@@ -296,14 +299,16 @@ public final class ReferencingInventory extends SparrowInventory {
             @Nullable LiveTransfers.Moved moved = after == null ? null : transfers.movedFor(after);
             @Nullable ItemStack committed = moved != null ? moved.plannedContent() : after;
             @Nullable ItemStack live = this.storage.read(externalSlot);
-            if (!ItemUtils.isContentEqual(live, committed)) {
+            // 这一格的物品已经被别的 Inventory 收走了, 就不能再留在这里: 内容一样也要写, 而且只能换新实例
+            boolean handedOver = transfers.handedOver(delta);
+            if (handedOver || !ItemUtils.isContentEqual(live, committed)) {
                 if (moved != null && moved.handle() != null && transferHandles) {
                     liveStorage.adoptHandle(externalSlot, moved.handle());
                 } else {
                     boolean adjusted = false;
                     // 只差数量就在活视图上直接改数量, 不换实例. 活视图只有 LiveCapableStorage 能给,
                     // 且承诺与存储共享底层实例, 改完即生效; 纯内容存储没有身份可保, 直接走替换写入; read 的返回值只读不改.
-                    if (liveStorage != null && committed != null) {
+                    if (!handedOver && liveStorage != null && committed != null) {
                         @Nullable ItemStack liveView = liveStorage.liveView(externalSlot);
                         if (liveView != null && liveView.isSimilar(committed)) {
                             liveView.setAmount(committed.getAmount());

@@ -6,8 +6,10 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 一笔事务里被整堆搬走的物品, 在开始写之前先认一遍.
@@ -17,14 +19,19 @@ import java.util.List;
  * <p>认定和取句柄都发生在第一次写入之前, 所以两个容器互相对调, 或者三个容器轮转, 都不会因为谁先写而出错.
  * <p>从存储读出的实例内容会跟着存储一起变, 所以每件搬运物品同时记一份规划时的内容副本. 句柄搬不过去时
  * (存储不支持, 或者来源已经对不上), 落地就写这份记下来的内容, 不会把规划没见过的改动顺手带进目标槽.
+ * <p>反方向的事情这里也一并认: 外部存储的物品被自己拿着状态数组的 Inventory 收走时, 记下来源那一格
+ * (见 {@link #handedOver}), 好让落地阶段知道那一格必须换新实例.
  */
 final class LiveTransfers {
-    private static final LiveTransfers NONE = new LiveTransfers(null);
+    private static final LiveTransfers NONE = new LiveTransfers(null, null);
 
     private final @Nullable IdentityHashMap<ItemStack, Moved> moves;
+    // 规划实例被自己拿着状态数组的 Inventory 收走的那些外部存储槽位变更, 按实例身份记
+    private final @Nullable Set<SlotChange> handedOver;
 
-    private LiveTransfers(@Nullable IdentityHashMap<ItemStack, Moved> moves) {
+    private LiveTransfers(@Nullable IdentityHashMap<ItemStack, Moved> moves, @Nullable Set<SlotChange> handedOver) {
         this.moves = moves;
+        this.handedOver = handedOver;
     }
 
     /**
@@ -66,16 +73,27 @@ final class LiveTransfers {
         }
 
         @Nullable IdentityHashMap<ItemStack, Moved> moves = null;
+        @Nullable Set<SlotChange> handedOver = null;
         for (int i = 0; i < scopes.size(); i++) {
             TransactionScope scope = scopes.get(i);
-            if (!(scope.basis() instanceof SparrowInventory.PlannedRoot.Live)) {
-                continue;
-            }
+            boolean liveReceiver = scope.basis() instanceof SparrowInventory.PlannedRoot.Live;
             List<SlotChange> deltas = scope.slotChanges();
             for (int j = 0; j < deltas.size(); j++) {
                 SlotChange delta = deltas.get(j);
                 @Nullable ItemStack after = delta.unsafeAfter();
                 if (after == null) {
+                    continue;
+                }
+                if (!liveReceiver) {
+                    // 收下这件物品的 Inventory 自己拿着状态数组, 这个实例会一直留在它手里.
+                    // 来源那一格因此必须换个新实例进去: 再在原来那个上面改数量, 改的就是别人手里的物品了.
+                    @Nullable SourceRef source = sources == null ? null : sources.get(after);
+                    if (source != null) {
+                        if (handedOver == null) {
+                            handedOver = Collections.newSetFromMap(new IdentityHashMap<>());
+                        }
+                        handedOver.add(source.delta());
+                    }
                     continue;
                 }
                 @Nullable Moved moved = null;
@@ -97,7 +115,7 @@ final class LiveTransfers {
                 }
             }
         }
-        return moves == null ? NONE : new LiveTransfers(moves);
+        return moves == null && handedOver == null ? NONE : new LiveTransfers(moves, handedOver);
     }
 
     /**
@@ -109,6 +127,18 @@ final class LiveTransfers {
     @Nullable
     Moved movedFor(@NotNull ItemStack after) {
         return this.moves == null ? null : this.moves.get(after);
+    }
+
+    /**
+     * 查一个外部存储槽位的物品是不是已经被别的 Inventory 收走了.
+     * <p>收走它的是自己拿着状态数组的 Inventory: 那个实例从此长期留在对方的状态里,
+     * 所以这一格必须换个新实例, 既不能因为内容碰巧一样就不写, 也不能在原来那个实例上改数量.
+     *
+     * @param delta 外部存储侧的槽位变更
+     * @return 这一格的物品已经交出去时返回 {@code true}
+     */
+    boolean handedOver(@NotNull SlotChange delta) {
+        return this.handedOver != null && this.handedOver.contains(delta);
     }
 
     /**
