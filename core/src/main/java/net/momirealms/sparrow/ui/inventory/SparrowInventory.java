@@ -1110,9 +1110,8 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 订阅事务提交前的事件, 处理器可以取消整个事务.
-     * 一笔事务对本次订阅最多通知一次. {@link InventoryPreUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory,
-     * 当前 Inventory 没有槽位变更时不会通知.
+     * 订阅事务提交前的事件, 处理器可以取消整个事务, 当前 Inventory 没有槽位变更时不会通知.
+     * <p>恒在提交线程上同步调用, 同一次订阅可能被多个线程并发调用, 须自己保证线程安全.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
@@ -1123,9 +1122,11 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 订阅事务提交后的事件. 一笔事务对本次订阅最多通知一次.
-     * {@link InventoryPostUpdateEvent#slotChanges()} 中的槽位编号属于当前 Inventory, 没有槽位变更时不会通知.
-     * 连续修改同一个 Inventory 时, 事件顺序与事务提交顺序一致.
+     * 订阅事务提交后的事件, 没有槽位变更时不会通知.
+     * <p>处理器恒在提交线程上同步调用, 同一次订阅可能被多个提交线程并发调用, 须自己保证线程安全.
+     * <p>不同事务的 Post 不保证按提交顺序到达, 需要判断新旧时使用 {@link InventoryPostUpdateEvent#version()}.
+     * 最外层事务返回前会完成本次 Post; Post 处理器里的嵌套事务会先返回, 它的 Post 排在当前完整批次之后,
+     * 并在最外层 Post 派发退出前完成.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件

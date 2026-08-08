@@ -9,7 +9,7 @@ public sealed interface TransactionResult {
 
     /**
      * 事务成功:
-     * 所有参与的 Inventory 的改动都已生效, post 事件也已派发完毕.
+     * 所有参与的 Inventory 的改动都已生效.
      *
      * @param rootChanges 每个参与的 Inventory 各一个变更组, 按调用方声明的顺序排列
      */

@@ -7,23 +7,28 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 
 /**
  * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
  * <p>一笔事务走四步: plan 由调用方先做完(在规划内容上算好每个槽改成什么) → pre 在不持锁的状态下
  * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在临界区内核对每条规划基准仍然有效
- * (怎么算失效由基准自己定), 核对通过才落定新内容 → post 释放锁后把事件按提交顺序派出去.
+ * (怎么算失效由基准自己定), 核对通过才落定新内容 → post 释放锁后由当前提交线程同步派发.
  * 一笔事务涉及多个 Inventory 时, 按加锁凭证的固定序号依次加锁, 即便多线程同时跑跨 Inventory
  * 事务也不会死锁; 不加锁的那一种靠调用方保证串行访问.
  * <p>事务形状的校验和 Pre 阶段的候选值编辑都由 {@link TransactionDraft} 保存,
  * 事件的准备和派发由 {@link TransactionNotification} 承担.
  */
 final class InventoryTransactions {
+    private static final VersionSource VERSION_SOURCE = new VersionSource(System::currentTimeMillis); // 成功事务的全局逻辑版本源
+    private static final ThreadLocal<ArrayDeque<Runnable>> POST_DISPATCH = new ThreadLocal<>(); // 当前线程等待派发的 Post 批次
 
     private InventoryTransactions() {
     }
@@ -109,7 +114,8 @@ final class InventoryTransactions {
 
         private List<TransactionNotification> updates;              // 本笔事务需要通知的订阅者
         private List<TransactionScope> scopes;                      // 封笔后的最终写集
-        private List<PlannedRoot.StateLock> locks; // 按全序排好的锁凭证
+        private List<PlannedRoot.StateLock> locks;                  // 按全序排好的锁凭证
+        private long version;                                       // 状态交换成功后取得的事务逻辑版本
 
         private Commit(
                 UpdateReason reason,
@@ -199,12 +205,9 @@ final class InventoryTransactions {
             if (!included.isEmpty()) {
                 this.updates.addAll(prepareUpdates(this.reason, included, false));
             }
-            for (int i = 0; i < this.updates.size(); i++) {
-                this.updates.get(i).preparePost(this.scopes);
-            }
         }
 
-        // 临界区: 加锁, 乐观校验, 构造并交换新状态, 预约 post 事件. 任一基准失效返回 false, 整体零变更.
+        // 临界区: 加锁, 乐观校验, 构造并交换新状态, 取得事务版本. 任一基准失效返回 false, 整体零变更.
         private boolean swapUnderLocks() {
             int locked = 0;
             try {
@@ -235,11 +238,8 @@ final class InventoryTransactions {
                 for (int i = 0; i < this.scopes.size(); i++) {
                     this.scopes.get(i).basis().swapTo(staged[i]);
                 }
-
-                // 更换内容时就把 PostUpdateEvent 放入队列, 防止后提交的事务先发出通知.
-                for (int i = 0; i < this.updates.size(); i++) {
-                    this.updates.get(i).reservePost();
-                }
+                // 所有状态都已交换且根锁尚未释放, 此处取得的版本与共享根上的提交线性化顺序一致.
+                this.version = VERSION_SOURCE.next();
                 return true;
             } finally {
                 for (int i = locked - 1; i >= 0; i--) {
@@ -252,31 +252,54 @@ final class InventoryTransactions {
         // 因此提交后处理器运行时能够读到最新内容. 一个 Inventory 失败也不能跳过其他 Inventory, 最后再统一抛出异常.
         @NotNull
         private TransactionResult landAndNotify() {
-            Throwable afterCommitFailure = null;
-            try {
-                if (this.writeBack) {
-                    for (int i = 0; i < this.scopes.size(); i++) {
-                        TransactionScope scope = this.scopes.get(i);
-                        afterCommitFailure = ThrowableUtils.captureUnchecked(
-                                afterCommitFailure,
-                                () -> scope.basis().land(scope.slotChanges())
-                        );
-                    }
-                }
-                if (this.committedCallback != null) {
-                    afterCommitFailure = ThrowableUtils.captureUnchecked(afterCommitFailure, this.committedCallback);
-                }
-            } finally {
-                // 所有 Inventory 都处理完后, 当前提交后事件才可以按队列顺序发送.
-                for (int i = 0; i < this.updates.size(); i++) {
-                    this.updates.get(i).markPostReady();
-                }
-                for (int i = 0; i < this.updates.size(); i++) {
-                    this.updates.get(i).drainPost();
+            Throwable landFailure = null;
+            if (this.writeBack) {
+                for (int i = 0; i < this.scopes.size(); i++) {
+                    TransactionScope scope = this.scopes.get(i);
+                    landFailure = ThrowableUtils.captureUnchecked(
+                            landFailure,
+                            () -> scope.basis().land(scope.slotChanges())
+                    );
                 }
             }
-            ThrowableUtils.throwIfUnchecked(afterCommitFailure);
+            if (this.committedCallback != null) {
+                this.committedCallback.run();
+            }
+            dispatchPostBatch(this::publishPost);
+            ThrowableUtils.throwIfUnchecked(landFailure);
             return new TransactionResult.Committed(this.draft.rootChanges());
+        }
+
+        // 向本笔事务涉及的全部 Inventory 发送同一版本的 Post 事件.
+        private void publishPost() {
+            for (int i = 0; i < this.updates.size(); i++) {
+                this.updates.get(i).publishPost(this.scopes, this.version);
+            }
+        }
+    }
+
+    /**
+     * 在当前线程排队并派发一整笔事务的 Post 批次.
+     * <p>Post 回调里的嵌套事务只负责追加批次, 由最外层调用在当前批次全部结束后继续排空.
+     *
+     * @param batch 一笔事务涉及的全部 Post 通知
+     */
+    private static void dispatchPostBatch(@NotNull Runnable batch) {
+        ArrayDeque<Runnable> pending = POST_DISPATCH.get();
+        if (pending != null) {
+            pending.addLast(batch);
+            return;
+        }
+
+        pending = new ArrayDeque<>();
+        POST_DISPATCH.set(pending);
+        try {
+            batch.run();
+            while (!pending.isEmpty()) {
+                pending.removeFirst().run();
+            }
+        } finally {
+            POST_DISPATCH.remove();
         }
     }
 
@@ -343,6 +366,35 @@ final class InventoryTransactions {
         @Nullable PlannedRoot.StateLock lock = root.stateLock();
         if (lock != null) {
             locks.add(lock);
+        }
+    }
+
+    /**
+     * 为成功事务生成以系统毫秒时间为基础的当前 JVM / 类加载器生命周期内单调版本.
+     * <p>同一毫秒内的多个事务和系统时钟回拨都会退化为前一版本加一. 因此版本适合比较新旧,
+     * 但不保证等于精确墙上时间, 也不会跨服务重启延续.
+     */
+    static final class VersionSource {
+        private final LongSupplier clock;                    // 提供当前系统毫秒时间, 测试可以替换为可控时钟
+        private final AtomicLong lastVersion = new AtomicLong(); // 已签发的最大版本
+
+        /**
+         * 创建一个使用指定时钟的版本源.
+         *
+         * @param clock 每次取号时提供当前毫秒时间
+         */
+        VersionSource(@NotNull LongSupplier clock) {
+            this.clock = clock;
+        }
+
+        /**
+         * 签发一个严格大于此前所有结果的版本.
+         *
+         * @return 新的进程内逻辑版本
+         */
+        long next() {
+            long currentTime = this.clock.getAsLong();
+            return this.lastVersion.updateAndGet(previous -> Math.max(currentTime, previous + 1));
         }
     }
 }

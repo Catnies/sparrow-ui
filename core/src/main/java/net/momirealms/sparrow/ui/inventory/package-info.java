@@ -16,7 +16,7 @@
  *     (这一格现在就是这个值), 有覆盖或前提变化就重规划一次, 结算进 {@code InteractionEdits} 背后的
  *     两份草稿 —— 容器内容进 {@code TransactionDraft}, 光标副手掉落物进 {@code InteractionDraft};</li>
  * <li>{@code InventoryTransactions} 提交: pre 链询问 → 锁内校验与状态交换 → 落地进外部存储 →
- *     post 事件按提交顺序派发.</li>
+ *     post 事件在当前提交线程同步派发; 不同线程的事务可以并发派发 post.</li>
  * </ol>
  *
  * <p>对象身份约定: 一笔事务写过的槽位, 提交后一律是新实例; 没写过的槽位与等值写入的槽位,
