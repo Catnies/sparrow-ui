@@ -76,151 +76,238 @@ final class InventoryTransactions {
             @NotNull List<SparrowInventory.PlannedRoot> readSet,
             @NotNull BooleanSupplier commitGuard
     ) {
-        return commit(reason, draft, interaction, bypassPre, committedCallback, readSet, commitGuard, true);
+        return new Commit(reason, draft, interaction, bypassPre, committedCallback, readSet, commitGuard, true).run();
     }
 
     /**
-     * 提交一笔内容取自外部容器的同步事务, 供 ReferencingInventory 把外部世界的既成变更吸收进 Bukkit 内容镜像.
-     * <p>这类事务的目标内容就是刚从外部容器读到的内容, 因此跳过 pre 阶段, 也跳过提交后的外部容器回写:
-     * 回写只会用等值副本换掉容器里的物品实例, 白白作废外部持有的引用.
+     * 提交一笔内容取自外部存储的同步事务, 供 ReferencingInventory 把外部世界的既成变更派发出去.
+     * <p>这类事务的目标内容就是刚从外部存储读到的内容, 因此跳过 pre 阶段, 也跳过提交后的落地:
+     * 回写只会用等值副本换掉存储里的物品实例, 白白作废外部持有的引用.
      *
      * @param scope 本笔同步事务的写集
      * @return 事务结果; 只要不是 Committed, 参与的 Inventory 就保持原样
      */
     @NotNull
     static TransactionResult commitExternalSync(@NotNull TransactionScope scope) {
-        return commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false);
+        return new Commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false).run();
     }
 
     /**
-     * 事务提交的统一实现.
+     * 一笔事务的提交过程: 输入与跨相位的过程状态收为字段, 每个相位一个方法, {@link #run()} 按流水线编排.
      *
-     * @param writeBack 为 {@code true} 时在状态提交后调用各 Inventory 的提交后处理, 把内容写回外部容器
+     * @see #run()
      */
-    @NotNull
-    private static TransactionResult commit(
-            @NotNull UpdateReason reason,
-            @NotNull TransactionDraft draft,
-            @Nullable InteractionDraft interaction,
-            boolean bypassPre,
-            @Nullable Runnable committedCallback,
-            @NotNull List<SparrowInventory.PlannedRoot> readSet,
-            @NotNull BooleanSupplier commitGuard,
-            boolean writeBack
-    ) {
+    private static final class Commit {
+        private final UpdateReason reason;
+        private final TransactionDraft draft;
+        @Nullable private final InteractionDraft interaction;
+        private final boolean bypassPre;
+        @Nullable private final Runnable committedCallback;
+        private final List<SparrowInventory.PlannedRoot> readSet;
+        private final BooleanSupplier commitGuard;
+        private final boolean writeBack; // 为 true 时在状态提交后调用各基准的落地, 把内容写进外部存储
+
+        private List<TransactionNotification> updates;              // 本笔事务需要通知的订阅者
+        private List<TransactionScope> scopes;                      // 封笔后的最终写集
+        private List<SparrowInventory.PlannedRoot.StateLock> locks; // 按全序排好的锁凭证
+
+        private Commit(
+                UpdateReason reason,
+                TransactionDraft draft,
+                @Nullable InteractionDraft interaction,
+                boolean bypassPre,
+                @Nullable Runnable committedCallback,
+                List<SparrowInventory.PlannedRoot> readSet,
+                BooleanSupplier commitGuard,
+                boolean writeBack
+        ) {
+            this.reason = reason;
+            this.draft = draft;
+            this.interaction = interaction;
+            this.bypassPre = bypassPre;
+            this.committedCallback = committedCallback;
+            this.readSet = readSet;
+            this.commitGuard = commitGuard;
+            this.writeBack = writeBack;
+        }
+
+        // 流水线: 冻结兜底 → 记下订阅者 → pre 链 → commitGuard → 封笔 → 锁内校验与交换 → 落地与 post 派发.
+        @NotNull
+        TransactionResult run() {
+            if (this.hasFrozenPlayerTarget()) {
+                return TransactionResult.Cancelled.INSTANCE;
+            }
+            int declaredCount = this.prepareDeclaredUpdates();
+            if (!this.publishPre()) {
+                return TransactionResult.Cancelled.INSTANCE;
+            }
+            if (!this.commitGuard.getAsBoolean()) {
+                return TransactionResult.Conflicted.INSTANCE;
+            }
+            this.seal(declaredCount);
+            if (!this.swapUnderLocks()) {
+                return TransactionResult.Conflicted.INSTANCE;
+            }
+            return this.landAndNotify();
+        }
+
         // Inventory 级冻结兜底: 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务, 不发 Pre 也零变更.
-        if (reason instanceof PlayerUpdateReason) {
-            List<TransactionScope> frozenCheck = draft.scopes();
-            for (int i = 0; i < frozenCheck.size(); i++) {
-                if (frozenCheck.get(i).inventory().frozen()) {
-                    return TransactionResult.Cancelled.INSTANCE;
+        private boolean hasFrozenPlayerTarget() {
+            if (!(this.reason instanceof PlayerUpdateReason)) {
+                return false;
+            }
+            List<TransactionScope> scopes = this.draft.scopes();
+            for (int i = 0; i < scopes.size(); i++) {
+                if (scopes.get(i).inventory().frozen()) {
+                    return true;
                 }
             }
+            return false;
         }
 
         // 在调用提交前处理器之前, 先记住本笔事务需要通知的所有订阅者.
-        boolean cancelled = false;
-        List<TransactionScope> declared = draft.scopes();
-        List<TransactionNotification> updates = prepareUpdates(reason, declared, !bypassPre);
+        // 返回此刻的写集数量, 封笔时以它区分原有参与者与 Pre 期间新纳入的 Inventory.
+        private int prepareDeclaredUpdates() {
+            List<TransactionScope> declared = this.draft.scopes();
+            this.updates = prepareUpdates(this.reason, declared, !this.bypassPre);
+            return declared.size();
+        }
 
         // 按顺序派发 PreUpdateEvent, 每个 Inventory 处理后的取消状态会交给下一个 Inventory.
-        if (!bypassPre) {
-            for (int i = 0; i < updates.size(); i++) {
-                cancelled = updates.get(i).publishPre(cancelled, draft, interaction);
+        // 任何一个观察者取消都让整笔事务零变更.
+        private boolean publishPre() {
+            if (this.bypassPre) {
+                return true;
             }
-            if (cancelled) {
-                return TransactionResult.Cancelled.INSTANCE;
+            boolean cancelled = false;
+            for (int i = 0; i < this.updates.size(); i++) {
+                cancelled = this.updates.get(i).publishPre(cancelled, this.draft, this.interaction);
             }
+            return !cancelled;
         }
 
-        if (!commitGuard.getAsBoolean()) {
-            return TransactionResult.Conflicted.INSTANCE;
-        }
         // 最终条件已经通过, 两份草稿同时封笔: 之后的加锁写入必须看到定案的内容.
-        if (interaction != null) {
-            interaction.seal();
-        }
-
-        List<TransactionScope> declaredFinal = draft.scopes();
-        List<SparrowInventory.PlannedRoot.StateLock> locks = collectLocks(declaredFinal, readSet);
-
         // Pre 期间新纳入的 Inventory 没有参加本轮 Pre, 但它们的订阅者照样要收到 Post.
         // 已参与的 Inventory 只可追加, 不可移除也不可换位, 新参与者就是写集末尾多出来的那一段.
-        List<TransactionScope> included = declaredFinal.subList(declared.size(), declaredFinal.size());
-        if (!included.isEmpty()) {
-            updates.addAll(prepareUpdates(reason, included, false));
-        }
-        for (int i = 0; i < updates.size(); i++) {
-            updates.get(i).preparePost(declaredFinal);
-        }
-
-        int locked = 0;
-        try {
-            // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能; 不加锁的基准没有凭证, 不在列表里.
-            for (; locked < locks.size(); locked++) {
-                locks.get(locked).lock().lock();
+        private void seal(int declaredCount) {
+            if (this.interaction != null) {
+                this.interaction.seal();
             }
+            this.scopes = this.draft.scopes();
+            this.locks = collectLocks(this.scopes, this.readSet);
+            List<TransactionScope> included = this.scopes.subList(declaredCount, this.scopes.size());
+            if (!included.isEmpty()) {
+                this.updates.addAll(prepareUpdates(this.reason, included, false));
+            }
+            for (int i = 0; i < this.updates.size(); i++) {
+                this.updates.get(i).preparePost(this.scopes);
+            }
+        }
 
-            // 乐观校验: 任一规划基准已失效说明有并发提交插入, 整体放弃; 怎么算失效由基准自己定.
-            for (int i = 0; i < declaredFinal.size(); i++) {
-                if (declaredFinal.get(i).basis().isStale()) {
-                    return TransactionResult.Conflicted.INSTANCE;
+        // 临界区: 加锁, 乐观校验, 构造并交换新状态, 预约 post 事件. 任一基准失效返回 false, 整体零变更.
+        private boolean swapUnderLocks() {
+            int locked = 0;
+            try {
+                // 按全序逐把加锁, 消除跨 Inventory 事务的死锁可能; 不加锁的基准没有凭证, 不在列表里.
+                for (; locked < this.locks.size(); locked++) {
+                    this.locks.get(locked).lock().lock();
+                }
+
+                // 乐观校验: 任一规划基准已失效说明有并发提交插入, 整体放弃; 怎么算失效由基准自己定.
+                for (int i = 0; i < this.scopes.size(); i++) {
+                    if (this.scopes.get(i).basis().isStale()) {
+                        return false;
+                    }
+                }
+                for (int i = 0; i < this.readSet.size(); i++) {
+                    if (this.readSet.get(i).isStale()) {
+                        return false;
+                    }
+                }
+
+                // 先为全部写集构造提交产物再统一交换, 保证意外异常发生时尚未改动任何状态;
+                // 不需要交换状态的基准产物为 null, 交换时无事发生.
+                @Nullable ItemStack[][] staged = new ItemStack[this.scopes.size()][];
+                for (int i = 0; i < this.scopes.size(); i++) {
+                    TransactionScope scope = this.scopes.get(i);
+                    staged[i] = scope.basis().buildNextState(scope.slotChanges());
+                }
+                for (int i = 0; i < this.scopes.size(); i++) {
+                    this.scopes.get(i).basis().swapTo(staged[i]);
+                }
+
+                // 更换内容时就把 PostUpdateEvent 放入队列, 防止后提交的事务先发出通知.
+                for (int i = 0; i < this.updates.size(); i++) {
+                    this.updates.get(i).reservePost();
+                }
+                return true;
+            } finally {
+                for (int i = locked - 1; i >= 0; i--) {
+                    this.locks.get(i).lock().unlock();
                 }
             }
-            for (int i = 0; i < readSet.size(); i++) {
-                if (readSet.get(i).isStale()) {
-                    return TransactionResult.Conflicted.INSTANCE;
-                }
-            }
-
-            // 先为全部写集构造提交产物再统一交换, 保证意外异常发生时尚未改动任何状态;
-            // 不需要交换状态的基准产物为 null, 交换时无事发生.
-            @Nullable ItemStack[][] staged = new ItemStack[declaredFinal.size()][];
-            for (int i = 0; i < declaredFinal.size(); i++) {
-                TransactionScope scope = declaredFinal.get(i);
-                staged[i] = scope.basis().buildNextState(scope.slotChanges());
-            }
-            for (int i = 0; i < declaredFinal.size(); i++) {
-                declaredFinal.get(i).basis().swapTo(staged[i]);
-            }
-
-            // 更换内容时就把 PostUpdateEvent 放入队列, 防止后提交的事务先发出通知.
-            for (int i = 0; i < updates.size(); i++) {
-                updates.get(i).reservePost();
-            }
-        } finally {
-            for (int i = locked - 1; i >= 0; i--) {
-                locks.get(i).lock().unlock();
-            }
         }
 
-        // 先让每个 Inventory 完成提交后的工作, ReferencingInventory 会在这里把内容写回外部容器.
+        // 先让每个基准完成提交后的落地, 内容放在外部存储的 Inventory 在这里把变更写进存储,
         // 因此提交后处理器运行时能够读到最新内容. 一个 Inventory 失败也不能跳过其他 Inventory, 最后再统一抛出异常.
-        Throwable afterCommitFailure = null;
-        try {
-            if (writeBack) {
-                for (int i = 0; i < declaredFinal.size(); i++) {
-                    TransactionScope scope = declaredFinal.get(i);
-                    afterCommitFailure = ThrowableUtils.captureUnchecked(
-                            afterCommitFailure,
-                            () -> scope.basis().land(scope.slotChanges())
-                    );
+        @NotNull
+        private TransactionResult landAndNotify() {
+            Throwable afterCommitFailure = null;
+            try {
+                if (this.writeBack) {
+                    for (int i = 0; i < this.scopes.size(); i++) {
+                        TransactionScope scope = this.scopes.get(i);
+                        afterCommitFailure = ThrowableUtils.captureUnchecked(
+                                afterCommitFailure,
+                                () -> scope.basis().land(scope.slotChanges())
+                        );
+                    }
+                }
+                if (this.committedCallback != null) {
+                    afterCommitFailure = ThrowableUtils.captureUnchecked(afterCommitFailure, this.committedCallback);
+                }
+            } finally {
+                // 所有 Inventory 都处理完后, 当前提交后事件才可以按队列顺序发送.
+                for (int i = 0; i < this.updates.size(); i++) {
+                    this.updates.get(i).markPostReady();
+                }
+                for (int i = 0; i < this.updates.size(); i++) {
+                    this.updates.get(i).drainPost();
                 }
             }
-            if (committedCallback != null) {
-                afterCommitFailure = ThrowableUtils.captureUnchecked(afterCommitFailure, committedCallback);
-            }
-        } finally {
-            // 所有 Inventory 都处理完后, 当前提交后事件才可以按队列顺序发送.
-            for (int i = 0; i < updates.size(); i++) {
-                updates.get(i).markPostReady();
-            }
-            for (int i = 0; i < updates.size(); i++) {
-                updates.get(i).drainPost();
+            ThrowableUtils.throwIfUnchecked(afterCommitFailure);
+            return new TransactionResult.Committed(this.draft.rootChanges());
+        }
+    }
+
+    /**
+     * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
+     * <p>每个 Inventory 至多拥有一个订阅器, 写集里同一个 Inventory 也至多出现一次, 因此它只处理一次.
+     * PreUpdateEvent 接收者只按原始事务的变更确定; PostUpdateEvent 接收者会先记录,
+     * 等 PreUpdateEvent 完成后再按最终变更决定是否创建事件.
+     *
+     * @param reason 事务触发原因
+     * @param scopes 本轮需要准备通知的写集
+     * @param includePre 是否需要通知提交前订阅者
+     * @return 本轮需要新发送的 Inventory 更新事件
+     */
+    @NotNull
+    private static List<TransactionNotification> prepareUpdates(
+            @NotNull UpdateReason reason,
+            @NotNull List<TransactionScope> scopes,
+            boolean includePre
+    ) {
+        List<TransactionNotification> updates = new ArrayList<>(scopes.size());
+        for (int i = 0; i < scopes.size(); i++) {
+            TransactionScope scope = scopes.get(i);
+            InventoryUpdateChannel channel = scope.inventory().updateChannelIfPresent();
+            if (channel == null) continue;
+            TransactionNotification update = channel.prepare(reason, scope, includePre);
+            if (update != null) {
+                updates.add(update);
             }
         }
-        ThrowableUtils.throwIfUnchecked(afterCommitFailure);
-        return new TransactionResult.Committed(draft.rootChanges());
+        return updates;
     }
 
     /**
@@ -258,35 +345,4 @@ final class InventoryTransactions {
             locks.add(lock);
         }
     }
-
-    /**
-     * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
-     * <p>每个 Inventory 至多拥有一个订阅器, 写集里同一个 Inventory 也至多出现一次, 因此它只处理一次.
-     * PreUpdateEvent 接收者只按原始事务的变更确定; PostUpdateEvent 接收者会先记录,
-     * 等 PreUpdateEvent 完成后再按最终变更决定是否创建事件.
-     *
-     * @param reason 事务触发原因
-     * @param scopes 本轮需要准备通知的写集
-     * @param includePre 是否需要通知提交前订阅者
-     * @return 本轮需要新发送的 Inventory 更新事件
-     */
-    @NotNull
-    private static List<TransactionNotification> prepareUpdates(
-            @NotNull UpdateReason reason,
-            @NotNull List<TransactionScope> scopes,
-            boolean includePre
-    ) {
-        List<TransactionNotification> updates = new ArrayList<>(scopes.size());
-        for (int i = 0; i < scopes.size(); i++) {
-            TransactionScope scope = scopes.get(i);
-            InventoryUpdateChannel channel = scope.inventory().updateChannelIfPresent();
-            if (channel == null) continue;
-            TransactionNotification update = channel.prepare(reason, scope, includePre);
-            if (update != null) {
-                updates.add(update);
-            }
-        }
-        return updates;
-    }
-
 }

@@ -1,17 +1,14 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsMutableProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * 单槽点击的槽位数学: 拿起, 放置, 劈半, 合并与整堆交换.
+ * 涉及收纳袋组件的路径交给 {@link ClickBundleRules}.
+ */
 final class ClickSlotRules {
 
     private ClickSlotRules() {
@@ -28,10 +25,10 @@ final class ClickSlotRules {
             return current == null ? null : new Outcome(null, current);
         }
         if (current != null && ClickActions.isBundle(cursor)) {
-            return computeInsertionIntoCursorBundle(current, cursor);
+            return ClickBundleRules.computeInsertionIntoCursorBundle(current, cursor);
         }
         if (ClickActions.isBundle(current)) {
-            return computeBundleInsertion(current, cursor);
+            return ClickBundleRules.computeBundleInsertion(current, cursor);
         }
         if (current == null) {
             int placeable = Math.min(effectiveLimit(slotLimit, cursor), cursor.getAmount());
@@ -61,43 +58,13 @@ final class ClickSlotRules {
             int selectedIndex
     ) {
         if (current == null && ClickActions.isBundle(cursor)) {
-            return computeExtractionFromCursorBundle(cursor, slotLimit);
+            return ClickBundleRules.computeExtractionFromCursorBundle(cursor, slotLimit);
         }
         if (ClickActions.isBundle(current)) {
             if (!cursor.isEmpty()) {
                 return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
             }
-            ItemStack bundleAfter = current.clone();
-            Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
-            Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
-            if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
-                return null;
-            }
-            int takeIndex = observedBundle != null
-                    && observedBundle.equals(current)
-                    && selectedIndex >= 0
-                    && selectedIndex < BundleContentsProxy.INSTANCE.size(contents)
-                    ? selectedIndex
-                    : 0;
-            Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-            int previousSelection = VersionHelper.isOrAbove26_1()
-                    ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)
-                    : BundleContentsProxy.INSTANCE.selectedItem(contents);
-            if (previousSelection >= 0) {
-                BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, previousSelection);
-            }
-            BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, takeIndex);
-            Object takenHandle = BundleContentsMutableProxy.INSTANCE.removeOne(mutableContents);
-            ItemStackProxy.INSTANCE.set(
-                    bundleHandle,
-                    DataComponentsProxy.BUNDLE_CONTENTS,
-                    BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
-            );
-            ItemStack taken = CraftItemStackProxy.INSTANCE.asCraftMirror(takenHandle).clone();
-            if (taken.isEmpty()) {
-                return null;
-            }
-            return new Outcome(bundleAfter, taken);
+            return ClickBundleRules.computeBundleTake(current, observedBundle, selectedIndex);
         }
         if (cursor.isEmpty()) {
             if (current == null) {
@@ -122,99 +89,6 @@ final class ClickSlotRules {
         return computeSwap(current, cursor, slotLimit);
     }
 
-    // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.
-    @Nullable
-    private static Outcome computeInsertionIntoCursorBundle(
-            ItemStack current,
-            ItemStack cursor
-    ) {
-        ItemStack slotAfter = current.clone();
-        ItemStack bundleAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
-        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
-        if (contents == null) {
-            return null;
-        }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(slotAfter));
-        if (inserted == 0) {
-            return null;
-        }
-        ItemStackProxy.INSTANCE.set(
-                bundleHandle,
-                DataComponentsProxy.BUNDLE_CONTENTS,
-                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
-        );
-        return new Outcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter);
-    }
-
-    // 从光标 Bundle 取出选中整组; 槽位放不下的余量重新插回 Bundle.
-    @Nullable
-    private static Outcome computeExtractionFromCursorBundle(
-            ItemStack cursor,
-            int slotLimit
-    ) {
-        ItemStack bundleAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
-        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
-        if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
-            return null;
-        }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-        Object takenHandle = BundleContentsMutableProxy.INSTANCE.removeOne(mutableContents);
-        if (takenHandle == null) {
-            return null;
-        }
-        ItemStack taken = CraftItemStackProxy.INSTANCE.asCraftMirror(takenHandle).clone();
-        int placed = Math.min(effectiveLimit(slotLimit, taken), taken.getAmount());
-        if (placed <= 0) {
-            return null;
-        }
-        int remainder = taken.getAmount() - placed;
-        if (remainder > 0) {
-            ItemStack remainderStack = ItemUtils.copyWithAmount(taken, remainder);
-            int reinserted = BundleContentsMutableProxy.INSTANCE.tryInsert(
-                    mutableContents,
-                    ItemUtils.getItemStackHandle(remainderStack)
-            );
-            if (reinserted != remainder) {
-                return null;
-            }
-        }
-        ItemStackProxy.INSTANCE.set(
-                bundleHandle,
-                DataComponentsProxy.BUNDLE_CONTENTS,
-                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
-        );
-        return new Outcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter, taken);
-    }
-
-    // 使用原版 BundleContents 规则把光标物品尽量插入 Bundle.
-    @Nullable
-    private static Outcome computeBundleInsertion(
-            ItemStack current,
-            ItemStack cursor
-    ) {
-        ItemStack bundleAfter = current.clone();
-        ItemStack cursorAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
-        Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
-        if (contents == null) {
-            return null;
-        }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(cursorAfter));
-        if (inserted == 0) {
-            return null;
-        }
-        ItemStackProxy.INSTANCE.set(
-                bundleHandle,
-                DataComponentsProxy.BUNDLE_CONTENTS,
-                BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
-        );
-        return new Outcome(bundleAfter, cursorAfter.isEmpty() ? ItemStack.empty() : cursorAfter);
-    }
-
     // 算出两边物品不同时的整堆交换.
     @Nullable
     static Outcome computeSwap(
@@ -225,12 +99,12 @@ final class ClickSlotRules {
         if (cursor.getAmount() > effectiveLimit(slotLimit, cursor)) {
             return null;
         }
-        // 整堆交换是纯指针对调: 两端物品原样换位, 数量与组件都不变, 因此谁都不复制.
-        // 与原版 doClick 的 setCarried(clicked) + slot.setByPlayer(carried) 一致.
+        // 整堆交换: 两端内容对调, 数量与组件都不变.
         return new Outcome(cursor, current);
     }
 
-    private static int effectiveLimit(int slotLimit, ItemStack item) {
+    // 计算槽位对这个物品真正生效的堆叠上限: 槽位上限与物品自身上限取小.
+    static int effectiveLimit(int slotLimit, ItemStack item) {
         return Math.min(slotLimit, item.getMaxStackSize());
     }
 

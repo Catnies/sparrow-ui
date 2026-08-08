@@ -134,21 +134,14 @@ final class ClickPlanner {
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 new SlotChange(link.slot(), current, outcome.slotAfter())
         )));
-        InteractionDraft draft = InteractionDraft.cursorAfter(outcome.cursorAfter());
-        return ClickCandidate.of(
-                action,
-                link,
-                reason,
-                scopes,
-                actualCursor,
-                true,
-                null,
-                false,
-                List.of(plan),
-                false,
-                draft,
-                afterCommit
-        );
+        return ClickCandidate.plan(action, reason)
+                .eventTarget(link)
+                .scopes(scopes)
+                .reads(List.of(plan))
+                .checkCursor(actualCursor)
+                .draft(InteractionDraft.cursorAfter(outcome.cursorAfter()))
+                .afterCommit(afterCommit)
+                .build();
     }
 
     @Nullable
@@ -222,20 +215,11 @@ final class ClickPlanner {
                     new TransactionScope(targetPlan, List.of(new SlotChange(target.slot(), targetItem, sourceItem)))
             );
         }
-        return ClickCandidate.of(
-                InventoryAction.HOTBAR_SWAP,
-                source,
-                reason,
-                scopes,
-                context.cursor(),
-                false,
-                null,
-                false,
-                sourcePlan == targetPlan ? List.of(sourcePlan) : List.of(sourcePlan, targetPlan),
-                false,
-                InteractionDraft.empty(),
-                () -> {}
-        );
+        return ClickCandidate.plan(InventoryAction.HOTBAR_SWAP, reason)
+                .eventTarget(source)
+                .scopes(scopes)
+                .reads(sourcePlan == targetPlan ? List.of(sourcePlan) : List.of(sourcePlan, targetPlan))
+                .build();
     }
 
     @Nullable
@@ -259,21 +243,13 @@ final class ClickPlanner {
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 new SlotChange(source.slot(), current, offhand)
         )));
-        @Nullable ItemStack expectedOffhand = ItemUtils.copyOrNull(offhand);
-        return ClickCandidate.of(
-                InventoryAction.HOTBAR_SWAP,
-                source,
-                reason,
-                scopes,
-                context.cursor(),
-                false,
-                expectedOffhand,
-                true,
-                List.of(plan),
-                false,
-                InteractionDraft.offhandAfter(ItemUtils.copyOrNull(current)),
-                () -> {}
-        );
+        return ClickCandidate.plan(InventoryAction.HOTBAR_SWAP, reason)
+                .eventTarget(source)
+                .scopes(scopes)
+                .reads(List.of(plan))
+                .checkOffhand(offhand)
+                .draft(InteractionDraft.offhandAfter(ItemUtils.copyOrNull(current)))
+                .build();
     }
 
     private static boolean fitsReceiving(
@@ -317,20 +293,13 @@ final class ClickPlanner {
                 current,
                 left > 0 ? ItemUtils.copyWithAmount(current, left) : null
         ))));
-        return ClickCandidate.of(
-                fullStack ? InventoryAction.DROP_ALL_SLOT : InventoryAction.DROP_ONE_SLOT,
-                link,
-                reason,
-                scopes,
-                actualCursor,
-                true,
-                null,
-                false,
-                List.of(plan),
-                false,
-                InteractionDraft.dropped(ItemUtils.copyWithAmount(current, take)),
-                () -> {}
-        );
+        return ClickCandidate.plan(fullStack ? InventoryAction.DROP_ALL_SLOT : InventoryAction.DROP_ONE_SLOT, reason)
+                .eventTarget(link)
+                .scopes(scopes)
+                .reads(List.of(plan))
+                .checkCursor(actualCursor)
+                .draft(InteractionDraft.dropped(ItemUtils.copyWithAmount(current, take)))
+                .build();
     }
 
     @Nullable
@@ -349,20 +318,13 @@ final class ClickPlanner {
         if (current == null) {
             return null;
         }
-        return ClickCandidate.of(
-                InventoryAction.CLONE_STACK,
-                link,
-                new PlayerUpdateReason.Click(context.viewer(), ClickType.MIDDLE, -1),
-                List.of(),
-                actualCursor,
-                true,
-                null,
-                false,
-                List.of(plan),
-                true,
-                InteractionDraft.cursorAfter(ItemUtils.copyWithAmount(current, current.getMaxStackSize())),
-                () -> {}
-        );
+        return ClickCandidate.plan(InventoryAction.CLONE_STACK, new PlayerUpdateReason.Click(context.viewer(), ClickType.MIDDLE, -1))
+                .eventTarget(link)
+                .reads(List.of(plan))
+                .checkCursor(actualCursor)
+                .requireCreative(true)
+                .draft(InteractionDraft.cursorAfter(ItemUtils.copyWithAmount(current, current.getMaxStackSize())))
+                .build();
     }
 
     /**
@@ -444,21 +406,13 @@ final class ClickPlanner {
             return null;
         }
 
-        int total = collected;
-        return ClickCandidate.of(
-                InventoryAction.COLLECT_TO_CURSOR,
-                clicked,
-                reason,
-                scopes,
-                actualCursor,
-                true,
-                null,
-                false,
-                new ArrayList<>(plans.values()),
-                false,
-                InteractionDraft.cursorAfter(ItemUtils.copyWithAmount(cursor, cursor.getAmount() + total)),
-                () -> {}
-        );
+        return ClickCandidate.plan(InventoryAction.COLLECT_TO_CURSOR, reason)
+                .eventTarget(clicked)
+                .scopes(scopes)
+                .reads(new ArrayList<>(plans.values()))
+                .checkCursor(actualCursor)
+                .draft(InteractionDraft.cursorAfter(ItemUtils.copyWithAmount(cursor, cursor.getAmount() + collected)))
+                .build();
     }
 
     /**
@@ -525,20 +479,11 @@ final class ClickPlanner {
                 remaining > 0 ? ItemUtils.copyWithAmount(current, remaining) : null
         ))));
         scopes.addAll(targetScopes);
-        return ClickCandidate.of(
-                InventoryAction.MOVE_TO_OTHER_INVENTORY,
-                source,
-                reason,
-                scopes,
-                context.cursor(),
-                false,
-                null,
-                false,
-                readPlans,
-                false,
-                InteractionDraft.empty(),
-                () -> {}
-        );
+        return ClickCandidate.plan(InventoryAction.MOVE_TO_OTHER_INVENTORY, reason)
+                .eventTarget(source)
+                .scopes(scopes)
+                .reads(readPlans)
+                .build();
     }
 
     @NotNull
@@ -668,20 +613,13 @@ final class ClickPlanner {
             int left = cursor.getAmount() - placedTotal;
             newCursor = left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty();
         }
-        ClickCandidate candidate = ClickCandidate.of(
-                InventoryAction.NOTHING,
-                null,
-                reason,
-                scopes,
-                actualCursor,
-                true,
-                null,
-                false,
-                new ArrayList<>(plans.values()),
-                creative,
-                InteractionDraft.cursorAfter(newCursor),
-                () -> {}
-        );
+        ClickCandidate candidate = ClickCandidate.plan(InventoryAction.NOTHING, reason)
+                .scopes(scopes)
+                .reads(new ArrayList<>(plans.values()))
+                .checkCursor(actualCursor)
+                .requireCreative(creative)
+                .draft(InteractionDraft.cursorAfter(newCursor))
+                .build();
         return new PreparedDrag(withRealBefore(candidate, overlay), newCursor, Map.copyOf(newItems));
     }
 

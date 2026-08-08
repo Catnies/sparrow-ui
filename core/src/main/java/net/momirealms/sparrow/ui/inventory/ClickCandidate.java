@@ -15,6 +15,8 @@ import java.util.Objects;
  * 一次点击或拖拽形成的精确候选: 已经算好的写集, 加上提交前必须复核的前置条件.
  * <p>候选一旦形成就不再重新规划; 每次经过闸门后都用 {@code plannedRoots} 的基准状态引用,
  * 光标, 副手和游戏模式复核一遍, 任一条件变化就整体作废.
+ * <p>候选由 {@link #plan} 开出的建造器组装: 每条规划路径只声明自己关心的前置条件,
+ * 没声明的一律取"不复核"的默认值.
  *
  * @param action 候选对应的 Bukkit 操作
  * @param eventTarget 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
@@ -44,39 +46,13 @@ record ClickCandidate(
         @NotNull Runnable afterCommit
 ) {
 
-    // 汇总规划期读过的基准状态, 并对光标与副手做防御复制.
+    // 开出一份建造器, 只带上每个候选都有的两样: 操作类型与变更原因.
     @NotNull
-    static ClickCandidate of(
-            InventoryAction action,
-            @Nullable ClickSemantics.LinkedSlot eventTarget,
-            UpdateReason reason,
-            List<TransactionScope> scopes,
-            ItemStack expectedCursor,
-            boolean checkCursor,
-            @Nullable ItemStack expectedOffhand,
-            boolean checkOffhand,
-            List<SparrowInventory.PlannedRoot> readPlans,
-            boolean requireCreative,
-            InteractionDraft draft,
-            Runnable afterCommit
-    ) {
-        return new ClickCandidate(
-                action,
-                eventTarget,
-                reason,
-                List.copyOf(scopes),
-                List.copyOf(readPlans),
-                expectedCursor.clone(),
-                checkCursor,
-                ItemUtils.copyOrNull(expectedOffhand),
-                checkOffhand,
-                requireCreative,
-                draft,
-                afterCommit
-        );
+    static Builder plan(@NotNull InventoryAction action, @NotNull UpdateReason reason) {
+        return new Builder(action, reason);
     }
 
-    // 先把外部容器的变更同步进 Bukkit 内容镜像, 再复核候选是否仍然成立.
+    // 先把外部容器的变更同步进各规划基准, 再复核候选是否仍然成立.
     // 规划期的目标列表已经排除源 Inventory 并按身份去重, 每个 Inventory 在这里至多刷新一次.
     @Nullable
     StaleReason revalidate(ClickSemantics.Context context) {
@@ -122,5 +98,105 @@ record ClickCandidate(
         OFFHAND,    // 副手物品已经不是规划时看到的那一份
         GAME_MODE,  // 玩家已经不在候选要求的游戏模式
         ROOT_STATE  // 某个 Inventory 的基准状态被另一笔写操作换掉了
+    }
+
+    /**
+     * 候选的建造器. 默认值即"不复核": 没有事件目标, 空写集, 空读集,
+     * 不复核光标与副手, 不要求创造模式, 空副作用草稿, 空收尾动作.
+     */
+    static final class Builder {
+        private final InventoryAction action;
+        private final UpdateReason reason;
+        @Nullable private ClickSemantics.LinkedSlot eventTarget;
+        private List<TransactionScope> scopes = List.of();
+        private List<SparrowInventory.PlannedRoot> reads = List.of();
+        @Nullable private ItemStack expectedCursor;
+        @Nullable private ItemStack expectedOffhand;
+        private boolean checkOffhand;
+        private boolean requireCreative;
+        @Nullable private InteractionDraft draft;
+        private Runnable afterCommit = () -> {};
+
+        private Builder(InventoryAction action, UpdateReason reason) {
+            this.action = action;
+            this.reason = reason;
+        }
+
+        // 派发 Sparrow 点击事件的目标槽位.
+        @NotNull
+        Builder eventTarget(@NotNull ClickSemantics.LinkedSlot eventTarget) {
+            this.eventTarget = eventTarget;
+            return this;
+        }
+
+        // 候选的写集.
+        @NotNull
+        Builder scopes(@NotNull List<TransactionScope> scopes) {
+            this.scopes = scopes;
+            return this;
+        }
+
+        // 规划期读过的全部基准状态, 提交前逐个复核失效.
+        @NotNull
+        Builder reads(@NotNull List<SparrowInventory.PlannedRoot> reads) {
+            this.reads = reads;
+            return this;
+        }
+
+        // 记下规划时读到的光标, 并要求提交前复核它没被换掉.
+        @NotNull
+        Builder checkCursor(@NotNull ItemStack expected) {
+            this.expectedCursor = expected;
+            return this;
+        }
+
+        // 记下规划时读到的副手, 并要求提交前复核它没被换掉; null 表示空副手.
+        @NotNull
+        Builder checkOffhand(@Nullable ItemStack expected) {
+            this.expectedOffhand = expected;
+            this.checkOffhand = true;
+            return this;
+        }
+
+        // 要求提交时玩家仍处于创造模式.
+        @NotNull
+        Builder requireCreative(boolean requireCreative) {
+            this.requireCreative = requireCreative;
+            return this;
+        }
+
+        // 提交后要应用的容器外副作用.
+        @NotNull
+        Builder draft(@NotNull InteractionDraft draft) {
+            this.draft = draft;
+            return this;
+        }
+
+        // 提交成功后的 Window 侧收尾动作.
+        @NotNull
+        Builder afterCommit(@NotNull Runnable afterCommit) {
+            this.afterCommit = afterCommit;
+            return this;
+        }
+
+        // 组装候选, 并对光标与副手做防御复制.
+        @NotNull
+        ClickCandidate build() {
+            @Nullable ItemStack expectedCursor = this.expectedCursor;
+            return new ClickCandidate(
+                    this.action,
+                    this.eventTarget,
+                    this.reason,
+                    List.copyOf(this.scopes),
+                    List.copyOf(this.reads),
+                    expectedCursor != null ? expectedCursor.clone() : ItemStack.empty(),
+                    expectedCursor != null,
+                    ItemUtils.copyOrNull(this.expectedOffhand),
+                    this.checkOffhand,
+                    this.requireCreative,
+                    this.draft != null ? this.draft : InteractionDraft.empty(),
+                    this.afterCommit
+            );
+        }
     }
 }
