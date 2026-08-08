@@ -13,9 +13,75 @@ import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
+/**
+ * 批量与单槽操作的规划算法: 所有槽位数学集中在这里, 在只读内容上产出槽位变更, 不碰任何状态.
+ */
 final class InventoryPlanner {
 
     private InventoryPlanner() {
+    }
+
+    /**
+     * 规划一次单槽放入: 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳.
+     *
+     * @param current 该槽当前内容, 空槽为 {@code null}
+     * @param input 要放入的物品
+     * @param slot 槽位序号
+     * @param slotLimit 各槽位的堆叠上限
+     * @param includedSlot 槽位过滤器
+     * @return 放入方案与放不下的余量; 一个都放不进时方案为空
+     */
+    @NotNull
+    static AddPlan planPut(@Nullable ItemStack current, ItemStack input, int slot, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
+        int amount = input.getAmount();
+        int space;
+        if (current == null) {
+            space = effectiveMaxStackSize(slotLimit, slot, input);
+        } else if (ItemUtils.isSimilar(current, input)) {
+            space = effectiveMaxStackSize(slotLimit, slot, current) - current.getAmount();
+        } else {
+            return new AddPlan(List.of(), amount);
+        }
+        int moved = Math.clamp(space, 0, amount);
+        if (moved == 0 || !includedSlot.test(slot)) {
+            return new AddPlan(List.of(), amount);
+        }
+        ItemStack after = current != null ? current.clone() : input.clone();
+        after.setAmount((current != null ? current.getAmount() : 0) + moved);
+        return new AddPlan(List.of(new SlotChange(slot, current, after)), amount - moved);
+    }
+
+    /**
+     * 规划一次数量增减: 减少时最低到 0, 增加时最高到有效堆叠上限.
+     *
+     * @param current 该槽当前内容, 空槽为 {@code null}
+     * @param slot 槽位序号
+     * @param change 数量变化, 正数为增加, 负数为减少
+     * @param slotLimit 各槽位的堆叠上限
+     * @return 槽位变更; 无事可做时为 {@code null}
+     */
+    @Nullable
+    static SlotChange planAmountChange(@Nullable ItemStack current, int slot, int change, IntUnaryOperator slotLimit) {
+        if (current == null || change == 0) {
+            return null;
+        }
+        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则直接写入的超上限堆
+        // 会在"减 1"时被静默压回上限, 凭空销毁物品. long 算术防止 int 边界溢出.
+        long desired = (long) current.getAmount() + change;
+        int target;
+        if (change < 0) {
+            target = (int) Math.max(0L, desired);
+        } else {
+            int cap = effectiveMaxStackSize(slotLimit, slot, current);
+            if (current.getAmount() >= cap) {
+                return null;
+            }
+            target = (int) Math.min(desired, cap);
+        }
+        if (target == current.getAmount()) {
+            return null;
+        }
+        return new SlotChange(slot, current, target > 0 ? ItemUtils.copyWithAmount(current, target) : null);
     }
 
     /**

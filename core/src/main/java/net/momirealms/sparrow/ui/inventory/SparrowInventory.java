@@ -726,28 +726,12 @@ public abstract class SparrowInventory {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        @Nullable ItemStack[] planned = basis.planned();
-        @Nullable ItemStack current = planned[slot];
-        int amount = input.getAmount();
-
-        // 计算本槽还能接纳多少: 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳
-        int space;
-        if (current == null) {
-            space = Math.min(this.slotMaxStackSize(slot), input.getMaxStackSize());
-        } else if (ItemUtils.isSimilar(current, input)) {
-            space = Math.min(this.slotMaxStackSize(slot), current.getMaxStackSize()) - current.getAmount();
-        } else {
-            return new AddResult(EMPTY_COMMITTED, amount);
+        InventoryPlanner.AddPlan plan = InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, this.placementPredicate(input));
+        if (plan.deltas().isEmpty()) {
+            return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
-        int moved = Math.clamp(space, 0, amount);
-        if (moved == 0 || !this.placementPredicate(input).test(slot)) {
-            return new AddResult(EMPTY_COMMITTED, amount);
-        }
-
-        ItemStack after = current != null ? current.clone() : input.clone();
-        after.setAmount((current != null ? current.getAmount() : 0) + moved);
-        TransactionResult result = this.commitScoped(reason, basis, List.of(new SlotChange(slot, current, after)));
-        return new AddResult(result, result instanceof TransactionResult.Committed ? amount - moved : amount);
+        TransactionResult result = this.commitScoped(reason, basis, plan.deltas());
+        return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
 
     /**
@@ -783,30 +767,11 @@ public abstract class SparrowInventory {
     public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
-        @Nullable ItemStack[] planned = basis.planned();
-        @Nullable ItemStack current = planned[slot];
-        if (current == null || change == 0) {
+        @Nullable SlotChange delta = InventoryPlanner.planAmountChange(basis.planned()[slot], slot, change, this::slotMaxStackSize);
+        if (delta == null) {
             return EMPTY_COMMITTED;
         }
-
-        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则直接写入的超上限堆
-        // 会在"减 1"时被静默压回上限, 凭空销毁物品. long 算术防止 int 边界溢出.
-        long desired = (long) current.getAmount() + change;
-        int target;
-        if (change < 0) {
-            target = (int) Math.max(0L, desired);
-        } else {
-            int cap = Math.min(this.slotMaxStackSize(slot), current.getMaxStackSize());
-            if (current.getAmount() >= cap) {
-                return EMPTY_COMMITTED;
-            }
-            target = (int) Math.min(desired, cap);
-        }
-        if (target == current.getAmount()) {
-            return EMPTY_COMMITTED;
-        }
-        @Nullable ItemStack after = target > 0 ? ItemUtils.copyWithAmount(current, target) : null;
-        return this.commitScoped(reason, basis, List.of(new SlotChange(slot, current, after)));
+        return this.commitScoped(reason, basis, List.of(delta));
     }
 
     /**
@@ -1272,154 +1237,5 @@ public abstract class SparrowInventory {
      */
     void swapState(@Nullable ItemStack @NotNull [] newState) {
         this.state = newState;
-    }
-
-    /**
-     * // todo 或许可以将2个不同的类分散出去, 或者将这个类单独分到一个文件
-     * 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务: 加锁, 校验, 构造新状态,
-     * 交换和落地这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
-     * <p>{@code planned} 数组只用来读内容(规划读取, 事件 before 采样, 解析搬运来源);
-     * 规划依据还成不成立要问 {@link #isStale()} —— 两种实现的判断方式不一样, 调用方不要自己拿数组比对.
-     */
-    abstract static sealed class PlannedRoot {
-        private final SparrowInventory inventory;
-        private final @Nullable ItemStack @NotNull [] planned;
-
-        PlannedRoot(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
-            this.inventory = inventory;
-            this.planned = planned;
-        }
-
-        @NotNull
-        final SparrowInventory inventory() {
-            return this.inventory;
-        }
-
-        final @Nullable ItemStack @NotNull [] planned() {
-            return this.planned;
-        }
-
-        /**
-         * 本基准参与提交临界区的方式: 需要加锁的返回锁凭证, 不加锁的返回 {@code null}.
-         */
-        @Nullable
-        abstract StateLock stateLock();
-
-        /**
-         * 本基准是否已经失效. 提交临界区内的乐观校验与候选复核的 ROOT_STATE 检查共用本方法.
-         */
-        abstract boolean isStale();
-
-        /**
-         * 在提交临界区内构造应用变更后的新状态; 不需要交换状态的返回 {@code null}.
-         * 只允许在 {@link #isStale()} 刚刚通过的同一临界区内调用.
-         */
-        abstract @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas);
-
-        /**
-         * 在提交临界区内把构造产物设为当前状态; 产物为 {@code null} 时无事发生.
-         */
-        abstract void swapTo(@Nullable ItemStack @Nullable [] nextState);
-
-        /**
-         * 状态提交后, post 事件派发前的落地动作. 是否调用由引擎按事务属性决定(External 同步免回写).
-         *
-         * @param deltas 本写集的槽位变更
-         */
-        abstract void land(@NotNull List<SlotChange> deltas);
-
-        /**
-         * 全序加锁凭证: 事务引擎按 {@code order} 升序逐把加锁, 消除跨 Inventory 事务的死锁可能.
-         */
-        record StateLock(@NotNull ReentrantLock lock, long order) {
-        }
-
-        /**
-         * 内容就在 Inventory 自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身,
-         * 它同时也是并发校验的依据 —— 数组元素发布后不再修改, 换内容就是换数组, 比引用就能发现并发提交.
-         */
-        static final class Stm extends PlannedRoot {
-
-            Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
-                super(inventory, planned);
-            }
-
-            @Override
-            @NotNull
-            StateLock stateLock() {
-                return new StateLock(this.inventory().writeLock(), this.inventory().lockOrder());
-            }
-
-            @Override
-            boolean isStale() {
-                return this.inventory().currentState() != this.planned();
-            }
-
-            @Override
-            @Nullable ItemStack @NotNull [] buildNextState(@NotNull List<SlotChange> deltas) {
-                // isStale 刚在同一临界区内通过, planned 与当前状态是同一个数组, 克隆它即克隆当前状态.
-                @Nullable ItemStack[] next = this.planned().clone();
-                for (int i = 0; i < deltas.size(); i++) {
-                    SlotChange delta = deltas.get(i);
-                    // 等值跳过: 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
-                    @Nullable ItemStack after = delta.unsafeAfter();
-                    @Nullable ItemStack current = next[delta.slot()];
-                    next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;
-                }
-                return next;
-            }
-
-            @Override
-            void swapTo(@Nullable ItemStack @Nullable [] nextState) {
-                if (nextState != null) {
-                    this.inventory().swapState(nextState);
-                }
-            }
-
-            @Override
-            void land(@NotNull List<SlotChange> deltas) {
-                // 内容就在状态数组里, 上一步换过数组就已经落地了, 这里没有别的事情要做.
-            }
-        }
-
-        /**
-         * 内容放在外部存储里时用的规划基准: planned 是新建时逐槽读存储填出来的临时数组, 每次规划都重新建一份,
-         * 只用来读内容; 并发校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
-         */
-        static final class Live extends PlannedRoot {
-            private final ReferencingInventory owner;
-            private final long modCountAtPlan;
-
-            Live(@NotNull ReferencingInventory owner, @Nullable ItemStack @NotNull [] planned, long modCountAtPlan) {
-                super(owner, planned);
-                this.owner = owner;
-                this.modCountAtPlan = modCountAtPlan;
-            }
-
-            @Override
-            @Nullable
-            StateLock stateLock() {
-                return null;
-            }
-
-            @Override
-            boolean isStale() {
-                return this.owner.liveModCount() != this.modCountAtPlan;
-            }
-
-            @Override
-            @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas) {
-                return null;
-            }
-
-            @Override
-            void swapTo(@Nullable ItemStack @Nullable [] nextState) {
-            }
-
-            @Override
-            void land(@NotNull List<SlotChange> deltas) {
-                this.owner.liveApply(deltas);
-            }
-        }
     }
 }

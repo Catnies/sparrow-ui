@@ -20,7 +20,7 @@ import java.util.List;
  * @param basis 计算这些变化时读到的规划基准
  */
 @ApiStatus.Internal
-public record TransactionScope(@NotNull InventoryChange change, @NotNull SparrowInventory.PlannedRoot basis) {
+public record TransactionScope(@NotNull InventoryChange change, @NotNull PlannedRoot basis) {
 
     /**
      * 把一次规划算出的槽位变化整理成待提交内容.
@@ -28,7 +28,7 @@ public record TransactionScope(@NotNull InventoryChange change, @NotNull Sparrow
      * @param basis 本次规划读到的状态版本
      * @param slotChanges 规划算出的槽位变化, 不能为空
      */
-    TransactionScope(@NotNull SparrowInventory.PlannedRoot basis, @NotNull List<SlotChange> slotChanges) {
+    TransactionScope(@NotNull PlannedRoot basis, @NotNull List<SlotChange> slotChanges) {
         this(new InventoryChange(basis.inventory(), slotChanges), basis);
     }
 
@@ -41,7 +41,7 @@ public record TransactionScope(@NotNull InventoryChange change, @NotNull Sparrow
      * @param slotChanges 准备写入的槽位及其前后值
      */
     public TransactionScope(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> slotChanges) {
-        this(new InventoryChange(inventory, slotChanges), new SparrowInventory.PlannedRoot.Stm(inventory, planned));
+        this(new InventoryChange(inventory, slotChanges), new PlannedRoot.Stm(inventory, planned));
     }
 
     // 返回这组修改所属的 Inventory.

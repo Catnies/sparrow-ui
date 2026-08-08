@@ -36,7 +36,7 @@ record ClickCandidate(
         @Nullable ClickSemantics.LinkedSlot eventTarget,
         @NotNull UpdateReason reason,
         @NotNull List<TransactionScope> scopes,
-        @NotNull List<SparrowInventory.PlannedRoot> plannedRoots,
+        @NotNull List<PlannedRoot> plannedRoots,
         @NotNull ItemStack expectedCursor,
         boolean checkCursor,
         @Nullable ItemStack expectedOffhand,
@@ -109,7 +109,7 @@ record ClickCandidate(
         private final UpdateReason reason;
         @Nullable private ClickSemantics.LinkedSlot eventTarget;
         private List<TransactionScope> scopes = List.of();
-        private List<SparrowInventory.PlannedRoot> reads = List.of();
+        private List<PlannedRoot> reads = List.of();
         @Nullable private ItemStack expectedCursor;
         @Nullable private ItemStack expectedOffhand;
         private boolean checkOffhand;
@@ -138,7 +138,7 @@ record ClickCandidate(
 
         // 规划期读过的全部基准状态, 提交前逐个复核失效.
         @NotNull
-        Builder reads(@NotNull List<SparrowInventory.PlannedRoot> reads) {
+        Builder reads(@NotNull List<PlannedRoot> reads) {
             this.reads = reads;
             return this;
         }

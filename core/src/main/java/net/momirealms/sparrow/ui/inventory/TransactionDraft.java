@@ -25,7 +25,7 @@ import java.util.Objects;
 final class TransactionDraft {
     private List<TransactionScope> scopes;         // 按 Inventory 分组的当前待提交内容, 每一条自带该 Inventory 的规划基准
     // Pre 期间新纳入的 Inventory 的规划基准. 同一笔事务内只发一次, 保证事件与提交阶段用的是同一份.
-    private final IdentityHashMap<SparrowInventory, SparrowInventory.PlannedRoot> includedRoots = new IdentityHashMap<>();
+    private final IdentityHashMap<SparrowInventory, PlannedRoot> includedRoots = new IdentityHashMap<>();
 
     /**
      * 校验事务形状并创建 Pre 阶段草稿.
@@ -90,7 +90,7 @@ final class TransactionDraft {
      * @return 纳入那一刻签发的规划基准
      */
     @NotNull
-    SparrowInventory.PlannedRoot rootOf(@NotNull SparrowInventory inventory) {
+    PlannedRoot rootOf(@NotNull SparrowInventory inventory) {
         return this.includedRoots.computeIfAbsent(inventory, SparrowInventory::openPlan);
     }
 
@@ -124,7 +124,7 @@ final class TransactionDraft {
             // 闸门跑在事务之外, 这里刷新引用容器不会重入事件系统.
             inventory.prepareWrite();
         }
-        SparrowInventory.PlannedRoot basis = rootIndex < 0 ? this.rootOf(inventory) : this.scopes.get(rootIndex).basis();
+        PlannedRoot basis = rootIndex < 0 ? this.rootOf(inventory) : this.scopes.get(rootIndex).basis();
         @Nullable ItemStack[] planned = basis.planned();
         Objects.checkIndex(rootSlot, planned.length);
 

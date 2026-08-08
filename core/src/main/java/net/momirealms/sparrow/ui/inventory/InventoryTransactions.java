@@ -73,7 +73,7 @@ final class InventoryTransactions {
             @Nullable InteractionDraft interaction,
             boolean bypassPre,
             @Nullable Runnable committedCallback,
-            @NotNull List<SparrowInventory.PlannedRoot> readSet,
+            @NotNull List<PlannedRoot> readSet,
             @NotNull BooleanSupplier commitGuard
     ) {
         return new Commit(reason, draft, interaction, bypassPre, committedCallback, readSet, commitGuard, true).run();
@@ -103,13 +103,13 @@ final class InventoryTransactions {
         @Nullable private final InteractionDraft interaction;
         private final boolean bypassPre;
         @Nullable private final Runnable committedCallback;
-        private final List<SparrowInventory.PlannedRoot> readSet;
+        private final List<PlannedRoot> readSet;
         private final BooleanSupplier commitGuard;
         private final boolean writeBack; // 为 true 时在状态提交后调用各基准的落地, 把内容写进外部存储
 
         private List<TransactionNotification> updates;              // 本笔事务需要通知的订阅者
         private List<TransactionScope> scopes;                      // 封笔后的最终写集
-        private List<SparrowInventory.PlannedRoot.StateLock> locks; // 按全序排好的锁凭证
+        private List<PlannedRoot.StateLock> locks; // 按全序排好的锁凭证
 
         private Commit(
                 UpdateReason reason,
@@ -117,7 +117,7 @@ final class InventoryTransactions {
                 @Nullable InteractionDraft interaction,
                 boolean bypassPre,
                 @Nullable Runnable committedCallback,
-                List<SparrowInventory.PlannedRoot> readSet,
+                List<PlannedRoot> readSet,
                 BooleanSupplier commitGuard,
                 boolean writeBack
         ) {
@@ -320,8 +320,8 @@ final class InventoryTransactions {
      * @return 去重并按锁序号排列的锁凭证
      */
     @NotNull
-    private static List<SparrowInventory.PlannedRoot.StateLock> collectLocks(List<TransactionScope> writes, List<SparrowInventory.PlannedRoot> reads) {
-        List<SparrowInventory.PlannedRoot.StateLock> locks = new ArrayList<>(writes.size() + reads.size());
+    private static List<PlannedRoot.StateLock> collectLocks(List<TransactionScope> writes, List<PlannedRoot> reads) {
+        List<PlannedRoot.StateLock> locks = new ArrayList<>(writes.size() + reads.size());
         IdentityHashMap<SparrowInventory, Boolean> seen = new IdentityHashMap<>();
         for (int i = 0; i < writes.size(); i++) {
             collectLock(writes.get(i).basis(), seen, locks);
@@ -329,18 +329,18 @@ final class InventoryTransactions {
         for (int i = 0; i < reads.size(); i++) {
             collectLock(reads.get(i), seen, locks);
         }
-        locks.sort(Comparator.comparingLong(SparrowInventory.PlannedRoot.StateLock::order));
+        locks.sort(Comparator.comparingLong(PlannedRoot.StateLock::order));
         return locks;
     }
 
     // 同一个 Inventory 在写集与读集中可能各出现一次, 只取第一份凭证.
     private static void collectLock(
-            SparrowInventory.PlannedRoot root,
+            PlannedRoot root,
             IdentityHashMap<SparrowInventory, Boolean> seen,
-            List<SparrowInventory.PlannedRoot.StateLock> locks
+            List<PlannedRoot.StateLock> locks
     ) {
         if (seen.put(root.inventory(), Boolean.TRUE) != null) return;
-        @Nullable SparrowInventory.PlannedRoot.StateLock lock = root.stateLock();
+        @Nullable PlannedRoot.StateLock lock = root.stateLock();
         if (lock != null) {
             locks.add(lock);
         }
