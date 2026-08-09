@@ -147,8 +147,9 @@ final class ClickExecutor {
         if (candidate.staleReason(this.context) != null) {
             return;
         }
+        boolean fireBukkitInventoryEvent = requestsBukkitInventoryEvent(candidate.eventTarget(), candidate.scopes());
         InteractionEdits edits = this.editsFor(candidate, this.overlay);
-        if (!this.passGate(() -> bukkitStage.test(edits))) {
+        if (!this.passGate(() -> !fireBukkitInventoryEvent || bukkitStage.test(edits))) {
             return;
         }
         // Bukkit 闸门是覆盖层的唯一写入者, 之后每一道闸门写进来的都是提交后的最终值.
@@ -213,7 +214,8 @@ final class ClickExecutor {
     private void executeUnplanned(ClickType clickType, int hotbarButton, int windowSlot, InventoryAction action) {
         InteractionEdits edits = new InteractionEdits(this.context, null, null, this.overlay);
         ItemStack plannedCursor = this.context.cursor();
-        if (!this.passGate(() -> this.gate.allowClick(action, edits))) {
+        boolean fireBukkitInventoryEvent = requestsBukkitInventoryEvent(this.context.linkAt(windowSlot), List.of());
+        if (!this.passGate(() -> !fireBukkitInventoryEvent || this.gate.allowClick(action, edits))) {
             return;
         }
         edits.closeOverlay();
@@ -294,6 +296,19 @@ final class ClickExecutor {
     // 事件派发前后各复核一次 Window 状态: 处理器自己可能关掉或重开 Window.
     private boolean passGate(BooleanSupplier stage) {
         return this.gate.stillValid() && stage.getAsBoolean() && this.gate.stillValid();
+    }
+
+    // 根据本次参与交互的 Inventory 集合, 判断是否应在交互时触发 Bukkit 的相关事件
+    private static boolean requestsBukkitInventoryEvent(@Nullable ClickSemantics.LinkedSlot directTarget, @NotNull List<TransactionScope> scopes) {
+        if (directTarget != null && directTarget.inventory().fireBukkitInventoryEvents()) {
+            return true;
+        }
+        for (int scopeIndex = 0; scopeIndex < scopes.size(); scopeIndex++) {
+            if (scopes.get(scopeIndex).inventory().fireBukkitInventoryEvents()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // 把复核结果转成布尔, 顺便在候选被静默丢弃时给插件作者留一条线索.

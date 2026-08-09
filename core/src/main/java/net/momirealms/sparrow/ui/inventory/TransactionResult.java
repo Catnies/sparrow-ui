@@ -8,19 +8,6 @@ import java.util.List;
 public sealed interface TransactionResult {
 
     /**
-     * 事务成功:
-     * 所有参与的 Inventory 的改动都已生效.
-     *
-     * @param rootChanges 每个参与的 Inventory 各一个变更组, 按调用方声明的顺序排列
-     */
-    record Committed(@NotNull List<InventoryChange> rootChanges) implements TransactionResult {
-
-        public Committed {
-            rootChanges = List.copyOf(rootChanges);
-        }
-    }
-
-    /**
      * 事务失败:
      * 在 pre 阶段被观察者取消.
      */
@@ -36,4 +23,16 @@ public sealed interface TransactionResult {
         INSTANCE
     }
 
+    /**
+     * 事务成功:
+     * 所有参与的 Inventory 的改动都已生效.
+     *
+     * @param rootChanges 每个参与的 Inventory 各一个变更组, 按调用方声明的顺序排列
+     */
+    record Committed(@NotNull List<InventoryChange> rootChanges) implements TransactionResult {
+
+        public Committed {
+            rootChanges = List.copyOf(rootChanges);
+        }
+    }
 }

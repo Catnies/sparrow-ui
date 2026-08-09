@@ -78,6 +78,7 @@ public abstract class SparrowInventory {
     private volatile int otherGuiPriority;
     private volatile boolean includeObscuredSlots; // 未被 GUI 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
     private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
+    private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
 
     volatile boolean serialPostDispatch;          // 开启后本 Inventory 的 Post 严格按提交顺序串行派发, 后到的提交线程阻塞等待
     private final Object postGate = new Object(); // 只保护下面两个票号, 不保护任何内容状态
@@ -87,9 +88,9 @@ public abstract class SparrowInventory {
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
+
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
-    // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
-    @Nullable private volatile org.bukkit.inventory.Inventory bukkitView;
+    @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
     /**
      * 以给定数组为初始内容创建 Inventory.
@@ -456,6 +457,25 @@ public abstract class SparrowInventory {
      */
     public void frozen(boolean frozen) {
         this.frozen = frozen;
+    }
+
+    /**
+     * 涉及本 Inventory 的交互是否会派发 Bukkit 事件.
+     * <p>默认开启, 若交互涉及多个 Inventory 时,任一 Inventory 开启就会派发事件.
+     *
+     * @return 是否应在交互时触发 Bukkit 的相关事件
+     */
+    public boolean fireBukkitInventoryEvents() {
+        return this.fireBukkitInventoryEvents;
+    }
+
+    /**
+     * 涉及本 Inventory 的交互是否会派发 Bukkit 事件.
+     *
+     * @param fireBukkitInventoryEvents 是否应在交互时触发 Bukkit 的相关事件
+     */
+    public void fireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
+        this.fireBukkitInventoryEvents = fireBukkitInventoryEvents;
     }
 
     /**
