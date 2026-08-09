@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.click.ItemClick;
 import net.momirealms.sparrow.ui.click.ItemDragClick;
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -115,6 +116,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
     private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
     private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
+    private final BitSet renderedBeforeEvent = new BitSet(); // 本 tick 已在 Bukkit 事件前渲染, 仍待最终同步的槽位
     private long windowTick;        // 本次打开以来的 tick 计数
     private boolean cursorDirty;    // 光标是否需要重新核对
     private boolean forceFull;      // 下一次同步是否强制全量
@@ -564,6 +566,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.dirtySlots.clear();
             this.spareDirtySlots.clear();
         }
+        this.renderedBeforeEvent.clear();
         this.refreshTitle();
 
         // 先在局部变量中构建资源, 避免半初始化状态对 tick 任务可见
@@ -844,11 +847,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (paths == null || localSlots == null) {
             return;
         }
-        BitSet pending;
-        synchronized (this.dirtyLock) {
-            pending = (BitSet) this.dirtySlots.clone();
-        }
+        // 消费掉失效标记, 本轮最终同步不再重复渲染这些槽位, 只把它们留在待同步集合里
+        BitSet pending = this.takeDirtySlots();
         this.renderDirtySlots(pending, paths, localSlots);
+        this.renderedBeforeEvent.or(pending);
         menu.resetBukkitEventView(this.protocolSlots(localSlots), menu.cursor());
     }
 
@@ -1086,6 +1088,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 先消费跨线程写入的失效集合, 再在实体线程生成本轮 Window 槽位渲染结果
         BitSet dirty = this.takeDirtySlots();
         this.renderDirtySlots(dirty, paths, localSlots);
+        // Bukkit 事件前已经渲染过的槽位不再重复渲染, 但仍要参与本轮同步
+        if (!this.renderedBeforeEvent.isEmpty()) {
+            this.renderedBeforeEvent.or(dirty);
+            dirty = this.renderedBeforeEvent;
+        }
 
         // Window 虚拟槽位的变化单独写入菜单状态, 不进入协议槽位(raw slot)
         boolean virtualDirty = dirty.nextSetBit(this.layout.protocolSize()) >= 0;
@@ -1128,6 +1135,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.menuDirty = true;
             this.forceReopen |= reopen; // 重开失败后客户端标题状态未知, 后续必须再重开一次
             this.manager.report("Failed to synchronize Window", throwable);
+        } finally {
+            this.renderedBeforeEvent.clear();
         }
     }
 
@@ -1575,6 +1584,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 派发 Bukkit 事件前先让 Bukkit 事件状态副本对齐服务端渲染结果; 渲染本身可能跑用户代码, 之后要重新复核.
         boolean refreshEventView() {
+            // 不派发 Bukkit 事件就没人读这份副本, 那次渲染纯属白跑
+            if (!SparrowUI.getInstance().fireBukkitInventoryEvents()) return true;
             AbstractWindow.this.resetBukkitEventView(this.menu);
             return this.stillValid();
         }
