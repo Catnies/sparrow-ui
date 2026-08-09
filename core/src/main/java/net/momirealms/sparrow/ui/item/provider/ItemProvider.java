@@ -32,6 +32,7 @@ public interface ItemProvider {
 
     /**
      * 生成本次渲染要显示的物品.
+     * <p><strong>不得改动 Window、GUI、Inventory, 也不得额外请求刷新或同步.</strong>
      *
      * @param context 当前渲染上下文
      * @return 本次渲染要显示的物品

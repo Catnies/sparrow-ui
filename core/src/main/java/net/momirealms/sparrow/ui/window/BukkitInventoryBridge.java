@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.InteractionEdits;
 import org.bukkit.Bukkit;
 import org.bukkit.event.inventory.ClickType;
@@ -23,7 +22,7 @@ final class BukkitInventoryBridge {
     }
 
     /**
-     * 在启用 Bukkit 事件桥接时, 把已映射的协议点击发布为 Bukkit InventoryClickEvent.
+     * 把已映射的协议点击发布为 Bukkit InventoryClickEvent.
      * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      *
      * @param window 目标 Window
@@ -32,26 +31,23 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
-        if (SparrowUI.getInstance().fireBukkitInventoryEvents()) {
-            int rawSlot = click.rawSlot();
-            InventoryView view = window.inventoryView();
-            InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
-                    ? InventoryType.SlotType.OUTSIDE
-                    : view.getSlotType(rawSlot);
-            InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), action, click.hotbarButton());
-            try {
-                Bukkit.getPluginManager().callEvent(event);
-                return !event.isCancelled();
-            } catch (Throwable throwable) {
-                this.exceptionHandler.accept("Failed to bridge Window click to Bukkit", throwable);
-                return false;
-            }
+        int rawSlot = click.rawSlot();
+        InventoryView view = window.inventoryView();
+        InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
+                ? InventoryType.SlotType.OUTSIDE
+                : view.getSlotType(rawSlot);
+        InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), action, click.hotbarButton());
+        try {
+            Bukkit.getPluginManager().callEvent(event);
+            return !event.isCancelled();
+        } catch (Throwable throwable) {
+            this.exceptionHandler.accept("Failed to bridge Window click to Bukkit", throwable);
+            return false;
         }
-        return true;
     }
 
     /**
-     * 在启用 Bukkit 事件桥接时, 把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
+     * 把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
      * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
      *
      * @param window 目标 Window
@@ -62,25 +58,22 @@ final class BukkitInventoryBridge {
      * @return 事件未被取消且桥接无异常时为 true
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, ItemStack newCursor, Map<Integer, ItemStack> newItems, InteractionEdits edits) {
-        if (SparrowUI.getInstance().fireBukkitInventoryEvents()) {
-            InventoryView view = window.inventoryView();
-            ItemStack oldCursor = view.getCursor();
-            InventoryDragEvent event = new InventoryDragEvent(view, newCursor, oldCursor, clickType == ClickType.RIGHT, newItems);
-            try {
-                Bukkit.getPluginManager().callEvent(event);
-                if (event.isCancelled()) return false;
-                // 拖拽事件的 setCursor 写的是事件自己的字段而不是 InventoryView, 在这里回传.
-                // 事件构造时用的就是这份 newCursor, 值没变说明没人调过 setCursor —— 不写, 否则每次拖拽
-                // 都会被记成一次监听器写入, 候选作废后就再也不会重规划.
-                if (!newCursor.equals(event.getCursor())) {
-                    edits.cursor(event.getCursor());
-                }
-                return true;
-            } catch (Throwable throwable) {
-                this.exceptionHandler.accept("Failed to bridge Window drag to Bukkit", throwable);
-                return false;
+        InventoryView view = window.inventoryView();
+        ItemStack oldCursor = view.getCursor();
+        InventoryDragEvent event = new InventoryDragEvent(view, newCursor, oldCursor, clickType == ClickType.RIGHT, newItems);
+        try {
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.isCancelled()) return false;
+            // 拖拽事件的 setCursor 写的是事件自己的字段而不是 InventoryView, 在这里回传.
+            // 事件构造时用的就是这份 newCursor, 值没变说明没人调过 setCursor —— 不写, 否则每次拖拽
+            // 都会被记成一次监听器写入, 候选作废后就再也不会重规划.
+            if (!newCursor.equals(event.getCursor())) {
+                edits.cursor(event.getCursor());
             }
+            return true;
+        } catch (Throwable throwable) {
+            this.exceptionHandler.accept("Failed to bridge Window drag to Bukkit", throwable);
+            return false;
         }
-        return true;
     }
 }

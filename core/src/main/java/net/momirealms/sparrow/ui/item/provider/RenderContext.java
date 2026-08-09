@@ -58,7 +58,7 @@ public final class RenderContext {
     }
 
     /**
-     * 获取本次渲染所属的 Window.
+     * 获取本次渲染所属的 Window, 只允许用于读取, 此时改动或者请求刷新与同步可能会打断会对渲染流程造成破坏.
      *
      * @return 所属 Window
      */

@@ -788,7 +788,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     click.hotbarButton(),
                     rawSlot
             );
-            if (!guard.refreshEventView() || !this.manager.bukkitBridge().allowClick(this, click, action) || !guard.stillValid()) {
+            if (!guard.refreshEventView() || !guard.allowBukkitClick(click, action) || !guard.stillValid()) {
                 return;
             }
             path.handleClick(new ItemClick(click.clickType(), this.viewer, this, menu.cursor(), rawSlot, click.hotbarButton()));
@@ -801,7 +801,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 click.hotbarButton(),
                 rawSlot
         );
-        if (!guard.refreshEventView() || !this.manager.bukkitBridge().allowClick(this, click, action) || !guard.stillValid()) {
+        if (!guard.refreshEventView() || !guard.allowBukkitClick(click, action) || !guard.stillValid()) {
             return;
         }
         // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
@@ -1591,7 +1591,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final long generation;
         private final int stateId;
         private final long pathRevision;
-        // 本次交互是否派发 Bukkit 事件, 开始时定下来: 重置事件状态副本和取回事件写入必须按同一个答案走
+        // 本次交互是否派发 Bukkit 事件, 开始时定下来: 重置事件状态副本, 实际派发和取回事件写入必须按同一个答案走
         private final boolean fireBukkitEvents = SparrowUI.getInstance().fireBukkitInventoryEvents();
 
         InteractionGuard(MenuHandle menu) {
@@ -1612,6 +1612,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (!this.fireBukkitEvents) return true;
             AbstractWindow.this.resetBukkitEventView(this.menu);
             return this.stillValid();
+        }
+
+        boolean allowBukkitClick(@NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
+            return !this.fireBukkitEvents || AbstractWindow.this.manager.bukkitBridge().allowClick(AbstractWindow.this, click, action);
+        }
+
+        boolean allowBukkitDrag(@NotNull ClickType clickType, @NotNull ItemStack newCursor, @NotNull Map<Integer, ItemStack> newItems, @NotNull InteractionEdits edits) {
+            return !this.fireBukkitEvents || AbstractWindow.this.manager.bukkitBridge().allowDrag(AbstractWindow.this, clickType, newCursor, newItems, edits);
         }
 
         // 取走事件写进 Bukkit 事件状态副本的光标和槽位并合并进草稿. 这些写入会被下一次 refreshEventView 覆盖, 事件一返回就得取.
@@ -1653,7 +1661,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (!this.refreshEventView()) {
                 return false;
             }
-            boolean allowed = AbstractWindow.this.manager.bukkitBridge().allowClick(AbstractWindow.this, this.click, action);
+            boolean allowed = this.allowBukkitClick(this.click, action);
             // 取消与否都要把 Bukkit 事件状态副本的写入记录清空, 否则这些写入会被下一个事件误当成自己的.
             // 取消时它们不会被提交: 引擎见到 false 就整体放弃, 攒下的草稿一并作废.
             this.drainEventEdits(edits);
@@ -1698,7 +1706,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (!this.refreshEventView()) {
                 return false;
             }
-            boolean allowed = AbstractWindow.this.manager.bukkitBridge().allowDrag(AbstractWindow.this, this.clickType, newCursor, newItems, edits);
+            boolean allowed = this.allowBukkitDrag(this.clickType, newCursor, newItems, edits);
             // 监听器也可能绕开事件自己的 setCursor, 直接写 InventoryView; 那份写入后到, 覆盖事件回传值.
             this.drainEventEdits(edits);
             if (!allowed) {
