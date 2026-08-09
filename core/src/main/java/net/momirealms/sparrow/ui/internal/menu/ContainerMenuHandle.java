@@ -272,10 +272,10 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 菜单都没了就不该再往里写.
      */
     @Override
-    public void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
+    public void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull BitSet renderedSlots, @NotNull ItemStack cursor) {
         this.checkCommitted();
         this.checkSlotCount(slots);
-        this.view.resetForEvent(slots, cursor);
+        this.view.resetForEvent(slots, renderedSlots, cursor);
     }
 
     /**

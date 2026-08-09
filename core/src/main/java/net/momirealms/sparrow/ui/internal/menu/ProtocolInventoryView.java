@@ -113,10 +113,24 @@ final class ProtocolInventoryView implements InventoryView {
 
     /**
      * 用服务端渲染结果和菜单实际光标重置 Bukkit 事件状态副本, 但保留此前事件的触碰记录供最终同步纠正客户端.
+     * 顶部 Inventory 本身是事件副本的 backing, 监听器可以直接写入并绕过触碰记录, 所以始终完整恢复.
+     * 底部暴露的是真实玩家 Inventory, 不与 lowerItems 事件副本共用 backing; lowerItems 只恢复刚渲染或此前触碰过的槽位.
      * <p>只有事件粒度的写入记录会被清掉: 它描述的是"上一个事件写了什么", 内容一旦被服务端渲染结果覆盖就失效了.
+     *
+     * @param slots 按协议槽位排列的当前服务端渲染结果
+     * @param renderedSlots 本次事件前刚重新渲染的槽位
+     * @param cursor 当前菜单实际光标
      */
-    void resetForEvent(ItemStack @NotNull [] slots, @NotNull ItemStack cursor) {
-        this.replaceContents(slots, cursor);
+    void resetForEvent(ItemStack @NotNull [] slots, @NotNull BitSet renderedSlots, @NotNull ItemStack cursor) {
+        for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
+            int upperSlot = this.upperSlot(rawSlot);
+            if (upperSlot >= 0) {
+                this.upper.setItem(upperSlot, slots[rawSlot]);
+            } else if (renderedSlots.get(rawSlot) || this.touchedSlots.get(rawSlot)) {
+                this.lowerItems[this.lowerSlot(rawSlot)] = ItemUtils.copyOrEmpty(slots[rawSlot]);
+            }
+        }
+        this.cursor = ItemUtils.copyOrEmpty(cursor);
         this.eventTouchedSlots.clear();
         this.eventCursorTouched = false;
     }

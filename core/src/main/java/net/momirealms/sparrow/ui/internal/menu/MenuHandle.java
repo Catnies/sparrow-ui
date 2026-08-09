@@ -152,9 +152,10 @@ public interface MenuHandle extends AutoCloseable {
      * Bukkit 监听器此前触碰过的标记仍需保留, 供本 tick 最终同步纠正客户端.
      *
      * @param slots 按协议槽位排列的当前服务端渲染结果
+     * @param renderedSlots 本次事件前刚重新渲染的槽位
      * @param cursor 当前菜单实际光标
      */
-    void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull ItemStack cursor);
+    void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull BitSet renderedSlots, @NotNull ItemStack cursor);
 
     /**
      * 取出最近一次 Bukkit 事件写进 Bukkit 事件状态副本的光标, 并清空该事件的写入记录.

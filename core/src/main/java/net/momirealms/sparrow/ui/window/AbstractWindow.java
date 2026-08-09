@@ -873,7 +873,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         BitSet pending = this.takeDirtySlots();
         this.renderDirtySlots(pending, paths, localSlots);
         this.renderedBeforeEvent.or(pending);
-        menu.resetBukkitEventView(this.protocolSlots(localSlots), menu.cursor());
+        menu.resetBukkitEventView(this.protocolSlots(localSlots), pending, menu.cursor());
     }
 
     /**
