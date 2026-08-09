@@ -18,4 +18,7 @@ public interface CraftRegistryProxy {
 
     @MethodInvoker(name = "bukkitToMinecraft", isStatic = true)
     Object bukkitToMinecraft(Keyed bukkit);
+
+    @MethodInvoker(name = "bukkitToMinecraftHolder", isStatic = true)
+    Object bukkitToMinecraftHolder(Keyed bukkit);
 }

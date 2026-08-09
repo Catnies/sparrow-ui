@@ -2,6 +2,9 @@ package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.gui.Gui;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
+import org.bukkit.map.MapCursor;
 import org.bukkit.map.MapPalette;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -91,57 +94,33 @@ public interface CartographyWindow extends Window {
      * 地图上的一个图标.
      *
      * @param type 图标类型
-     * @param x 0 到 256 的横坐标
-     * @param y 0 到 256 的纵坐标
+     * @param x 横坐标, 发送时以 {@code (byte) (x - 128)} 编码
+     * @param y 纵坐标, 发送时以 {@code (byte) (y - 128)} 编码
      * @param rot 0 到 15 的旋转步
      * @param component 可选的图标文本
      */
-    record MapIcon(@NotNull Type type, int x, int y, int rot, @Nullable Component component) {
+    record MapIcon(@NotNull MapCursor.Type type, int x, int y, int rot, @Nullable Component component) {
         public MapIcon {
             Objects.requireNonNull(type, "type");
-            if (x < 0 || x > 256) {
-                throw new IllegalArgumentException("map icon x must be between 0 and 256: " + x);
-            }
-            if (y < 0 || y > 256) {
-                throw new IllegalArgumentException("map icon y must be between 0 and 256: " + y);
-            }
             if (rot < 0 || rot > 15) {
                 throw new IllegalArgumentException("map icon rotation must be between 0 and 15: " + rot);
             }
         }
 
-        // todo 换成 MapCursor.Type
         /**
-         * 客户端原版地图支持的图标类型.
+         * 使用注册表键创建地图图标.
+         *
+         * @param type 图标类型的注册表键
+         * @param x 横坐标, 发送时以 {@code (byte) (x - 128)} 编码
+         * @param y 纵坐标, 发送时以 {@code (byte) (y - 128)} 编码
+         * @param rot 0 到 15 的旋转步
+         * @param component 可选的图标文本
+         * @return 地图图标
+         * @throws java.util.NoSuchElementException 如果注册表中不存在该类型
          */
-        public enum Type {
-            WHITE_ARROW,
-            GREEN_ARROW,
-            RED_ARROW,
-            BLUE_ARROW,
-            WHITE_CROSS,
-            RED_POINTER,
-            WHITE_CIRCLE,
-            SMALL_WHITE_CIRCLE,
-            MANSION,
-            TEMPLE,
-            WHITE_BANNER,
-            ORANGE_BANNER,
-            MAGENTA_BANNER,
-            LIGHT_BLUE_BANNER,
-            YELLOW_BANNER,
-            LIME_BANNER,
-            PINK_BANNER,
-            GRAY_BANNER,
-            LIGHT_GRAY_BANNER,
-            CYAN_BANNER,
-            PURPLE_BANNER,
-            BLUE_BANNER,
-            BROWN_BANNER,
-            GREEN_BANNER,
-            RED_BANNER,
-            BLACK_BANNER,
-            RED_CROSS
+        @NotNull
+        public static MapIcon fromKey(@NotNull NamespacedKey type, int x, int y, int rot, @Nullable Component component) {
+            return new MapIcon(Registry.MAP_DECORATION_TYPE.getOrThrow(type), x, y, rot, component);
         }
     }
 
@@ -196,19 +175,14 @@ public interface CartographyWindow extends Window {
         }
     }
 
-    // todo 看看bukkit有没有对应类
     /**
      * 制图台客户端预览模式.
      */
     enum View {
-        /** 普通大小. */
-        NORMAL,
-        /** 使用纸张触发的缩小预览. */
-        SMALL,
-        /** 使用空地图触发的复制预览. */
-        DUPLICATE,
-        /** 使用玻璃板触发的锁定预览. */
-        LOCK
+        NORMAL,     // 普通大小
+        SMALL,      // 使用纸张触发的缩小预览
+        DUPLICATE,  // 使用空地图触发的复制预览
+        LOCK        // 使用玻璃板触发的锁定预览
     }
 
     /**

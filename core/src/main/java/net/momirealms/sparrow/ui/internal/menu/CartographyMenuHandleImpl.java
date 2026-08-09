@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.CraftRegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMapItemDataPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapDecorationProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapDecorationTypesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapIdProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapPatchProxy;
 import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
@@ -240,44 +240,11 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     private static Object toDecoration(CartographyWindow.MapIcon icon) {
         Optional<Object> name = Optional.ofNullable(icon.component()).map(PaperAdventureProxy.INSTANCE::asVanilla);
         return MapDecorationProxy.INSTANCE.newInstance(
-                CartographyMenuHandleImpl.decorationType(icon.type()),
+                CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder(icon.type()),
                 (byte) (icon.x() - 128),
                 (byte) (icon.y() - 128),
                 (byte) icon.rot(),
                 name
         );
     }
-
-    private static Object decorationType(CartographyWindow.MapIcon.Type type) {
-        return switch (type) {
-            case WHITE_ARROW -> MapDecorationTypesProxy.PLAYER;
-            case GREEN_ARROW -> MapDecorationTypesProxy.FRAME;
-            case RED_ARROW -> MapDecorationTypesProxy.RED_MARKER;
-            case BLUE_ARROW -> MapDecorationTypesProxy.BLUE_MARKER;
-            case WHITE_CROSS -> MapDecorationTypesProxy.TARGET_X;
-            case RED_POINTER -> MapDecorationTypesProxy.TARGET_POINT;
-            case WHITE_CIRCLE -> MapDecorationTypesProxy.PLAYER_OFF_MAP;
-            case SMALL_WHITE_CIRCLE -> MapDecorationTypesProxy.PLAYER_OFF_LIMITS;
-            case MANSION -> MapDecorationTypesProxy.WOODLAND_MANSION;
-            case TEMPLE -> MapDecorationTypesProxy.JUNGLE_TEMPLE;
-            case WHITE_BANNER -> MapDecorationTypesProxy.WHITE_BANNER;
-            case ORANGE_BANNER -> MapDecorationTypesProxy.ORANGE_BANNER;
-            case MAGENTA_BANNER -> MapDecorationTypesProxy.MAGENTA_BANNER;
-            case LIGHT_BLUE_BANNER -> MapDecorationTypesProxy.LIGHT_BLUE_BANNER;
-            case YELLOW_BANNER -> MapDecorationTypesProxy.YELLOW_BANNER;
-            case LIME_BANNER -> MapDecorationTypesProxy.LIME_BANNER;
-            case PINK_BANNER -> MapDecorationTypesProxy.PINK_BANNER;
-            case GRAY_BANNER -> MapDecorationTypesProxy.GRAY_BANNER;
-            case LIGHT_GRAY_BANNER -> MapDecorationTypesProxy.LIGHT_GRAY_BANNER;
-            case CYAN_BANNER -> MapDecorationTypesProxy.CYAN_BANNER;
-            case PURPLE_BANNER -> MapDecorationTypesProxy.PURPLE_BANNER;
-            case BLUE_BANNER -> MapDecorationTypesProxy.BLUE_BANNER;
-            case BROWN_BANNER -> MapDecorationTypesProxy.BROWN_BANNER;
-            case GREEN_BANNER -> MapDecorationTypesProxy.GREEN_BANNER;
-            case RED_BANNER -> MapDecorationTypesProxy.RED_BANNER;
-            case BLACK_BANNER -> MapDecorationTypesProxy.BLACK_BANNER;
-            case RED_CROSS -> MapDecorationTypesProxy.RED_X;
-        };
-    }
-
 }
