@@ -894,8 +894,9 @@ public sealed interface Gui permits AbstractGui {
         );
 
         /**
-         * 把同一标志符的槽位按出现顺序连接到 Inventory.
-         * 标志符第 n 次出现的槽位展示并操作 Inventory 的第 n 个槽位.
+         * 把同一标志符的槽位按出现顺序循环连接到 Inventory.
+         * 标志符第 n 次出现(从 0 开始)的槽位展示并操作 Inventory 的 {@code n % inventory.size()} 槽位;
+         * 零尺寸 Inventory 生成空槽位.
          *
          * @param identifier 标志符
          * @param inventory 连接的 Inventory
@@ -905,7 +906,8 @@ public sealed interface Gui permits AbstractGui {
         B addIngredient(@NotNull String identifier, @NotNull SparrowInventory inventory);
 
         /**
-         * 把单字符标志的槽位按出现顺序连接到 Inventory.
+         * 把单字符标志的槽位按出现顺序循环连接到 Inventory.
+         * 出现次数超过 Inventory 尺寸时从槽位 0 重新开始; 零尺寸 Inventory 生成空槽位.
          *
          * @param identifier 单字符标志
          * @param inventory 连接的 Inventory
