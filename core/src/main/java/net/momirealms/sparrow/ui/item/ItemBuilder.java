@@ -108,10 +108,10 @@ public final class ItemBuilder {
      * @param supplier Provider 解析函数
      * @return 此构建器
      */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull Supplier<? extends ItemProvider> supplier) {
+    public ItemBuilder setLazyItemProvider(@NotNull ItemProvider placeholder, @NotNull Supplier<? extends ItemProvider> supplier) {
         Supplier<? extends ItemProvider> checkedSupplier = Objects.requireNonNull(supplier, "supplier");
-        // 把同步解析函数包装成提交到 Paper 全局异步调度器的 AsyncLoader
-        return this.setAsyncItemProvider(placeholder, () -> {
+        // 把同步解析函数包装成提交到 Paper 全局异步调度器的 ProviderResolver
+        return this.setLazyItemProvider(placeholder, () -> {
             CompletableFuture<ItemProvider> future = new CompletableFuture<>();
             Bukkit.getAsyncScheduler().runNow(
                     SparrowUI.getInstance().getPlugin(),
@@ -129,16 +129,16 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置第一次挂载时启动, 在 Item 生命周期内只执行一次的异步显示来源.
+     * 配置第一次挂载时启动, 在 Item 生命周期内只执行一次的懒加载显示来源.
      *
      * @param placeholder 加载完成前的显示内容
-     * @param loader 由调用方选择执行器并创建异步结果的懒加载器
+     * @param resolver 由调用方选择执行器并创建异步结果的解析器
      * @return 此构建器
      */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull AsyncLoader loader) {
-        this.setSource(new SourceSpec.AsyncSpec(
+    public ItemBuilder setLazyItemProvider(@NotNull ItemProvider placeholder, @NotNull ProviderResolver resolver) {
+        this.setSource(new SourceSpec.LazySpec(
                 Objects.requireNonNull(placeholder, "placeholder"),
-                Objects.requireNonNull(loader, "loader")
+                Objects.requireNonNull(resolver, "resolver")
         ));
         return this;
     }
@@ -313,12 +313,12 @@ public final class ItemBuilder {
      * 启动异步解析并返回结果阶段. 实现必须自行选择执行器, 不得阻塞调用线程.
      */
     @FunctionalInterface
-    public interface AsyncLoader {
-        CompletionStage<? extends ItemProvider> load();
+    public interface ProviderResolver {
+        CompletionStage<? extends ItemProvider> resolve();
     }
 
     //  Item 的显示来源, 决定每次渲染使用的提供器以及自身需要的周期刷新计划.
-    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.CyclingDisplaySource, DisplaySource.AsyncOnceDisplaySource {
+    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.CyclingDisplaySource, DisplaySource.LazyDisplaySource {
 
         // 获取当前渲染使用的提供器.
         ItemProvider provider();
@@ -382,24 +382,24 @@ public final class ItemBuilder {
 
 
 
-        // 第一次挂载时异步解析一次, 之后复用结果的显示来源.
-        final class AsyncOnceDisplaySource implements DisplaySource {
-            private final AtomicReference<AsyncLoader> pendingLoader;   // 挂起的加载器, 取出后置 null 保证只加载一次
-            private final Runnable invalidator;                         // 加载完成后通知 Window 失效的回调
+        // 第一次挂载时异步解析一次, 之后复用结果的懒加载显示来源.
+        final class LazyDisplaySource implements DisplaySource {
+            private final AtomicReference<ProviderResolver> pendingResolver; // 挂起的解析器, 取出后置 null 保证只解析一次
+            private final Runnable invalidator;                         // 解析完成后通知 Window 失效的回调
 
-            private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 加载完成后替换
+            private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 解析完成后替换
             private final ItemProvider renderingProvider = context -> this.currentProvider.provide(context); // 始终委托当前提供器的渲染入口
 
             /**
-             * 创建异步一次性显示来源, 加载完成前渲染占位内容.
+             * 创建懒加载显示来源, 解析完成前渲染占位内容.
              *
-             * @param placeholder 加载完成前的占位提供器
-             * @param loader 异步加载器
-             * @param invalidator 加载完成后通知 Window 失效的回调
+             * @param placeholder 解析完成前的占位提供器
+             * @param resolver Provider 解析器
+             * @param invalidator 解析完成后通知 Window 失效的回调
              */
-            AsyncOnceDisplaySource(ItemProvider placeholder, AsyncLoader loader, Runnable invalidator) {
+            LazyDisplaySource(ItemProvider placeholder, ProviderResolver resolver, Runnable invalidator) {
                 this.currentProvider = Objects.requireNonNull(placeholder, "placeholder");
-                this.pendingLoader = new AtomicReference<>(Objects.requireNonNull(loader, "loader"));
+                this.pendingResolver = new AtomicReference<>(Objects.requireNonNull(resolver, "resolver"));
                 this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
             }
 
@@ -408,31 +408,31 @@ public final class ItemBuilder {
                 return this.renderingProvider;
             }
 
-            // 仅第一次挂载真正提交加载, 后续直接复用结果.
+            // 仅第一次挂载真正提交解析, 后续直接复用结果.
             @Override
             public void onAttached() {
-                // 取出并清空挂起的加载器, 保证同一 Item 多次挂载也只执行一次加载
-                AsyncLoader loader = this.pendingLoader.getAndSet(null);
-                if (loader == null) return;
+                // 取出并清空挂起的解析器, 保证同一 Item 多次挂载也只执行一次解析
+                ProviderResolver resolver = this.pendingResolver.getAndSet(null);
+                if (resolver == null) return;
 
                 // 同步抛出同样视为解析失败, 与异步异常走同一通道
                 CompletionStage<? extends ItemProvider> stage;
                 try {
-                    stage = Objects.requireNonNull(loader.load(), "loader result");
+                    stage = Objects.requireNonNull(resolver.resolve(), "resolver result");
                 } catch (Throwable throwable) {
-                    SparrowUI.getInstance().handleException("Failed to resolve asynchronous item provider", throwable);
+                    SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", throwable);
                     return;
                 }
 
                 stage.whenComplete((provider, throwable) -> {
                     // 加载失败时转发异常, 保留占位显示
                     if (throwable != null) {
-                        SparrowUI.getInstance().handleException("Failed to resolve asynchronous item provider", unwrap(throwable));
+                        SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", unwrap(throwable));
                         return;
                     }
                     // 解析结果为 null 也视为失败, 避免渲染时空指针
                     if (provider == null) {
-                        SparrowUI.getInstance().handleException("Failed to resolve asynchronous item provider", new NullPointerException("resolved provider"));
+                        SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", new NullPointerException("resolved provider"));
                         return;
                     }
 
@@ -442,7 +442,7 @@ public final class ItemBuilder {
                         this.invalidator.run();
                     } catch (RuntimeException exception) {
                         // 失效回调失败不能影响已完成的解析结果
-                        SparrowUI.getInstance().handleException("Failed to invalidate windows for asynchronous item", exception);
+                        SparrowUI.getInstance().handleException("Failed to invalidate windows for lazy item", exception);
                     }
                 });
             }
@@ -460,7 +460,7 @@ public final class ItemBuilder {
 
 
     // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
-    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.CyclingSpec, SourceSpec.AsyncSpec {
+    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.CyclingSpec, SourceSpec.LazySpec {
 
         /**
          * 为一个新 Item 创建显示来源.
@@ -494,12 +494,12 @@ public final class ItemBuilder {
 
 
 
-        // 异步一次性来源声明
-        record AsyncSpec(ItemProvider placeholder, AsyncLoader loader) implements SourceSpec {
+        // 懒加载来源声明
+        record LazySpec(ItemProvider placeholder, ProviderResolver resolver) implements SourceSpec {
 
             @Override
             public DisplaySource create(Runnable invalidator) {
-                return new DisplaySource.AsyncOnceDisplaySource(this.placeholder, this.loader, invalidator);
+                return new DisplaySource.LazyDisplaySource(this.placeholder, this.resolver, invalidator);
             }
         }
     }
