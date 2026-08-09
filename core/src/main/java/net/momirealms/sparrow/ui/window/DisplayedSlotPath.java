@@ -117,10 +117,10 @@ final class DisplayedSlotPath implements AutoCloseable {
     /**
      * 生成当前槽位应显示的 ItemStack, 按以下优先级查找:
      * <ol>
-     *   <li>若路径终点为 InventoryLink, 先按 Inventory 的视觉层级取结果(逐槽映射, 全局映射, 空槽的容器背景);
-     *       全部放行时显示该 Inventory 槽位的当前内容, 空槽再回退为 GUI 背景</li>
+     *   <li>若路径终点为 InventoryLink, 优先显示 Inventory 的槽位映射,
+     *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.</li>
      *   <li>若路径终点为 Item, 显示该 Item</li>
-     *   <li>若以上均不存在 Item, 回退为最深层 GUI 的背景</li>
+     *   <li>若路径终点为 Empty, 回退为最深层 GUI 的背景</li>
      *   <li>若仍无结果, 返回空物品作为最终兜底</li>
      * </ol>
      *
@@ -129,7 +129,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     @NotNull ItemStack render() {
         PathState state = this.currentState();
 
-        // InventoryLink: 视觉映射优先, 其次真实内容, 空槽回退背景; itemAt 返回的副本归本槽渲染独占
+        // InventoryLink: Inventory 的视觉层级和真实内容共同决定显示.
         if (state.inventoryLink != null) {
             SparrowInventory inventory = state.inventoryLink.inventory();
             int slot = state.inventoryLink.slot();
@@ -141,7 +141,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             if (stack != null) {
                 return stack;
             }
-            return state.background == null ? ItemStack.empty() : state.background.provide(this.renderContext);
+            return ItemStack.empty();
         }
 
         ItemProvider provider = state.item == null
@@ -393,7 +393,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
         private Subscription visualSubscription;         // Inventory 视觉映射变更的渲染订阅
 
-        private ItemProvider background;    // 沿路径找到的最深层非 null 背景
+        private ItemProvider background;    // 沿路径找到的最深层非 null 的 GUI 背景.
         private boolean frozen;             // 路径上任何 GUI 冻结时都为 true
         private boolean resourcesClosed;    // 订阅是否已全部关闭, 保证 close 幂等
 
