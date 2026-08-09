@@ -99,8 +99,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     // 运行时的状态和缓存
     private volatile Component title;   // 最近一次已应用的标题快照
     private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
-    private volatile boolean closeable; // 是否接受客户端主动关闭
     private volatile boolean open;      // Window 是否处于打开状态
+    private volatile boolean closeable; // 是否接受客户端主动关闭
+    private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
     private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
     private volatile Supplier<? extends @Nullable Window> fallbackWindow; // 玩家主动关闭后的回退的 Window 来源
     private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer; // 光标显示转换器
@@ -241,6 +242,22 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     this.notifyInteractionPathChanged();
                 },
                 "Failed to update Window slot frozen state"
+        );
+    }
+
+    @Override
+    public boolean offhandFrozen() {
+        return this.offhandFrozen;
+    }
+
+    @Override
+    public void offhandFrozen(boolean frozen) {
+        this.submit(
+                () -> {
+                    this.offhandFrozen = frozen;
+                    this.notifyInteractionPathChanged();
+                },
+                "Failed to update Window offhand frozen state"
         );
     }
 
@@ -742,8 +759,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param menu 当前菜单
      */
     private void handleSingleClick(ClickInterpreter.Result.SingleClick click, MenuHandle menu) {
-        ClickGuard guard = new ClickGuard(menu, click);
         int rawSlot = click.rawSlot();
+        // 如果 Window 冻结了副手, 则不处理.
+        if (click.clickType() == ClickType.SWAP_OFFHAND && this.offhandFrozen) {
+            this.notifyUpdate(rawSlot);
+            return;
+        }
+        ClickGuard guard = new ClickGuard(menu, click);
         if (rawSlot != InventoryView.OUTSIDE) {
             DisplayedSlotPath path = this.requirePath(rawSlot);
             // Inventory 槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
@@ -1569,6 +1591,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final long generation;
         private final int stateId;
         private final long pathRevision;
+        // 本次交互是否派发 Bukkit 事件, 开始时定下来: 重置事件状态副本和取回事件写入必须按同一个答案走
+        private final boolean fireBukkitEvents = SparrowUI.getInstance().fireBukkitInventoryEvents();
 
         InteractionGuard(MenuHandle menu) {
             this.menu = menu;
@@ -1585,13 +1609,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 派发 Bukkit 事件前先让 Bukkit 事件状态副本对齐服务端渲染结果; 渲染本身可能跑用户代码, 之后要重新复核.
         boolean refreshEventView() {
             // 不派发 Bukkit 事件就没人读这份副本, 那次渲染纯属白跑
-            if (!SparrowUI.getInstance().fireBukkitInventoryEvents()) return true;
+            if (!this.fireBukkitEvents) return true;
             AbstractWindow.this.resetBukkitEventView(this.menu);
             return this.stillValid();
         }
 
         // 取走事件写进 Bukkit 事件状态副本的光标和槽位并合并进草稿. 这些写入会被下一次 refreshEventView 覆盖, 事件一返回就得取.
         void drainEventEdits(InteractionEdits edits) {
+            // 没派发事件就没有本次事件的写入; 副本里残留的是更早的外部写入, 不能算进这次交互
+            if (!this.fireBukkitEvents) return;
             ItemStack cursor = this.menu.takeBukkitEventCursor();
             if (cursor != null) {
                 edits.cursor(cursor);

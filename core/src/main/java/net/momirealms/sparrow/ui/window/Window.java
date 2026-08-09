@@ -143,6 +143,24 @@ public interface Window {
     void frozenAt(int windowSlot, boolean frozen);
 
     /**
+     * 返回本 Window 是否冻结玩家副手交互.
+     * <p>副手不属于 Window 的协议槽位, 因此不会出现在 {@link #frozenAt(int)} 或 GUI 路径中.
+     * 本状态只阻止玩家经当前 Window 发起的副手交换, 不阻止插件或其他服务端逻辑直接修改副手.
+     *
+     * @return 副手交互被冻结时返回 true
+     */
+    boolean offhandFrozen();
+
+    /**
+     * 设置本 Window 是否冻结玩家副手交互.
+     * <p>冻结后, 玩家在当前 Window 内按下副手交换键时不会改变被点击槽位或副手,
+     * 也不会派发 Bukkit, Sparrow Inventory 或 Item 点击事件.
+     *
+     * @param frozen true 表示冻结副手交互
+     */
+    void offhandFrozen(boolean frozen);
+
+    /**
      * 设置玩家主动关闭时要解析并打开的后备 Window.
      * Supplier 仅在玩家主动关闭后读取.
      *
