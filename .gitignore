@@ -48,3 +48,4 @@ bin/
 /.agent/
 /plugin/run/
 /plugin/src/main/java/net/momirealms/sparrow/ui/testplugin
+/plugin/src/main/java/net/momirealms/sparrow/ui/example/
