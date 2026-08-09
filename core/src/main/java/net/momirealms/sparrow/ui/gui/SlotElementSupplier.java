@@ -57,15 +57,19 @@ public interface SlotElementSupplier {
     }
 
     /**
-     * 把库存按 ingredient 出现顺序逐槽铺入: 第 N 次出现的槽位连接库存槽 N.
-     * 出现次数超过库存尺寸时构造失败, 布局错误在绑定期即暴露.
+     * 把库存按 ingredient 出现顺序循环铺入: 第 n 次出现(从 0 开始)的槽位连接库存槽
+     * {@code n % inventory.size()}. 零尺寸库存生成空槽位.
      *
      * @param inventory 要铺入的库存
      * @return 逐槽连接库存的元素来源
      */
     @NotNull
     static SlotElementSupplier inventory(@NotNull SparrowInventory inventory) {
-        return (ignoredSize, occurrence) -> new SlotElement.InventoryLink(inventory, occurrence);
+        int inventorySize = inventory.size();
+        if (inventorySize == 0) {
+            return fixed(SlotElement.Empty.INSTANCE);
+        }
+        return (ignoredSize, occurrence) -> new SlotElement.InventoryLink(inventory, occurrence % inventorySize);
     }
 
     /**
