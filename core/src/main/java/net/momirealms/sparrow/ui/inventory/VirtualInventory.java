@@ -97,6 +97,30 @@ public final class VirtualInventory extends SparrowInventory {
         return this.uuid;
     }
 
+    /**
+     * 返回本 Inventory 是否有序串行派发 PostUpdateEvent.
+     *
+     * @return 开启串行派发时返回 {@code true}
+     */
+    public boolean serialPostDispatch() {
+        return this.serialPostDispatch;
+    }
+
+    /**
+     * 设置本 Inventory 是否有序串行派发 PostUpdateEvent, 默认关闭.
+     * <p>此选项主要针对如 Folia 平台玩家在多个不同线程同时修改共享的 Inventory 或手动异步并发修改 Inventory 的情况.
+     * 只要确保本 Inventory 不会在多个线程同时修改, 或 Post 任务可以接受多线程并发就无需开启本选项.
+     * <p>关闭时: 每笔事务由自己的提交线程立即派发, 多个线程可以并发调用同一个处理器, 且到达顺序不等于提交顺序;
+     * 处理器需要自己做互斥, 并按事件的 {@code version()} 判断新旧.
+     * <p>开启后: 本 Inventory 的 PostUpdateEvent 严格按提交顺序逐笔派发, 因此可以直接读写外部状态.
+     * 代价是后提交的线程会阻塞到前一笔的处理器全部结束.
+     *
+     * @param serialPostDispatch 是否串行派发
+     */
+    public void serialPostDispatch(boolean serialPostDispatch) {
+        this.serialPostDispatch = serialPostDispatch;
+    }
+
     @Override
     public int slotMaxStackSize(int slot) {
         int[] maxes = this.slotMaxStackSizes;

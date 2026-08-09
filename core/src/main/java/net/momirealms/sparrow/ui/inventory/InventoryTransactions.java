@@ -240,6 +240,10 @@ final class InventoryTransactions {
                 }
                 // 所有状态都已交换且根锁尚未释放, 此处取得的版本与共享根上的提交线性化顺序一致.
                 this.version = VERSION_SOURCE.next();
+                // 票号同样在这里领: 只有临界区内领到的号才等于提交顺序. 未开启串行派发的 Inventory 不领号.
+                for (int i = 0; i < this.updates.size(); i++) {
+                    this.updates.get(i).takePostTicket();
+                }
                 return true;
             } finally {
                 for (int i = locked - 1; i >= 0; i--) {
@@ -250,31 +254,36 @@ final class InventoryTransactions {
 
         // 先让每个基准完成提交后的落地, 内容放在外部存储的 Inventory 在这里把变更写进存储,
         // 因此提交后处理器运行时能够读到最新内容. 一个 Inventory 失败也不能跳过其他 Inventory, 最后再统一抛出异常.
+        // 落地与收尾无论成败都必须走到派发: 领了票号却不派发, 会让串行 Inventory 之后的提交线程永久阻塞.
         @NotNull
         private TransactionResult landAndNotify() {
-            Throwable landFailure = null;
-            if (this.writeBack) {
-                for (int i = 0; i < this.scopes.size(); i++) {
-                    TransactionScope scope = this.scopes.get(i);
-                    landFailure = ThrowableUtils.captureUnchecked(
-                            landFailure,
-                            () -> scope.basis().land(scope.slotChanges())
-                    );
+            Throwable failure = null;
+            try {
+                if (this.writeBack) {
+                    for (int i = 0; i < this.scopes.size(); i++) {
+                        TransactionScope scope = this.scopes.get(i);
+                        failure = ThrowableUtils.captureUnchecked(failure, () -> scope.basis().land(scope.slotChanges()));
+                    }
                 }
+                if (this.committedCallback != null) {
+                    failure = ThrowableUtils.captureUnchecked(failure, this.committedCallback);
+                }
+            } finally {
+                dispatchPostBatch(this::publishPost);
             }
-            if (this.committedCallback != null) {
-                this.committedCallback.run();
-            }
-            dispatchPostBatch(this::publishPost);
-            ThrowableUtils.throwIfUnchecked(landFailure);
+            ThrowableUtils.throwIfUnchecked(failure);
             return new TransactionResult.Committed(this.draft.rootChanges());
         }
 
         // 向本笔事务涉及的全部 Inventory 发送同一版本的 Post 事件.
+        // 逐个捕获: 一个 Inventory 失败也不能让后面的 Inventory 拿着票号退出.
         private void publishPost() {
+            Throwable failure = null;
             for (int i = 0; i < this.updates.size(); i++) {
-                this.updates.get(i).publishPost(this.scopes, this.version);
+                TransactionNotification update = this.updates.get(i);
+                failure = ThrowableUtils.captureUnchecked(failure, () -> update.publishPost(this.scopes, this.version));
             }
+            ThrowableUtils.throwIfUnchecked(failure);
         }
     }
 

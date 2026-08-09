@@ -79,6 +79,11 @@ public abstract class SparrowInventory {
     private volatile boolean includeObscuredSlots; // 未被 GUI 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
     private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
 
+    volatile boolean serialPostDispatch;          // 开启后本 Inventory 的 Post 严格按提交顺序串行派发, 后到的提交线程阻塞等待
+    private final Object postGate = new Object(); // 只保护下面两个票号, 不保护任何内容状态
+    private long nextPostTicket;                  // 下一个待签发的票号, 只在提交临界区内自增
+    private long servingPostTicket;               // 正在派发的票号, 只在 postGate 内自增
+
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
@@ -1199,6 +1204,50 @@ public abstract class SparrowInventory {
     PlannedRoot openPlanForWrite() {
         this.prepareWrite();
         return this.openPlan();
+    }
+
+    /**
+     * 串行派发开启时在提交临界区内领一个票号, 票号顺序即提交顺序.
+     * <p>只有持有写锁的基准才会调用本方法, 因此 {@code nextPostTicket} 不需要额外同步.
+     *
+     * @return 票号; 未开启串行派发时返回 {@code -1}
+     */
+    long takePostTicket() {
+        if (!this.serialPostDispatch) return -1L;
+        return this.nextPostTicket++;
+    }
+
+    /**
+     * 阻塞到指定票号轮到自己.
+     * <p>不响应中断: 中途放弃会让排在后面的票永远等不到放行.
+     *
+     * @param ticket 本笔事务领到的票号
+     */
+    void awaitPostTurn(long ticket) {
+        boolean interrupted = false;
+        synchronized (this.postGate) {
+            while (this.servingPostTicket != ticket) {
+                try {
+                    this.postGate.wait();
+                } catch (InterruptedException exception) {
+                    interrupted = true;
+                }
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * 放行下一个票号. 必须与 {@link #awaitPostTurn(long)} 在同一个 finally 中配对,
+     * 漏掉一次会让本 Inventory 之后的所有提交线程永久阻塞.
+     */
+    void releasePostTurn() {
+        synchronized (this.postGate) {
+            this.servingPostTicket++;
+            this.postGate.notifyAll();
+        }
     }
 
     /**

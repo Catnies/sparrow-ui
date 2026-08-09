@@ -24,6 +24,8 @@ final class TransactionNotification {
     private final List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients;   // 事务开始时已经订阅且能看到原始变化的 Pre 接收者
     private final List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients; // 事务开始时已经订阅的 Post 接收者
 
+    private long postTicket = -1L; // 串行派发时在提交临界区内领到的票号, -1 表示不排队
+
     /**
      * 记录某个 Inventory 在本次事务中需要通知的人和发送事件所需的信息.
      *
@@ -86,14 +88,37 @@ final class TransactionNotification {
     }
 
     /**
+     * 本 Inventory 开启串行派发时, 在提交临界区内领一个票号.
+     * <p>没有 Post 接收者就不领: 领了不派发会让票号与放行不配对.
+     */
+    void takePostTicket() {
+        if (this.postRecipients.isEmpty()) return;
+        this.postTicket = this.inventory.takePostTicket();
+    }
+
+    /**
      * 在当前提交线程上向本轮 Post 订阅者发送最终事务结果.
      * <p>单个观察者抛出的异常会报告给 SparrowUI 后继续派发.
+     * <p>领到票号时先阻塞到本笔事务轮到自己, 由此保证同一 Inventory 的 Post 既不并发也不乱序.
      *
      * @param scopes 不会再被 Pre 处理器修改的最终写集
      * @param version 当前事务的单调逻辑版本
      */
     void publishPost(@NotNull List<TransactionScope> scopes, long version) {
         if (this.postRecipients.isEmpty()) return;
+        if (this.postTicket < 0L) {
+            this.dispatchPost(scopes, version);
+            return;
+        }
+        this.inventory.awaitPostTurn(this.postTicket);
+        try {
+            this.dispatchPost(scopes, version);
+        } finally {
+            this.inventory.releasePostTurn();
+        }
+    }
+
+    private void dispatchPost(@NotNull List<TransactionScope> scopes, long version) {
         InventoryPostUpdateEvent event = new InventoryPostUpdateEvent(this.inventory, this.reason, scopes, version);
         for (int i = 0; i < this.postRecipients.size(); i++) {
             Observer<? super InventoryPostUpdateEvent> observer = this.postRecipients.get(i).observer();
