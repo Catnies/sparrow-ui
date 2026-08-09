@@ -23,9 +23,9 @@ import java.util.Objects;
  * 其他写操作; 新纳入的 Inventory 则以纳入那一刻的内容为基准.
  */
 final class TransactionDraft {
-    private List<TransactionScope> scopes;         // 按 Inventory 分组的当前待提交内容, 每一条自带该 Inventory 的规划基准状态
-    // Pre 期间新纳入的 Inventory 的基准状态. 同一笔事务内只取一次, 保证事件与提交阶段用的是同一份.
-    private final IdentityHashMap<SparrowInventory, ItemStack[]> includedBaselines = new IdentityHashMap<>();
+    private List<TransactionScope> scopes;         // 按 Inventory 分组的当前待提交内容, 每一条自带该 Inventory 的规划基准
+    // Pre 期间新纳入的 Inventory 的规划基准. 同一笔事务内只发一次, 保证事件与提交阶段用的是同一份.
+    private final IdentityHashMap<SparrowInventory, PlannedRoot> includedRoots = new IdentityHashMap<>();
 
     /**
      * 校验事务形状并创建 Pre 阶段草稿.
@@ -80,17 +80,29 @@ final class TransactionDraft {
     }
 
     /**
-     * 取得一个尚未参与事务的 Inventory 的规划基准状态, 供 Pre 事件把它纳入本笔事务.
-     * <p>基准状态直接取当前内容, 不调用 {@link SparrowInventory#prepareWrite()}: 事务中段刷新引用容器
+     * 取得一个尚未参与事务的 Inventory 的规划基准, 供 Pre 事件把它纳入本笔事务.
+     * <p>基准直接取当前内容, 不调用 {@link SparrowInventory#prepareWrite()}: 事务中段刷新引用容器
      * 会提交一笔嵌套的 External 事务并派发它自己的 Post, 相当于在 Pre 与 commit 之间重入事件系统.
-     * <p>同一笔事务内对同一个 Inventory 只取一次. 处理器抛出异常导致纳入被丢弃时, 缓存的基准
-     * 状态仍然保留, 后面的处理器再次纳入它时看到的是同一份基准, 不会因为中途被别人写过而错位.
+     * <p>同一笔事务内对同一个 Inventory 只发一次. 处理器抛出异常导致纳入被丢弃时, 缓存的基准
+     * 仍然保留, 后面的处理器再次纳入它时看到的是同一份基准, 不会因为中途被别人写过而错位.
      *
      * @param inventory 要纳入的 Inventory
-     * @return 纳入那一刻的内容数组引用
+     * @return 纳入那一刻签发的规划基准
      */
-    ItemStack @NotNull [] baselineOf(@NotNull SparrowInventory inventory) {
-        return this.includedBaselines.computeIfAbsent(inventory, SparrowInventory::currentState);
+    @NotNull
+    PlannedRoot rootOf(@NotNull SparrowInventory inventory) {
+        return this.includedRoots.computeIfAbsent(inventory, SparrowInventory::openPlan);
+    }
+
+    /**
+     * 为 Pre 事件的纳入动作构造一条空写集: 基准经 {@link #rootOf} 签发, 与后续提交阶段共用同一份.
+     *
+     * @param inventory 要纳入的 Inventory
+     * @return 持有该 Inventory 规划基准的空写集
+     */
+    @NotNull
+    TransactionScope includeScope(@NotNull SparrowInventory inventory) {
+        return new TransactionScope(this.rootOf(inventory), List.of());
     }
 
     /**
@@ -112,7 +124,8 @@ final class TransactionDraft {
             // 闸门跑在事务之外, 这里刷新引用容器不会重入事件系统.
             inventory.prepareWrite();
         }
-        @Nullable ItemStack[] planned = rootIndex < 0 ? this.baselineOf(inventory) : this.scopes.get(rootIndex).planned();
+        PlannedRoot basis = rootIndex < 0 ? this.rootOf(inventory) : this.scopes.get(rootIndex).basis();
+        @Nullable ItemStack[] planned = basis.planned();
         Objects.checkIndex(rootSlot, planned.length);
 
         // 该槽位已有变更时替换其候选最终值并保留原 before, 否则以规划基准状态为 before 追加新变更.
@@ -133,7 +146,7 @@ final class TransactionDraft {
         }
 
         List<TransactionScope> rewritten = new ArrayList<>(this.scopes);
-        TransactionScope scope = new TransactionScope(inventory, planned, updated);
+        TransactionScope scope = new TransactionScope(basis, updated);
         if (rootIndex < 0) {
             rewritten.add(scope);
         } else {
@@ -225,7 +238,8 @@ final class TransactionDraft {
             int size = scope.planned().length;
             HashSet<Integer> seenSlots = new HashSet<>();
             for (int j = 0; j < slotChanges.size(); j++) {
-                int slot = slotChanges.get(j).slot();
+                SlotChange change = slotChanges.get(j);
+                int slot = change.slot();
                 // 槽号必须属于规划时看到的 Inventory 大小.
                 if (slot < 0 || slot >= size) {
                     throw new IllegalArgumentException("slot " + slot + " is out of bounds for inventory size " + size);

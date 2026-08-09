@@ -93,7 +93,7 @@ final class InteractionOverlay {
      * @param plan 规划基准
      * @return 供规划器读取的内容数组, 调用方不得写入
      */
-    @Nullable ItemStack @NotNull [] viewOf(@NotNull SparrowInventory.PlannedRoot plan) {
+    @Nullable ItemStack @NotNull [] viewOf(@NotNull PlannedRoot plan) {
         IdentityHashMap<SparrowInventory, LinkedHashMap<Integer, ItemStack>> slots = this.slots;
         if (slots == null) {
             return plan.planned();

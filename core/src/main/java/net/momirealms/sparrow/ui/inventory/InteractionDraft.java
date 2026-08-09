@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -82,24 +83,27 @@ public final class InteractionDraft {
     }
 
     /**
-     * 返回提交后的光标物品.
+     * 返回提交后的光标物品的副本.
      *
-     * @return 光标最终值; 返回 {@code null} 表示本次交互不改动光标, 提交后光标保持交互前的样子
+     * @return 光标最终值的副本; 返回 {@code null} 表示本次交互不改动光标, 提交后光标保持交互前的样子
      */
     @Nullable
     public ItemStack cursor() {
-        return this.cursor;
+        return ItemUtils.copyOrNull(this.cursor);
     }
 
     /**
      * 覆盖提交后的光标物品.
+     * <p>写入的物品会被复制, 草稿不持有调用方实例. 处理器常常直接把 {@code Inventory#getItem} 或
+     * {@code getItemInMainHand} 的返回值写进来, 而它们在 CraftBukkit 上是与真实槽位共享底层句柄的活视图;
+     * 若原样接管, 光标就会和那个槽位变成同一件物品.
      *
      * @param cursor 新的光标最终值, 空物品表示提交后光标为空
      * @throws IllegalStateException 草稿已经封笔, 或从其他线程调用
      */
     public void cursor(@NotNull ItemStack cursor) {
         this.checkEditable();
-        this.cursor = cursor;
+        this.cursor = ItemUtils.copyOrEmpty(cursor);
     }
 
     /**

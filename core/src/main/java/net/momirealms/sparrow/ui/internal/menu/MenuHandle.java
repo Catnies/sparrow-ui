@@ -199,7 +199,6 @@ public interface MenuHandle extends AutoCloseable {
 
     /**
      * 整体覆盖菜单实际持有的光标物品.
-     *
      * <p>实现会拷一份传进来的物品, 不会存参数本身. 覆盖之后的光标同步(打脏标记,
      * 调 synchronize)由调用方负责.
      *

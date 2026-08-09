@@ -16,35 +16,31 @@ import java.util.List;
  * {@code TransactionNotification}. 它在事务开始时记住本轮订阅者, 因此 Pre 处理器新增的订阅或槽位修改
  * 不会让本轮 Pre 事件递归派发.
  * <p>Pre 事件会在提交前立即逐个调用. Post 事件则根据所有 Pre 修改后的最终结果创建,
- * 等内容真正写入且各个 Inventory 都完成提交后的工作, 再按事务提交顺序发送.
+ * 等内容真正写入且各个 Inventory 都完成提交后的工作, 再由本笔事务的提交线程同步发送.
  */
 final class TransactionNotification {
-    private final SparrowInventory inventory;       // 接收本组事件的 Inventory
-    private final PostDeliveryQueue postDeliveries; // 保证当前 Inventory 的 Post 事件按提交顺序发送
-    private final UpdateReason reason;              // 这笔事务为什么发生
+    private final SparrowInventory inventory; // 接收本组事件的 Inventory
+    private final UpdateReason reason;        // 这笔事务为什么发生
     private final List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients;   // 事务开始时已经订阅且能看到原始变化的 Pre 接收者
     private final List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients; // 事务开始时已经订阅的 Post 接收者
 
-    @Nullable private PostDeliveryQueue.PostDelivery post; // 根据最终结果准备好的 Post 事件, 不需要发送时为 null
+    private long postTicket = -1L; // 串行派发时在提交临界区内领到的票号, -1 表示不排队
 
     /**
      * 记录某个 Inventory 在本次事务中需要通知的人和发送事件所需的信息.
      *
      * @param inventory 接收事件的 Inventory
-     * @param postDeliveries 当前 Inventory 的 Post 事件发送队列
      * @param reason 这笔事务的触发原因
      * @param preRecipients 本轮需要调用的 Pre 订阅者
      * @param postRecipients 本轮可能需要调用的 Post 订阅者
      */
     TransactionNotification(
             @NotNull SparrowInventory inventory,
-            @NotNull PostDeliveryQueue postDeliveries,
             @NotNull UpdateReason reason,
             @NotNull List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients,
             @NotNull List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients
     ) {
         this.inventory = inventory;
-        this.postDeliveries = postDeliveries;
         this.reason = reason;
         this.preRecipients = preRecipients;
         this.postRecipients = postRecipients;
@@ -71,7 +67,7 @@ final class TransactionNotification {
                     this.reason,
                     draft.scopes(),
                     true,
-                    draft::baselineOf,
+                    draft::includeScope,
                     interaction
             );
             event.setCancelled(cancelled);
@@ -92,48 +88,47 @@ final class TransactionNotification {
     }
 
     /**
-     * 根据所有 Pre 处理器修改后的最终结果准备 Post 事件.
-     * <p>只有当前 Inventory 最终存在变化且存在 Post 订阅者时才创建事件.
-     * Pre 新增到当前 Inventory 的修改也会包含在这里.
+     * 本 Inventory 开启串行派发时, 在提交临界区内领一个票号.
+     * <p>没有 Post 接收者就不领: 领了不派发会让票号与放行不配对.
+     */
+    void takePostTicket() {
+        if (this.postRecipients.isEmpty()) return;
+        this.postTicket = this.inventory.takePostTicket();
+    }
+
+    /**
+     * 在当前提交线程上向本轮 Post 订阅者发送最终事务结果.
+     * <p>单个观察者抛出的异常会报告给 SparrowUI 后继续派发.
+     * <p>领到票号时先阻塞到本笔事务轮到自己, 由此保证同一 Inventory 的 Post 既不并发也不乱序.
      *
      * @param scopes 不会再被 Pre 处理器修改的最终写集
+     * @param version 当前事务的单调逻辑版本
      */
-    void preparePost(@NotNull List<TransactionScope> scopes) {
-        // 没有接收者时不做查找, 也不创建事件.
-        if (this.postRecipients.isEmpty()) {
+    void publishPost(@NotNull List<TransactionScope> scopes, long version) {
+        if (this.postRecipients.isEmpty()) return;
+        if (this.postTicket < 0L) {
+            this.dispatchPost(scopes, version);
             return;
         }
-        // 最终变化全部位于其他 Inventory 时, 不发送空事件.
-        for (int i = 0; i < scopes.size(); i++) {
-            TransactionScope scope = scopes.get(i);
-            if (scope.inventory() == this.inventory && !scope.slotChanges().isEmpty()) {
-                this.post = new PostDeliveryQueue.PostDelivery(
-                        this.postRecipients,
-                        new InventoryPostUpdateEvent(this.inventory, this.reason, scopes)
-                );
-                return;
+        this.inventory.awaitPostTurn(this.postTicket);
+        try {
+            this.dispatchPost(scopes, version);
+        } finally {
+            this.inventory.releasePostTurn();
+        }
+    }
+
+    private void dispatchPost(@NotNull List<TransactionScope> scopes, long version) {
+        InventoryPostUpdateEvent event = new InventoryPostUpdateEvent(this.inventory, this.reason, scopes, version);
+        for (int i = 0; i < this.postRecipients.size(); i++) {
+            Observer<? super InventoryPostUpdateEvent> observer = this.postRecipients.get(i).observer();
+            if (observer != null) {
+                try {
+                    observer.onUpdate(event);
+                } catch (Throwable exception) {
+                    SparrowUI.getInstance().handleException("Failed to handle Inventory post-update", exception);
+                }
             }
-        }
-    }
-
-    // 在内容写入时为 Post 事件预留队列位置, 防止后提交的事务先发出通知.
-    void reservePost() {
-        if (this.post != null) {
-            this.postDeliveries.reserve(this.post);
-        }
-    }
-
-    // 标记这笔事务的内容和提交后工作已经完成, 允许队列发送当前 Post 事件.
-    void markPostReady() {
-        if (this.post != null) {
-            this.post.markReady();
-        }
-    }
-
-    // 从队首依次发送已经准备完成的 Post 事件, 遇到尚未完成的事务时停止.
-    void drainPost() {
-        if (this.post != null) {
-            this.postDeliveries.drain();
         }
     }
 }

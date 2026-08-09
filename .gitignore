@@ -44,6 +44,7 @@ bin/
 /buildSrc/settings.gradle.kts
 
 ### Custom ###
-/.agent/
 /docs/
-/plugin/
+/.agent/
+/plugin/run/
+/plugin/src/main/java/net/momirealms/sparrow/ui/testplugin

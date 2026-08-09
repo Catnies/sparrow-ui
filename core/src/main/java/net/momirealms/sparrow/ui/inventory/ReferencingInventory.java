@@ -6,61 +6,65 @@ import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import org.bukkit.inventory.*;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * 引用 Bukkit 容器的 Inventory 实现: Bukkit 容器是外部数据来源, 本类只维护一份 Bukkit 内容镜像.
- * <p><strong>线程安全由调用方负责.</strong> 工厂构造, {@link #refresh()} 与所有写操作都会直接访问
- * 被引用的 Bukkit 容器. 调用方必须保证当前执行上下文可以合法访问该容器, 且同一笔事务里的所有
- * ReferencingInventory 都能在该上下文访问. 本类不判断平台或容器的 Folia 执行所有者, 也不调度到其线程,
- * 还不提供只读回退. 平台抛出的线程访问异常会沿调用栈传播; 异常可能发生在 Sparrow 内部状态已经提交
- * 或 Bukkit 容器已经部分写入之后, 因此不能根据异常推断本次操作为零变更.
- * <p>读操作只读取 Bukkit 内容镜像, 不访问 Bukkit 容器, 但这份内容镜像可能滞后, 要等下一次同步才更新.
- * <p>写路径靠两个函数接入事务流程: {@code prepareWrite} 在任何写入口读取规划内容之前
- * 同步容器内容, {@code afterCommit} 在提交成功后, post 事件派发前把变更写回容器.
- * 外部世界(漏斗, 其他插件)对容器的直接修改在同步时被发现, 以 {@link UpdateReason.External}
- * 原因只派发 post 事件.
+ * 内容放在外部存储里的 Inventory 实现: 一切以那个存储为准, 本类自己不留一份内容.
+ * 读操作直接读存储; 写操作先走事务规划, 提交后落进存储: 存储现值与提交内容相等的槽位跳过不写,
+ * 其余槽位换成新实例写进去 —— 引擎写过的槽位一律是新实例, 没写过与等值写入的槽位实例原样不动.
+ * <p>本类自己只留两样东西: 一份 <strong>lastKnown</strong>(上次见到的内容, 只用来发现外部的直接修改,
+ * 永不写回存储, 永不当规划基准, 里面的实例也永不外借)和一个 <strong>modCount</strong>(并发校验用的计数,
+ * 每次自己写入或吸收外部变更后加一, 让所有在途的规划全部对不上).
+ * 外部世界(漏斗, 其他插件)直接改了存储, 会在下一次比对时被发现, 以 {@link UpdateReason.External}
+ * 原因只派发 post 事件, 存储里的物品实例保持不变.
+ * <p><strong>串行访问由调用方负责.</strong> 所有读写都必须在存储可合法访问的上下文中串行执行
+ * (Bukkit 存储即容器的属主线程); 接入 Window 期间, 玩家实体线程就是事实上的串行化线程.
+ * 本类不判断平台或存储的执行所有者, 也不调度到其线程. 平台抛出的访问异常会沿调用栈传播;
+ * 异常可能发生在 Sparrow 状态已提交或外部存储已部分写入之后, 因此不能根据异常推断本次操作为零变更.
+ * <p>规划基准是新建时逐槽读存储填出来的临时数组, 每次规划都重新建一份, 只用来读内容;
+ * {@code prepareWrite} 在任何写入口读取规划内容之前先比对一次, 把积压的外部变更先派发出去.
  * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册调度任务.
  */
 @ApiStatus.Experimental
 public final class ReferencingInventory extends SparrowInventory {
-    private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 即外部数据来源
-    private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 从容器读取被引用区段(getContents / getStorageContents)
-    private final SlotKey[] externalSlots; // 当前 Inventory 槽位 -> Bukkit 容器槽位, 同步与写回共用
-    private final int bukkitMaxStackSize;           // 容器的堆叠上限, 构造时缓存
+    private final ExternalStorage storage;   // 内容实际存放的地方, 读写一律以它为准
+    private final SlotKey[] externalSlots;   // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
+    private final @Nullable ItemStack[] lastKnown;  // 上次见到的内容, 逐槽一份副本, 只用来发现外部改动
+    private long modCount;                          // 并发校验用的计数: 自己写入或吸收外部变更后加一
+
     /**
-     * 以给定容器与初始 Bukkit 内容镜像创建 ReferencingInventory.
+     * 以给定外部存储和一份初始内容创建 ReferencingInventory.
+     * <p>交给基类的状态数组只是用来提供槽位数量: 本类的内容读写全部改道外部存储,
+     * 它永远是空的, 也永远不会被交换.
      *
-     * @param bukkitInventory 被引用的 Bukkit 容器
-     * @param contentsGetter 从容器读取被引用区段的函数
-     * @param initialMirror 初始 Bukkit 内容镜像, 已按当前 Inventory 槽位排列, 空物品已转为 {@code null}
-     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
+     * @param storage 内容实际存放的外部存储
+     * @param initialKnown lastKnown 的初值, 已按当前 Inventory 槽位排列, 空物品已转为 {@code null}
+     * @param slotMapping 当前 Inventory 槽位到存储槽位的映射
      * @param addOrder ADD 类别的遍历顺序, {@code null} 回退自然顺序
      */
     private ReferencingInventory(
-            Inventory bukkitInventory,
-            Function<Inventory, @Nullable ItemStack[]> contentsGetter,
-            @Nullable ItemStack[] initialMirror,
+            ExternalStorage storage,
+            @Nullable ItemStack[] initialKnown,
             SlotOrder slotMapping,
             @Nullable SlotOrder addOrder
     ) {
-        super(initialMirror);
-        this.bukkitInventory = bukkitInventory;
-        this.contentsGetter = contentsGetter;
-        this.externalSlots = externalSlots(bukkitInventory, slotMapping);
-        this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
+        super(new ItemStack[initialKnown.length]);
+        this.storage = storage;
+        this.externalSlots = externalSlots(storage.identity(), slotMapping);
         this.addOrder = addOrder;
+        this.lastKnown = initialKnown;
     }
 
     /**
@@ -99,6 +103,19 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
+     * 引用任意外部存储, 当前 Inventory 槽位与存储槽位一一对应.
+     *
+     * @param storage 内容实际存放的外部存储
+     * @return ReferencingInventory
+     */
+    @NotNull
+    public static ReferencingInventory of(@NotNull ExternalStorage storage) {
+        @Nullable ItemStack[] raw = storage.readAll();
+        SlotOrder slotMapping = SlotOrder.of(identitySlots(raw.length));
+        return new ReferencingInventory(storage, readLogicalContents(raw, slotMapping), slotMapping, null);
+    }
+
+    /**
      * 创建 ReferencingInventory.
      *
      * @param inventory 被引用的 Bukkit 容器
@@ -114,15 +131,15 @@ public final class ReferencingInventory extends SparrowInventory {
             UnaryOperator<int[]> slotReorder,
             boolean reverseAddOrder
     ) {
-        @Nullable ItemStack[] raw = contentsGetter.apply(inventory);
+        BukkitStorage storage = new BukkitStorage(inventory, contentsGetter);
+        @Nullable ItemStack[] raw = storage.readAll();
         SlotOrder slotMapping = SlotOrder.of(slotReorder.apply(identitySlots(raw.length)));
         if (slotMapping.size() != raw.length) {
             throw new IllegalArgumentException("slot mapping size " + slotMapping.size() + " does not match contents size " + raw.length);
         }
         @Nullable SlotOrder addOrder = reverseAddOrder ? SlotOrder.natural(raw.length).reversed() : null;
         return new ReferencingInventory(
-                inventory,
-                contentsGetter,
+                storage,
                 readLogicalContents(raw, slotMapping),
                 slotMapping,
                 addOrder
@@ -130,13 +147,59 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 返回被引用的 Bukkit 容器.
+     * 返回被引用的 Bukkit 容器, 如果存储实现不是 Inventory 则返回 {@code null}.
      *
      * @return 被引用的容器
      */
-    @NotNull
+    @Nullable
     public Inventory referencedInventory() {
-        return this.bukkitInventory;
+        return this.storage.identity() instanceof Inventory inventory ? inventory : null;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>直接读取外部存储现值的副本.
+     */
+    @Override
+    @Nullable
+    public ItemStack itemAt(int slot) {
+        return ItemUtils.copyOrNull(this.unsafeItemAt(slot));
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>直接读取外部存储现值; 存储给出活视图时返回的就是活视图.
+     */
+    @Override
+    @Nullable
+    public ItemStack unsafeItemAt(int slot) {
+        return ItemUtils.nullIfEmpty(this.storage.read(this.externalSlots[slot].slot()));
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>逐槽读取外部存储现值的副本.
+     */
+    @Override
+    public @Nullable ItemStack @NotNull [] snapshot() {
+        @Nullable ItemStack[] copy = this.mapView(this.storage.readAll());
+        for (int slot = 0; slot < copy.length; slot++) {
+            copy[slot] = ItemUtils.copyOrNull(copy[slot]);
+        }
+        return copy;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>返回按当前 Inventory 槽位排列的存储现值视图数组; 数组每次调用新建, 元素契约与存储的读取契约相同.
+     */
+    @Override
+    public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
+        return this.mapView(this.storage.readAll());
     }
 
     /**
@@ -144,18 +207,17 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Override
     public void refresh() {
-        this.reconcileFromBukkit();
+        this.reconcileFromStorage();
     }
 
     /**
      * {@inheritDoc}
      *
-     * <p>返回容器自身的堆叠上限.
+     * <p>返回存储声明的堆叠上限.
      */
     @Override
     public int slotMaxStackSize(int slot) {
-        Objects.checkIndex(slot, this.size());
-        return this.bukkitMaxStackSize;
+        return this.storage.maxStackSize(this.externalSlots[slot].slot());
     }
 
     /**
@@ -174,7 +236,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>返回 Bukkit 容器槽对应的 SlotKey: 两个 ReferencingInventory 指向同一外部容器身份和同一 Bukkit 容器槽位时, SlotKey 相同.
+     * <p>返回存储槽对应的 SlotKey: 两个 ReferencingInventory 指向同一存储归属和同一存储槽位时, SlotKey 相同.
      */
     @Override
     @NotNull
@@ -185,72 +247,110 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>先把 Bukkit 容器当前内容同步进 Bukkit 内容镜像, 再基于更新后的内容规划.
+     * <p>先比对一次, 把积压的外部变更派发出去, 再基于最新内容规划.
      */
     @Override
     void prepareWrite() {
-        this.reconcileFromBukkit();
+        this.reconcileFromStorage();
     }
 
     /**
      * {@inheritDoc}
      *
-     * <p>把每个槽位变更写回对应的 Bukkit 容器槽位.
+     * <p>新建一份规划基准: 逐槽读存储填出一个临时数组, 再记下当前的 modCount.
      */
     @Override
-    void afterCommit(@NotNull List<SlotChange> deltas) {
-        // SlotChange 的访问器返回物品副本, 容器不会拿到 Bukkit 内容镜像内部的实例
-        for (int i = 0; i < deltas.size(); i++) {
-            SlotChange delta = deltas.get(i);
-            this.bukkitInventory.setItem(this.externalSlots[delta.slot()].slot(), delta.after());
-        }
+    @NotNull
+    PlannedRoot openPlan() {
+        return new PlannedRoot.Live(this, this.mapView(this.storage.readAll()), this.modCount);
+    }
+
+    // 当前 modCount, 供本 Inventory 建出的规划基准判断自己有没有失效.
+    long liveModCount() {
+        return this.modCount;
     }
 
     /**
-     * 把 Bukkit 容器当前内容和 Bukkit 内容镜像逐槽对比, 再以 External 原因提交差异槽以更新 Bukkit 内容镜像(绕过 pre, 只派发 post).
-     * 调用方保证运行期访问被正确串行化, 因此提交被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
+     * 把本写集的槽位变更落进外部存储: 存储现值已经和要提交的内容相等就跳过, 免得一次等值覆盖
+     * 白白作废外部拿着的引用; 其余槽位换成新实例写进去.
+     * 写完同步 lastKnown(引擎自己写进去的东西不能在下一轮比对里被当成外部改动), 并把 modCount 加一.
+     *
+     * @param deltas 本写集的槽位变更
      */
-    private void reconcileFromBukkit() {
-        // 逐槽对比: 比较阶段直接使用容器读出的引用, 不复制物品 —— 绝大多数 tick 没有外部变更,
-        // 只有差异槽才由 SlotChange 复制物品
-        @Nullable ItemStack[] raw = this.contentsGetter.apply(this.bukkitInventory);
-        @Nullable ItemStack[] mirror = this.currentState();
+    void liveApply(@NotNull List<SlotChange> deltas) {
+        for (int i = 0; i < deltas.size(); i++) {
+            SlotChange delta = deltas.get(i);
+            int externalSlot = this.externalSlots[delta.slot()].slot();
+            if (!ItemUtils.isContentEqual(this.storage.read(externalSlot), delta.unsafeAfter())) {
+                this.storage.write(externalSlot, delta.after());
+            }
+            this.lastKnown[delta.slot()] = delta.after();
+        }
+        this.modCount++;
+    }
+
+    /**
+     * 把存储现在的内容和 lastKnown 逐槽比一遍, 有差异就收下来, 并以 External 原因派发 post 事件.
+     * 收下来 = lastKnown 改记现值 + modCount 加一(在途规划全部作废); 不回写存储, 存储里的物品实例原样不动.
+     * 调用方保证运行期访问被正确串行化, 因此派发被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
+     */
+    private void reconcileFromStorage() {
+        // 比较阶段直接用存储读出来的引用, 不复制物品 —— 绝大多数 tick 根本没有外部变更, 只有对不上的那一格才由 SlotChange 复制
+        @Nullable ItemStack[] raw = this.storage.readAll();
         @Nullable List<SlotChange> deltas = null;
-        for (int slot = 0; slot < mirror.length; slot++) {
+        for (int slot = 0; slot < this.lastKnown.length; slot++) {
             @Nullable ItemStack liveItem = raw[this.externalSlots[slot].slot()];
-            @Nullable ItemStack mirrorItem = mirror[slot];
-            boolean equal = ItemUtils.isNullOrEmpty(liveItem) ? mirrorItem == null : liveItem.equals(mirrorItem);
-            if (!equal) {
+            @Nullable ItemStack knownItem = this.lastKnown[slot];
+            if (!ItemUtils.isContentEqual(liveItem, knownItem)) {
                 if (deltas == null) {
                     deltas = new ArrayList<>();
                 }
-                deltas.add(new SlotChange(slot, mirrorItem, liveItem));
+                deltas.add(new SlotChange(slot, knownItem, liveItem));
             }
         }
         if (deltas == null) {
             return;
         }
 
-        TransactionResult result = InventoryTransactions.commit(
-                UpdateReason.External.INSTANCE,
-                List.of(new TransactionScope(this, mirror, deltas)),
-                true
+        // 先记账再派发: lastKnown 改记现值(直接共用 SlotChange 里那份副本, 两边都不会去改它), modCount 加一,
+        // 这样 post 处理器在事件里重新发起写入时, 看到的已经是新版本.
+        for (int i = 0; i < deltas.size(); i++) {
+            SlotChange delta = deltas.get(i);
+            this.lastKnown[delta.slot()] = delta.unsafeAfter();
+        }
+        this.modCount++;
+        TransactionResult result = InventoryTransactions.commitExternalSync(
+                new TransactionScope(new PlannedRoot.Live(this, this.mapView(raw), this.modCount), deltas)
         );
         // 冲突在调用方保证的串行访问下不该发生, 视为调用边界被破坏并上报
         if (!(result instanceof TransactionResult.Committed)) {
             SparrowUI.getInstance().handleException(
-                    "Failed to reconcile ReferencingInventory mirror",
-                    new IllegalStateException("reconcile commit was rejected: " + result)
+                    "Failed to dispatch external changes of a ReferencingInventory",
+                    new IllegalStateException("external dispatch was rejected: " + result)
             );
         }
     }
 
     /**
-     * 按当前 Inventory 槽位顺序从容器原始内容取样, 复制成 Bukkit 内容镜像(空槽为 {@code null}).
+     * 把存储原始内容按当前 Inventory 槽位顺序整理成视图数组, 元素零拷贝, 空物品折为 {@code null}.
      *
-     * @param raw 容器原始内容
-     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
-     * @return 按当前 Inventory 槽位排列的 Bukkit 内容镜像
+     * @param raw 存储原始内容
+     * @return 按当前 Inventory 槽位排列的视图数组
+     */
+    private @Nullable ItemStack @NotNull [] mapView(@Nullable ItemStack[] raw) {
+        @Nullable ItemStack[] view = new ItemStack[this.externalSlots.length];
+        for (int slot = 0; slot < view.length; slot++) {
+            view[slot] = ItemUtils.nullIfEmpty(raw[this.externalSlots[slot].slot()]);
+        }
+        return view;
+    }
+
+    /**
+     * 按当前 Inventory 槽位顺序从存储原始内容取样, 复制成 lastKnown 的初值(空槽为 {@code null}).
+     *
+     * @param raw 存储原始内容
+     * @param slotMapping 当前 Inventory 槽位到存储槽位的映射
+     * @return 按当前 Inventory 槽位排列的内容副本
      */
     private static @Nullable ItemStack[] readLogicalContents(@Nullable ItemStack[] raw, SlotOrder slotMapping) {
         @Nullable ItemStack[] logical = new ItemStack[raw.length];
@@ -275,16 +375,16 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 为每个当前 Inventory 槽位建立对应的 Bukkit 容器槽身份.
+     * 为每个当前 Inventory 槽位建立对应的 {@link SlotKey}.
      *
-     * @param inventory 被引用的容器
-     * @param slotMapping 当前 Inventory 槽位到 Bukkit 容器槽位的映射
+     * @param identity 存储归属
+     * @param slotMapping 当前 Inventory 槽位到存储槽位的映射
      * @return 每个当前 Inventory 槽位的 SlotKey
      */
-    private static SlotKey[] externalSlots(Inventory inventory, SlotOrder slotMapping) {
+    private static SlotKey[] externalSlots(Object identity, SlotOrder slotMapping) {
         SlotKey[] externalSlots = new SlotKey[slotMapping.size()];
         for (int slot = 0; slot < slotMapping.size(); slot++) {
-            externalSlots[slot] = new SlotKey(inventory, slotMapping.slotAt(slot));
+            externalSlots[slot] = new SlotKey(identity, slotMapping.slotAt(slot));
         }
         return externalSlots;
     }

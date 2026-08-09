@@ -17,13 +17,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>每个 Inventory 至多拥有一个订阅器, 事务遇到它时按写集里属于本 Inventory 的那一组变更派发,
  * 因此当前 Inventory 的订阅者最多收到一次通知.
  * <p>事务开始时通过 {@link #prepare} 记录当时的订阅者名单.
- * PostUpdateEvent 事件的排队和派发顺序由 {@link PostDeliveryQueue} 负责.
+ * PostUpdateEvent 会在整笔事务完成落地后由当前提交线程同步派发, 不同提交线程可以并发调用同一订阅者.
  */
 final class InventoryUpdateChannel {
     private final SparrowInventory inventory; // 拥有本订阅器的 Inventory
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
-    private final PostDeliveryQueue postDeliveries = new PostDeliveryQueue(); // 当前 Inventory 的 PostUpdateEvent 顺序派发队列
 
     InventoryUpdateChannel(@NotNull SparrowInventory inventory) {
         this.inventory = inventory;
@@ -86,6 +85,6 @@ final class InventoryUpdateChannel {
         if (preRecipients.isEmpty() && postRecipients.isEmpty()) {
             return null;
         }
-        return new TransactionNotification(this.inventory, this.postDeliveries, reason, preRecipients, postRecipients);
+        return new TransactionNotification(this.inventory, reason, preRecipients, postRecipients);
     }
 }

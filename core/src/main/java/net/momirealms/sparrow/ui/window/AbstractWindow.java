@@ -522,6 +522,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
     }
 
+    @Override
+    public int windowSlotAtHotbar(int hotbarSlot) {
+        return this.layout.windowSlotAtHotbar(hotbarSlot);
+    }
+
     @NotNull
     @Override
     public CompletionStage<OpenResult> open() {

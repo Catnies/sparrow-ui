@@ -21,7 +21,7 @@ public class SparrowUI implements Listener {
 
     private Plugin plugin;
     private WindowManager windowManager;
-    private boolean fireBukkitInventoryEvents = true;
+    private volatile boolean fireBukkitInventoryEvents = true;
     private boolean warningsEnabled = Boolean.parseBoolean(System.getProperty(WARNINGS_PROPERTY, "true"));
     private Consumer<? super String> warningHandler = msg -> this.getPlugin().getComponentLogger().warn(msg);
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
@@ -97,6 +97,11 @@ public class SparrowUI implements Listener {
         return this.fireBukkitInventoryEvents;
     }
 
+    /**
+     * 是否应在与 UI 交互时触发 Bukkit 的相关事件:
+     *
+     * @param fireBukkitInventoryEvents 是否允许派发 Bukkit Inventory 事件
+     */
     public void setFireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
         this.fireBukkitInventoryEvents = fireBukkitInventoryEvents;
     }
