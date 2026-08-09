@@ -51,12 +51,18 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
 
     @Override
     public void setTextFieldAlwaysEnabled(boolean textFieldAlwaysEnabled) {
-        this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
+        if (this.textFieldAlwaysEnabled != textFieldAlwaysEnabled) {
+            this.textFieldAlwaysEnabled = textFieldAlwaysEnabled;
+            this.forceRemoteSlot(0);
+        }
     }
 
     @Override
     public void setResultAlwaysValid(boolean resultAlwaysValid) {
-        this.resultAlwaysValid = resultAlwaysValid;
+        if (this.resultAlwaysValid != resultAlwaysValid) {
+            this.resultAlwaysValid = resultAlwaysValid;
+            this.forceRemoteSlot(2);
+        }
     }
 
     @Override

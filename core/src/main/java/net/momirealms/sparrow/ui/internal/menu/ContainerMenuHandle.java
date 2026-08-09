@@ -60,6 +60,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private final BitSet viewTouchedSlots = new BitSet();   // 复用的 Bukkit 事件状态副本写入集合
     private final BitSet changedSlots = new BitSet();       // 复用的本轮已发送或需恢复 Bukkit 事件状态副本的槽位集合
     private final Object[] pendingRemoteItems; // NMS ItemStack[], 进入发送路径前暂存单槽包持有的物品副本
+    private final ItemStack[] alignedSlots;    // 已确认与客户端已知状态一致的服务端渲染结果, 按引用判断内容有没有变
 
     private Object replacedMenu; // NMS AbstractContainerMenu, 光标转移来源与打开失败时的恢复目标
     private @Nullable PacketListener.Session session;       // 当前入站捕获会话, 打开前和关闭后为空
@@ -109,6 +110,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.remoteCursor = this.createRemoteSlot();
         this.remoteOffHand = this.createRemoteSlot();
         this.pendingRemoteItems = new Object[this.remoteSlots.length]; // NMS ItemStack[]
+        this.alignedSlots = new ItemStack[this.remoteSlots.length];
     }
 
     // 让其他菜单走完原版关闭流程, 再从来源菜单接管其实际光标.
@@ -168,7 +170,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         try {
             this.packets.send(this.player, outgoing);
             openedSession.commit();
-            this.commitFullContents(full);
+            this.commitFullContents(slots, full);
             this.view.initialize(slots, cursor.actual(), title);
             this.lifecycle = Lifecycle.COMMITTED;
             this.cursorClaimed = false;
@@ -222,7 +224,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             outgoing.add(full.offHandPacket());
             this.submitPackets(outgoing, true);
             this.packets.send(this.player, outgoing);
-            this.commitFullContents(full);
+            this.commitFullContents(slots, full);
             this.view.initialize(slots, cursor.actual(), this.view.title());
             return;
         }
@@ -252,6 +254,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     /**
      * 把服务端槽位渲染结果转成发给客户端的 NMS 物品.
      * 子类可以在这里返回协议占位物, 不影响 Window 槽位内容.
+     * <p>同一个槽位收到同一份渲染结果时, 返回内容必须保持一致: 渲染结果没变的槽位会跳过本方法.
+     * 实现如果还依赖菜单自身的状态, 那份状态改变时必须调 {@link #forceRemoteSlot(int)} 要求重发受影响的槽位.
      *
      * @param rawSlot 协议槽位(raw slot)
      * @param item 服务端槽位渲染结果
@@ -308,7 +312,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         PlayerProxy.INSTANCE.containerMenu(this.serverPlayer, this.proxy);
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
         this.packets.send(this.player, outgoing);
-        this.commitFullContents(full);
+        this.commitFullContents(slots, full);
         this.view.initialize(slots, cursor.actual(), title);
     }
 
@@ -389,8 +393,6 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * {@inheritDoc}
      *
      * <p>实现只关闭入站捕获会话.
-     *
-     * todo 这个名字应该改改.
      */
     @Override
     public void retire() {
@@ -570,12 +572,14 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
      * 完整状态进入发送路径后, 用它更新客户端已知状态: 槽位, 光标, 副手全部对齐,
      * 预测和强制标记清零.
      *
+     * @param slots 本批发送的服务端槽位渲染结果
      * @param full 刚发出去的完整状态
      */
-    private void commitFullContents(FullContents full) {
+    private void commitFullContents(ItemStack[] slots, FullContents full) {
         // 槽位, 光标, 副手的客户端已知状态全部对齐到刚进入发送路径的内容
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
+            this.alignedSlots[slot] = slots[slot];
         }
         RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.visualCursor());
         RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(full.offHandPacket()));
@@ -625,8 +629,17 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                     slot >= 0 && slot < slots.length;
                     slot = candidates.nextSetBit(slot + 1)
             ) {
-                Object item = this.toClientItem(slot, slots[slot]); // 借用的 NMS ItemStack
+                ItemStack rendered = slots[slot];
+                // 只由失效标记触发
+                boolean mustVerify = this.forcedSlots.get(slot) || this.predictedSlots.get(slot) || this.viewTouchedSlots.get(slot);
+                if (!mustVerify && this.alignedSlots[slot] == rendered) {
+                    continue;
+                }
+
+                Object item = this.toClientItem(slot, rendered); // 借用的 NMS ItemStack
                 if (!this.forcedSlots.get(slot) && RemoteSlotProxy.INSTANCE.matches(this.remoteSlots[slot], item)) {
+                    // 客户端已知状态本来就等于这份物品, 与本批数据包是否发出无关
+                    this.alignedSlots[slot] = rendered;
                     continue;
                 }
                 // 当前目标版本的单槽包构造器会取得自己的物品副本, 这里不在比较前重复复制.
@@ -677,6 +690,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                     slot = changedSlots.nextSetBit(slot + 1)
             ) {
                 RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], this.pendingRemoteItems[slot]);
+                this.alignedSlots[slot] = slots[slot];
             }
             if (cursorChanged) {
                 RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentVisualCursor);

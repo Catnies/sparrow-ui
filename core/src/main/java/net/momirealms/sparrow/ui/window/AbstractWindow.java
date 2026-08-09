@@ -112,6 +112,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable ItemStack[] localSlots;       // 最近一次渲染的 Window 槽位内容
     private @Nullable ScheduledTask tickTask;       // 周期 tick 任务
     private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照
+    private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
     private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
     private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
     private long windowTick;        // 本次打开以来的 tick 计数
@@ -119,6 +120,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private boolean forceFull;      // 下一次同步是否强制全量
     private boolean menuDirty;      // 菜单是否有槽位内容之外的待同步状态
     private boolean titleDirty;     // 标题是否待重开
+    private boolean forceReopen;    // 即使标题相同也必须重开菜单
 
     /**
      * 根据设置创建 Window.
@@ -179,15 +181,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 更新本地标题快照; 已打开时标记下一次 tick 重开界面换标题.
-     * 连续调用只保留最后一个标题, 避免重复发 OpenScreen 和全量内容包.
+     * 更新本地标题快照.
      *
      * @param title 新标题
      */
     void notifyUpdateTitle(Component title) {
         this.title = title;
         if (this.open) {
-            this.titleDirty = true;
+            this.titleDirty = !Objects.equals(this.sentTitle, title);
         }
     }
 
@@ -471,6 +472,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.menuDirty = true;
     }
 
+    // 请求用当前标题重开菜单, 用于标题之外的客户端状态恢复.
+    protected final void notifyReopen() {
+        if (this.open) {
+            this.forceReopen = true;
+        }
+    }
+
     @NotNull
     @Override
     public ItemStack displayedAt(int windowSlot) {
@@ -547,6 +555,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.forceFull = true;
         this.menuDirty = true;
         this.titleDirty = false;
+        this.forceReopen = false;
+        this.sentTitle = null;
         this.clickInterpreter.reset();
         Arrays.fill(this.bundleSelections, null);
         this.pendingWindowStates.clear();
@@ -583,12 +593,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             menuOpening = true;
             menuHandle.prepareOpen(replacingWindow);
             MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
-            menuHandle.open(this.title, this.protocolSlots(localSlots), localCursor);
+            Component title = this.title;
+            menuHandle.open(title, this.protocolSlots(localSlots), localCursor);
 
             this.menuHandle = menuHandle;
             this.paths = paths;
             this.localSlots = localSlots;
             this.localCursor = localCursor;
+            this.sentTitle = title;
             this.tickTask = tickTask;
             this.open = true;
             this.cursorDirty = false;
@@ -1062,13 +1074,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     // 把脏槽位, 光标和标题变化汇总, 交给菜单处理器同步给客户端.
-    private void flush(boolean reopenTitle) {
+    private void flush(boolean forceReopen) {
         M menu = this.menuHandle;
         ItemStack[] localSlots = this.localSlots;
         DisplayedSlotPath[] paths = this.paths;
         if (!this.open || menu == null || localSlots == null || paths == null) {
             return;
         }
+        this.forceReopen |= forceReopen;
 
         // 先消费跨线程写入的失效集合, 再在实体线程生成本轮 Window 槽位渲染结果
         BitSet dirty = this.takeDirtySlots();
@@ -1076,7 +1089,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // Window 虚拟槽位的变化单独写入菜单状态, 不进入协议槽位(raw slot)
         boolean virtualDirty = dirty.nextSetBit(this.layout.protocolSize()) >= 0;
-        boolean reopen = reopenTitle || this.titleDirty;
+        boolean reopen = this.forceReopen || this.titleDirty;
         boolean full = this.forceFull || reopen;
         if (dirty.isEmpty() && !this.cursorDirty && !full && !this.menuDirty) {
             return;
@@ -1097,7 +1110,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 cursor = this.renderCursor(menu.cursor());
             }
             if (reopen) {
-                menu.reopenWithTitle(this.title, protocolSlots, cursor);
+                Component title = this.title;
+                menu.reopenWithTitle(title, protocolSlots, cursor);
+                this.sentTitle = title;
             } else {
                 menu.synchronize(protocolSlots, dirty, cursor, this.cursorDirty, full);
             }
@@ -1106,11 +1121,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.forceFull = false;
             this.menuDirty = false;
             this.titleDirty = false;
+            this.forceReopen = false;
         } catch (RuntimeException | Error throwable) {
             this.cursorDirty = true;
             this.forceFull = true;
             this.menuDirty = true;
-            this.titleDirty = reopen;
+            this.forceReopen |= reopen; // 重开失败后客户端标题状态未知, 后续必须再重开一次
             this.manager.report("Failed to synchronize Window", throwable);
         }
     }
@@ -1236,8 +1252,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.paths = null;
         this.localSlots = null;
         this.localCursor = null;
+        this.sentTitle = null;
         this.menuDirty = false;
         this.titleDirty = false;
+        this.forceReopen = false;
         this.pendingWindowStates.clear();
 
         // 单项清理失败不能阻止剩余资源释放或关闭处理器

@@ -18,6 +18,6 @@ final class ItemWrapper implements ItemProvider {
 
     @Override
     public ItemStack provide(@NotNull RenderContext context) {
-        return ItemUtils.copyOrEmpty(this.template);
+        return this.template;
     }
 }

@@ -31,10 +31,10 @@ public interface ItemProvider {
     }
 
     /**
-     * 为本次渲染生成可独立修改的快照.
+     * 生成本次渲染要显示的物品.
      *
      * @param context 当前渲染上下文
-     * @return 归调用方所有的物品堆
+     * @return 本次渲染要显示的物品
      */
     ItemStack provide(RenderContext context);
 }
