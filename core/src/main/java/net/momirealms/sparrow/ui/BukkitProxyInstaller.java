@@ -46,7 +46,7 @@ public final class BukkitProxyInstaller {
             byte[] archive = BukkitProxyInstaller.readProxyArchive();
             BukkitProxyInstaller.appendToMinecraftClassPath(minecraftClassLoader, archive);
             Class<?> bootstrapClass = ReflectionUtils.getClazz(PROXY_BOOTSTRAP);
-            ReflectionUtils.getStaticMethod(bootstrapClass, 0).invoke(null, VersionHelper.MINECRAFT_VERSION.version(), VersionHelper.getPatches());
+            ReflectionUtils.getStaticMethod(bootstrapClass, 0).invoke(null, VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
         } catch (Throwable e) {
             throw new IllegalStateException("Failed to initialize the SparrowUI reflection proxy", e);
         }

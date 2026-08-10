@@ -13,7 +13,7 @@ import java.util.List;
 public final class VersionHelper {
     private VersionHelper() {}
 
-    public static final MinecraftVersion MINECRAFT_VERSION;
+    public static final String MINECRAFT_VERSION;
     public static final int WORLD_VERSION;
     private static final int version;
     private static final int majorVersion;
@@ -58,7 +58,10 @@ public final class VersionHelper {
                     .split("-", 2)[0]  // 1.21.10-rc1          -> 1.21.10
                     .split("_", 2)[0]; // 1.21.11_unobfuscated -> 1.21.11
 
-            MINECRAFT_VERSION = MinecraftVersion.byName(versionString);
+            MINECRAFT_VERSION = switch (versionString) {
+                case "1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.1.1", "26.1.2", "26.2", "99.99.99" -> versionString;
+                default -> throw new IllegalArgumentException("Unsupported version: " + versionString);
+            };
 
             String[] split = versionString.split("\\.");
             int major = Integer.parseInt(split[1]);
