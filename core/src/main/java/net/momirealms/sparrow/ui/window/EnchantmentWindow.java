@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.click.EnchantSelectClick;
+import net.momirealms.sparrow.ui.window.click.EnchantSelectClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import org.bukkit.enchantments.Enchantment;
 import org.jetbrains.annotations.NotNull;

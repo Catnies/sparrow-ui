@@ -1,14 +1,14 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.click.BundleSelectClick;
-import net.momirealms.sparrow.ui.click.ItemClick;
-import net.momirealms.sparrow.ui.click.ItemDragClick;
-import net.momirealms.sparrow.ui.click.ItemInteraction;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemInteraction;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.click.guard.ItemGuard;
+import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;

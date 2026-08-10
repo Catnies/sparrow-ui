@@ -1,14 +1,14 @@
 package net.momirealms.sparrow.ui.item;
 
-import net.momirealms.sparrow.ui.click.BundleSelectClick;
-import net.momirealms.sparrow.ui.click.ItemClick;
-import net.momirealms.sparrow.ui.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.AsyncItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.click.guard.ItemGuard;
+import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;

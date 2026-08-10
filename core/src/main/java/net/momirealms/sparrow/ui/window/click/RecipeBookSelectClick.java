@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.click;
+package net.momirealms.sparrow.ui.window.click;
 
 import net.kyori.adventure.key.Key;
 import net.momirealms.sparrow.ui.window.RecipeBookWindow;

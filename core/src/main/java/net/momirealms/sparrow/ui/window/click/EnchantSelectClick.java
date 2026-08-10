@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.click;
+package net.momirealms.sparrow.ui.window.click;
 
 import net.momirealms.sparrow.ui.window.EnchantmentWindow;
 import org.bukkit.entity.Player;

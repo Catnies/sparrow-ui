@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.key.Key;
-import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
+import net.momirealms.sparrow.ui.window.click.RecipeBookSelectClick;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.internal.menu.RecipeBookMenuHandle;
 import net.momirealms.sparrow.ui.util.HandlerList;

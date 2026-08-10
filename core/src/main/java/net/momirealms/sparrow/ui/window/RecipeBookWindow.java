@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.key.Key;
-import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
+import net.momirealms.sparrow.ui.window.click.RecipeBookSelectClick;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Unmodifiable;
 

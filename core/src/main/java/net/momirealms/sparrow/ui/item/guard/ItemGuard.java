@@ -1,6 +1,6 @@
-package net.momirealms.sparrow.ui.click.guard;
+package net.momirealms.sparrow.ui.item.guard;
 
-import net.momirealms.sparrow.ui.click.ItemInteraction;
+import net.momirealms.sparrow.ui.item.click.ItemInteraction;
 import net.momirealms.sparrow.ui.item.Item;
 import org.jetbrains.annotations.NotNull;
 

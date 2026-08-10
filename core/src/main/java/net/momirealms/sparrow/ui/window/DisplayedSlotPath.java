@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.click.BundleSelectClick;
-import net.momirealms.sparrow.ui.click.ItemClick;
-import net.momirealms.sparrow.ui.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;

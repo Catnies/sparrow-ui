@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.click.RecipeBookSelectClick;
+import net.momirealms.sparrow.ui.window.click.RecipeBookSelectClick;
 import net.momirealms.sparrow.ui.internal.menu.FurnaceMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import org.bukkit.entity.Player;

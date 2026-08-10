@@ -1,6 +1,6 @@
-package net.momirealms.sparrow.ui.click.guard;
+package net.momirealms.sparrow.ui.item.guard;
 
-import net.momirealms.sparrow.ui.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.Item;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
