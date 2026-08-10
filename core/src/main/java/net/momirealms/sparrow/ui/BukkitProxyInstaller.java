@@ -14,10 +14,13 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.URLConnection;
 import java.net.URLStreamHandler;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -70,11 +73,28 @@ public final class BukkitProxyInstaller {
         }
     }
 
-    // 把代理 Jar 以只读内存 URL 的形式追加到 Minecraft 类路径.
+    // 把代理 Jar 追加到 Minecraft 类路径. URLClassLoader 使用内存 URL, 其他加载器使用转换路径接口.
     private static void appendToMinecraftClassPath(ClassLoader minecraftClassLoader, byte[] archive) {
         try {
-            URL archiveUrl = new URL(null, "sparrow-memory:/", new ArchiveUrlStreamHandler(BukkitProxyInstaller.readArchiveEntries(archive)));
-            ClassPathAccess.ADD_URL.invoke((URLClassLoader) minecraftClassLoader, archiveUrl);
+            if (minecraftClassLoader instanceof URLClassLoader urlClassLoader) {
+                URL archiveUrl = new URL(null, "sparrow-memory:/", new ArchiveUrlStreamHandler(BukkitProxyInstaller.readArchiveEntries(archive)));
+                ClassPathAccess.ADD_URL.invoke(urlClassLoader, archiveUrl);
+                return;
+            }
+            // 使用兼容方式注入JarInJar.
+            Method addTransformationPath = minecraftClassLoader.getClass().getMethod("addTransformationPath", Path.class);
+            Path archivePath = Files.createTempFile("sparrow-ui-proxy-", ".jar");
+            boolean added = false;
+            try {
+                Files.write(archivePath, archive);
+                addTransformationPath.invoke(minecraftClassLoader, archivePath);
+                archivePath.toFile().deleteOnExit();
+                added = true;
+            } finally {
+                if (!added) {
+                    Files.deleteIfExists(archivePath);
+                }
+            }
         } catch (Throwable throwable) {
             throw new IllegalStateException("Failed to append the proxy archive to the Minecraft class path", throwable);
         }
@@ -96,17 +116,6 @@ public final class BukkitProxyInstaller {
             throw new IllegalStateException(PROXY_ARCHIVE + " is empty");
         }
         return Map.copyOf(entries);
-    }
-
-    // 判断指定类加载器能否解析某个类, 不触发类初始化.
-    private static boolean classExists(ClassLoader classLoader, String className) {
-        try {
-            Class.forName(className, false, classLoader);
-            return true;
-        } catch (ClassNotFoundException | LinkageError ignored) {
-            // 解析失败或链接错误都视为不存在
-            return false;
-        }
     }
 
     // 将内层 Jar 条目作为只读 URL 资源暴露给 URLClassLoader.
