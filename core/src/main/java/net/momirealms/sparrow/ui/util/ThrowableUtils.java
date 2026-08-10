@@ -3,6 +3,8 @@ package net.momirealms.sparrow.ui.util;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.concurrent.CompletionException;
+
 /**
  * 提供异常聚合, 非受检异常传播与受检异常穿透功能.
  */
@@ -41,6 +43,21 @@ public final class ThrowableUtils {
             return combine(failure, throwable);
         }
         return failure;
+    }
+
+    /**
+     * 解开 {@link CompletionException} 的包装, 取出真实原因.
+     * 不是这种包装或没有原因时返回原异常.
+     *
+     * @param throwable 异步阶段给出的异常
+     * @return 真实原因
+     */
+    @NotNull
+    public static Throwable unwrapCompletion(@NotNull Throwable throwable) {
+        return throwable instanceof CompletionException completionException
+                && completionException.getCause() != null
+                ? completionException.getCause()
+                : throwable;
     }
 
     /**

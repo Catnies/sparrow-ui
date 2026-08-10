@@ -14,6 +14,7 @@ import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.RefreshPlan;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -133,13 +134,13 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (state.inventoryLink != null) {
             SparrowInventory inventory = state.inventoryLink.inventory();
             int slot = state.inventoryLink.slot();
-            ItemStack stack = inventory.itemAt(slot);
-            ItemProvider visual = inventory.visualize(slot, stack);
+            ItemStack itemStack = inventory.itemAt(slot);
+            ItemProvider visual = inventory.visualize(slot, itemStack);
             if (visual != null) {
-                return visual.provide(this.renderContext);
+                return ItemUtils.emptyIfNull(visual.provide(this.renderContext));
             }
-            if (stack != null) {
-                return stack;
+            if (itemStack != null) {
+                return itemStack;
             }
             return ItemStack.empty();
         }
@@ -147,7 +148,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         ItemProvider provider = state.item == null
                 ? state.background == null ? ItemProvider.EMPTY : state.background
                 : state.item.getItemProvider();
-        return provider.provide(this.renderContext);
+        return ItemUtils.emptyIfNull(provider.provide(this.renderContext));
     }
 
     /**

@@ -21,13 +21,13 @@ public final class ItemUtils {
     }
 
     @NotNull
-    public static ItemStack copyOrEmpty(@Nullable ItemStack source) {
-        return isNullOrEmpty(source) ? ItemStack.empty() : source.clone();
+    public static ItemStack copyOrEmpty(@Nullable ItemStack itemStack) {
+        return isNullOrEmpty(itemStack) ? ItemStack.empty() : itemStack.clone();
     }
 
     @Nullable
-    public static ItemStack copyOrNull(@Nullable ItemStack stack) {
-        return stack == null ? null : stack.clone();
+    public static ItemStack copyOrNull(@Nullable ItemStack itemStack) {
+        return itemStack == null ? null : itemStack.clone();
     }
 
     @NotNull
@@ -38,24 +38,29 @@ public final class ItemUtils {
     }
 
     @NotNull
-    public static Object getItemStackHandle(@NotNull ItemStack item) {
-        if (item.isEmpty()) {
+    public static Object getItemStackHandle(@NotNull ItemStack itemStack) {
+        if (itemStack.isEmpty()) {
             return ItemStackProxy.EMPTY;
         }
-        return CraftItemStackProxy.INSTANCE.unwrap(item);
+        return CraftItemStackProxy.INSTANCE.unwrap(itemStack);
     }
 
     @Nullable
-    public static ItemStack nullIfEmpty(@Nullable ItemStack stack) {
-        return isNullOrEmpty(stack) ? null : stack;
+    public static ItemStack nullIfEmpty(@Nullable ItemStack itemStack) {
+        return isNullOrEmpty(itemStack) ? null : itemStack;
     }
 
-    public static int amountOf(@Nullable ItemStack stack) {
-        return isNullOrEmpty(stack) ? 0 : stack.getAmount();
+    @NotNull
+    public static ItemStack emptyIfNull(@Nullable ItemStack itemStack) {
+        return itemStack == null ? ItemStack.empty() : itemStack;
     }
 
-    public static boolean isNullOrEmpty(@Nullable ItemStack stack) {
-        return stack == null || stack.isEmpty();
+    public static int amountOf(@Nullable ItemStack itemStack) {
+        return isNullOrEmpty(itemStack) ? 0 : itemStack.getAmount();
+    }
+
+    public static boolean isNullOrEmpty(@Nullable ItemStack itemStack) {
+        return itemStack == null || itemStack.isEmpty();
     }
 
     public static boolean isSimilar(@Nullable ItemStack a, @Nullable ItemStack b) {

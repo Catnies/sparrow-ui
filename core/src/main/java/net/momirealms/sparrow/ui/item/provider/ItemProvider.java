@@ -2,16 +2,22 @@ package net.momirealms.sparrow.ui.item.provider;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
-import org.jetbrains.annotations.NotNull;
-
-import java.util.function.Function;
 
 @FunctionalInterface
 public interface ItemProvider {
-    ItemProvider EMPTY = ignoredContext -> ItemUtils.copyOrEmpty(null); // 始终提供空物品堆的共享提供器
+    ItemProvider EMPTY = ignoredContext -> ItemUtils.copyOrEmpty(null);
 
     /**
-     * 基于模板的固定提供器.
+     * 渲染本次要显示的物品.
+     * <p><strong>不得改动 Window、GUI、Inventory, 也不得额外请求刷新或同步.</strong>
+     *
+     * @param context 当前渲染上下文
+     * @return 本次渲染要显示的物品
+     */
+    ItemStack provide(RenderContext context);
+
+    /**
+     * 基于固定物品的渲染器.
      *
      * @param template 模板物品堆
      * @return 提供器
@@ -19,23 +25,4 @@ public interface ItemProvider {
     static ItemProvider constant(ItemStack template) {
         return new ItemWrapper(template);
     }
-
-    /**
-     * 包装依赖上下文的渲染器, 并对每个结果创建快照.
-     *
-     * @param renderer 渲染器, 可返回 {@code null}
-     * @return 持有其返回快照的提供器
-     */
-    static ItemProvider contextual(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
-        return context -> ItemUtils.copyOrEmpty(renderer.apply(context));
-    }
-
-    /**
-     * 生成本次渲染要显示的物品.
-     * <p><strong>不得改动 Window、GUI、Inventory, 也不得额外请求刷新或同步.</strong>
-     *
-     * @param context 当前渲染上下文
-     * @return 本次渲染要显示的物品
-     */
-    ItemStack provide(RenderContext context);
 }
