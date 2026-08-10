@@ -24,7 +24,7 @@ final class ConfiguredItem implements ObservableItem {
     private final BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler; // Bundle 选择处理器链
     private final boolean updateOnClick; // 点击成功后是否主动失效
     @Nullable private final ThrottleConfig throttleConfig; // null 表示未启用节流
-    @Nullable private final Map<Player, Long> throttleTimestamps; // 仅启用节流时非空: 玩家 -> 上次接受点击的毫秒时间
+    @Nullable private final Map<Player, Long> throttleTimestamps; // 仅启用节流时非空: 玩家 -> 上次接受点击的毫秒时间 // todo 这里可能会内存泄露
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
 
     ConfiguredItem(
