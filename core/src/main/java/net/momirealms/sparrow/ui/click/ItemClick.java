@@ -23,7 +23,7 @@ public record ItemClick (
         @NotNull ItemStack cursor,
         int windowSlot,
         int hotbarButton
-) {
+) implements ItemInteraction {
 
     public ItemClick {
         cursor = cursor.clone();

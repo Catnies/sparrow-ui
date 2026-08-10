@@ -17,7 +17,7 @@ public record BundleSelectClick(
         @NotNull Window window,
         int windowSlot,
         int bundleSlot
-) {
+) implements ItemInteraction {
 
     public BundleSelectClick {
         if (bundleSlot < -1) {

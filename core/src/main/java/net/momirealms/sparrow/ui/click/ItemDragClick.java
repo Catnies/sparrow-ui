@@ -31,7 +31,7 @@ public record ItemDragClick(
         @NotNull ItemStack cursor,
         int windowSlot,
         @NotNull List<Stop> path
-) {
+) implements ItemInteraction {
 
     public ItemDragClick {
         cursor = cursor.clone();

@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.item.provider.AsyncItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.click.guard.ItemGuard;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
@@ -27,13 +28,14 @@ public final class ItemBuilder {
     private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
 
-    private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器链
-    private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器链
-    private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器链
+    private final List<ConfiguredItem.GuardEntry<ItemClick>> clickGuards = new ArrayList<>(); // 点击前置处理器
+    private final List<ConfiguredItem.GuardEntry<ItemDragClick>> dragGuards = new ArrayList<>(); // 拖拽前置处理器
+    private final List<ConfiguredItem.GuardEntry<BundleSelectClick>> bundleSelectGuards = new ArrayList<>(); // Bundle 前置处理器
+    private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器
+    private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器
+    private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
     private RefreshPlan explicitRefreshPlan = RefreshPlan.none();   // 显式配置的周期刷新计划
-    private long throttleIntervalMillis;        // <= 0 表示未启用节流
-    private ThrottleHandler throttleHandler;    // null 表示未添加节流处理器
     private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
@@ -207,32 +209,40 @@ public final class ItemBuilder {
     }
 
     /**
-     * 限制同一玩家点击此 Item 的频率. 重复调用会替换之前的间隔.
+     * 添加点击前置处理器.
+     * 添加顺序执行, 第一个返回 false 的守卫会拒绝点击.
      *
-     * <p>同一玩家对同一 Item 的点击共享计时, 无论点击的是哪个显示槽位;
-     * 不同玩家互不影响. 首次点击立即执行, 限制期内被拦截的点击不会延长间隔.
-     * 只节流点击, Bundle 选择不受影响.</p>
-     *
-     * @param interval 两次有效点击之间至少间隔的毫秒数
+     * @param guard 点击前置处理器
      * @return 此构建器
-     * @throws IllegalArgumentException 间隔不是正数
      */
-    public ItemBuilder setThrottleMills(long interval) {
-        if (interval <= 0) {
-            throw new IllegalArgumentException("intervalMillis must be positive");
-        }
-        this.throttleIntervalMillis = interval;
-        return this;
+    public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard) {
+        return this.addClickGuard(guard, (ignoredItem, ignoredClick) -> { });
     }
 
     /**
-     * 添加一个节流处理器. 处理器按添加顺序执行.
+     * 添加点击前置处理器与拒绝回调.
      *
-     * @param handler 节流处理器
+     * @param guard 点击前置处理器
+     * @param onRejected 点击前置处理器返回 false 时执行的回调
      * @return 此构建器
      */
-    public ItemBuilder addThrottleHandler(@NotNull ThrottleHandler handler) {
-        this.throttleHandler = this.throttleHandler == null ? handler : this.throttleHandler.andThen(handler);
+    public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard, @NotNull Consumer<? super ItemClick> onRejected) {
+        Objects.requireNonNull(onRejected, "onRejected");
+        return this.addClickGuard(guard, (ignoredItem, click) -> onRejected.accept(click));
+    }
+
+    /**
+     * 添加点击前置处理器与拒绝回调.
+     *
+     * @param guard 点击前置处理器
+     * @param onRejected 点击前置处理器返回 false 时执行的回调
+     * @return 此构建器
+     */
+    public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard, @NotNull BiConsumer<? super Item, ? super ItemClick> onRejected) {
+        this.clickGuards.add(new ConfiguredItem.GuardEntry<>(
+                Objects.requireNonNull(guard, "guard"),
+                Objects.requireNonNull(onRejected, "onRejected")
+        ));
         return this;
     }
 
@@ -258,8 +268,44 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加拖拽处理器. 处理器按添加顺序执行.
-     * <p>拖拽不受节流影响: 一次手势可能同时命中同一个 Item 的多个槽位.
+     * 添加拖拽前置处理器.
+     *
+     * @param guard 拖拽前置处理器
+     * @return 此构建器
+     */
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard) {
+        return this.addDragGuard(guard, (ignoredItem, ignoredDrag) -> { });
+    }
+
+    /**
+     * 添加拖拽前置处理器与拒绝回调.
+     *
+     * @param guard 拖拽前置处理器
+     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @return 此构建器
+     */
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard, @NotNull Consumer<? super ItemDragClick> onRejected) {
+        Objects.requireNonNull(onRejected, "onRejected");
+        return this.addDragGuard(guard, (ignoredItem, drag) -> onRejected.accept(drag));
+    }
+
+    /**
+     * 添加拖拽前置处理器与拒绝回调.
+     *
+     * @param guard 拖拽前置处理器
+     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @return 此构建器
+     */
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard, @NotNull BiConsumer<? super Item, ? super ItemDragClick> onRejected) {
+        this.dragGuards.add(new ConfiguredItem.GuardEntry<>(
+                Objects.requireNonNull(guard, "guard"),
+                Objects.requireNonNull(onRejected, "onRejected")
+        ));
+        return this;
+    }
+
+    /**
+     * 添加拖拽处理器.
      *
      * @param dragHandler 拖拽处理器
      * @return 此构建器
@@ -276,6 +322,43 @@ public final class ItemBuilder {
      */
     public ItemBuilder addDragHandler(@NotNull BiConsumer<? super Item, ? super ItemDragClick> dragHandler) {
         this.dragHandler = this.dragHandler.andThen(dragHandler);
+        return this;
+    }
+
+    /**
+     * 添加 Bundle 选择前置处理器.
+     *
+     * @param guard Bundle 选择前置处理器
+     * @return 此构建器
+     */
+    public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard) {
+        return this.addBundleSelectGuard(guard, (ignoredItem, ignoredSelect) -> { });
+    }
+
+    /**
+     * 添加 Bundle 选择前置处理器与拒绝回调.
+     *
+     * @param guard Bundle 选择前置处理器
+     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @return 此构建器
+     */
+    public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard, @NotNull Consumer<? super BundleSelectClick> onRejected) {
+        Objects.requireNonNull(onRejected, "onRejected");
+        return this.addBundleSelectGuard(guard, (ignoredItem, select) -> onRejected.accept(select));
+    }
+
+    /**
+     * 添加 Bundle 选择前置处理器与拒绝回调.
+     *
+     * @param guard Bundle 选择前置处理器
+     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @return 此构建器
+     */
+    public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard, @NotNull BiConsumer<? super Item, ? super BundleSelectClick> onRejected) {
+        this.bundleSelectGuards.add(new ConfiguredItem.GuardEntry<>(
+                Objects.requireNonNull(guard, "guard"),
+                Objects.requireNonNull(onRejected, "onRejected")
+        ));
         return this;
     }
 
@@ -317,24 +400,18 @@ public final class ItemBuilder {
      * 构建具备主动通知能力的 Item.
      *
      * @return 构建完成的 ObservableItem
-     * @throws IllegalStateException 添加了节流处理器但没有启用节流
      */
     public ObservableItem build() {
-        // 节流处理器必须搭配节流间隔, 否则永远不会被触发
-        if (this.throttleHandler != null && this.throttleIntervalMillis <= 0)
-            throw new IllegalStateException("throttle handlers require throttle to be enabled");
-        // 仅在启用节流时组装节流配置
-        ConfiguredItem.ThrottleConfig throttleConfig = this.throttleIntervalMillis > 0
-                ? new ConfiguredItem.ThrottleConfig(this.throttleIntervalMillis, this.throttleHandler)
-                : null;
         ObservableItem item = new ConfiguredItem(
                 this.source,
                 this.explicitRefreshPlan,
+                this.clickGuards,
+                this.dragGuards,
+                this.bundleSelectGuards,
                 this.clickHandler,
                 this.dragHandler,
                 this.bundleHandler,
-                this.updateOnClick,
-                throttleConfig
+                this.updateOnClick
         );
         // 构建完成后按添加顺序执行修改器, 让调用方拿到完整的 Item
         this.modifier.accept(item);
