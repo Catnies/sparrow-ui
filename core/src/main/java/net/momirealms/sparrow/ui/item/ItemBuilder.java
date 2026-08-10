@@ -10,19 +10,16 @@ import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.LongSupplier;
 
 public final class ItemBuilder {
     private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
@@ -46,61 +43,6 @@ public final class ItemBuilder {
      */
     public ItemBuilder setItemProvider(@NotNull ItemProvider itemProvider) {
         this.setSource(new SourceSpec.ProviderSpec(Objects.requireNonNull(itemProvider, "itemProvider")));
-        return this;
-    }
-
-    /**
-     * 配置按服务器当前 tick 轮换的显示来源.
-     *
-     * @param periodTicks 帧切换周期
-     * @param firstFrame 第一帧
-     * @param remainingFrames 其余帧
-     * @return 此构建器
-     */
-    public ItemBuilder setCyclingItemProvider(
-            int periodTicks,
-            @NotNull ItemProvider firstFrame,
-            @NotNull ItemProvider... remainingFrames
-    ) {
-        List<ItemProvider> frames = new ArrayList<>(remainingFrames.length + 1);
-        frames.add(firstFrame);
-        frames.addAll(Arrays.asList(remainingFrames));
-        return this.setCyclingItemProvider(periodTicks, frames);
-    }
-
-    /**
-     * 配置按服务器当前 tick 轮换的显示来源.
-     *
-     * @param periodTicks 帧切换周期
-     * @param frames 非空帧列表
-     * @return 此构建器
-     */
-    public ItemBuilder setCyclingItemProvider(int periodTicks, @NotNull List<? extends ItemProvider> frames) {
-        return this.setCyclingItemProvider(periodTicks, frames, Bukkit::getCurrentTick);
-    }
-
-    /**
-     * 配置按指定 tick 来源轮换的显示来源, 允许注入 tick 来源以便测试.
-     *
-     * @param periodTicks 帧切换周期
-     * @param frames 非空帧列表
-     * @param tickSource 当前 tick 来源
-     * @return 此构建器
-     * @throws IllegalArgumentException 周期不是正数或帧列表为空时抛出
-     */
-    ItemBuilder setCyclingItemProvider(int periodTicks, @NotNull List<? extends ItemProvider> frames, @NotNull LongSupplier tickSource) {
-        if (periodTicks <= 0)
-            throw new IllegalArgumentException("periodTicks must be positive");
-        List<ItemProvider> copiedFrames = List.copyOf(frames);
-        if (copiedFrames.isEmpty())
-            throw new IllegalArgumentException("frames must not be empty");
-
-        // 单帧轮播退化为固定来源, 避免无意义的周期刷新
-        if (copiedFrames.size() == 1) {
-            this.setSource(new SourceSpec.ProviderSpec(copiedFrames.getFirst()));
-        } else {
-            this.setSource(new SourceSpec.CyclingSpec(periodTicks, copiedFrames, tickSource));
-        }
         return this;
     }
 
@@ -426,16 +368,11 @@ public final class ItemBuilder {
         this.sourceConfigured = true;
     }
 
-    //  Item 的显示来源, 决定每次渲染使用的提供器以及自身需要的周期刷新计划.
-    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.CyclingDisplaySource, DisplaySource.LazyDisplaySource, DisplaySource.AsyncDisplaySource {
+    // Item 的显示来源, 决定每次渲染使用的提供器与挂载行为.
+    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.LazyDisplaySource, DisplaySource.AsyncDisplaySource {
 
         // 获取当前渲染使用的提供器.
         ItemProvider provider();
-
-        // 获取此来源自身要求的周期刷新计划. 默认永不到期.
-        default RefreshPlan refreshPlan() {
-            return RefreshPlan.none();
-        }
 
         // Item 挂载到槽位时的回调. 默认无操作.
         default void onAttached() {
@@ -449,47 +386,6 @@ public final class ItemBuilder {
                 Objects.requireNonNull(provider, "provider");
             }
         }
-
-
-
-        // 按 tick 周期轮换多帧的显示来源.
-        final class CyclingDisplaySource implements DisplaySource {
-            private final List<ItemProvider> frames;    // 轮换帧列表, 至少两帧
-            private final LongSupplier tickSource;      // 当前 tick 来源
-            private final int periodTicks; // 帧切换周期
-            private final ItemProvider renderingProvider; // 按当前帧委托渲染的提供器
-
-            CyclingDisplaySource(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) {
-                if (periodTicks <= 0)
-                    throw new IllegalArgumentException("periodTicks must be positive");
-                this.frames = List.copyOf(Objects.requireNonNull(frames, "frames"));
-                if (this.frames.size() < 2)
-                    throw new IllegalArgumentException("cycling display requires at least two frames");
-                this.tickSource = Objects.requireNonNull(tickSource, "tickSource");
-                this.periodTicks = periodTicks;
-                // 渲染入口按当前 tick 实时选择帧, 无需额外状态
-                this.renderingProvider = context -> this.frames.get(this.frameIndex()).provide(context);
-            }
-
-            @Override
-            public ItemProvider provider() {
-                return this.renderingProvider;
-            }
-
-            @Override
-            public RefreshPlan refreshPlan() {
-                return RefreshPlan.every(this.periodTicks);
-            }
-
-            // 计算当前 tick 对应的帧下标.
-            private int frameIndex() {
-                // floorDiv/floorMod 保证 tick 为负时帧序号仍落在合法下标内
-                long frame = Math.floorDiv(this.tickSource.getAsLong(), this.periodTicks);
-                return (int) Math.floorMod(frame, this.frames.size());
-            }
-        }
-
-
 
         // 第一次挂载时异步解析一次, 之后复用结果的懒加载显示来源.
         final class LazyDisplaySource implements DisplaySource {
@@ -556,8 +452,6 @@ public final class ItemBuilder {
                 });
             }
         }
-
-
 
         // 每次渲染都可能重算的异步渲染显示来源.
         final class AsyncDisplaySource implements DisplaySource {
@@ -646,7 +540,7 @@ public final class ItemBuilder {
 
 
     // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
-    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.CyclingSpec, SourceSpec.LazySpec, SourceSpec.AsyncSpec {
+    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.LazySpec, SourceSpec.AsyncSpec {
 
         DisplaySource create(Runnable invalidator);
 
@@ -656,15 +550,6 @@ public final class ItemBuilder {
             @Override
             public DisplaySource create(Runnable invalidator) {
                 return new DisplaySource.FixedDisplaySource(this.provider);
-            }
-        }
-
-        // 轮换来源声明
-        record CyclingSpec(int periodTicks, List<ItemProvider> frames, LongSupplier tickSource) implements SourceSpec {
-
-            @Override
-            public DisplaySource create(Runnable invalidator) {
-                return new DisplaySource.CyclingDisplaySource(this.periodTicks, this.frames, this.tickSource);
             }
         }
 

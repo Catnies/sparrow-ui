@@ -16,8 +16,8 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 final class ConfiguredItem implements ObservableItem {
-    private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与自带刷新计划
-    private final RefreshPlan refreshPlan; // 显示来源自带计划与显式计划合并后的周期刷新计划
+    private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与挂载行为
+    private final RefreshPlan refreshPlan; // 构建器显式配置的周期刷新计划
     private final List<GuardEntry<ItemClick>> clickGuards; // 点击前置处理器
     private final List<GuardEntry<ItemDragClick>> dragGuards; // 拖拽前置处理器
     private final List<GuardEntry<BundleSelectClick>> bundleSelectGuards; // Bundle 选择前置处理器
@@ -39,8 +39,7 @@ final class ConfiguredItem implements ObservableItem {
             boolean updateOnClick
     ) {
         this.displaySource = Objects.requireNonNull(source.create(this::notifyWindows), "source result");
-        // 合并显示来源自带的刷新计划(如轮播帧周期)与构建器显式配置的计划
-        this.refreshPlan = this.displaySource.refreshPlan().or(explicitRefreshPlan);
+        this.refreshPlan = explicitRefreshPlan;
         this.clickGuards = List.copyOf(clickGuards);
         this.dragGuards = List.copyOf(dragGuards);
         this.bundleSelectGuards = List.copyOf(bundleSelectGuards);
