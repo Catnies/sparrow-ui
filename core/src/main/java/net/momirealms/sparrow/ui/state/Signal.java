@@ -22,7 +22,6 @@ public sealed interface Signal<T> extends Observable<T> permits MutableSignal, A
 
     /**
      * 读取当前值.
-     * <p>任意线程, 且永远不等待后台任务: 异步来源直接返回最近完成的值.
      *
      * @return 当前快照值
      */
