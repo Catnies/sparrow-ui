@@ -969,7 +969,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * todo 只有切石机调用, 这个方法能不能直接收束到具体实现里面?
      * 让某个槽位上当前显示的 Item 直接处理这次点击.
      * <p>这条路不经过 Bukkit 的 InventoryClickEvent;
      * GUI 冻结, 背景和空路径仍按 {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.

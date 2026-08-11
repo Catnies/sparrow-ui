@@ -119,15 +119,7 @@ public abstract class InventoryUpdateEvent {
      */
     @Nullable
     public final SlotChange changeAt(int slot) {
-        Objects.checkIndex(slot, this.inventory.size());
-        List<SlotChange> slotChanges = this.ownChange().slotChanges();
-        for (int i = 0; i < slotChanges.size(); i++) {
-            SlotChange change = slotChanges.get(i);
-            if (change.slot() == slot) {
-                return change;
-            }
-        }
-        return null;
+        return this.ownChange().changeAt(slot);
     }
 
     /**

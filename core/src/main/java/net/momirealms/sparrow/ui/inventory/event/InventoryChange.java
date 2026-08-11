@@ -2,14 +2,15 @@ package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
  * 一笔事务中单个 Inventory 的变更组.
- * // todo 仍然要保留便捷方法, 调用方写的越简洁, 舒服越好. 考虑添加 slotAt 等事件里就有的功能.
  *
  * @param inventory 发生变更的 Inventory
  * @param slotChanges 使用该 Inventory 槽位坐标的变更记录, 不可变列表
@@ -57,6 +58,25 @@ public record InventoryChange(
             @NotNull List<InventoryChange> rootChanges
     ) {
         return changeOf(inventory, rootChanges).slotChanges();
+    }
+
+    /**
+     * 返回指定逻辑槽位的变更记录.
+     *
+     * @param slot 当前 Inventory 的逻辑槽位
+     * @return 槽位未参与本次事务时返回 {@code null}
+     * @throws IndexOutOfBoundsException 槽位不属于当前 Inventory 时抛出
+     */
+    @Nullable
+    public SlotChange changeAt(int slot) {
+        Objects.checkIndex(slot, this.inventory.size());
+        for (int i = 0; i < this.slotChanges.size(); i++) {
+            SlotChange change = this.slotChanges.get(i);
+            if (change.slot() == slot) {
+                return change;
+            }
+        }
+        return null;
     }
 
     /**
