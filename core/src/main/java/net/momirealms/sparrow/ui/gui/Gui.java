@@ -1,10 +1,12 @@
 package net.momirealms.sparrow.ui.gui;
 
 import net.momirealms.sparrow.ui.Observer;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -761,6 +763,19 @@ public sealed interface Gui permits AbstractGui {
      */
     @NotNull
     GuiSlotAttachment attach(int slot, @NotNull Observer<? super Gui> observer);
+
+    /**
+     * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
+     * 当 Signal 被标脏时, 会触发传入的回调函数.
+     *
+     * @param signal 数据源
+     * @param callback 失效回调
+     * @return 订阅凭证, 可用于提前解绑.
+     */
+    @NotNull
+    default Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Gui> callback) {
+        return signal.onDirtyWeak(this, callback);
+    }
 
     /**
      * 通过 Structure 标志符填充槽位, 并创建 GUI.

@@ -1,39 +1,63 @@
 package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.Observer;
-import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
+import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.window.Window;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 
-/**
- * 为自行维护状态的 Item 提供显示与主动失效的基础实现.
- * <p>子类按需直接覆写 {@link Item} 的交互方法, 并在显示状态改变后调用 {@link #notifyWindows()}.</p>
- * <p>同一实例可以同时显示在多个 Window 与槽位中, 子类必须自行保证可变字段的线程安全.</p>
- */
 public abstract class AbstractItem implements ObservableItem {
     private final ItemProvider itemProvider = this::render;
-    private final RefreshPlan refreshPlan;
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>();
+    private final CopyOnWriteArrayList<Function<? super Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
-    /**
-     * 创建没有周期刷新的 Item.
-     */
     protected AbstractItem() {
-        this(RefreshPlan.none());
     }
 
     /**
-     * 创建使用指定周期刷新计划的 Item.
+     * 声明渲染读取了哪些数据源, 它们失效时重新渲染这个 Item.
+     * <p><strong>只应在子类构造器里调用.</strong>
      *
-     * @param refreshPlan 周期刷新计划
+     * @param signals 渲染依赖的数据源
      */
-    protected AbstractItem(@NotNull RefreshPlan refreshPlan) {
-        this.refreshPlan = Objects.requireNonNull(refreshPlan, "refreshPlan");
+    protected final void dependsOn(@NotNull Signal<?>... signals) {
+        for (int index = 0; index < signals.length; index++) {
+            Signal<?> signal = Objects.requireNonNull(signals[index], "signal");
+            this.dependencies.add(ignoredViewer -> signal);
+        }
+    }
+
+    /**
+     * 声明渲染读取了哪些按玩家分区的数据源, 它们失效时重新渲染这个 Item.
+     * <p><strong>只应在子类构造器里调用.</strong>
+     *
+     * @param signal 按玩家分区的数据源
+     */
+    protected final void dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
+        Objects.requireNonNull(signal, "signal");
+        this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
+    }
+
+    /**
+     * 声明渲染读取了按任意维度分区的数据源, 分区 key 由查看者导出.
+     *
+     * @param signal 分区数据源
+     * @param keyOf 从查看者导出分区 key, 在挂载时执行
+     */
+    protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
+        Objects.requireNonNull(signal, "signal");
+        Objects.requireNonNull(keyOf, "keyOf");
+        this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
     }
 
     /**
@@ -51,9 +75,22 @@ public abstract class AbstractItem implements ObservableItem {
     }
 
     @Override
-    public final ItemAttachment attach(@NotNull Observer<? super Item> observer) {
-        Subscription subscription = this.observers.subscribe(observer);
-        return ItemAttachment.subscribed(this.refreshPlan, subscription);
+    public final ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+        Objects.requireNonNull(window, "window");
+        Objects.requireNonNull(observer, "observer");
+        ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
+        try {
+            attachment.track(this.observers.subscribe(observer));
+            attachment.subscribeDependencies(this.dependencies, window.viewer());
+            return attachment;
+        } catch (RuntimeException | Error throwable) {
+            try {
+                attachment.close();
+            } catch (RuntimeException | Error closeFailure) {
+                throwable.addSuppressed(closeFailure);
+            }
+            throw throwable;
+        }
     }
 
     @Override

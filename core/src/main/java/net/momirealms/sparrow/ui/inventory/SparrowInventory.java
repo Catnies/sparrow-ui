@@ -16,6 +16,7 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
@@ -1157,6 +1159,19 @@ public abstract class SparrowInventory {
     @NotNull
     public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
         return this.updateChannel().subscribePost(observer);
+    }
+
+    /**
+     * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
+     * 当 Signal 被标脏时, 会触发传入的回调函数.
+     *
+     * @param signal 数据源
+     * @param callback 失效回调
+     * @return 订阅凭证, 可用于提前解绑.
+     */
+    @NotNull
+    public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super SparrowInventory> callback) {
+        return signal.onDirtyWeak(this, callback);
     }
 
     /**

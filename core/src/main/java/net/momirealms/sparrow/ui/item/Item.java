@@ -1,10 +1,11 @@
 package net.momirealms.sparrow.ui.item;
 
+import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
-import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -84,14 +85,15 @@ public interface Item {
 
     /**
      * 将此 Item 挂载到一个最终显示槽位.
-     * <p>返回值拥有本次显示关系. Window 在替换路径或关闭时必须关闭它.
-     * 不会主动变化的 Item 返回不保存观察者的共享挂载.
+     * <p>挂载是按显示路径的, 同一个 Item 显示给多名玩家就有多次挂载.
      *
+     * @param window 本次挂载所属的窗口
      * @param observer Item 主动失效时接收通知的观察者
      * @return 本次显示关系
      */
-    default ItemAttachment attach(@NotNull Observer<? super Item> observer) {
+    default ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
         // 默认实现不保存观察者, 但仍提前拒绝 null 以固定契约
+        Objects.requireNonNull(window, "window");
         Objects.requireNonNull(observer, "observer");
         return ItemAttachment.PASSIVE;
     }

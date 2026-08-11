@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
-import net.momirealms.sparrow.ui.item.RefreshPlan;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -103,16 +102,6 @@ final class DisplayedSlotPath implements AutoCloseable {
                 this.window.notifyUpdate(this.windowSlot);
             }
         }
-    }
-
-    /**
-     * 返回最终 Item 的刷新计划.
-     * 空槽位返回不主动刷新的计划.
-     *
-     * @return Item 刷新计划
-     */
-    @NotNull RefreshPlan refreshPlan() {
-        return this.currentState().itemAttachment.refreshPlan();
     }
 
     /**
@@ -301,7 +290,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 }
                 case SlotElement.Item(var item) -> {
                     candidate.item = item;
-                    candidate.itemAttachment = item.attach(ignoredInvalidation -> candidate.notifyWindows(false));
+                    candidate.itemAttachment = item.attach(this.window, ignore -> candidate.notifyWindows(false));
                     return;
                 }
                 case SlotElement.InventoryLink link -> {

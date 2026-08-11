@@ -1,11 +1,13 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
+import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
@@ -228,6 +230,19 @@ public interface Window {
      * @param closeHandler 关闭处理器, 参数为关闭原因
      */
     void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+
+    /**
+     * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
+     * 当 Signal 被标脏时, 会触发传入的回调函数.
+     *
+     * @param signal 数据源
+     * @param callback 失效回调
+     * @return 订阅凭证, 可用于提前解绑.
+     */
+    @NotNull
+    default Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback) {
+        return signal.onDirtyWeak(this, callback);
+    }
 
     /**
      * 移除一个与给定对象相等的关闭处理器.

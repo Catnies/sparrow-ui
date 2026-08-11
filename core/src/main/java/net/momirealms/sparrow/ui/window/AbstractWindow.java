@@ -697,13 +697,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 刷新连接的 Inventory: ReferencingInventory 把 Bukkit 容器变更同步进镜像并生成 External 事件, 其他 Inventory 不处理.
         // 因为刷新不是点击语义, 所以 GUI 冻结槽和 Window 虚拟槽位连接的 Inventory 也要同步.
         this.refreshLinkedInventories(this.paths);
-        // 标脏刷新周期到了的显示路径.
-        for (int windowSlot = 0; windowSlot < this.paths.length; windowSlot++) {
-            DisplayedSlotPath path = this.paths[windowSlot];
-            if (path != null && path.refreshPlan().isDue(this.windowTick)) {
-                this.notifyUpdate(windowSlot);
-            }
-        }
         // 定时标脏光标物品.
         if (this.windowTick % CURSOR_AUDIT_INTERVAL == 0) {
             this.cursorDirty = true;

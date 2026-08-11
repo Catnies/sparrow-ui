@@ -9,7 +9,12 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
+import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
+import net.momirealms.sparrow.ui.state.Signals;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -20,6 +25,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public final class ItemBuilder {
     private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
@@ -32,7 +38,7 @@ public final class ItemBuilder {
     private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器
     private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
-    private RefreshPlan explicitRefreshPlan = RefreshPlan.none();   // 显式配置的周期刷新计划
+    private final List<Function<? super Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
     private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
@@ -130,13 +136,52 @@ public final class ItemBuilder {
     }
 
     /**
-     * 在 Item 被显示时增加一个 Window 周期刷新来源.
+     * 让 Item 在被显示期间每隔固定 tick 重新渲染一次.
      *
      * @param periodTicks 正数 tick 周期
      * @return 此构建器
      */
     public ItemBuilder updatePeriodically(int periodTicks) {
-        this.explicitRefreshPlan = RefreshPlan.every(periodTicks);
+        return this.dependsOn(Signals.everyTicks(periodTicks));
+    }
+
+    /**
+     * 声明渲染读取了哪些 Signal, 失效时重新渲染这个 Item.
+     *
+     * @param signals 渲染依赖的数据源
+     * @return 此构建器
+     */
+    public ItemBuilder dependsOn(@NotNull Signal<?>... signals) {
+        for (int index = 0; index < signals.length; index++) {
+            Signal<?> signal = Objects.requireNonNull(signals[index], "signal");
+            this.dependencies.add(ignoredViewer -> signal);
+        }
+        return this;
+    }
+
+    /**
+     * 声明渲染读取了按玩家分区的 Signal.
+     *
+     * @param signal 按玩家分区的数据源
+     * @return 此构建器
+     */
+    public ItemBuilder dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
+        Objects.requireNonNull(signal, "signal");
+        this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
+        return this;
+    }
+
+    /**
+     * 声明渲染读取了按任意维度分区的 Signal.
+     *
+     * @param signal 分区数据源
+     * @param keyOf 从查看者导出分区 key, 在挂载时执行
+     * @return 此构建器
+     */
+    public <K> ItemBuilder dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
+        Objects.requireNonNull(signal, "signal");
+        Objects.requireNonNull(keyOf, "keyOf");
+        this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
         return this;
     }
 
@@ -346,7 +391,7 @@ public final class ItemBuilder {
     public ObservableItem build() {
         ObservableItem item = new ConfiguredItem(
                 this.source,
-                this.explicitRefreshPlan,
+                this.dependencies,
                 this.clickGuards,
                 this.dragGuards,
                 this.bundleSelectGuards,

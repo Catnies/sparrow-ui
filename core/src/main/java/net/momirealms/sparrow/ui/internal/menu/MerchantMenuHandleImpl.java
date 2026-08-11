@@ -7,7 +7,6 @@ import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
-import net.momirealms.sparrow.ui.item.RefreshPlan;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentExactPredicateProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMerchantOffersPacketProxy;
@@ -21,6 +20,7 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
+import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -58,7 +58,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private boolean resultReconciliationPending;
 
     private final AtomicLong offerRevision = new AtomicLong(); // 任意线程只递增此值, 实际渲染仍在实体线程
-    private long offerTick;
     private long committedOfferRevision = -1; // 最近成功进入网络发送批次的 revision
     private long queuedOfferRevision;
     private @Nullable Object committedOffersPacket;
@@ -94,7 +93,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             return;
         }
         this.level = level;
-        this.invalidateOffers();
+        this.dirtyOffers();
     }
 
     @Override
@@ -103,7 +102,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             return;
         }
         this.progress = progress;
-        this.invalidateOffers();
+        this.dirtyOffers();
     }
 
     @Override
@@ -112,16 +111,17 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             return;
         }
         this.restockMessageEnabled = enabled;
-        this.invalidateOffers();
+        this.dirtyOffers();
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>先完整创建候选挂载, 成功后才退役旧挂载. 因此准备失败不会破坏当前 offers.
-     */
     @Override
     public void setTrades(@NotNull List<MerchantWindow.Trade> trades) {
-        TradeBindings candidate = new TradeBindings(trades, this::invalidateOffers);
+        TradeBindings candidate = new TradeBindings(
+                trades,
+                this.firstInputContext.window(),
+                this.firstInputContext.player(),
+                this::dirtyOffers
+        );
         TradeBindings previous = this.bindings;
         if (previous != null) {
             previous.retire();
@@ -135,7 +135,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
                 this.reporter.accept("Failed to close previous Merchant trade bindings", throwable);
             }
         }
-        this.invalidateOffers();
+        this.dirtyOffers();
     }
 
     @Override
@@ -145,14 +145,10 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
     @Override
     public boolean tickOffers() {
-        TradeBindings bindings = this.bindings;
-        if (bindings != null && bindings.refreshPlan().isDue(++this.offerTick)) {
-            this.invalidateOffers();
-        }
         return this.offerRevision.get() != this.committedOfferRevision;
     }
 
-    private void invalidateOffers() {
+    private void dirtyOffers() {
         this.offerRevision.incrementAndGet();
     }
 
@@ -461,21 +457,23 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     static final class TradeBindings implements AutoCloseable {
         private final Runnable invalidator;
         private final List<TradeBinding> entries;
-        private final RefreshPlan refreshPlan;
         private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING);
         private boolean closed;
 
-        TradeBindings(@NotNull List<MerchantWindow.Trade> trades, @NotNull Runnable invalidator) {
+        TradeBindings(
+                @NotNull List<MerchantWindow.Trade> trades,
+                @NotNull Window window,
+                @NotNull Player viewer,
+                @NotNull Runnable invalidator
+        ) {
             this.invalidator = invalidator;
             ArrayList<TradeBinding> entries = new ArrayList<>(trades.size());
-            RefreshPlan refreshPlan = RefreshPlan.none();
 
             // 准备期通知被 gate 拦截, 不会让尚未发布的候选会话变脏
             try {
                 for (int index = 0; index < trades.size(); index++) {
-                    TradeBinding binding = new TradeBinding(trades.get(index), this::invalidate);
+                    TradeBinding binding = new TradeBinding(trades.get(index), window, viewer, this::invalidate);
                     entries.add(binding);
-                    refreshPlan = refreshPlan.or(binding.refreshPlan());
                 }
             } catch (RuntimeException | Error throwable) {
                 // 逆序回滚已经取得的资源, 并把关闭异常附加到原始失败
@@ -486,7 +484,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
             // 全部准备成功后才发布不可修改快照
             this.entries = List.copyOf(entries);
-            this.refreshPlan = refreshPlan;
         }
 
         void activate() {
@@ -499,11 +496,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private List<TradeBinding> entries() {
             return this.entries;
         }
-
-        RefreshPlan refreshPlan() {
-            return this.refreshPlan;
-        }
-
         private void invalidate() {
             if (this.gate.get() == GateState.ACTIVE) {
                 this.invalidator.run();
@@ -552,14 +544,18 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private final ItemAttachment firstInputAttachment;
         private final ItemAttachment secondInputAttachment;
         private final ItemAttachment resultAttachment;
-        private final RefreshPlan refreshPlan;
 
         private ItemStack firstInput = ItemStack.empty();
         private ItemStack secondInput = ItemStack.empty();
         private ItemStack result = ItemStack.empty();
         private boolean closed;
 
-        private TradeBinding(@NotNull MerchantWindow.Trade trade, @NotNull Runnable invalidator) {
+        private TradeBinding(
+                @NotNull MerchantWindow.Trade trade,
+                @NotNull Window window,
+                @NotNull Player viewer,
+                @NotNull Runnable invalidator
+        ) {
             this.trade = trade;
             Subscription tradeSubscription = null;
             ItemAttachment firstInputAttachment = null;
@@ -569,9 +565,9 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             // 三个 Item 独立挂载, 相同 Item 引用也拥有独立的显示生命周期
             try {
                 tradeSubscription = trade.subscribe(ignoredChange -> invalidator.run());
-                firstInputAttachment = trade.getFirstInput().attach(ignoredItem -> invalidator.run());
-                secondInputAttachment = trade.getSecondInput().attach(ignoredItem -> invalidator.run());
-                resultAttachment = trade.getResult().attach(ignoredItem -> invalidator.run());
+                firstInputAttachment = trade.getFirstInput().attach(window, ignoredItem -> invalidator.run());
+                secondInputAttachment = trade.getSecondInput().attach(window, ignoredItem -> invalidator.run());
+                resultAttachment = trade.getResult().attach(window, ignoredItem -> invalidator.run());
             } catch (RuntimeException | Error throwable) {
                 // 构造中途失败时只关闭已经取得的资源
                 TradeBinding.close(
@@ -587,11 +583,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             this.firstInputAttachment = firstInputAttachment;
             this.secondInputAttachment = secondInputAttachment;
             this.resultAttachment = resultAttachment;
-
-            // 周期计划只决定何时重渲染, 主动失效仍通过各自订阅立即推进 revision
-            this.refreshPlan = firstInputAttachment.refreshPlan()
-                    .or(secondInputAttachment.refreshPlan())
-                    .or(resultAttachment.refreshPlan());
         }
 
         private ItemStack renderFirstInput(MerchantMenuHandleImpl owner, int tradeIndex) {
@@ -629,10 +620,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
         private MerchantWindow.Trade trade() {
             return this.trade;
-        }
-
-        private RefreshPlan refreshPlan() {
-            return this.refreshPlan;
         }
 
         @Override
