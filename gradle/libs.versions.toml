@@ -1,5 +1,5 @@
 [versions]
-project-version = "beta.12"
+project-version = "beta.13"
 kotlin = "2.3.10"
 paper-api = "1.21.8-R0.1-SNAPSHOT"
 
