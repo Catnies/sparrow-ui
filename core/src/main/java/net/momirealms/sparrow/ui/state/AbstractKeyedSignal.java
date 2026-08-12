@@ -39,6 +39,12 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     final P partition(@NotNull K key) {
         Objects.requireNonNull(key, "key");
         this.purgeDeadHandles();
+        // 读值路径上绝大多数取用命中已有分区, 这条快路径避开 compute 的桶锁与死句柄清理.
+        P existing = this.partitions.get(key);
+        if (existing != null) {
+            this.afterPartitionAccess(existing);
+            return existing;
+        }
         P partition = this.partitions.computeIfAbsent(key, k -> {
             // 创建分区并接到该 key 已有的 PartitionHandle 上.
             P created = this.createPartition(key);
@@ -74,6 +80,15 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     public Signal<T> at(@NotNull K key) {
         Objects.requireNonNull(key, "key");
         this.purgeDeadHandles();
+        // 句柄与分区都在且转发已挂好时直接返回. 这条快路径只读不挂载, 挂载与换挂仍收在该 key 的 compute 内.
+        PartitionHandle<K, T> live = this.liveHandle(key);
+        if (live != null) {
+            P current = this.partitions.get(key);
+            if (current != null && live.isAttachedTo(current)) {
+                this.afterPartitionAccess(current);
+                return live;
+            }
+        }
         PartitionHandle<K, T> handle = this.handle(key);
         // 句柄可能晚于分区出现(先 get 后 at), 那种情况下分区创建时还找不到句柄, 由这里补挂.
         P partition = this.partitions.compute(key, (ignored, existing) -> {
@@ -91,6 +106,10 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
      * 两者都不在了就说明没人再关心这个 key, 句柄随之回收.
      */
     private PartitionHandle<K, T> handle(K key) {
+        PartitionHandle<K, T> live = this.liveHandle(key);
+        if (live != null) {
+            return live;
+        }
         AtomicReference<PartitionHandle<K, T>> resolved = new AtomicReference<>();
         this.handles.compute(key, (mapKey, existing) -> {
             PartitionHandle<K, T> current = existing == null ? null : existing.get();
@@ -99,7 +118,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
                 return existing;
             }
             PartitionHandle<K, T> created = new PartitionHandle<>(this, mapKey);
-            // 强引用要逃出映射函数, 否则刚建好的句柄可能在返回给调用方之前就被回收.
+            // 强引用要逃出 compute , 否则刚建好的句柄可能在返回给调用方之前就被回收.
             resolved.set(created);
             return new HandleReference<>(created, mapKey, this.deadHandles);
         });
