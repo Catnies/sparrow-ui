@@ -1176,7 +1176,7 @@ public abstract class SparrowInventory {
     @NotNull
     public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super SparrowInventory> callback) {
         Objects.requireNonNull(callback, "callback");
-        return this.signalBindings.add(signal.onDirtyWeak(() -> callback.accept(this)));
+        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
     }
 
     /**

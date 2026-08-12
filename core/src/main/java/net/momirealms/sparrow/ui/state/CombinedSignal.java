@@ -56,7 +56,7 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
         try {
             for (int i = 0; i < this.sources.length; i++) {
                 // 这里使用弱订阅, 不能让来源反过来钉住本节点.
-                subscriptions[i] = this.sources[i].onDirtyWeak(this::notifyDirty);
+                subscriptions[i] = this.sources[i].onDirty(this::notifyDirty);
                 attached++;
             }
         } catch (RuntimeException | Error exception) {

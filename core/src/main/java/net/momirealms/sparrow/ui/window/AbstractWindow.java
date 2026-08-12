@@ -330,7 +330,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     public Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback) {
         Objects.requireNonNull(callback, "callback");
-        return this.signalBindings.add(signal.onDirtyWeak(() -> callback.accept(this)));
+        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
     }
 
     @Override

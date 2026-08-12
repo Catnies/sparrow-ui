@@ -29,9 +29,20 @@ public sealed interface Signal<T> extends Observable<T> permits MutableSignal, A
 
     /**
      * 订阅值变化, 每次失效后立即求值, 并把新值送给观察者.
+     * <p>按 {@link Observable} 的契约<strong>由本 signal 保活</strong>: 凭证只是取消按钮, 丢掉它不会退订.
+     * 与 {@link #onDirty} 的存活规则<strong>不同</strong>, 这是有意的, 两者各管一类场景:
+     * <table border="1">
+     *   <caption>两种订阅的取舍</caption>
+     *   <tr><th></th><th>{@code subscribe}</th><th>{@code onDirty}</th></tr>
+     *   <tr><td>谁保活</td><td>本 signal</td><td>调用方持有的凭证</td></tr>
+     *   <tr><td>凭证的意义</td><td>取消按钮</td><td>生命令牌, 丢掉即退订</td></tr>
+     *   <tr><td>回调能否捕获界面对象</td><td><strong>不能</strong>, 会被长期押住</td><td>能, 随持有方一起释放</td></tr>
+     *   <tr><td>适合</td><td>与 signal 同寿的旁路逻辑, 如落日志, 记指标</td><td>界面绑定, 以及任何短命的观察方</td></tr>
+     * </table>
+     * <p>所以给界面用请走 {@code bind} 或 {@code dependsOn}; 需要值时在 {@link #onDirty} 回调里 {@link #get()} 即可.
      *
-     * @param observer 要通知的观察者
-     * @return 订阅凭证
+     * @param observer 要通知的观察者, 不应捕获 Player 或外部对象
+     * @return 订阅凭证, 用于显式退订; 丢弃它不影响订阅
      */
     @Override
     @NotNull
@@ -39,22 +50,15 @@ public sealed interface Signal<T> extends Observable<T> permits MutableSignal, A
 
     /**
      * 订阅失效信号, 不允许在回调里让同一个 signal 再次失效.
-     *
-     * @param listener 失效监听器
-     * @return 订阅凭证
-     */
-    @NotNull
-    Subscription onDirty(@NotNull Runnable listener);
-
-    /**
-     * 弱订阅失效, signal 弱持有监听器, <strong>订阅的存活由调用方持有的凭证决定</strong>,
-     * 凭证不再被引用时订阅自动消亡并在后续派发时被剔除. 通知语义同 {@link #onDirty}.
+     * <p>signal 弱持有监听器, <strong>订阅的存活由调用方持有的凭证决定</strong>,
+     * 凭证不再被引用时订阅自动消亡并在后续派发时被剔除. 因此凭证必须存起来, 丢掉就等于退订.
+     * <p>这一点与 {@link #subscribe} 相反, 取舍见那里的表格.
      *
      * @param listener 失效监听器
      * @return 订阅凭证, <strong>必须持有</strong>, 丢弃即取消订阅
      */
     @NotNull
-    Subscription onDirtyWeak(@NotNull Runnable listener);
+    Subscription onDirty(@NotNull Runnable listener);
 
     /**
      * 创建一个可写数据源.

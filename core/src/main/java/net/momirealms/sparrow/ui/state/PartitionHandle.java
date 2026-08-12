@@ -48,7 +48,7 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
             previous = this.forward;
             this.attached = partition;
             // 这里使用弱订阅, 不能让分区反过来钉住本对象.
-            this.forward = partition.onDirtyWeak(this::onPartitionDirty);
+            this.forward = partition.onDirty(this::onPartitionDirty);
             this.version.incrementAndGet();
         }
         if (previous != null) {
