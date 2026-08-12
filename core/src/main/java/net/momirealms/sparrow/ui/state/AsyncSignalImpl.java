@@ -78,7 +78,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
             RuntimeException rejection = this.submit();
             if (rejection == null) {
                 // 重试成功, 但本轮被拒的那次仍要如实上报.
-                SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
+                if (failure != null) {
+                    SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
+                }
                 return;
             }
             failure = ThrowableUtils.combine(failure, rejection);

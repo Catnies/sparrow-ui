@@ -47,17 +47,18 @@ final class TickingSignal extends AbstractSignal<Long> {
         this.notifyDirty();
     }
 
+    /**
+     * 全局区域调度器实现, 自己数回调次数而<strong>不去问服务器当前 tick</strong>.
+     * <p>{@code Bukkit.getCurrentTick()} 在 Folia 上只在区域 tick 内合法.
+     */
     @NotNull
     static TickingSignal.Ticker paperTicker() {
         return onTick -> {
             Plugin plugin = SparrowUI.getInstance().getPlugin();
-            ScheduledTask task = Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, ignoredTask -> {
-                try {
-                    onTick.accept(Bukkit.getCurrentTick());
-                } catch (RuntimeException exception) {
-                    SparrowUI.getInstance().handleException("Failed to dispatch the ticking signal", exception);
-                }
-            }, 1L, 1L);
+            // 只被调度任务这一个线程改写, 不需要原子性
+            long[] elapsed = new long[1];
+            ScheduledTask task = Bukkit.getGlobalRegionScheduler()
+                    .runAtFixedRate(plugin, ignoredTask -> onTick.accept(++elapsed[0]), 1L, 1L);
             return task::cancel;
         };
     }

@@ -12,7 +12,8 @@ public final class Signals {
     }
 
     /**
-     * 服务器 tick 源, 值为最近观察到的服务器 tick({@code Bukkit.getCurrentTick()}).
+     * 服务器 tick 源, 每 tick 失效一次, 值是<strong>本 signal 有订阅者以来经过的 tick 数</strong>.
+     * <p>无订阅期间调度任务会停摆, 值也随之冻结, 因此计数只反映"刷新过多少次", 不能用来推算世界时间.
      *
      * <pre>{@code
      * Signal<Long> day = Signals.ticking().mapDistinct(tick -> tick / 24000L);
