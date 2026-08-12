@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.Subscription;
+
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -13,7 +15,8 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
     private final K key;
     private final AtomicLong version = new AtomicLong();
     private final Object attachLock = new Object();
-    private AbstractSignal<T> attached; // 当前已挂钩的分区, 用于让 attach 幂等
+    private AbstractSignal<T> attached;   // 当前已挂钩的分区, 用于让 attach 幂等
+    private Subscription forward;         // 到 attached 的转发凭证, 与 attached 一起换
 
     PartitionHandle(AbstractKeyedSignal<K, T, ?> owner, K key) {
         this.owner = owner;
@@ -34,26 +37,42 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
     }
 
     /**
-     * 建立分区到本句柄的转发, 该订阅随分区删除一同关闭.
+     * 建立分区到本句柄的转发, 换挂时自己关掉上一条.
      */
     void attach(AbstractSignal<T> partition) {
+        Subscription previous;
         synchronized (this.attachLock) {
             if (this.attached == partition) {
                 return;
             }
+            previous = this.forward;
             this.attached = partition;
-            partition.onDirty(this::onPartitionDirty);
+            this.forward = partition.onDirty(this::onPartitionDirty);
+            this.version.incrementAndGet();
+        }
+        if (previous != null) {
+            previous.close();
         }
     }
 
     /**
-     * 删除分区时调用, 句柄推进版本.
+     * 分区被删除时调用, 同样只允许在该 key 的映射函数内.
+     *
+     * @param evicted 需要被删除的分区
      */
-    void onPartitionEvicted() {
+    void onPartitionEvicted(AbstractSignal<T> evicted) {
+        Subscription previous;
         synchronized (this.attachLock) {
+            // 只有被删除的是当前挂着的那一个才删除
+            if (this.attached != evicted) return;
+            previous = this.forward;
             this.attached = null;
+            this.forward = null;
+            this.version.incrementAndGet();
         }
-        this.version.incrementAndGet();
+        if (previous != null) {
+            previous.close();
+        }
     }
 
     /**

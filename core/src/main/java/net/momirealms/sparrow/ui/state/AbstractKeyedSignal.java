@@ -34,23 +34,17 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
      */
     final P partition(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        P partition = this.partitions.computeIfAbsent(key, this::createAndAttach);
+        P partition = this.partitions.computeIfAbsent(key, k -> {
+            // 创建分区并接到该 key 已有的 {@link PartitionHandle} 上.
+            P created = this.createPartition(key);
+            PartitionHandle<K, T> handle = this.handles.get(key);
+            if (handle != null) {
+                handle.attach(created);
+            }
+            return created;
+        });
         this.afterPartitionAccess(partition);
         return partition;
-    }
-
-    /**
-     * 创建分区并接到该 key 已有的 {@link PartitionHandle} 上.
-     * <p>这里<strong>不创建</strong>句柄: 只有 {@link #at(Object)} 才需要句柄, 而 {@code get} /
-     * {@code set} / {@code dirty} 也会走到这里.
-     */
-    private P createAndAttach(K key) {
-        P created = this.createPartition(key);
-        PartitionHandle<K, T> handle = this.handles.get(key);
-        if (handle != null) {
-            handle.attach(created);
-        }
-        return created;
     }
 
     /**
@@ -71,8 +65,15 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     @Override
     @NotNull
     public Signal<T> at(@NotNull K key) {
+        Objects.requireNonNull(key, "key");
         PartitionHandle<K, T> handle = this.handles.computeIfAbsent(key, ignored -> new PartitionHandle<>(this, key));
-        handle.attach(this.partition(key));
+        // 句柄可能晚于分区出现(先 get 后 at), 那种情况下分区创建时还找不到句柄, 由这里补挂.
+        P partition = this.partitions.compute(key, (ignored, existing) -> {
+            P target = existing != null ? existing : this.createPartition(key);
+            handle.attach(target);
+            return target;
+        });
+        this.afterPartitionAccess(partition);
         return handle;
     }
 
@@ -95,16 +96,15 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     @Override
     public void remove(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        P partition = this.partitions.remove(key);
-        if (partition == null) {
-            return;
-        }
-        // 分区终止会关闭它的全部订阅, 其中就包括到句柄的转发; 下次访问重建分区时会重新挂上.
-        partition.retire();
-        PartitionHandle<K, T> handle = this.handles.get(key);
-        if (handle != null) {
-            handle.onPartitionEvicted();
-        }
+        this.partitions.computeIfPresent(key, (ignored, partition) -> {
+            // 分区终止会关闭它的全部订阅.
+            partition.retire();
+            PartitionHandle<K, T> handle = this.handles.get(key);
+            if (handle != null) {
+                handle.onPartitionEvicted(partition);
+            }
+            return null;
+        });
     }
 
     /**
