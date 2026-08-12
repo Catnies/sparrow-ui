@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 
 import java.util.Objects;
@@ -67,17 +68,18 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
     }
 
-    // 提交加载任务, 执行器拒绝时按当前状态回滚.
+    /**
+     * 提交加载任务, 执行器拒绝任务时按当前状态回滚,
+     * 极窄窗口内并发登记的失效可能丢失, 下一次 dirty() 会恢复.
+     */
     private void scheduleLoad(int rollbackState) {
         RuntimeException failure = null;
         for (int attempt = 0; attempt < MAX_SCHEDULE_ATTEMPTS; attempt++) {
             RuntimeException rejection = this.submit();
             if (rejection == null) {
-                if (failure == null) {
-                    return;
-                }
-                // 重试成功, 但本轮调度的拒绝仍要如实告知调用方.
-                throw failure;
+                // 重试成功, 但本轮被拒的那次仍要如实上报.
+                SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
+                return;
             }
             failure = ThrowableUtils.combine(failure, rejection);
             // 期间登记的失效记录下, 完成后进行一次额外的尝试.
@@ -87,7 +89,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
         // 最终回滚到一个可再次调度的状态.
         this.loadState.set(rollbackState);
-        throw failure;
+        SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
     }
 
     private RuntimeException submit() {
@@ -114,11 +116,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
 
         if (pending && !this.isRetired()) {
-            try {
-                this.scheduleLoad(IDLE);
-            } catch (RuntimeException exception) {
-                failure = ThrowableUtils.combine(failure, exception);
-            }
+            this.scheduleLoad(IDLE);
         }
         if (changed) {
             try {
@@ -127,8 +125,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
                 failure = ThrowableUtils.combine(failure, exception);
             }
         }
+        // 本方法整个跑在执行器线程上, 抛出去只会落到执行器的未捕获处理器, 或者直接被吞掉.
         if (failure != null) {
-            throw failure;
+            SparrowUI.getInstance().handleException("Failed to load an async signal value", failure);
         }
     }
 

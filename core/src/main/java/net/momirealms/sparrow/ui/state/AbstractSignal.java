@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.state;
 
-import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.NotNull;
@@ -45,26 +44,18 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     protected void onInactive() {
     }
 
-    @Override
     @NotNull
-    public Subscription subscribe(@NotNull Observer<? super T> observer) {
-        Objects.requireNonNull(observer, "observer");
-        // 遵循 Observable 契约: 由本 signal 保活, 凭证只是取消按钮.
-        return this.register(() -> observer.onUpdate(this.get()), true);
-    }
-
     @Override
-    @NotNull
     public Subscription onDirty(@NotNull Runnable listener) {
         Objects.requireNonNull(listener, "listener");
-        return this.register(listener, false);
+        return this.register(listener);
     }
 
     @NotNull
-    private Subscription register(Runnable callback, boolean retain) {
+    private Subscription register(Runnable callback) {
         // 弱引用的目标必须是新建的节点, 因为无捕获 lambda 与静态方法引用会被 JVM 缓存成常驻单例, 弱引用永远不会清空.
         BindingNode node = new BindingNode(callback);
-        Entry entry = new Entry(node, retain);
+        Entry entry = new Entry(node);
         node.bindEntry(entry);
         synchronized (this.activationLock) {
             // 已终止的信号不再接受订阅, 返回一条立即失效的凭证.
@@ -172,21 +163,14 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 订阅条目, 两种保活方式共用一个实现.
-     * <p>{@code retained} 为 null 时是<strong>调用方保活</strong>: 本 signal 只弱引用绑定节点, 凭证一丢订阅就消亡.
-     * 用户回调因此可以随便捕获任何东西, 包括持有凭证的那一方 —— 持有方, 节点, 回调构成的环没有外部强引用
-     * 指进来, 会被整体回收. {@link #onDirty} 走这一条.
-     * <p>{@code retained} 非 null 时是<strong>本 signal 保活</strong>: 条目自己攥着节点, 凭证丢掉订阅照旧存在,
-     * 直到显式关闭. {@link #subscribe} 走这一条, 以符合 {@link net.momirealms.sparrow.ui.Observable} 的契约.
+     * 订阅条目, 本 signal 只弱引用绑定节点, 凭证一丢订阅就消亡.
      */
     private final class Entry implements Subscription {
         private final AtomicBoolean closed = new AtomicBoolean();
         private final NodeReference node;
-        @Nullable private volatile BindingNode retained;
 
-        private Entry(BindingNode node, boolean retain) {
+        private Entry(BindingNode node) {
             this.node = new NodeReference(node, this, AbstractSignal.this.deadNodes);
-            this.retained = retain ? node : null;
         }
 
         // 返回 {@code false} 表示节点已被 GC, 条目应被剔除.
@@ -213,7 +197,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
                 if (this.node.get() instanceof BindingNode node) {
                     node.detach();
                 }
-                this.retained = null;
             }
         }
     }
