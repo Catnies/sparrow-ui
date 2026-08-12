@@ -2,10 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.concurrent.ConcurrentHashMap;
-
 public final class Signals {
-    private static final ConcurrentHashMap<Long, Signal<Long>> PERIODIC = new ConcurrentHashMap<>();
     private static volatile TickingSignal ticking;
 
     private Signals() {
@@ -39,6 +36,7 @@ public final class Signals {
     /**
      * 按周期降频的 tick 源, 每 {@code periodTicks} 个 tick 失效一次, 值为已经过去的周期数.
      * <p>相同周期共享同一个派生节点, 因此所有用同一周期的绑定会在同一 tick 一起失效, 天然合并;
+     * 共享只在有人持有时成立, 最后一个持有方消失后节点连同缓存一起回收.
      *
      * @param periodTicks 正数 tick 周期
      * @return 降频后的 tick 源
@@ -51,6 +49,6 @@ public final class Signals {
         if (periodTicks == 1L) {
             return ticking();
         }
-        return PERIODIC.computeIfAbsent(periodTicks, period -> ticking().mapDistinct(tick -> tick / period));
+        return ((TickingSignal) ticking()).every(periodTicks);
     }
 }
