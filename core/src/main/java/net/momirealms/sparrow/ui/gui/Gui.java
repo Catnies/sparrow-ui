@@ -767,15 +767,15 @@ public sealed interface Gui permits AbstractGui {
     /**
      * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
      * 当 Signal 被标脏时, 会触发传入的回调函数.
+     * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
+     * <p>绑定由本对象持有, 本对象被回收时一并消失,{@code callback} 捕获的对象随本对象一起释放.
      *
      * @param signal 数据源
      * @param callback 失效回调
      * @return 订阅凭证, 可用于提前解绑.
      */
     @NotNull
-    default Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Gui> callback) {
-        return signal.onDirtyWeak(this, callback);
-    }
+    Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Gui> callback);
 
     /**
      * 通过 Structure 标志符填充槽位, 并创建 GUI.

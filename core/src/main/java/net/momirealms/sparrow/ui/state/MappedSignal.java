@@ -40,7 +40,8 @@ final class MappedSignal<S, T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        this.upstream = this.source.onDirty(this::notifyDirty);
+        // 这里使用弱订阅, 不能让分区反过来钉住本节点.
+        this.upstream = this.source.onDirtyWeak(this::notifyDirty);
     }
 
     @Override

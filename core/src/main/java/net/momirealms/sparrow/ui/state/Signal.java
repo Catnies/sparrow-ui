@@ -9,12 +9,12 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * 响应式数据源: 持有单个值, 值过期时向订阅者广播失效.
+ * <p>值按 {@code equals} 判断有没有变化, 原地改掉一个可变对象再写回同一个引用会被当成没变.
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
@@ -38,7 +38,7 @@ public sealed interface Signal<T> extends Observable<T> permits MutableSignal, A
     Subscription subscribe(@NotNull Observer<? super T> observer);
 
     /**
-     * 订阅失效信号, 通知不携带值, 也不触发任何求值.
+     * 订阅失效信号, 不允许在回调里让同一个 signal 再次失效.
      *
      * @param listener 失效监听器
      * @return 订阅凭证
@@ -47,15 +47,14 @@ public sealed interface Signal<T> extends Observable<T> permits MutableSignal, A
     Subscription onDirty(@NotNull Runnable listener);
 
     /**
-     * 以弱引用宿主订阅失效, 宿主被 GC 后订阅自动作废并在后续派发时被剔除.
-     * 通知语义同 {@link #onDirty} —— 不携带值, 也不触发求值.
+     * 弱订阅失效, signal 弱持有监听器, <strong>订阅的存活由调用方持有的凭证决定</strong>,
+     * 凭证不再被引用时订阅自动消亡并在后续派发时被剔除. 通知语义同 {@link #onDirty}.
      *
-     * @param owner 弱引用宿主
      * @param listener 失效监听器
-     * @return 订阅凭证, 可用于尽早拆除, 通常直接忽略
+     * @return 订阅凭证, <strong>必须持有</strong>, 丢弃即取消订阅
      */
     @NotNull
-    <O> Subscription onDirtyWeak(@NotNull O owner, @NotNull Consumer<? super O> listener);
+    Subscription onDirtyWeak(@NotNull Runnable listener);
 
     /**
      * 创建一个可写数据源.

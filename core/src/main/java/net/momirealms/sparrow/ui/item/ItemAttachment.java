@@ -71,7 +71,7 @@ public interface ItemAttachment extends AutoCloseable {
         ) {
             for (int index = 0; index < dependencies.size(); index++) {
                 Signal<?> signal = dependencies.get(index).apply(viewer);
-                this.track(signal.onDirtyWeak(this, Tracking::fire));
+                this.track(signal.onDirtyWeak(this::fire));
             }
         }
 

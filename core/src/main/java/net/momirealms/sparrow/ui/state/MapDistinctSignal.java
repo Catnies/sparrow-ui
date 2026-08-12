@@ -67,7 +67,8 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        this.upstream = this.source.onDirty(this::onSourceDirty);
+        // 这里使用弱订阅, 不能让分区反过来钉住本节点.
+        this.upstream = this.source.onDirtyWeak(this::onSourceDirty);
         try {
             synchronized (this.recomputeLock) {
                 // 没有基线时首次订阅会把"从无到有"误判为值变化,

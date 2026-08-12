@@ -1,14 +1,17 @@
 package net.momirealms.sparrow.ui.gui;
 
+import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * 保存 GUI 的槽位元素, 背景, 冻结状态和逐槽订阅.
@@ -20,6 +23,7 @@ abstract non-sealed class AbstractGui implements Gui {
     private final Structure structure;      // 槽位布局
     private final SlotElement[] elements;   // 每个槽位当前保存的元素
     private final SlotObserver[] observers; // 每个槽位对应一条订阅链的头节点
+    private final SignalBindings signalBindings = new SignalBindings(); // 持有的 Signal 绑定
 
     private ItemProvider background;    // 空槽位显示的背景, 可为 null
     private boolean frozen;             // 是否禁止玩家交互
@@ -239,6 +243,13 @@ abstract non-sealed class AbstractGui implements Gui {
                 this.frozen,
                 subscription
         );
+    }
+
+    @Override
+    @NotNull
+    public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Gui> callback) {
+        Objects.requireNonNull(callback, "callback");
+        return this.signalBindings.add(signal.onDirtyWeak(() -> callback.accept(this)));
     }
 
     // 从槽位订阅链中断开指定节点, 并清除它持有的引用.

@@ -12,7 +12,6 @@ import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -31,7 +30,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         TickingSignal
 {
     private final CopyOnWriteArrayList<Entry> entries = new CopyOnWriteArrayList<>(); // 订阅者
-    private final ReferenceQueue<Object> deadOwners = new ReferenceQueue<>(); // 弱引用条目
+    private final ReferenceQueue<Runnable> deadNodes = new ReferenceQueue<>(); // 绑定节点已被回收的弱条目
     private final Object activationLock = new Object();
     private volatile boolean retired;
 
@@ -62,10 +61,14 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 
     @Override
     @NotNull
-    public <O> Subscription onDirtyWeak(@NotNull O owner, @NotNull Consumer<? super O> listener) {
-        Objects.requireNonNull(owner, "owner");
+    public Subscription onDirtyWeak(@NotNull Runnable listener) {
         Objects.requireNonNull(listener, "listener");
-        return this.register(new WeakInvalidationEntry<>(owner, listener));
+        // 弱引用的目标必须是新建的节点, 因为无捕获 lambda 与静态方法引用会被 JVM 缓存成常驻单例, 弱引用永远不会清空.
+        BindingNode node = new BindingNode(listener);
+        WeakNodeEntry entry = new WeakNodeEntry(node);
+        node.bindEntry(entry);
+        this.register(entry);
+        return node;
     }
 
     @NotNull
@@ -90,11 +93,11 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return entry;
     }
 
-    // 关闭弱宿主已被回收的条目.
+    // 关闭绑定节点已被回收的弱条目.
     final void reapDeadEntries() {
         Reference<?> reference;
-        while ((reference = this.deadOwners.poll()) != null) {
-            if (reference instanceof OwnerReference<?> dead) {
+        while ((reference = this.deadNodes.poll()) != null) {
+            if (reference instanceof NodeReference dead) {
                 dead.entry.close();
             }
         }
@@ -191,7 +194,12 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         public void close() {
             if (this.closed.compareAndSet(false, true)) {
                 AbstractSignal.this.unregister(this);
+                this.onClosed();
             }
+        }
+
+        // 条目真正关闭后执行一次, 用于反向通知持有方.
+        void onClosed() {
         }
     }
 
@@ -223,35 +231,92 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         }
     }
 
-    private final class WeakInvalidationEntry<O> extends Entry {
-        private final OwnerReference<O> owner;
-        private final Consumer<? super O> listener;
+    private final class WeakNodeEntry extends Entry {
+        private final NodeReference node;
 
-        private WeakInvalidationEntry(O owner, Consumer<? super O> listener) {
-            this.owner = new OwnerReference<>(owner, this, AbstractSignal.this.deadOwners);
-            this.listener = listener;
+        private WeakNodeEntry(BindingNode node) {
+            this.node = new NodeReference(node, this, AbstractSignal.this.deadNodes);
         }
 
         @Override
         boolean deliver() {
-            @Nullable O host = this.owner.get();
-            if (host == null) {
+            @Nullable Runnable target = this.node.get();
+            if (target == null) {
                 return false;
             }
-            this.listener.accept(host);
+            target.run();
             return true;
+        }
+
+        @Override
+        void onClosed() {
+            // 条目也可能被 retire 或死条目清理直接关掉, 那些路径不经过 BindingNode.close(),
+            // 所以拆除统一收在这里: 节点还活着就让它丢掉回调与对本 signal 的引用.
+            if (this.node.get() instanceof BindingNode node) {
+                node.detach();
+            }
         }
     }
 
     /**
-     * 弱宿主引用.
-     * 携带所属条目, 宿主被回收后可以直接从引用队列定位并关闭该条目.
+     * 弱订阅的凭证, 同时是用户回调的宿主.
+     * <p>本 signal 只弱引用它, 所以订阅的存活完全由持有本节点的一方决定. 它强持有条目,
+     * 而条目是本 signal 的内部类, 因此持有本节点等于持有整条上游.
+     * <p>关闭后 {@link #detach()} 会同时丢掉回调与条目, 于是回调捕获的对象和整条上游都当场可回收.
      */
-    private static final class OwnerReference<O> extends WeakReference<O> {
+    private static final class BindingNode implements Subscription, Runnable {
+        @Nullable private volatile Runnable callback;   // 关闭后置 null
+        @Nullable private volatile Subscription entry;  // 注册后填入, 关闭后置 null
+        private volatile boolean closed;
+
+        private BindingNode(@NotNull Runnable callback) {
+            this.callback = callback;
+        }
+
+        private void bindEntry(Subscription entry) {
+            this.entry = entry;
+        }
+
+        @Override
+        public void run() {
+            @Nullable Runnable target = this.callback;
+            if (target != null) {
+                target.run();
+            }
+        }
+
+        @Override
+        public boolean isClosed() {
+            return this.closed;
+        }
+
+        @Override
+        public void close() {
+            @Nullable Subscription current = this.entry;
+            if (current != null) {
+                current.close();
+            } else {
+                this.detach();
+            }
+        }
+
+        // 断开两个方向的引用, 不再持有用户回调, 也不再经条目持有所属 signal.
+        private void detach() {
+            this.closed = true;
+            this.callback = null;
+            this.entry = null;
+        }
+    }
+
+    /**
+     * 对 {@link BindingNode} 的弱引用, 目标以 {@link Runnable} 形态存放.
+     * 携带所属条目, 节点被回收后可以直接从引用队列定位并关闭该条目.
+     */
+    private static final class NodeReference extends WeakReference<Runnable> {
         private final Subscription entry;
 
-        private OwnerReference(O owner, Subscription entry, ReferenceQueue<? super O> queue) {
-            super(owner, queue);
+        private NodeReference(Runnable node, Subscription entry, ReferenceQueue<? super Runnable> queue) {
+            super(node, queue);
             this.entry = entry;
         }
     }

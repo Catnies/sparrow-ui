@@ -7,7 +7,10 @@ import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.gui.Gui;
 import net.momirealms.sparrow.ui.gui.SlotElement;
@@ -84,6 +87,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final Player viewer;
     private final WindowLayout layout;
     private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
+    private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
     private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
@@ -320,6 +324,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 () -> this.closeHandlers.append(handler),
                 "Failed to add Window close handler"
         );
+    }
+
+    @Override
+    @NotNull
+    public Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback) {
+        Objects.requireNonNull(callback, "callback");
+        return this.signalBindings.add(signal.onDirtyWeak(() -> callback.accept(this)));
     }
 
     @Override

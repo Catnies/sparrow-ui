@@ -38,8 +38,8 @@ public interface KeyedSignal<K, T> {
 
     /**
      * 返回指定分区的 {@link Signal} .
-     * <p>视图与 key 同生命周期, 分区被 {@link #remove(Object)} 删除并在
-     * 下次访问时重建后, 先前取得的视图会自动跟到新分区, 其上的订阅与派生保持有效.
+     * <p>分区被 {@link #remove(Object)} 并在下次访问重建后, 取得的视图会自动跟到新分区, 其订阅与派生保持有效.
+     * <p>视图按弱引用缓存: 只要还有人持有它, 或者它上面还挂着绑定, 同一个 key 拿到的就是同一个实例;
      *
      * @param key 分区 key
      * @return 分区视图
