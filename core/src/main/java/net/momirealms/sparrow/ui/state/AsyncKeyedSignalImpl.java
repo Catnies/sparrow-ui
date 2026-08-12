@@ -16,6 +16,11 @@ final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSi
     private final Function<? super K, ? extends T> loader;
 
     AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader) {
+        this(placeholder, executor, loader, KeyStateStore.generic());
+    }
+
+    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store) {
+        super(store);
         this.placeholder = placeholder;
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");

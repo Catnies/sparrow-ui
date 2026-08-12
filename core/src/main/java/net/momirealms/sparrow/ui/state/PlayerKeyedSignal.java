@@ -61,7 +61,7 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> MutablePlayerKeyedSignal<T> of(@NotNull Function<? super UUID, ? extends T> initial) {
-        return new MutablePlayerKeyedSignalImpl<>(KeyedSignal.of(initial));
+        return new MutablePlayerKeyedSignalImpl<>(new KeyedSignalImpl<>(initial, KeyStateStore.uuid()));
     }
 
     /**
@@ -74,6 +74,6 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> PlayerKeyedSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader) {
-        return new PlayerKeyedSignalImpl<>(KeyedSignal.async(placeholder, executor, loader));
+        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, KeyStateStore.uuid()));
     }
 }

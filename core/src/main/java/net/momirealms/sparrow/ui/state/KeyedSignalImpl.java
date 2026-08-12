@@ -17,6 +17,11 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
     private final Function<? super K, ? extends T> initial;
 
     KeyedSignalImpl(Function<? super K, ? extends T> initial) {
+        this(initial, KeyStateStore.generic());
+    }
+
+    KeyedSignalImpl(Function<? super K, ? extends T> initial, KeyStateStore<K, KeyState<K, T, SyncPartition<K, T>>> store) {
+        super(store);
         this.initial = Objects.requireNonNull(initial, "initial");
     }
 
