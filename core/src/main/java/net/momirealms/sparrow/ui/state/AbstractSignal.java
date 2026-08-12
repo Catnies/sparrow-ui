@@ -182,7 +182,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     private abstract class Entry implements Subscription {
         private final AtomicBoolean closed = new AtomicBoolean();
 
-        // 返回 {@code false} 表示宿主已被 GC, 条目应被剔除.
+        // 返回 {@code false} 表示订阅方已被 GC, 条目应被剔除.
         abstract boolean deliver();
 
         @Override
@@ -259,7 +259,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 弱订阅的凭证, 同时是用户回调的宿主.
+     * 弱订阅的凭证, 强持有用户回调.
      * <p>本 signal 只弱引用它, 所以订阅的存活完全由持有本节点的一方决定. 它强持有条目,
      * 而条目是本 signal 的内部类, 因此持有本节点等于持有整条上游.
      * <p>关闭后 {@link #detach()} 会同时丢掉回调与条目, 于是回调捕获的对象和整条上游都当场可回收.

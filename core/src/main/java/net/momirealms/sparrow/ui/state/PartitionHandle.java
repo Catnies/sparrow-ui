@@ -5,7 +5,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * {@link KeyedSignal#at} 返回的分区视图: 一个只做转发的稳定句柄, 生命周期与 key 绑定.
+ * {@link KeyedSignal#at} 返回的分区句柄: 只做转发, 跨越分区的删除重建持续有效.
  *
  * @param <K> 分区 key 类型
  * @param <T> 值类型

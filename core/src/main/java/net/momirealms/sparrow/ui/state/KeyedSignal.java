@@ -38,11 +38,11 @@ public interface KeyedSignal<K, T> {
 
     /**
      * 返回指定分区的 {@link Signal} .
-     * <p>分区被 {@link #remove(Object)} 并在下次访问重建后, 取得的视图会自动跟到新分区, 其订阅与派生保持有效.
-     * <p>视图按弱引用缓存: 只要还有人持有它, 或者它上面还挂着绑定, 同一个 key 拿到的就是同一个实例;
+     * <p>分区被 {@link #remove(Object)} 并在下次访问重建后, 取得的句柄会自动跟到新分区, 其订阅与派生保持有效.
+     * <p>句柄按弱引用缓存: 只要还有人持有它, 或者它上面还挂着绑定, 同一个 key 拿到的就是同一个实例;
      *
      * @param key 分区 key
-     * @return 分区视图
+     * @return 分区句柄
      */
     @NotNull
     Signal<T> at(@NotNull K key);

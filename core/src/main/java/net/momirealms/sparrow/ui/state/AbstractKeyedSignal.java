@@ -65,7 +65,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     }
 
     /**
-     * 返回的是持有分区本身的 {@link PartitionHandle} 句柄实现, 跨越删除重建后持续有效.
+     * 返回的是持有分区本身的 {@link PartitionHandle}, 跨越删除重建后持续有效.
      * 缓存是弱的, 句柄只在调用方或某条绑定还持有它时存活, 因此只读取过而没有绑定过的 key 不留痕迹.
      * 删除释放的是分区及其缓存值.
      */
@@ -88,7 +88,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     /**
      * 取出或新建 key 对应的句柄.
      * <p>句柄按弱引用缓存: 强引用只来自调用方拿到的返回值, 以及绑定凭证里那条通往句柄的链路.
-     * 两者都不在了就说明没人再关心这个 key 的视图, 句柄随之回收.
+     * 两者都不在了就说明没人再关心这个 key, 句柄随之回收.
      */
     private PartitionHandle<K, T> handle(K key) {
         AtomicReference<PartitionHandle<K, T>> resolved = new AtomicReference<>();
@@ -163,9 +163,9 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     }
 
     /**
-     * 当前仍存活的视图数.
+     * 当前仍存活的 {@link PartitionHandle} 数.
      */
-    final int viewCount() {
+    final int handleCount() {
         this.purgeDeadHandles();
         int count = 0;
         for (HandleReference<K, T> reference : this.handles.values()) {

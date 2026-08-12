@@ -34,10 +34,10 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
     }
 
     /**
-     * 返回指定玩家分区的 {@link Signal} 视图.
+     * 返回指定玩家分区的 {@link Signal} 句柄.
      *
      * @param player 玩家
-     * @return 分区视图
+     * @return 分区句柄
      */
     @NotNull
     default Signal<T> at(@NotNull Player player) {
