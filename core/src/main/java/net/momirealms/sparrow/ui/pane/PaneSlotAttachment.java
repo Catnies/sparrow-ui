@@ -1,17 +1,17 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public final class GuiSlotAttachment implements AutoCloseable {
-    private final SlotElement element;       // 订阅创建时的槽位元素
-    private final ItemProvider background;   // 订阅创建时的 GUI 背景, 可为 null
+public final class PaneSlotAttachment implements AutoCloseable {
+    private final Element element;       // 订阅创建时的槽位元素
+    private final ItemProvider background;   // 订阅创建时的 Pane 背景, 可为 null
     private final boolean frozen;            // 订阅创建时的冻结状态
     private final Subscription subscription; // 槽位更新订阅
 
-    GuiSlotAttachment(SlotElement element, @Nullable ItemProvider background, boolean frozen, Subscription subscription) {
+    PaneSlotAttachment(Element element, @Nullable ItemProvider background, boolean frozen, Subscription subscription) {
         this.element = element;
         this.background = background;
         this.frozen = frozen;
@@ -24,14 +24,14 @@ public final class GuiSlotAttachment implements AutoCloseable {
      * @return 订阅创建时的槽位元素
      */
     @NotNull
-    public SlotElement element() {
+    public Element element() {
         return this.element;
     }
 
     /**
-     * 返回订阅创建时的 GUI 背景.
+     * 返回订阅创建时的 Pane 背景.
      *
-     * @return 订阅创建时的 GUI 背景, 没有背景时为 null
+     * @return 订阅创建时的 Pane 背景, 没有背景时为 null
      */
     @Nullable
     public ItemProvider background() {
@@ -39,9 +39,9 @@ public final class GuiSlotAttachment implements AutoCloseable {
     }
 
     /**
-     * 返回订阅创建时 GUI 是否冻结.
+     * 返回订阅创建时 Pane 是否冻结.
      *
-     * @return 订阅创建时 GUI 是否冻结
+     * @return 订阅创建时 Pane 是否冻结
      */
     public boolean frozen() {
         return this.frozen;

@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.window.click.RecipeBookSelectClick;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.FurnaceMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import org.bukkit.entity.Player;
@@ -91,10 +91,10 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
      * 三种炉类 Window Builder 共用的槽位与进度实现.
      */
     abstract static class BuilderBase<W extends RecipeBookWindow, B extends RecipeBookWindow.Builder<W, B>> extends AbstractRecipeBookWindow.BuilderBase<W, B> {
-        private Gui inputGui = Gui.empty(new GuiSize(1, 1));
-        private Gui fuelGui = Gui.empty(new GuiSize(1, 1));
-        private Gui resultGui = Gui.empty(new GuiSize(1, 1));
-        private @Nullable Gui lowerGui;
+        private Pane inputPane = Pane.empty(new PaneSize(1, 1));
+        private Pane fuelPane = Pane.empty(new PaneSize(1, 1));
+        private Pane resultPane = Pane.empty(new PaneSize(1, 1));
+        private @Nullable Pane lowerPane;
         private double cookProgress;
         private double fuelProgress;
 
@@ -103,35 +103,35 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
 
         BuilderBase(@NotNull BuilderBase<W, B> source) {
             super(source);
-            this.inputGui = source.inputGui;
-            this.fuelGui = source.fuelGui;
-            this.resultGui = source.resultGui;
-            this.lowerGui = source.lowerGui;
+            this.inputPane = source.inputPane;
+            this.fuelPane = source.fuelPane;
+            this.resultPane = source.resultPane;
+            this.lowerPane = source.lowerPane;
             this.cookProgress = source.cookProgress;
             this.fuelProgress = source.fuelProgress;
         }
 
         @NotNull
-        public final B setInputGui(@NotNull Gui inputGui) {
-            this.inputGui = inputGui;
+        public final B setInputPane(@NotNull Pane inputPane) {
+            this.inputPane = inputPane;
             return this.self();
         }
 
         @NotNull
-        public final B setFuelGui(@NotNull Gui fuelGui) {
-            this.fuelGui = fuelGui;
+        public final B setFuelPane(@NotNull Pane fuelPane) {
+            this.fuelPane = fuelPane;
             return this.self();
         }
 
         @NotNull
-        public final B setResultGui(@NotNull Gui resultGui) {
-            this.resultGui = resultGui;
+        public final B setResultPane(@NotNull Pane resultPane) {
+            this.resultPane = resultPane;
             return this.self();
         }
 
         @NotNull
-        public final B setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public final B setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this.self();
         }
 
@@ -156,19 +156,19 @@ abstract class AbstractFurnaceWindow extends AbstractRecipeBookWindow<FurnaceMen
         @Override
         @NotNull
         protected final W createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.inputGui.width() != 1 || this.inputGui.height() != 1)
-                throw new IllegalArgumentException("input GUI must have size 1x1");
-            if (this.fuelGui.width() != 1 || this.fuelGui.height() != 1)
-                throw new IllegalArgumentException("fuel GUI must have size 1x1");
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
-                throw new IllegalArgumentException("result GUI must have size 1x1");
+            if (this.inputPane.width() != 1 || this.inputPane.height() != 1)
+                throw new IllegalArgumentException("input Pane must have size 1x1");
+            if (this.fuelPane.width() != 1 || this.fuelPane.height() != 1)
+                throw new IllegalArgumentException("fuel Pane must have size 1x1");
+            if (this.resultPane.width() != 1 || this.resultPane.height() != 1)
+                throw new IllegalArgumentException("result Pane must have size 1x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.inputGui),
-                    WindowLayout.Region.upper(this.fuelGui),
-                    WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.inputPane),
+                    WindowLayout.Region.upper(this.fuelPane),
+                    WindowLayout.Region.upper(this.resultPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return this.createFurnaceWindow(
                     viewer,

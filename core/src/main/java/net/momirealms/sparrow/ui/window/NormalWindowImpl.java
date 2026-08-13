@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import org.bukkit.entity.Player;
@@ -26,37 +26,37 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<NormalWindow, NormalWindow.Builder> implements NormalWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(9, 6));
-        private @Nullable Gui lowerGui;
-        private @Nullable Gui mergedGui;
+        private Pane upperPane = Pane.empty(new PaneSize(9, 6));
+        private @Nullable Pane lowerPane;
+        private @Nullable Pane mergedPane;
 
         BuilderImpl() {
         }
 
-        BuilderImpl(@NotNull Gui mergedGui) {
-            this.mergedGui = mergedGui;
+        BuilderImpl(@NotNull Pane mergedPane) {
+            this.mergedPane = mergedPane;
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
-            this.mergedGui = source.mergedGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
+            this.mergedPane = source.mergedPane;
         }
 
         @NotNull
         @Override
-        public NormalWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
-            this.mergedGui = null;
+        public NormalWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = upperPane;
+            this.mergedPane = null;
             return this;
         }
 
         @NotNull
         @Override
-        public NormalWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
-            this.mergedGui = null;
+        public NormalWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
+            this.mergedPane = null;
             return this;
         }
 
@@ -76,17 +76,17 @@ final class NormalWindowImpl extends AbstractWindow<MenuHandle> implements Norma
         @Override
         protected NormalWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
             WindowLayout layout;
-            if (this.mergedGui != null) {
-                if (this.mergedGui.width() != 9 || this.mergedGui.height() < 5 || this.mergedGui.height() > 10) {
-                    throw new IllegalArgumentException("merged GUI must have width 9 and height between 5 and 10");
+            if (this.mergedPane != null) {
+                if (this.mergedPane.width() != 9 || this.mergedPane.height() < 5 || this.mergedPane.height() > 10) {
+                    throw new IllegalArgumentException("merged Pane must have width 9 and height between 5 and 10");
                 }
-                layout = WindowLayout.merged(this.mergedGui);
+                layout = WindowLayout.merged(this.mergedPane);
             } else {
-                if (this.upperGui.width() != 9 || this.upperGui.height() < 1 || this.upperGui.height() > 6) {
-                    throw new IllegalArgumentException("normal upper GUI must have width 9 and height between 1 and 6");
+                if (this.upperPane.width() != 9 || this.upperPane.height() < 1 || this.upperPane.height() > 6) {
+                    throw new IllegalArgumentException("normal upper Pane must have width 9 and height between 1 and 6");
                 }
-                Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-                layout = WindowLayout.split(this.upperGui, lowerGui);
+                Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
+                layout = WindowLayout.split(this.upperPane, lowerPane);
             }
             return new NormalWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }

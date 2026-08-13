@@ -3,8 +3,8 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
@@ -441,8 +441,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<MerchantWindow, MerchantWindow.Builder> implements MerchantWindow.Builder {
-        private Gui upperGui;
-        private @Nullable Gui lowerGui;
+        private Pane upperPane;
+        private @Nullable Pane lowerPane;
         private int level;
         private double progress = -1.0;
         private boolean restockMessageEnabled;
@@ -454,8 +454,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
             this.level = source.level;
             this.progress = source.progress;
             this.restockMessageEnabled = source.restockMessageEnabled;
@@ -465,15 +465,15 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
         @Override
         @NotNull
-        public MerchantWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = Objects.requireNonNull(upperGui, "upperGui");
+        public MerchantWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = Objects.requireNonNull(upperPane, "upperPane");
             return this;
         }
 
         @Override
         @NotNull
-        public MerchantWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public MerchantWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -542,16 +542,16 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         @Override
         @NotNull
         protected MerchantWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui == null) {
-                this.upperGui = Gui.empty(new GuiSize(3, 1));
-            } else if (this.upperGui.width() != 3 || this.upperGui.height() != 1) {
-                throw new IllegalArgumentException("merchant upper GUI must have size 3x1");
+            if (this.upperPane == null) {
+                this.upperPane = Pane.empty(new PaneSize(3, 1));
+            } else if (this.upperPane.width() != 3 || this.upperPane.height() != 1) {
+                throw new IllegalArgumentException("merchant upper Pane must have size 3x1");
             }
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.upperGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.upperPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return new MerchantWindowImpl(
                     WindowManager.getInstance(),

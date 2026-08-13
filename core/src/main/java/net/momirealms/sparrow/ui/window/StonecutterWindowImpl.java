@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.internal.menu.StonecutterMenuHandle;
@@ -107,9 +107,9 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<StonecutterWindow, StonecutterWindow.Builder> implements StonecutterWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(2, 1));
-        private @Nullable Gui lowerGui;
-        private Gui buttonsGui = Gui.empty(4, 0);
+        private Pane upperPane = Pane.empty(new PaneSize(2, 1));
+        private @Nullable Pane lowerPane;
+        private Pane buttonsPane = Pane.empty(4, 0);
         private int selectedRecipeIndex = -1;
 
         BuilderImpl() {
@@ -117,30 +117,30 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
-            this.buttonsGui = source.buttonsGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
+            this.buttonsPane = source.buttonsPane;
             this.selectedRecipeIndex = source.selectedRecipeIndex;
         }
 
         @Override
         @NotNull
-        public StonecutterWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = Objects.requireNonNull(upperGui, "upperGui");
+        public StonecutterWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = Objects.requireNonNull(upperPane, "upperPane");
             return this;
         }
 
         @Override
         @NotNull
-        public StonecutterWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public StonecutterWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
         @Override
         @NotNull
-        public StonecutterWindow.Builder setButtonsGui(@NotNull Gui buttonsGui) {
-            this.buttonsGui = Objects.requireNonNull(buttonsGui, "buttonsGui");
+        public StonecutterWindow.Builder setButtonsPane(@NotNull Pane buttonsPane) {
+            this.buttonsPane = Objects.requireNonNull(buttonsPane, "buttonsPane");
             return this;
         }
 
@@ -166,25 +166,25 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
         @Override
         @NotNull
         protected StonecutterWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 2 || this.upperGui.height() != 1)
-                throw new IllegalArgumentException("stonecutter upper GUI must have size 2x1");
-            if (this.buttonsGui.width() != 4)
-                throw new IllegalArgumentException("stonecutter buttons GUI must have width 4");
-            if (this.selectedRecipeIndex < -1 || this.selectedRecipeIndex >= this.buttonsGui.area())
+            if (this.upperPane.width() != 2 || this.upperPane.height() != 1)
+                throw new IllegalArgumentException("stonecutter upper Pane must have size 2x1");
+            if (this.buttonsPane.width() != 4)
+                throw new IllegalArgumentException("stonecutter buttons Pane must have width 4");
+            if (this.selectedRecipeIndex < -1 || this.selectedRecipeIndex >= this.buttonsPane.area())
                 throw new IndexOutOfBoundsException("stonecutter selected recipe index out of bounds: " + this.selectedRecipeIndex);
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.upperGui),
-                    WindowLayout.Region.lower(lowerGui),
-                    WindowLayout.Region.virtual(this.buttonsGui)
+                    WindowLayout.Region.upper(this.upperPane),
+                    WindowLayout.Region.lower(lowerPane),
+                    WindowLayout.Region.virtual(this.buttonsPane)
             );
             return new StonecutterWindowImpl(
                     WindowManager.getInstance(),
                     viewer,
                     layout,
                     settings,
-                    this.buttonsGui.area(),
+                    this.buttonsPane.area(),
                     this.selectedRecipeIndex
             );
         }

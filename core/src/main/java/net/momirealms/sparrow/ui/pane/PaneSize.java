@@ -1,41 +1,39 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 表示 GUI 的宽度和高度, 并负责槽位编号与坐标之间的转换.
- *
- * <p>槽位从左到右, 再从上到下编号. 左上角槽位是 0.
+ * 表示 Pane 的宽度和高度, 并负责槽位编号与坐标之间的转换.
  *
  * @param width 非负宽度
  * @param height 非负高度
  */
-public record GuiSize(int width, int height) {
+public record PaneSize(int width, int height) {
 
     /**
      * 检查宽高为非负数, 且槽位总数没有超出 int 范围.
      */
-    public GuiSize {
+    public PaneSize {
         if (width < 0 || height < 0) {
-            throw new IllegalArgumentException("GUI dimensions must be non-negative: " + width + "x" + height);
+            throw new IllegalArgumentException("Pane dimensions must be non-negative: " + width + "x" + height);
         }
         Math.multiplyExact(width, height);
     }
 
     /**
-     * 创建一个 GUI 尺寸.
+     * 创建一个 Pane 尺寸.
      *
      * @param width 宽度
      * @param height 高度
-     * @return GUI 尺寸
+     * @return Pane 尺寸
      */
     @NotNull
-    public static GuiSize of(int width, int height) {
-        return new GuiSize(width, height);
+    public static PaneSize of(int width, int height) {
+        return new PaneSize(width, height);
     }
 
     /**
-     * 返回 GUI 的槽位总数.
+     * 返回 Pane 的槽位总数.
      *
      * @return 宽度与高度的乘积
      */
@@ -46,11 +44,11 @@ public record GuiSize(int width, int height) {
     /**
      * 将坐标转换为槽位编号.
      *
-     * @param position GUI 内的坐标
+     * @param position Pane 内的坐标
      * @return 槽位编号
-     * @throws IndexOutOfBoundsException 坐标超出 GUI 范围时抛出
+     * @throws IndexOutOfBoundsException 坐标超出 Pane 范围时抛出
      */
-    public int indexOf(@NotNull GuiPosition position) {
+    public int indexOf(@NotNull PanePosition position) {
         return this.indexOf(position.x(), position.y());
     }
 
@@ -60,7 +58,7 @@ public record GuiSize(int width, int height) {
      * @param x 横向坐标
      * @param y 纵向坐标
      * @return 槽位编号
-     * @throws IndexOutOfBoundsException 坐标超出 GUI 范围时抛出
+     * @throws IndexOutOfBoundsException 坐标超出 Pane 范围时抛出
      */
     public int indexOf(int x, int y) {
         if (x < 0 || x >= this.width || y < 0 || y >= this.height) {
@@ -84,17 +82,17 @@ public record GuiSize(int width, int height) {
      * 将槽位编号转换为坐标.
      *
      * @param slot 槽位编号
-     * @return GUI 内的坐标
+     * @return Pane 内的坐标
      * @throws IndexOutOfBoundsException 槽位编号超出范围时抛出
      */
     @NotNull
-    public GuiPosition positionOf(int slot) {
+    public PanePosition positionOf(int slot) {
         this.checkSlot(slot);
-        return new GuiPosition(slot % this.width, slot / this.width);
+        return new PanePosition(slot % this.width, slot / this.width);
     }
 
     /**
-     * 检查槽位编号是否属于这个 GUI, 并原样返回该编号.
+     * 检查槽位编号是否属于这个 Pane, 并原样返回该编号.
      *
      * @param slot 要检查的槽位编号
      * @return 原槽位编号

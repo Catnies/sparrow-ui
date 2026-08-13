@@ -203,11 +203,11 @@ public final class ClickSemantics {
         LinkedSlot linkAt(int windowSlot);
 
         /**
-         * 判断某个 Window 槽位的显示路径是否经过已冻结 GUI;
-         * GUI 冻结槽不参与任何点击语义.
+         * 判断某个 Window 槽位的显示路径是否经过已冻结 Pane;
+         * Pane 冻结槽不参与任何点击语义.
          *
          * @param windowSlot Window 槽位
-         * @return 路径经过已冻结 GUI 时返回 {@code true}
+         * @return 路径经过已冻结 Pane 时返回 {@code true}
          */
         boolean frozenAt(int windowSlot);
 
@@ -223,7 +223,7 @@ public final class ClickSemantics {
 
         /**
          * 查出数字键要交换的目标: 当前 lower 快捷栏某个按键位置实际连接的当前 Inventory 槽位;
-         * 该位置不是 InventoryLink 或路径经过已冻结 GUI 时返回 {@code null}.
+         * 该位置不是 InventoryLink 或路径经过已冻结 Pane 时返回 {@code null}.
          *
          * @param hotbarButton 热键编号, 0 到 8
          * @return 连接的Inventory槽, 不可交互时为 {@code null}
@@ -233,7 +233,7 @@ public final class ClickSemantics {
 
         /**
          * 按显示顺序列出参与本次点击语义的全部Inventory(去重)及各自的可见槽位, 快速转移与双击收集只在可见槽位里找目标;
-         * 只通过 GUI 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内, 已包含 Inventory 中
+         * 只通过 Pane 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内, 已包含 Inventory 中
          * 未经任何未冻结协议槽展示的槽位不属于可见集.
          *
          * @return 参与语义的全部Inventory及可见槽位

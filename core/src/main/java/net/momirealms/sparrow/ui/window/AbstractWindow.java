@@ -12,8 +12,8 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
@@ -93,7 +93,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
     private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
-    private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 GUI 冻结按或合成
+    private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 Pane 冻结按或合成
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
@@ -538,26 +538,26 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
-    public Gui lowerGui() {
-        return this.layout.lowerGui();
+    public Pane lowerPane() {
+        return this.layout.lowerPane();
     }
 
     @NotNull
     @Override
-    public List<Gui> guis() {
-        return this.layout.guis();
+    public List<Pane> panes() {
+        return this.layout.panes();
     }
 
     @NotNull
     @Override
-    public SlotElement.GuiLink guiAt(int windowSlot) {
-        return this.layout.guiAt(windowSlot);
+    public Element.PaneLink paneAt(int windowSlot) {
+        return this.layout.paneAt(windowSlot);
     }
 
     @NotNull
     @Override
-    public SlotElement.GuiLink guiAtHotbar(int hotbarSlot) {
-        return this.layout.guiAt(this.layout.windowSlotAtHotbar(hotbarSlot));
+    public Element.PaneLink paneAtHotbar(int hotbarSlot) {
+        return this.layout.paneAt(this.layout.windowSlotAtHotbar(hotbarSlot));
     }
 
     @Override
@@ -606,8 +606,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         try {
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
-                SlotElement.GuiLink link = this.layout.guiAt(windowSlot);
-                paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, link.gui(), link.slot());
+                Element.PaneLink link = this.layout.paneAt(windowSlot);
+                paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, link.pane(), link.slot());
             }
 
             // build 可以发生在任意线程; 首帧渲染前在 viewer 实体线程刷新实际连接的 ReferencingInventory
@@ -706,7 +706,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
         // 刷新连接的 Inventory: ReferencingInventory 把 Bukkit 容器变更同步进镜像并生成 External 事件, 其他 Inventory 不处理.
-        // 因为刷新不是点击语义, 所以 GUI 冻结槽和 Window 虚拟槽位连接的 Inventory 也要同步.
+        // 因为刷新不是点击语义, 所以 Pane 冻结槽和 Window 虚拟槽位连接的 Inventory 也要同步.
         this.refreshLinkedInventories(this.paths);
         // 定时标脏光标物品.
         if (this.windowTick % CURSOR_AUDIT_INTERVAL == 0) {
@@ -731,7 +731,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 校验交互是否属于当前容器状态, 解释成点击或拖拽后分发给 GUI 或容器外处理器.
+     * 校验交互是否属于当前容器状态, 解释成点击或拖拽后分发给 Pane 或容器外处理器.
      * 不可信的输入会强制全量恢复; 正常的输入只复核客户端预测碰过的槽位.
      *
      * @param interaction 待处理的交互
@@ -902,7 +902,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 处理客户端的收纳袋选择包.
-     * 选择只转发给 GUI 槽位, 不同步客户端已经维护的本地选择状态.
+     * 选择只转发给 Pane 槽位, 不同步客户端已经维护的本地选择状态.
      *
      * @param packet 收纳袋选择包
      */
@@ -982,7 +982,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * 让某个槽位上当前显示的 Item 直接处理这次点击.
      * <p>这条路不经过 Bukkit 的 InventoryClickEvent;
-     * GUI 冻结, 背景和空路径仍按 {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
+     * Pane 冻结, 背景和空路径仍按 {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
      *
      * @param windowSlot Window 槽位
      * @param clickType 点击类型
@@ -1001,7 +1001,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private DisplayedSlotPath requirePath(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
         if (paths == null || paths[windowSlot] == null) {
-            throw new IllegalStateException("window slot has no displayed GUI path: " + windowSlot);
+            throw new IllegalStateException("window slot has no displayed Pane path: " + windowSlot);
         }
         return paths[windowSlot];
     }
@@ -1036,7 +1036,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (paths == null) {
             return false;
         }
-        // 强制处理每条路径攒下的 GUI 结构变化, 让下面的复核看到最新的交互终点与冻结语义.
+        // 强制处理每条路径攒下的 Pane 结构变化, 让下面的复核看到最新的交互终点与冻结语义.
         // 没有待处理变化的路径只是读一次自己的状态, 不会重新解析.
         for (int windowSlot = 0; windowSlot < this.layout.protocolSize(); windowSlot++) {
             paths[windowSlot].refreshInteractionState();
@@ -1072,13 +1072,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 遍历指定路径数组终点的 InventoryLink.
      *
      * @param paths 显示路径, 为 null 时不做任何事
-     * @param semanticOnly 是否只遍历参与点击的连接(跳过 GUI 冻结槽与 Window 虚拟槽位)
+     * @param semanticOnly 是否只遍历参与点击的连接(跳过 Pane 冻结槽与 Window 虚拟槽位)
      * @param action 对每个终点连接执行的操作
      */
     private void forEachLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
             boolean semanticOnly,
-            @NotNull Consumer<SlotElement.InventoryLink> action
+            @NotNull Consumer<Element.InventoryLink> action
     ) {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
@@ -1089,7 +1089,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (semanticOnly && (windowSlot >= this.layout.protocolSize() || path.frozen())) {
                 continue;
             }
-            SlotElement.InventoryLink link = path.inventoryLink();
+            Element.InventoryLink link = path.inventoryLink();
             if (link != null) {
                 action.accept(link);
             }
@@ -1423,9 +1423,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 按显示顺序收集去重后的连接 Inventory 及各自参与点击语义的槽位.
-     * 默认只包含经未冻结协议槽展示的 Inventory 槽位: GUI 冻结槽和 Window 虚拟槽位展示的槽位不参与,
-     * 未被 GUI 展示的槽位同样不参与, 转移与收集都不会穿透它们.
-     * 开启 Inventory 的 includeObscuredSlots 后其未展示槽位也参与, 但 GUI 冻结槽展示的槽位始终不参与.
+     * 默认只包含经未冻结协议槽展示的 Inventory 槽位: Pane 冻结槽和 Window 虚拟槽位展示的槽位不参与,
+     * 未被 Pane 展示的槽位同样不参与, 转移与收集都不会穿透它们.
+     * 开启 Inventory 的 includeObscuredSlots 后其未展示槽位也参与, 但 Pane 冻结槽展示的槽位始终不参与.
      *
      * @return 去重后的连接 Inventory 及参与槽位
      */
@@ -1459,7 +1459,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (path == null || !path.frozen()) {
                 continue;
             }
-            SlotElement.InventoryLink link = path.inventoryLink();
+            Element.InventoryLink link = path.inventoryLink();
             if (link != null && link.inventory() == inventory && !visibleSlots.get(link.slot())) {
                 included.clear(link.slot());
             }
@@ -1500,7 +1500,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         @Override
         @Nullable
         public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
-            SlotElement.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();
+            Element.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();
             return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
         }
 
@@ -1537,7 +1537,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (path.frozen()) {
                 return null;
             }
-            SlotElement.InventoryLink link = path.inventoryLink();
+            Element.InventoryLink link = path.inventoryLink();
             return link == null ? null : new ClickSemantics.LinkedSlot(link.inventory(), link.slot());
         }
 

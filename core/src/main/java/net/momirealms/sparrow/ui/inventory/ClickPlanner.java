@@ -377,8 +377,8 @@ final class ClickPlanner {
 
         List<ClickSemantics.LinkedInventory> domain = new ArrayList<>(context.linkedInventories());
         domain.sort((left, right) -> Integer.compare(
-                right.inventory().guiPriority(OperationCategory.COLLECT),
-                left.inventory().guiPriority(OperationCategory.COLLECT)
+                right.inventory().operationPriority(OperationCategory.COLLECT),
+                left.inventory().operationPriority(OperationCategory.COLLECT)
         ));
         for (int inventoryIndex = 0; inventoryIndex < domain.size() && collected < space; inventoryIndex++) {
             ClickSemantics.LinkedInventory linked = domain.get(inventoryIndex);
@@ -416,7 +416,7 @@ final class ClickPlanner {
     }
 
     /**
-     * 规划一次 shift 点击: 按 GUI 优先级依次尝试每个不是源 Inventory 的目标, 跨所有目标累积,
+     * 规划一次 shift 点击: 按 Pane 优先级依次尝试每个不是源 Inventory 的目标, 跨所有目标累积,
      * 直到源槽物品全部装完或目标全部试过为止. 这与原版一致 —— 一个目标装不下的剩余部分继续流向下一个目标,
      * 而不是在第一个有进展的目标处停下.
      * <p>每个被查询过的目标都进读集, 包括一件都没接下的目标: 目标是否装得下直接决定了后面的物品往哪走,
@@ -501,8 +501,8 @@ final class ClickPlanner {
             }
         }
         targets.sort((left, right) -> Integer.compare(
-                right.inventory().guiPriority(OperationCategory.ADD),
-                left.inventory().guiPriority(OperationCategory.ADD)
+                right.inventory().operationPriority(OperationCategory.ADD),
+                left.inventory().operationPriority(OperationCategory.ADD)
         ));
         return targets;
     }

@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * 自己持有槽位数据的 Inventory 实现.
- * <p>堆叠上限, 遍历顺序与 guiPriority 属于配置: 改配置不产生槽变更, 不走事务也不派发事件,
+ * <p>堆叠上限, 遍历顺序与 operationPriority 属于配置: 改配置不产生槽变更, 不走事务也不派发事件,
  * 只影响之后的批量规划; 改配置与进行中的事务交错时, 读到新旧值都属正常(弱一致).
  */
 public final class VirtualInventory extends SparrowInventory {

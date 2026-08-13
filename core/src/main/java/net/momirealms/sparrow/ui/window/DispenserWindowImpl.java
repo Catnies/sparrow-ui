@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import org.bukkit.entity.Player;
@@ -26,29 +26,29 @@ final class DispenserWindowImpl extends AbstractWindow<MenuHandle> implements Di
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<DispenserWindow, DispenserWindow.Builder> implements DispenserWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(3, 3));
-        private @Nullable Gui lowerGui;
+        private Pane upperPane = Pane.empty(new PaneSize(3, 3));
+        private @Nullable Pane lowerPane;
 
         BuilderImpl() {
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
         }
 
         @Override
         @NotNull
-        public DispenserWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
+        public DispenserWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = upperPane;
             return this;
         }
 
         @Override
         @NotNull
-        public DispenserWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public DispenserWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -67,11 +67,11 @@ final class DispenserWindowImpl extends AbstractWindow<MenuHandle> implements Di
         @Override
         @NotNull
         protected DispenserWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 3)
-                throw new IllegalArgumentException("dispenser upper GUI must have size 3x3");
+            if (this.upperPane.width() != 3 || this.upperPane.height() != 3)
+                throw new IllegalArgumentException("dispenser upper Pane must have size 3x3");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
+            WindowLayout layout = WindowLayout.split(this.upperPane, lowerPane);
             return new DispenserWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

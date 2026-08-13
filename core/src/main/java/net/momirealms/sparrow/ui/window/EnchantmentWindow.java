@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.window.click.EnchantSelectClick;
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.bukkit.enchantments.Enchantment;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 public interface EnchantmentWindow extends Window {
 
     /**
-     * 创建使用 2x1 上部 GUI, 玩家 Bukkit Inventory 和三个禁用选项的 Builder.
+     * 创建使用 2x1 上部 Pane, 玩家 Bukkit Inventory 和三个禁用选项的 Builder.
      *
      * @return 附魔台 Window Builder
      */
@@ -99,22 +99,22 @@ public interface EnchantmentWindow extends Window {
     interface Builder extends Window.Builder<EnchantmentWindow, Builder> {
 
         /**
-         * 设置必须为 2x1 的上部 GUI.
+         * 设置必须为 2x1 的上部 Pane.
          *
-         * @param upperGui 待附魔物品和青金石展示 GUI
+         * @param upperPane 待附魔物品和青金石展示 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setUpperGui(@NotNull Gui upperGui);
+        Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
          * 设置一个初始附魔选项; null 表示禁用该按钮.

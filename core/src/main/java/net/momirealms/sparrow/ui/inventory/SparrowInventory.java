@@ -77,10 +77,10 @@ public abstract class SparrowInventory {
     @Nullable private volatile ItemProvider background; // 空槽占位背景, 独立于视觉映射的最底层
 
     // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; 没有设置过时是 0.
-    private volatile int addGuiPriority;
-    private volatile int collectGuiPriority;
-    private volatile int otherGuiPriority;
-    private volatile boolean includeObscuredSlots; // 未被 GUI 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
+    private volatile int addOperationPriority;
+    private volatile int collectOperationPriority;
+    private volatile int otherOperationPriority;
+    private volatile boolean includeObscuredSlots; // 未被 Pane 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
     private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
     private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
 
@@ -246,7 +246,7 @@ public abstract class SparrowInventory {
     /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
-     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 GUI 背景.
+     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
      * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
      * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
@@ -365,11 +365,11 @@ public abstract class SparrowInventory {
      * @param category 操作类别
      * @return 该类别的优先级
      */
-    public int guiPriority(@NotNull OperationCategory category) {
+    public int operationPriority(@NotNull OperationCategory category) {
         return switch (category) {
-            case ADD -> this.addGuiPriority;
-            case COLLECT -> this.collectGuiPriority;
-            case OTHER -> this.otherGuiPriority;
+            case ADD -> this.addOperationPriority;
+            case COLLECT -> this.collectOperationPriority;
+            case OTHER -> this.otherOperationPriority;
         };
     }
 
@@ -379,11 +379,11 @@ public abstract class SparrowInventory {
      * @param category 操作类别
      * @param priority 优先级, 越大越优先
      */
-    public void guiPriority(@NotNull OperationCategory category, int priority) {
+    public void operationPriority(@NotNull OperationCategory category, int priority) {
         switch (category) {
-            case ADD -> this.addGuiPriority = priority;
-            case COLLECT -> this.collectGuiPriority = priority;
-            case OTHER -> this.otherGuiPriority = priority;
+            case ADD -> this.addOperationPriority = priority;
+            case COLLECT -> this.collectOperationPriority = priority;
+            case OTHER -> this.otherOperationPriority = priority;
         }
     }
 
@@ -392,10 +392,10 @@ public abstract class SparrowInventory {
      *
      * @param priority 优先级, 越大越优先
      */
-    public void guiPriority(int priority) {
-        this.addGuiPriority = priority;
-        this.collectGuiPriority = priority;
-        this.otherGuiPriority = priority;
+    public void operationPriority(int priority) {
+        this.addOperationPriority = priority;
+        this.collectOperationPriority = priority;
+        this.otherOperationPriority = priority;
     }
 
     /**
@@ -403,25 +403,25 @@ public abstract class SparrowInventory {
      *
      * @param category 操作类别
      */
-    public void clearGuiPriority(@NotNull OperationCategory category) {
+    public void clearOperationPriority(@NotNull OperationCategory category) {
         switch (category) {
-            case ADD -> this.addGuiPriority = 0;
-            case COLLECT -> this.collectGuiPriority = 0;
-            case OTHER -> this.otherGuiPriority = 0;
+            case ADD -> this.addOperationPriority = 0;
+            case COLLECT -> this.collectOperationPriority = 0;
+            case OTHER -> this.otherOperationPriority = 0;
         }
     }
 
     /**
      * 一次把全部三个类别的优先级恢复成默认的 0.
      */
-    public void clearGuiPriority() {
-        this.addGuiPriority = 0;
-        this.collectGuiPriority = 0;
-        this.otherGuiPriority = 0;
+    public void clearOperationPriority() {
+        this.addOperationPriority = 0;
+        this.collectOperationPriority = 0;
+        this.otherOperationPriority = 0;
     }
 
     /**
-     * 返回未被 GUI 展示的槽位是否参与快速转移与双击收集.
+     * 返回未被 Pane 展示的槽位是否参与快速转移与双击收集.
      *
      * @return 未展示槽位是否参与点击语义
      */
@@ -430,9 +430,9 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 设置未被 GUI 展示的槽位是否参与快速转移与双击收集.
+     * 设置未被 Pane 展示的槽位是否参与快速转移与双击收集.
      * 默认不参与: 点击语义只触及本 Inventory 经未冻结槽位展示的部分.
-     * 开启后未展示的槽位也会参与, 但 GUI 冻结槽展示的槽位始终不参与.
+     * 开启后未展示的槽位也会参与, 但 Pane 冻结槽展示的槽位始终不参与.
      *
      * @param includeObscuredSlots 未展示槽位是否参与点击语义
      */

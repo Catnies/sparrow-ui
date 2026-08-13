@@ -14,7 +14,7 @@ import java.util.List;
  * 语义引擎是否接管途中的 Inventory 槽位, 分配是否被放入规则全部过滤, Bukkit 拖拽事件是否被取消, 都不影响派发.
  * <p>同一次手势给经过的每一个 Item 槽位各派发一次; 同一个 Item 实例挂在多个被拖过的槽位上时
  * 会被调用多次, 每次的 {@link #windowSlot()} 不同, {@link #path()} 是同一份.
- * <p>{@code path} 是手势发生那一刻的结构快照. 处理器在第一站改动 GUI 结构不会让后续站点的
+ * <p>{@code path} 是手势发生那一刻的结构快照. 处理器在第一站改动 Pane 结构不会让后续站点的
  * {@link Stop#kind()} 跟着变.
  *
  * @param clickType 拖拽按键: LEFT 均分, RIGHT 每格一个, MIDDLE 创造模式整堆
@@ -100,6 +100,6 @@ public record ItemDragClick(
         ITEM,       // 终点是 Item, 会收到 ItemDragClick
         INVENTORY,  // 终点连着 Inventory, 是否真的收到物品由放入规则和引擎决定
         EMPTY,      // 终点是空槽, 只有背景
-        FROZEN      // 路径经过已冻结 GUI, 不参与任何交互
+        FROZEN      // 路径经过已冻结 Pane, 不参与任何交互
     }
 }

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
@@ -15,166 +15,166 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public sealed interface Gui permits AbstractGui {
+public sealed interface Pane permits AbstractPane {
 
     /**
-     * 为指定尺寸创建普通 GUI Builder.
+     * 为指定尺寸创建普通 Pane Builder.
      *
-     * @param size GUI 尺寸
-     * @return 普通 GUI Builder
+     * @param size Pane 尺寸
+     * @return 普通 Pane Builder
      */
     @NotNull
-    static Builder<NormalGui, ?> builder(@NotNull GuiSize size) {
-        return NormalGui.builder(size);
+    static Builder<NormalPane, ?> builder(@NotNull PaneSize size) {
+        return NormalPane.builder(size);
     }
 
     /**
-     * 为指定宽高创建普通 GUI Builder.
+     * 为指定宽高创建普通 Pane Builder.
      *
-     * @param width GUI 宽度
-     * @param height GUI 高度
-     * @return 普通 GUI Builder
+     * @param width Pane 宽度
+     * @param height Pane 高度
+     * @return 普通 Pane Builder
      */
     @NotNull
-    static Builder<NormalGui, ?> builder(int width, int height) {
-        return builder(new GuiSize(width, height));
+    static Builder<NormalPane, ?> builder(int width, int height) {
+        return builder(new PaneSize(width, height));
     }
 
     /**
-     * 使用已有布局创建普通 GUI Builder.
+     * 使用已有布局创建普通 Pane Builder.
      *
-     * @param structure GUI 布局
-     * @return 普通 GUI Builder
+     * @param structure Pane 布局
+     * @return 普通 Pane Builder
      */
     @NotNull
-    static Builder<NormalGui, ?> builder(@NotNull Structure structure) {
-        return NormalGui.builder(structure);
+    static Builder<NormalPane, ?> builder(@NotNull Structure structure) {
+        return NormalPane.builder(structure);
     }
 
     /**
-     * 先解析多行布局, 再创建普通 GUI Builder.
+     * 先解析多行布局, 再创建普通 Pane Builder.
      *
      * @param rows 布局模板行
-     * @return 普通 GUI Builder
+     * @return 普通 Pane Builder
      */
     @NotNull
-    static Builder<NormalGui, ?> builder(String @NotNull ... rows) {
-        return NormalGui.builder(Structure.of(rows));
+    static Builder<NormalPane, ?> builder(String @NotNull ... rows) {
+        return NormalPane.builder(Structure.of(rows));
     }
 
     /**
-     * 先解析连续布局文本, 再创建普通 GUI Builder.
+     * 先解析连续布局文本, 再创建普通 Pane Builder.
      *
-     * @param width GUI 宽度
-     * @param height GUI 高度
+     * @param width Pane 宽度
+     * @param height Pane 高度
      * @param flatData 连续布局文本
-     * @return 普通 GUI Builder
+     * @return 普通 Pane Builder
      */
     @NotNull
-    static Builder<NormalGui, ?> builder(int width, int height, @NotNull String flatData) {
-        return builder(Structure.of(new GuiSize(width, height), flatData));
+    static Builder<NormalPane, ?> builder(int width, int height, @NotNull String flatData) {
+        return builder(Structure.of(new PaneSize(width, height), flatData));
     }
 
     /**
-     * 创建所有槽位都为空的普通 GUI.
+     * 创建所有槽位都为空的普通 Pane.
      *
-     * @param width GUI 宽度
-     * @param height GUI 高度
-     * @return 空 GUI
+     * @param width Pane 宽度
+     * @param height Pane 高度
+     * @return 空 Pane
      */
     @NotNull
-    static NormalGui empty(int width, int height) {
-        return NormalGui.empty(new GuiSize(width, height));
+    static NormalPane empty(int width, int height) {
+        return NormalPane.empty(new PaneSize(width, height));
     }
 
     /**
-     * 创建所有槽位都为空的普通 GUI.
+     * 创建所有槽位都为空的普通 Pane.
      *
-     * @param size GUI 尺寸
-     * @return 空 GUI
+     * @param size Pane 尺寸
+     * @return 空 Pane
      */
     @NotNull
-    static NormalGui empty(@NotNull GuiSize size) {
-        return NormalGui.empty(size);
+    static NormalPane empty(@NotNull PaneSize size) {
+        return NormalPane.empty(size);
     }
 
     /**
-     * 创建每个槽位都显示同一 Item 的普通 GUI.
+     * 创建每个槽位都显示同一 Item 的普通 Pane.
      *
-     * @param width GUI 宽度
-     * @param height GUI 高度
+     * @param width Pane 宽度
+     * @param height Pane 高度
      * @param item 每个槽位显示的 Item
-     * @return 填满 Item 的 GUI
+     * @return 填满 Item 的 Pane
      */
     @NotNull
-    static NormalGui filled(int width, int height, @NotNull Item item) {
-        NormalGui gui = empty(width, height);
-        gui.fill(item);
-        return gui;
+    static NormalPane filled(int width, int height, @NotNull Item item) {
+        NormalPane pane = empty(width, height);
+        pane.fill(item);
+        return pane;
     }
 
     /**
-     * 使用已有布局创建所有槽位都为空的普通 GUI.
+     * 使用已有布局创建所有槽位都为空的普通 Pane.
      *
-     * @param structure GUI 布局
-     * @return 空 GUI
+     * @param structure Pane 布局
+     * @return 空 Pane
      */
     @NotNull
-    static NormalGui of(@NotNull Structure structure) {
-        return NormalGui.from(structure);
+    static NormalPane of(@NotNull Structure structure) {
+        return NormalPane.from(structure);
     }
 
     /**
-     * 创建只有一个槽位的 GUI.
+     * 创建只有一个槽位的 Pane.
      *
      * @param item 唯一槽位显示的 Item
-     * @return 单槽位 GUI
+     * @return 单槽位 Pane
      */
     @NotNull
-    static NormalGui single(@NotNull Item item) {
-        return NormalGui.builder(new GuiSize(1, 1))
-                .addModifier(gui -> gui.setItem(0, item))
+    static NormalPane single(@NotNull Item item) {
+        return NormalPane.builder(new PaneSize(1, 1))
+                .addModifier(pane -> pane.setItem(0, item))
                 .build();
     }
 
     /**
-     * 返回 GUI 的宽高.
+     * 返回 Pane 的宽高.
      *
-     * @return GUI 尺寸
+     * @return Pane 尺寸
      */
     @NotNull
-    GuiSize size();
+    PaneSize size();
 
     /**
-     * 返回 GUI 使用的槽位布局.
+     * 返回 Pane 使用的槽位布局.
      *
-     * @return GUI 布局
+     * @return Pane 布局
      */
     @NotNull
     Structure structure();
 
     /**
-     * 返回 GUI 宽度.
+     * 返回 Pane 宽度.
      *
-     * @return GUI 宽度
+     * @return Pane 宽度
      */
     default int width() {
         return this.size().width();
     }
 
     /**
-     * 返回 GUI 高度.
+     * 返回 Pane 高度.
      *
-     * @return GUI 高度
+     * @return Pane 高度
      */
     default int height() {
         return this.size().height();
     }
 
     /**
-     * 返回 GUI 槽位总数.
+     * 返回 Pane 槽位总数.
      *
-     * @return GUI 槽位总数
+     * @return Pane 槽位总数
      */
     default int area() {
         return this.size().area();
@@ -187,7 +187,7 @@ public sealed interface Gui permits AbstractGui {
      * @return 槽位元素
      */
     @NotNull
-    SlotElement element(int slot);
+    Element element(int slot);
 
     /**
      * 按坐标返回槽位元素.
@@ -197,16 +197,16 @@ public sealed interface Gui permits AbstractGui {
      * @return 槽位元素
      */
     @NotNull
-    default SlotElement element(int x, int y) {
+    default Element element(int x, int y) {
         return this.element(this.size().indexOf(x, y));
     }
 
     /**
-     * 复制 GUI 中的所有槽位元素.
+     * 复制 Pane 中的所有槽位元素.
      *
      * @return 元素数组副本
      */
-    SlotElement @NotNull [] elements();
+    Element @NotNull [] elements();
 
     /**
      * 返回槽位是否不为空.
@@ -215,7 +215,7 @@ public sealed interface Gui permits AbstractGui {
      * @return 槽位有内容时为 true
      */
     default boolean hasElement(int slot) {
-        return this.element(slot) != SlotElement.Empty.INSTANCE;
+        return this.element(slot) != Element.Empty.INSTANCE;
     }
 
     /**
@@ -237,7 +237,7 @@ public sealed interface Gui permits AbstractGui {
      */
     @Nullable
     default Item item(int slot) {
-        return this.element(slot) instanceof SlotElement.Item(var item) ? item : null;
+        return this.element(slot) instanceof Element.Item(var item) ? item : null;
     }
 
     /**
@@ -327,7 +327,7 @@ public sealed interface Gui permits AbstractGui {
      * @param slot 槽位编号
      * @param element 新元素
      */
-    void setElement(int slot, @NotNull SlotElement element);
+    void setElement(int slot, @NotNull Element element);
 
     /**
      * 按坐标替换槽位元素.
@@ -336,7 +336,7 @@ public sealed interface Gui permits AbstractGui {
      * @param y 纵向坐标
      * @param element 新元素
      */
-    default void setElement(int x, int y, @NotNull SlotElement element) {
+    default void setElement(int x, int y, @NotNull Element element) {
         this.setElement(this.size().indexOf(x, y), element);
     }
 
@@ -346,8 +346,8 @@ public sealed interface Gui permits AbstractGui {
      * @param identifier 标志符
      * @param element 新元素
      */
-    default void setElement(@NotNull String identifier, @NotNull SlotElement element) {
-        this.setElements(this.slots(identifier), SlotElementSupplier.fixed(element), true);
+    default void setElement(@NotNull String identifier, @NotNull Element element) {
+        this.setElements(this.slots(identifier), ElementSupplier.fixed(element), true);
     }
 
     /**
@@ -356,7 +356,7 @@ public sealed interface Gui permits AbstractGui {
      * @param identifier 单字符标志
      * @param element 新元素
      */
-    default void setElement(char identifier, @NotNull SlotElement element) {
+    default void setElement(char identifier, @NotNull Element element) {
         this.setElement(String.valueOf(identifier), element);
     }
 
@@ -366,20 +366,20 @@ public sealed interface Gui permits AbstractGui {
      * @param identifier 标志符
      * @param supplier 元素生成器
      */
-    default void setElement(@NotNull String identifier, @NotNull SlotElementSupplier supplier) {
+    default void setElement(@NotNull String identifier, @NotNull ElementSupplier supplier) {
         this.setElements(this.slots(identifier), supplier, true);
     }
 
     /**
-     * 为选中槽位生成元素, 全部生成成功后再一次写入 GUI.
+     * 为选中槽位生成元素, 全部生成成功后再一次写入 Pane.
      *
-     * <p>{@code replaceExisting} 为 false 时只填充空槽位. Supplier 失败时 GUI 保持不变.</p>
+     * <p>{@code replaceExisting} 为 false 时只填充空槽位. Supplier 失败时 Pane 保持不变.</p>
      *
      * @param slots 要写入的槽位选择
      * @param supplier 元素生成器
      * @param replaceExisting 是否覆盖已有内容
      */
-    void setElements(@NotNull SlotSequence slots, @NotNull SlotElementSupplier supplier, boolean replaceExisting);
+    void setElements(@NotNull SlotSequence slots, @NotNull ElementSupplier supplier, boolean replaceExisting);
 
     /**
      * 设置指定槽位显示的 Item.
@@ -388,7 +388,7 @@ public sealed interface Gui permits AbstractGui {
      * @param item Item
      */
     default void setItem(int slot, @NotNull Item item) {
-        this.setElement(slot, new SlotElement.Item(item));
+        this.setElement(slot, new Element.Item(item));
     }
 
     /**
@@ -409,7 +409,7 @@ public sealed interface Gui permits AbstractGui {
      * @param item Item
      */
     default void setItem(@NotNull String identifier, @NotNull Item item) {
-        this.setElement(identifier, new SlotElement.Item(item));
+        this.setElement(identifier, new Element.Item(item));
     }
 
     /**
@@ -419,65 +419,65 @@ public sealed interface Gui permits AbstractGui {
      * @param supplier Item 来源
      */
     default void setItem(@NotNull String identifier, @NotNull Supplier<? extends Item> supplier) {
-        this.setElements(this.slots(identifier), SlotElementSupplier.items(supplier), true);
+        this.setElements(this.slots(identifier), ElementSupplier.items(supplier), true);
     }
 
     /**
-     * 把一个槽位连接到子 GUI 槽位.
+     * 把一个槽位连接到子 Pane 槽位.
      *
-     * @param slot 当前 GUI 槽位
-     * @param gui 子 GUI
-     * @param guiSlot 子 GUI 槽位
+     * @param slot 当前 Pane 槽位
+     * @param pane 子 Pane
+     * @param paneSlot 子 Pane 槽位
      */
-    default void setGui(int slot, @NotNull Gui gui, int guiSlot) {
-        this.setElement(slot, new SlotElement.GuiLink(gui, guiSlot));
+    default void setPane(int slot, @NotNull Pane pane, int paneSlot) {
+        this.setElement(slot, new Element.PaneLink(pane, paneSlot));
     }
 
     /**
-     * 按二维形状把同一标志符的槽位连接到子 GUI.
+     * 按二维形状把同一标志符的槽位连接到子 Pane.
      *
      * @param identifier 标志符
-     * @param gui 子 GUI
+     * @param pane 子 Pane
      */
-    default void setGui(@NotNull String identifier, @NotNull Gui gui) {
-        this.setGui(identifier, gui, 0, 0);
+    default void setPane(@NotNull String identifier, @NotNull Pane pane) {
+        this.setPane(identifier, pane, 0, 0);
     }
 
     /**
-     * 按二维形状把同一单字符标志的槽位连接到子 GUI.
+     * 按二维形状把同一单字符标志的槽位连接到子 Pane.
      *
      * @param identifier 单字符标志
-     * @param gui 子 GUI
+     * @param pane 子 Pane
      */
-    default void setGui(char identifier, @NotNull Gui gui) {
-        this.setGui(String.valueOf(identifier), gui);
+    default void setPane(char identifier, @NotNull Pane pane) {
+        this.setPane(String.valueOf(identifier), pane);
     }
 
     /**
-     * 按二维形状把标志槽位连接到子 GUI 的指定偏移位置.
+     * 按二维形状把标志槽位连接到子 Pane 的指定偏移位置.
      *
      * @param identifier 标志符
-     * @param gui 子 GUI
-     * @param offsetX 子 GUI 横向偏移
-     * @param offsetY 子 GUI 纵向偏移
+     * @param pane 子 Pane
+     * @param offsetX 子 Pane 横向偏移
+     * @param offsetY 子 Pane 纵向偏移
      */
-    default void setGui(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY) {
+    default void setPane(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY) {
         this.setElements(
                 this.slots(identifier),
-                SlotElementSupplier.gui(gui, offsetX, offsetY),
+                ElementSupplier.pane(pane, offsetX, offsetY),
                 true
         );
     }
 
     /**
-     * 按参数顺序把元素放入 GUI 中最靠前的空槽位.
+     * 按参数顺序把元素放入 Pane 中最靠前的空槽位.
      *
      * @param elements 要添加的元素
      */
-    void addElements(SlotElement @NotNull ... elements);
+    void addElements(Element @NotNull ... elements);
 
     /**
-     * 按参数顺序把 Item 放入 GUI 中最靠前的空槽位.
+     * 按参数顺序把 Item 放入 Pane 中最靠前的空槽位.
      *
      * @param items 要添加的 Item
      */
@@ -523,7 +523,7 @@ public sealed interface Gui permits AbstractGui {
      *
      * @param element 槽位元素
      */
-    default void fillElement(@NotNull SlotElement element) {
+    default void fillElement(@NotNull Element element) {
         this.fillElement(element, true);
     }
 
@@ -533,10 +533,10 @@ public sealed interface Gui permits AbstractGui {
      * @param element 槽位元素
      * @param replaceExisting 是否覆盖已有内容
      */
-    default void fillElement(@NotNull SlotElement element, boolean replaceExisting) {
+    default void fillElement(@NotNull Element element, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.all(this.size()),
-                SlotElementSupplier.fixed(element),
+                ElementSupplier.fixed(element),
                 replaceExisting
         );
     }
@@ -557,7 +557,7 @@ public sealed interface Gui permits AbstractGui {
      * @param replaceExisting 是否覆盖已有内容
      */
     default void fill(@NotNull Item item, boolean replaceExisting) {
-        this.fillElement(new SlotElement.Item(item), replaceExisting);
+        this.fillElement(new Element.Item(item), replaceExisting);
     }
 
     /**
@@ -582,7 +582,7 @@ public sealed interface Gui permits AbstractGui {
     default void fill(int startInclusive, int endExclusive, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.range(this.size(), startInclusive, endExclusive),
-                SlotElementSupplier.fixed(new SlotElement.Item(item)),
+                ElementSupplier.fixed(new Element.Item(item)),
                 replaceExisting
         );
     }
@@ -607,7 +607,7 @@ public sealed interface Gui permits AbstractGui {
     default void fillRow(int row, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.row(this.size(), row),
-                SlotElementSupplier.fixed(new SlotElement.Item(item)),
+                ElementSupplier.fixed(new Element.Item(item)),
                 replaceExisting
         );
     }
@@ -632,13 +632,13 @@ public sealed interface Gui permits AbstractGui {
     default void fillColumn(int column, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.column(this.size(), column),
-                SlotElementSupplier.fixed(new SlotElement.Item(item)),
+                ElementSupplier.fixed(new Element.Item(item)),
                 replaceExisting
         );
     }
 
     /**
-     * 用同一 Item 覆盖 GUI 边框.
+     * 用同一 Item 覆盖 Pane 边框.
      *
      * @param item Item
      */
@@ -647,7 +647,7 @@ public sealed interface Gui permits AbstractGui {
     }
 
     /**
-     * 用同一 Item 填充 GUI 边框.
+     * 用同一 Item 填充 Pane 边框.
      *
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
@@ -655,7 +655,7 @@ public sealed interface Gui permits AbstractGui {
     default void fillBorders(@NotNull Item item, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.borders(this.size()),
-                SlotElementSupplier.fixed(new SlotElement.Item(item)),
+                ElementSupplier.fixed(new Element.Item(item)),
                 replaceExisting
         );
     }
@@ -680,7 +680,7 @@ public sealed interface Gui permits AbstractGui {
     ) {
         this.setElements(
                 SlotSequence.rectangle(this.size(), x, y, width, height),
-                SlotElementSupplier.fixed(new SlotElement.Item(item)),
+                ElementSupplier.fixed(new Element.Item(item)),
                 replaceExisting
         );
     }
@@ -699,36 +699,36 @@ public sealed interface Gui permits AbstractGui {
     }
 
     /**
-     * 按子 GUI 尺寸把一个矩形范围连接到子 GUI.
+     * 按子 Pane 尺寸把一个矩形范围连接到子 Pane.
      *
      * @param x 矩形左上角 x 坐标
      * @param y 矩形左上角 y 坐标
-     * @param child 子 GUI
+     * @param child 子 Pane
      * @param replaceExisting 是否覆盖已有内容
      */
-    default void fillRectangle(int x, int y, @NotNull Gui child, boolean replaceExisting) {
+    default void fillRectangle(int x, int y, @NotNull Pane child, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.rectangle(this.size(), x, y, child.width(), child.height()),
-                SlotElementSupplier.gui(child),
+                ElementSupplier.pane(child),
                 replaceExisting
         );
     }
 
     /**
-     * 按子 GUI 尺寸把一个矩形范围连接到子 GUI.
+     * 按子 Pane 尺寸把一个矩形范围连接到子 Pane.
      *
      * @param x 矩形左上角 x 坐标
      * @param y 矩形左上角 y 坐标
-     * @param child 子 GUI
+     * @param child 子 Pane
      */
-    default void fillRectangle(int x, int y, @NotNull Gui child) {
+    default void fillRectangle(int x, int y, @NotNull Pane child) {
         this.fillRectangle(x, y, child, true);
     }
 
     /**
      * 返回空槽位使用的背景, 没有背景时返回 null.
      *
-     * @return GUI 背景, 或 null
+     * @return Pane 背景, 或 null
      */
     @Nullable
     ItemProvider background();
@@ -736,19 +736,19 @@ public sealed interface Gui permits AbstractGui {
     /**
      * 更改空槽位使用的背景.
      *
-     * @param background GUI 背景, null 表示清除背景
+     * @param background Pane 背景, null 表示清除背景
      */
     void setBackground(@Nullable ItemProvider background);
 
     /**
-     * 返回 GUI 是否已禁止玩家交互.
+     * 返回 Pane 是否已禁止玩家交互.
      *
      * @return 禁止交互时为 true
      */
     boolean frozen();
 
     /**
-     * 设置是否禁止玩家与 GUI 中的 Item 交互.
+     * 设置是否禁止玩家与 Pane 中的 Item 交互.
      *
      * @param frozen true 表示禁止交互
      */
@@ -762,7 +762,7 @@ public sealed interface Gui permits AbstractGui {
      * @return 订阅和当前状态
      */
     @NotNull
-    GuiSlotAttachment attach(int slot, @NotNull Observer<? super Gui> observer);
+    PaneSlotAttachment attach(int slot, @NotNull Observer<? super Pane> observer);
 
     /**
      * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
@@ -775,22 +775,22 @@ public sealed interface Gui permits AbstractGui {
      * @return 订阅凭证, 可用于提前解绑.
      */
     @NotNull
-    Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Gui> callback);
+    Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Pane> callback);
 
     /**
-     * 通过 Structure 标志符填充槽位, 并创建 GUI.
+     * 通过 Structure 标志符填充槽位, 并创建 Pane.
      *
-     * <p>同一 Builder 可以重复构建 GUI. {@link #copy()} 返回可独立修改的副本.</p>
+     * <p>同一 Builder 可以重复构建 Pane. {@link #copy()} 返回可独立修改的副本.</p>
      *
      * @param <G> 构建结果类型
      * @param <B> 精确的 Builder 自类型
      */
-    interface Builder<G extends Gui, B extends Builder<G, B>> {
+    interface Builder<G extends Pane, B extends Builder<G, B>> {
 
         /**
          * 返回 Builder 正在使用的布局.
          *
-         * @return GUI 布局
+         * @return Pane 布局
          */
         @NotNull
         Structure structure();
@@ -803,7 +803,7 @@ public sealed interface Gui permits AbstractGui {
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(@NotNull String identifier, @NotNull SlotElementSupplier supplier);
+        B addIngredient(@NotNull String identifier, @NotNull ElementSupplier supplier);
 
         /**
          * 为单字符标志的每个槽位绑定元素生成器.
@@ -813,7 +813,7 @@ public sealed interface Gui permits AbstractGui {
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(char identifier, @NotNull SlotElementSupplier supplier);
+        B addIngredient(char identifier, @NotNull ElementSupplier supplier);
 
         /**
          * 把同一标志符的槽位绑定为同一元素.
@@ -823,7 +823,7 @@ public sealed interface Gui permits AbstractGui {
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(@NotNull String identifier, @NotNull SlotElement element);
+        B addIngredient(@NotNull String identifier, @NotNull Element element);
 
         /**
          * 把单字符标志的槽位绑定为同一元素.
@@ -833,7 +833,7 @@ public sealed interface Gui permits AbstractGui {
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(char identifier, @NotNull SlotElement element);
+        B addIngredient(char identifier, @NotNull Element element);
 
         /**
          * 把同一标志符的槽位绑定为同一 Item.
@@ -905,7 +905,7 @@ public sealed interface Gui permits AbstractGui {
         @NotNull
         B addIngredientElementSupplier(
                 @NotNull String identifier,
-                @NotNull Supplier<? extends SlotElement> elementSupplier
+                @NotNull Supplier<? extends Element> elementSupplier
         );
 
         /**
@@ -932,31 +932,31 @@ public sealed interface Gui permits AbstractGui {
         B addIngredient(char identifier, @NotNull SparrowInventory inventory);
 
         /**
-         * 按二维形状把同一标志符的槽位连接到子 GUI.
+         * 按二维形状把同一标志符的槽位连接到子 Pane.
          *
          * @param identifier 标志符
-         * @param gui 子 GUI
+         * @param pane 子 Pane
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(@NotNull String identifier, @NotNull Gui gui);
+        B addIngredient(@NotNull String identifier, @NotNull Pane pane);
 
         /**
-         * 按二维形状把标志槽位连接到子 GUI 的指定偏移位置.
+         * 按二维形状把标志槽位连接到子 Pane 的指定偏移位置.
          *
          * @param identifier 标志符
-         * @param gui 子 GUI
-         * @param offsetX 子 GUI 横向偏移
-         * @param offsetY 子 GUI 纵向偏移
+         * @param pane 子 Pane
+         * @param offsetX 子 Pane 横向偏移
+         * @param offsetY 子 Pane 纵向偏移
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY);
+        B addIngredient(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY);
 
         /**
          * 设置空槽位使用的背景.
          *
-         * @param background GUI 背景, null 表示清除背景
+         * @param background Pane 背景, null 表示清除背景
          * @return 当前 Builder
          */
         @NotNull
@@ -972,7 +972,7 @@ public sealed interface Gui permits AbstractGui {
         B setBackground(@NotNull ItemStack background);
 
         /**
-         * 设置是否禁止玩家与 GUI 中的 Item 交互.
+         * 设置是否禁止玩家与 Pane 中的 Item 交互.
          *
          * @param frozen true 表示禁止交互
          * @return 当前 Builder
@@ -981,9 +981,9 @@ public sealed interface Gui permits AbstractGui {
         B setFrozen(boolean frozen);
 
         /**
-         * 添加一个在 GUI 创建后执行的修改操作.
+         * 添加一个在 Pane 创建后执行的修改操作.
          *
-         * @param modifier GUI 修改操作
+         * @param modifier Pane 修改操作
          * @return 当前 Builder
          */
         @NotNull
@@ -992,7 +992,7 @@ public sealed interface Gui permits AbstractGui {
         /**
          * 替换全部构建后修改操作.
          *
-         * @param modifiers GUI 修改操作
+         * @param modifiers Pane 修改操作
          * @return 当前 Builder
          */
         @NotNull
@@ -1007,9 +1007,9 @@ public sealed interface Gui permits AbstractGui {
         B copy();
 
         /**
-         * 根据当前配置创建一个新 GUI.
+         * 根据当前配置创建一个新 Pane.
          *
-         * @return 新 GUI
+         * @return 新 Pane
          */
         @NotNull
         G build();

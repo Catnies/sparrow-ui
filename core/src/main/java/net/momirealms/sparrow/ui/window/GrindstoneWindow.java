@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public interface GrindstoneWindow extends Window {
 
     /**
-     * 创建默认使用 1x2 输入 GUI 和 1x1 结果 GUI 的 Builder.
+     * 创建默认使用 1x2 输入 Pane 和 1x1 结果 Pane 的 Builder.
      *
      * @return 砂轮窗口 Builder
      */
@@ -22,31 +22,31 @@ public interface GrindstoneWindow extends Window {
     interface Builder extends Window.Builder<GrindstoneWindow, Builder> {
 
         /**
-         * 设置必须为 1x2 的输入 GUI.
+         * 设置必须为 1x2 的输入 Pane.
          *
-         * @param inputGui 输入 GUI
+         * @param inputPane 输入 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setInputGui(@NotNull Gui inputGui);
+        Builder setInputPane(@NotNull Pane inputPane);
 
         /**
-         * 设置必须为 1x1 的结果 GUI.
+         * 设置必须为 1x1 的结果 Pane.
          *
-         * @param resultGui 结果 GUI
+         * @param resultPane 结果 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setResultGui(@NotNull Gui resultGui);
+        Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         @Override
         @NotNull

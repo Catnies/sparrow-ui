@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -6,12 +6,12 @@ import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 /**
- * 表示从一个 GUI 中按顺序选中的一组槽位.
- * <p>它用来批量填充指定槽位, 也可作为分页, 滚动和标签页 GUI 的内容位置.
+ * 表示从一个 Pane 中按顺序选中的一组槽位.
+ * <p>它用来批量填充指定槽位, 也可作为分页, 滚动和标签页 Pane 的内容位置.
  * 同一槽位不会重复出现, 创建后槽位和顺序都不会改变.
  */
 public final class SlotSequence {
-    private final GuiSize guiSize;  // 槽位所属的 GUI 尺寸
+    private final PaneSize paneSize;  // 槽位所属的 Pane 尺寸
     private final int[] slots;      // 按选择顺序排列的槽位编号, 不重复
     private final int minX;         // 选中槽位的最小 x 坐标, 空选择为 -1
     private final int minY;         // 选中槽位的最小 y 坐标, 空选择为 -1
@@ -19,16 +19,16 @@ public final class SlotSequence {
     /**
      * 创建槽位选择并预计算最小坐标.
      *
-     * @param guiSize 槽位所属的 GUI 尺寸
+     * @param paneSize 槽位所属的 Pane 尺寸
      * @param slots 按选择顺序排列的槽位编号
      */
-    SlotSequence(GuiSize guiSize, int[] slots) {
-        this.guiSize = guiSize;
+    SlotSequence(PaneSize paneSize, int[] slots) {
+        this.paneSize = paneSize;
         this.slots = slots;
 
         int minX = Integer.MAX_VALUE;
         int minY = Integer.MAX_VALUE;
-        int width = guiSize.width();
+        int width = paneSize.width();
         for (int slot : slots) {
             minX = Math.min(minX, slot % width);
             minY = Math.min(minY, slot / width);
@@ -41,118 +41,118 @@ public final class SlotSequence {
     /**
      * 按参数给出的顺序选择槽位.
      *
-     * @param guiSize 槽位所属的 GUI 尺寸
+     * @param paneSize 槽位所属的 Pane 尺寸
      * @param slots 要选择的槽位编号
      * @return 槽位选择
-     * @throws IndexOutOfBoundsException 槽位编号超出 GUI 范围时抛出
+     * @throws IndexOutOfBoundsException 槽位编号超出 Pane 范围时抛出
      * @throws IllegalArgumentException 槽位编号重复时抛出
      */
     @NotNull
-    public static SlotSequence of(@NotNull GuiSize guiSize, int... slots) {
+    public static SlotSequence of(@NotNull PaneSize paneSize, int... slots) {
         int[] copy = slots.clone();
         // 校验范围并拒绝重复槽位
-        boolean[] seen = new boolean[guiSize.area()];
+        boolean[] seen = new boolean[paneSize.area()];
         for (int slot : copy) {
-            guiSize.checkSlot(slot);
+            paneSize.checkSlot(slot);
             if (seen[slot]) {
                 throw new IllegalArgumentException("duplicate slot " + slot);
             }
             seen[slot] = true;
         }
-        return new SlotSequence(guiSize, copy);
+        return new SlotSequence(paneSize, copy);
     }
 
     /**
-     * 选择 GUI 中的所有槽位.
+     * 选择 Pane 中的所有槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @return 包含所有槽位的选择
      */
     @NotNull
-    public static SlotSequence all(@NotNull GuiSize guiSize) {
-        int[] slots = new int[guiSize.area()];
+    public static SlotSequence all(@NotNull PaneSize paneSize) {
+        int[] slots = new int[paneSize.area()];
         Arrays.setAll(slots, index -> index);
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
      * 选择 {@code startInclusive} 到 {@code endExclusive} 之间的槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @param startInclusive 起始槽位, 包含
      * @param endExclusive 结束槽位, 不包含
      * @return 指定范围的槽位选择
-     * @throws IndexOutOfBoundsException 范围超出 GUI 时抛出
+     * @throws IndexOutOfBoundsException 范围超出 Pane 时抛出
      */
     @NotNull
     public static SlotSequence range(
-            @NotNull GuiSize guiSize,
+            @NotNull PaneSize paneSize,
             int startInclusive,
             int endExclusive
     ) {
-        if (startInclusive < 0 || endExclusive < startInclusive || endExclusive > guiSize.area()) {
+        if (startInclusive < 0 || endExclusive < startInclusive || endExclusive > paneSize.area()) {
             throw new IndexOutOfBoundsException(
-                    "range [" + startInclusive + ", " + endExclusive + ") is outside " + guiSize
+                    "range [" + startInclusive + ", " + endExclusive + ") is outside " + paneSize
             );
         }
         int[] slots = new int[endExclusive - startInclusive];
         Arrays.setAll(slots, index -> startInclusive + index);
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
      * 从左到右选择一整行槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @param row 行号, 从 0 开始
      * @return 一整行槽位
-     * @throws IndexOutOfBoundsException 行号超出 GUI 高度时抛出
+     * @throws IndexOutOfBoundsException 行号超出 Pane 高度时抛出
      */
     @NotNull
-    public static SlotSequence row(@NotNull GuiSize guiSize, int row) {
-        if (row < 0 || row >= guiSize.height()) {
-            throw new IndexOutOfBoundsException("row " + row + " is outside " + guiSize);
+    public static SlotSequence row(@NotNull PaneSize paneSize, int row) {
+        if (row < 0 || row >= paneSize.height()) {
+            throw new IndexOutOfBoundsException("row " + row + " is outside " + paneSize);
         }
-        int[] slots = new int[guiSize.width()];
-        int start = row * guiSize.width();
+        int[] slots = new int[paneSize.width()];
+        int start = row * paneSize.width();
         Arrays.setAll(slots, index -> start + index);
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
      * 从上到下选择一整列槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @param column 列号, 从 0 开始
      * @return 一整列槽位
-     * @throws IndexOutOfBoundsException 列号超出 GUI 宽度时抛出
+     * @throws IndexOutOfBoundsException 列号超出 Pane 宽度时抛出
      */
     @NotNull
-    public static SlotSequence column(@NotNull GuiSize guiSize, int column) {
-        if (column < 0 || column >= guiSize.width()) {
-            throw new IndexOutOfBoundsException("column " + column + " is outside " + guiSize);
+    public static SlotSequence column(@NotNull PaneSize paneSize, int column) {
+        if (column < 0 || column >= paneSize.width()) {
+            throw new IndexOutOfBoundsException("column " + column + " is outside " + paneSize);
         }
-        int[] slots = new int[guiSize.height()];
-        int width = guiSize.width();
+        int[] slots = new int[paneSize.height()];
+        int width = paneSize.width();
         Arrays.setAll(slots, index -> column + index * width);
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
      * 从左上角开始, 逐行选择一个矩形范围内的槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @param x 矩形左上角 x 坐标
      * @param y 矩形左上角 y 坐标
      * @param width 矩形宽度
      * @param height 矩形高度
      * @return 矩形内的槽位选择
      * @throws IllegalArgumentException 矩形宽高不是正数时抛出
-     * @throws IndexOutOfBoundsException 矩形超出 GUI 范围时抛出
+     * @throws IndexOutOfBoundsException 矩形超出 Pane 范围时抛出
      */
     @NotNull
     public static SlotSequence rectangle(
-            @NotNull GuiSize guiSize,
+            @NotNull PaneSize paneSize,
             int x,
             int y,
             int width,
@@ -161,9 +161,9 @@ public final class SlotSequence {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("rectangle dimensions must be positive");
         }
-        if (x < 0 || y < 0 || x + width > guiSize.width() || y + height > guiSize.height()) {
+        if (x < 0 || y < 0 || x + width > paneSize.width() || y + height > paneSize.height()) {
             throw new IndexOutOfBoundsException(
-                    "rectangle (" + x + ", " + y + ", " + width + ", " + height + ") is outside " + guiSize
+                    "rectangle (" + x + ", " + y + ", " + width + ", " + height + ") is outside " + paneSize
             );
         }
 
@@ -171,27 +171,27 @@ public final class SlotSequence {
         int[] slots = new int[Math.multiplyExact(width, height)];
         int index = 0;
         for (int row = y; row < y + height; row++) {
-            int rowStart = guiSize.indexOfTrusted(x, row);
+            int rowStart = paneSize.indexOfTrusted(x, row);
             for (int column = 0; column < width; column++) {
                 slots[index++] = rowStart + column;
             }
         }
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
-     * 选择 GUI 四周的边框槽位.
+     * 选择 Pane 四周的边框槽位.
      *
-     * @param guiSize GUI 尺寸
+     * @param paneSize Pane 尺寸
      * @return 边框槽位选择
      */
     @NotNull
-    public static SlotSequence borders(@NotNull GuiSize guiSize) {
-        int width = guiSize.width();
-        int height = guiSize.height();
-        // 0维和1槽的 GUI 选中全部槽位作为 borders.
-        if (guiSize.area() == 0 || width == 1 || height == 1) {
-            return all(guiSize);
+    public static SlotSequence borders(@NotNull PaneSize paneSize) {
+        int width = paneSize.width();
+        int height = paneSize.height();
+        // 0维和1槽的 Pane 选中全部槽位作为 borders.
+        if (paneSize.area() == 0 || width == 1 || height == 1) {
+            return all(paneSize);
         }
 
         int[] slots = new int[2 * width + 2 * (height - 2)];
@@ -210,13 +210,13 @@ public final class SlotSequence {
         for (int x = 0; x < width; x++) {
             slots[index++] = bottom + x;
         }
-        return new SlotSequence(guiSize, slots);
+        return new SlotSequence(paneSize, slots);
     }
 
     /**
      * 按原有顺序合并多个槽位选择.
      *
-     * <p>所有选择必须属于相同尺寸的 GUI, 且不能包含重复槽位.</p>
+     * <p>所有选择必须属于相同尺寸的 Pane, 且不能包含重复槽位.</p>
      *
      * @param sequences 要合并的槽位选择
      * @return 合并后的槽位选择
@@ -229,11 +229,11 @@ public final class SlotSequence {
         }
 
         // 校验所有选择属于同一尺寸, 并统计总长度
-        GuiSize size = sequences[0].guiSize;
+        PaneSize size = sequences[0].paneSize;
         int length = 0;
         for (SlotSequence sequence : sequences) {
-            if (!size.equals(sequence.guiSize)) {
-                throw new IllegalArgumentException("slot sequences use different GUI sizes");
+            if (!size.equals(sequence.paneSize)) {
+                throw new IllegalArgumentException("slot sequences use different Pane sizes");
             }
             length = Math.addExact(length, sequence.slots.length);
         }
@@ -255,13 +255,13 @@ public final class SlotSequence {
     }
 
     /**
-     * 返回这些槽位所属的 GUI 尺寸.
+     * 返回这些槽位所属的 Pane 尺寸.
      *
-     * @return GUI 尺寸
+     * @return Pane 尺寸
      */
     @NotNull
-    public GuiSize guiSize() {
-        return this.guiSize;
+    public PaneSize paneSize() {
+        return this.paneSize;
     }
 
     /**
@@ -299,7 +299,7 @@ public final class SlotSequence {
      * @return x 坐标
      */
     public int xAt(int occurrence) {
-        return this.slots[occurrence] % this.guiSize.width();
+        return this.slots[occurrence] % this.paneSize.width();
     }
 
     /**
@@ -309,7 +309,7 @@ public final class SlotSequence {
      * @return y 坐标
      */
     public int yAt(int occurrence) {
-        return this.slots[occurrence] / this.guiSize.width();
+        return this.slots[occurrence] / this.paneSize.width();
     }
 
     /**
@@ -391,7 +391,7 @@ public final class SlotSequence {
      */
     private static final class PatternCollector implements IntConsumer {
         private final SlotSequence candidates; // 允许输出的候选槽位
-        private final byte[] states; // 每个 GUI 槽位的输出状态: 0 表示非候选, 1 表示未输出, 2 表示已输出
+        private final byte[] states; // 每个 Pane 槽位的输出状态: 0 表示非候选, 1 表示未输出, 2 表示已输出
         private final int[] result; // 按输出顺序收集的槽位
         private int size; // 已输出的槽位数量
         private boolean active = true; // 输出通道是否仍然可用
@@ -403,7 +403,7 @@ public final class SlotSequence {
          */
         private PatternCollector(SlotSequence candidates) {
             this.candidates = candidates;
-            this.states = new byte[candidates.guiSize.area()];
+            this.states = new byte[candidates.paneSize.area()];
             this.result = new int[candidates.slots.length];
             for (int index = 0; index < candidates.slots.length; index++) {
                 this.states[candidates.slots[index]] = 1;
@@ -415,7 +415,7 @@ public final class SlotSequence {
          *
          * @param slot 输出的槽位编号
          * @throws IllegalStateException 输出通道已关闭时抛出
-         * @throws IndexOutOfBoundsException 槽位超出 GUI 范围时抛出
+         * @throws IndexOutOfBoundsException 槽位超出 Pane 范围时抛出
          * @throws IllegalArgumentException 槽位不是候选或重复输出时抛出
          */
         @Override
@@ -426,7 +426,7 @@ public final class SlotSequence {
             }
             if (slot < 0 || slot >= this.states.length) {
                 throw new IndexOutOfBoundsException(
-                        "slot " + slot + " is outside " + this.candidates.guiSize
+                        "slot " + slot + " is outside " + this.candidates.paneSize
                 );
             }
             if (this.states[slot] == 0) {
@@ -461,7 +461,7 @@ public final class SlotSequence {
          * 按从左到右, 每列从上到下的顺序输出未输出过的候选槽位.
          */
         private void emitColumnMajor() {
-            GuiSize size = this.candidates.guiSize;
+            PaneSize size = this.candidates.paneSize;
             for (int x = 0; x < size.width(); x++) {
                 for (int y = 0; y < size.height(); y++) {
                     int slot = size.indexOfTrusted(x, y);
@@ -483,7 +483,7 @@ public final class SlotSequence {
                     && Arrays.equals(this.result, this.candidates.slots)) {
                 return this.candidates;
             }
-            return new SlotSequence(this.candidates.guiSize, Arrays.copyOf(this.result, this.size));
+            return new SlotSequence(this.candidates.paneSize, Arrays.copyOf(this.result, this.size));
         }
     }
 
@@ -491,13 +491,13 @@ public final class SlotSequence {
     public boolean equals(Object other) {
         return this == other
                 || other instanceof SlotSequence sequence
-                && this.guiSize.equals(sequence.guiSize)
+                && this.paneSize.equals(sequence.paneSize)
                 && Arrays.equals(this.slots, sequence.slots);
     }
 
     @Override
     public int hashCode() {
-        return 31 * this.guiSize.hashCode() + Arrays.hashCode(this.slots);
+        return 31 * this.paneSize.hashCode() + Arrays.hashCode(this.slots);
     }
 
     @Override

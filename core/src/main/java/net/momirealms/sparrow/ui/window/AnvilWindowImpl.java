@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.AnvilMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
@@ -171,8 +171,8 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<AnvilWindow, AnvilWindow.Builder> implements AnvilWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(3, 1));
-        private @Nullable Gui lowerGui;
+        private Pane upperPane = Pane.empty(new PaneSize(3, 1));
+        private @Nullable Pane lowerPane;
         private int enchantmentCost;
         private boolean textFieldAlwaysEnabled = true;
         private boolean resultAlwaysValid;
@@ -183,8 +183,8 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
             this.enchantmentCost = source.enchantmentCost;
             this.textFieldAlwaysEnabled = source.textFieldAlwaysEnabled;
             this.resultAlwaysValid = source.resultAlwaysValid;
@@ -193,15 +193,15 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
 
         @NotNull
         @Override
-        public AnvilWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
+        public AnvilWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = upperPane;
             return this;
         }
 
         @NotNull
         @Override
-        public AnvilWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public AnvilWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -254,11 +254,11 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
         @NotNull
         @Override
         protected AnvilWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 1)
-                throw new IllegalArgumentException("anvil upper GUI must have size 3x1");
+            if (this.upperPane.width() != 3 || this.upperPane.height() != 1)
+                throw new IllegalArgumentException("anvil upper Pane must have size 3x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
+            WindowLayout layout = WindowLayout.split(this.upperPane, lowerPane);
             return new AnvilWindowImpl(
                     WindowManager.getInstance(),
                     viewer,

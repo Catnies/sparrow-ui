@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
-import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
+import net.momirealms.sparrow.ui.pane.Element;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -10,26 +10,26 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 将 Window 的有序结构区域预编译为不可变的槽位到 GUI 映射.
+ * 将 Window 的有序结构区域预编译为不可变的槽位到 Pane 映射.
  * <p>Region 的声明顺序就是最终 Window 槽位顺序, 尾部 Window 虚拟区域不进入菜单协议.
- * Region 仅存在于构建期, 运行时所有槽位都直接解析为普通根 GuiLink.
+ * Region 仅存在于构建期, 运行时所有槽位都直接解析为普通根 PaneLink.
  * <p>编译结果是一个扁平数组, Window 槽位号即下标, 运行期查询无需再遍历区域.
  */
 final class WindowLayout {
-    private static final GuiSize LOWER_SIZE = new GuiSize(9, 4);
+    private static final PaneSize LOWER_SIZE = new PaneSize(9, 4);
 
     private final int upperSize;               // 容器 upper 区域的槽位总数
     private final int lowerStart;              // lower 区域在窗口中的起始槽位
     private final int protocolSize;            // 协议槽位(raw slot)数量, 不含尾部 Window 虚拟区域
-    private final SlotElement.GuiLink[] links; // Window 槽位号(下标) -> GuiLink
-    private final List<Gui> guis;              // 布局引用的全部根 GUI, 按首次出现顺序去重
+    private final Element.PaneLink[] links; // Window 槽位号(下标) -> PaneLink
+    private final List<Pane> panes;              // 布局引用的全部根 Pane, 按首次出现顺序去重
 
-    private WindowLayout(int upperSize, int lowerStart, int protocolSize, SlotElement.GuiLink[] links, List<Gui> guis) {
+    private WindowLayout(int upperSize, int lowerStart, int protocolSize, Element.PaneLink[] links, List<Pane> panes) {
         this.upperSize = upperSize;
         this.lowerStart = lowerStart;
         this.protocolSize = protocolSize;
         this.links = links;
-        this.guis = guis;
+        this.panes = panes;
     }
 
     /**
@@ -88,67 +88,67 @@ final class WindowLayout {
         if (lowerRegions != 1)
             throw new IllegalArgumentException("window layout requires exactly one lower region");
 
-        // 展开为扁平的槽位链接数组, 同时按首次出现顺序收集去重后的 GUI
-        SlotElement.GuiLink[] links = new SlotElement.GuiLink[size];
-        ArrayList<Gui> guis = new ArrayList<>(regions.length);
+        // 展开为扁平的槽位链接数组, 同时按首次出现顺序收集去重后的 Pane
+        Element.PaneLink[] links = new Element.PaneLink[size];
+        ArrayList<Pane> panes = new ArrayList<>(regions.length);
         int offset = 0;
         for (int regionIndex = 0; regionIndex < regions.length; regionIndex++) {
             Region region = regions[regionIndex];
-            if (!guis.contains(region.gui())) {
-                guis.add(region.gui());
+            if (!panes.contains(region.pane())) {
+                panes.add(region.pane());
             }
-            // 逐槽位生成 Window 槽位到 GUI 槽位的链接
+            // 逐槽位生成 Window 槽位到 Pane 槽位的链接
             for (int slot = 0; slot < region.size(); slot++) {
-                links[offset + slot] = new SlotElement.GuiLink(region.gui(), region.guiSlot() + slot);
+                links[offset + slot] = new Element.PaneLink(region.pane(), region.paneSlot() + slot);
             }
             offset += region.size();
         }
-        return new WindowLayout(upperSize, lowerStart, protocolSize, links, List.copyOf(guis));
+        return new WindowLayout(upperSize, lowerStart, protocolSize, links, List.copyOf(panes));
     }
 
     /**
      * 编译分离窗口布局.
-     * 两个 GUI 分别占据容器和 9x4 玩家物品栏区域.
+     * 两个 Pane 分别占据容器和 9x4 玩家物品栏区域.
      *
-     * @param upperGui 作为容器区域的 GUI
-     * @param lowerGui 作为玩家物品栏区域的 9x4 GUI
+     * @param upperPane 作为容器区域的 Pane
+     * @param lowerPane 作为玩家物品栏区域的 9x4 Pane
      * @return 编译后的不可变布局
      */
     @NotNull
-    static WindowLayout split(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
-        return WindowLayout.of(Region.upper(upperGui), Region.lower(lowerGui));
+    static WindowLayout split(@NotNull Pane upperPane, @NotNull Pane lowerPane) {
+        return WindowLayout.of(Region.upper(upperPane), Region.lower(lowerPane));
     }
 
     /**
      * 编译合并窗口布局.
-     * 单个 GUI 的底部 4 行对应客户端玩家物品栏区域, 至少需要 5 行才能正常显示.
+     * 单个 Pane 的底部 4 行对应客户端玩家物品栏区域, 至少需要 5 行才能正常显示.
      *
-     * @param gui 同时包含容器区与玩家物品栏区的 GUI, 必须超过 45 个槽位
+     * @param pane 同时包含容器区与玩家物品栏区的 Pane, 必须超过 45 个槽位
      * @return 编译后的不可变布局
-     * @throws IllegalArgumentException GUI 不超过 45 个槽位时抛出
+     * @throws IllegalArgumentException Pane 不超过 45 个槽位时抛出
      */
     @NotNull
-    static WindowLayout merged(@NotNull Gui gui) {
-        if (gui.area() <= 45) {
-            throw new IllegalArgumentException("merged GUI must contain more than 45 slots");
+    static WindowLayout merged(@NotNull Pane pane) {
+        if (pane.area() <= 45) {
+            throw new IllegalArgumentException("merged Pane must contain more than 45 slots");
         }
         // 底部 36 个槽位切给 lower 区域, 其余作为 upper 区域
-        int lowerStart = gui.area() - 36;
+        int lowerStart = pane.area() - 36;
         return WindowLayout.of(
-                Region.upper(gui, 0, lowerStart),
-                Region.lower(gui, lowerStart, 36)
+                Region.upper(pane, 0, lowerStart),
+                Region.lower(pane, lowerStart, 36)
         );
     }
 
     /**
-     * 返回指定 Window 槽位的根 GuiLink.
+     * 返回指定 Window 槽位的根 PaneLink.
      *
      * @param windowSlot Window 槽位号
-     * @return 该槽位对应的根 GuiLink
+     * @return 该槽位对应的根 PaneLink
      * @throws IndexOutOfBoundsException 槽位号超出 Window 范围时抛出
      */
     @NotNull
-    SlotElement.GuiLink guiAt(int windowSlot) {
+    Element.PaneLink paneAt(int windowSlot) {
         if (windowSlot < 0 || windowSlot >= this.links.length)
             throw new IndexOutOfBoundsException("window slot out of bounds: " + windowSlot);
 
@@ -198,105 +198,105 @@ final class WindowLayout {
     }
 
     @NotNull
-    Gui lowerGui() {
-        return this.links[this.lowerStart].gui();
+    Pane lowerPane() {
+        return this.links[this.lowerStart].pane();
     }
 
     /**
-     * 返回布局引用的全部根 GUI.
+     * 返回布局引用的全部根 Pane.
      *
-     * @return 按首次出现顺序去重后的 GUI 列表
+     * @return 按首次出现顺序去重后的 Pane 列表
      */
     @NotNull
-    List<Gui> guis() {
-        return this.guis;
+    List<Pane> panes() {
+        return this.panes;
     }
 
     /**
      * Window 中一个连续区域的声明.
      *
      * @param role 区域在 Window 中承担的结构角色
-     * @param gui 区域所属的根 GUI
-     * @param guiSlot 区域在 GUI 中的起始槽位
+     * @param pane 区域所属的根 Pane
+     * @param paneSlot 区域在 Pane 中的起始槽位
      * @param size 区域包含的槽位数
      */
-    record Region(@NotNull Role role, @NotNull Gui gui, int guiSlot, int size) {
+    record Region(@NotNull Role role, @NotNull Pane pane, int paneSlot, int size) {
 
         public Region {
-            // 基本边界: 区域必须完整落在所属 GUI 内
+            // 基本边界: 区域必须完整落在所属 Pane 内
             Objects.requireNonNull(role, "role");
-            Objects.requireNonNull(gui, "gui");
-            if (guiSlot < 0 || size < 0 || guiSlot > gui.area() - size)
-                throw new IndexOutOfBoundsException("GUI region out of bounds: slot=" + guiSlot + ", size=" + size);
+            Objects.requireNonNull(pane, "pane");
+            if (paneSlot < 0 || size < 0 || paneSlot > pane.area() - size)
+                throw new IndexOutOfBoundsException("Pane region out of bounds: slot=" + paneSlot + ", size=" + size);
             // 协议区域不允许为空
             if (role != Role.VIRTUAL && size == 0)
-                throw new IllegalArgumentException("physical GUI region must contain at least one slot");
+                throw new IllegalArgumentException("physical Pane region must contain at least one slot");
             // lower 区域对应玩家物品栏, 必须恰好是 9x4
             if (role == Role.LOWER && size != LOWER_SIZE.area())
                 throw new IllegalArgumentException("lower region must contain 36 slots");
         }
 
         /**
-         * 声明覆盖整个 GUI 的 upper 区域.
+         * 声明覆盖整个 Pane 的 upper 区域.
          *
-         * @param gui 区域所属的根 GUI
+         * @param pane 区域所属的根 Pane
          * @return upper 区域声明
          */
         @NotNull
-        static Region upper(@NotNull Gui gui) {
-            return Region.upper(gui, 0, gui.area());
+        static Region upper(@NotNull Pane pane) {
+            return Region.upper(pane, 0, pane.area());
         }
 
         /**
-         * 声明 GUI 中一段连续槽位作为 upper 区域.
+         * 声明 Pane 中一段连续槽位作为 upper 区域.
          *
-         * @param gui 区域所属的根 GUI
-         * @param startSlot 区域在 GUI 中的起始槽位
+         * @param pane 区域所属的根 Pane
+         * @param startSlot 区域在 Pane 中的起始槽位
          * @param size 区域包含的槽位数
          * @return upper 区域声明
          */
         @NotNull
-        static Region upper(@NotNull Gui gui, int startSlot, int size) {
-            return new Region(Role.UPPER, gui, startSlot, size);
+        static Region upper(@NotNull Pane pane, int startSlot, int size) {
+            return new Region(Role.UPPER, pane, startSlot, size);
         }
 
         /**
-         * 声明整个 9x4 GUI 作为 lower 区域.
+         * 声明整个 9x4 Pane 作为 lower 区域.
          *
-         * @param gui 区域所属的根 GUI, 尺寸必须是 9x4
+         * @param pane 区域所属的根 Pane, 尺寸必须是 9x4
          * @return lower 区域声明
-         * @throws IllegalArgumentException GUI 尺寸不是 9x4 时抛出
+         * @throws IllegalArgumentException Pane 尺寸不是 9x4 时抛出
          */
         @NotNull
-        static Region lower(@NotNull Gui gui) {
-            if (!gui.size().equals(LOWER_SIZE))
-                throw new IllegalArgumentException("lower GUI must be 9x4");
+        static Region lower(@NotNull Pane pane) {
+            if (!pane.size().equals(LOWER_SIZE))
+                throw new IllegalArgumentException("lower Pane must be 9x4");
 
-            return Region.lower(gui, 0, gui.area());
+            return Region.lower(pane, 0, pane.area());
         }
 
         /**
-         * 声明 GUI 中一段连续槽位作为 lower 区域.
+         * 声明 Pane 中一段连续槽位作为 lower 区域.
          *
-         * @param gui 区域所属的根 GUI
-         * @param startSlot 区域在 GUI 中的起始槽位
+         * @param pane 区域所属的根 Pane
+         * @param startSlot 区域在 Pane 中的起始槽位
          * @param size 区域包含的槽位数, 必须是 36
          * @return lower 区域声明
          */
         @NotNull
-        static Region lower(@NotNull Gui gui, int startSlot, int size) {
-            return new Region(Role.LOWER, gui, startSlot, size);
+        static Region lower(@NotNull Pane pane, int startSlot, int size) {
+            return new Region(Role.LOWER, pane, startSlot, size);
         }
 
         /**
-         * 声明不进入原版菜单协议的 Window 虚拟区域, 覆盖整个 GUI.
+         * 声明不进入原版菜单协议的 Window 虚拟区域, 覆盖整个 Pane.
          *
-         * @param gui 区域所属的根 GUI
+         * @param pane 区域所属的根 Pane
          * @return Window 虚拟区域声明
          */
         @NotNull
-        static Region virtual(@NotNull Gui gui) {
-            return new Region(Role.VIRTUAL, gui, 0, gui.area());
+        static Region virtual(@NotNull Pane pane) {
+            return new Region(Role.VIRTUAL, pane, 0, pane.area());
         }
 
         /**

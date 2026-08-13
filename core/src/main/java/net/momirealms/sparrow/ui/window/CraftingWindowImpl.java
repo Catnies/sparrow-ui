@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.window.click.RecipeBookSelectClick;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.RecipeBookMenuHandle;
 import org.bukkit.entity.Player;
@@ -31,38 +31,38 @@ final class CraftingWindowImpl extends AbstractRecipeBookWindow<RecipeBookMenuHa
     }
 
     static final class BuilderImpl extends AbstractRecipeBookWindow.BuilderBase<CraftingWindow, CraftingWindow.Builder> implements CraftingWindow.Builder {
-        private Gui craftingGui = Gui.empty(new GuiSize(3, 3));
-        private Gui resultGui = Gui.empty(new GuiSize(1, 1));
-        private @Nullable Gui lowerGui;
+        private Pane craftingPane = Pane.empty(new PaneSize(3, 3));
+        private Pane resultPane = Pane.empty(new PaneSize(1, 1));
+        private @Nullable Pane lowerPane;
 
         BuilderImpl() {
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.craftingGui = source.craftingGui;
-            this.resultGui = source.resultGui;
-            this.lowerGui = source.lowerGui;
+            this.craftingPane = source.craftingPane;
+            this.resultPane = source.resultPane;
+            this.lowerPane = source.lowerPane;
         }
 
         @Override
         @NotNull
-        public CraftingWindow.Builder setCraftingGui(@NotNull Gui craftingGui) {
-            this.craftingGui = craftingGui;
+        public CraftingWindow.Builder setCraftingPane(@NotNull Pane craftingPane) {
+            this.craftingPane = craftingPane;
             return this;
         }
 
         @Override
         @NotNull
-        public CraftingWindow.Builder setResultGui(@NotNull Gui resultGui) {
-            this.resultGui = resultGui;
+        public CraftingWindow.Builder setResultPane(@NotNull Pane resultPane) {
+            this.resultPane = resultPane;
             return this;
         }
 
         @Override
         @NotNull
-        public CraftingWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public CraftingWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -81,16 +81,16 @@ final class CraftingWindowImpl extends AbstractRecipeBookWindow<RecipeBookMenuHa
         @Override
         @NotNull
         protected CraftingWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.craftingGui.width() != 3 || this.craftingGui.height() != 3)
-                throw new IllegalArgumentException("crafting grid GUI must have size 3x3");
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
-                throw new IllegalArgumentException("crafting result GUI must have size 1x1");
+            if (this.craftingPane.width() != 3 || this.craftingPane.height() != 3)
+                throw new IllegalArgumentException("crafting grid Pane must have size 3x3");
+            if (this.resultPane.width() != 1 || this.resultPane.height() != 1)
+                throw new IllegalArgumentException("crafting result Pane must have size 1x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.upper(this.craftingGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.resultPane),
+                    WindowLayout.Region.upper(this.craftingPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return new CraftingWindowImpl(
                     WindowManager.getInstance(),

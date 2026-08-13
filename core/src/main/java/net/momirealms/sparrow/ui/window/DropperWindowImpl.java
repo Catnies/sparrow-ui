@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import org.bukkit.entity.Player;
@@ -26,29 +26,29 @@ final class DropperWindowImpl extends AbstractWindow<MenuHandle> implements Drop
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<DropperWindow, DropperWindow.Builder> implements DropperWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(3, 3));
-        private @Nullable Gui lowerGui;
+        private Pane upperPane = Pane.empty(new PaneSize(3, 3));
+        private @Nullable Pane lowerPane;
 
         BuilderImpl() {
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
         }
 
         @Override
         @NotNull
-        public DropperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
+        public DropperWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = upperPane;
             return this;
         }
 
         @Override
         @NotNull
-        public DropperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public DropperWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -67,11 +67,11 @@ final class DropperWindowImpl extends AbstractWindow<MenuHandle> implements Drop
         @Override
         @NotNull
         protected DropperWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 3 || this.upperGui.height() != 3)
-                throw new IllegalArgumentException("dropper upper GUI must have size 3x3");
+            if (this.upperPane.width() != 3 || this.upperPane.height() != 3)
+                throw new IllegalArgumentException("dropper upper Pane must have size 3x3");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
+            WindowLayout layout = WindowLayout.split(this.upperPane, lowerPane);
             return new DropperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

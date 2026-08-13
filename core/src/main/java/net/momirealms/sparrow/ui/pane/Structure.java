@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import net.momirealms.sparrow.ui.util.TriIntConsumer;
@@ -11,13 +11,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 描述 GUI 每个槽位使用的标志符.
+ * 描述 Pane 每个槽位使用的标志符.
  * <p>例如 {@code "ABB"} 表示一行三个槽位, 第一个槽位标记为 {@code A},
  * 后两个标记为 {@code B}. Builder 可以根据标志符一次填充多个槽位.
- * <p>Structure 只保存尺寸, 标志符和槽位位置, 创建后内容不会改变, 可以在多个 GUI 之间共用.
+ * <p>Structure 只保存尺寸, 标志符和槽位位置, 创建后内容不会改变, 可以在多个 Pane 之间共用.
  */
 public final class Structure {
-    private final GuiSize size;          // GUI 尺寸
+    private final PaneSize size;          // Pane 尺寸
     private final String[] identifiers;  // 内部编号到标志符文本
     private final Map<String, Integer> identifierIndexes; // 标志符文本到内部编号
     private final int[] identifierBySlot;   // 每个槽位对应的标志符编号, -1 表示没有标志符
@@ -25,7 +25,7 @@ public final class Structure {
     private final SlotSequence[] slotsByIdentifier; // 每个标志符预先选好的槽位
 
     private Structure(
-            GuiSize size,
+            PaneSize size,
             String[] identifiers,
             Map<String, Integer> identifierIndexes,
             int[] identifierBySlot,
@@ -43,11 +43,11 @@ public final class Structure {
     /**
      * 创建只有尺寸, 没有任何标志符的布局.
      *
-     * @param size GUI 尺寸
+     * @param size Pane 尺寸
      * @return 空布局
      */
     @NotNull
-    public static Structure of(@NotNull GuiSize size) {
+    public static Structure of(@NotNull PaneSize size) {
         // -1 表示槽位没有任何标志符
         int[] identifierBySlot = new int[size.area()];
         Arrays.fill(identifierBySlot, -1);
@@ -75,14 +75,14 @@ public final class Structure {
         if (rows.length == 0)
             throw new IllegalArgumentException("structure must contain at least one row");
 
-        // 先解析第一行并暂存, 用它确定 GUI 宽度
+        // 先解析第一行并暂存, 用它确定 Pane 宽度
         Compiler compiler = new Compiler();
         ParsedRow first = compiler.parseBuffered(rows[0], 0);
         if (first.width() == 0)
             throw new IllegalArgumentException("structure rows must contain at least one slot");
 
-        // 第一行确定尺寸后, 其余行必须包含相同数量的 GUI 槽位
-        GuiSize size = new GuiSize(first.width(), rows.length);
+        // 第一行确定尺寸后, 其余行必须包含相同数量的 Pane 槽位
+        PaneSize size = new PaneSize(first.width(), rows.length);
         int[] identifierBySlot = new int[size.area()];
         int[] sourceColumns = new int[size.area()];
         compiler.commit(first, 0, identifierBySlot, sourceColumns);
@@ -103,15 +103,15 @@ public final class Structure {
 
     /**
      * 使用一段连续文本创建指定尺寸的布局.
-     * <p>文本中解析出的槽位数量必须等于 {@link GuiSize#area()}.
+     * <p>文本中解析出的槽位数量必须等于 {@link PaneSize#area()}.
      *
-     * @param size GUI 尺寸
+     * @param size Pane 尺寸
      * @param flatData 按槽位顺序连续排列的模板文本
      * @return 解析后的布局
      * @throws IllegalArgumentException 槽位数量与尺寸不符或模板语法错误时抛出
      */
     @NotNull
-    public static Structure of(@NotNull GuiSize size, @NotNull String flatData) {
+    public static Structure of(@NotNull PaneSize size, @NotNull String flatData) {
         Compiler compiler = new Compiler();
         int[] identifierBySlot = new int[size.area()];
         int[] sourceColumns = new int[size.area()];
@@ -128,12 +128,12 @@ public final class Structure {
     }
 
     /**
-     * 布局的 GUI 尺寸.
+     * 布局的 Pane 尺寸.
      *
-     * @return GUI 尺寸
+     * @return Pane 尺寸
      */
     @NotNull
-    public GuiSize size() {
+    public PaneSize size() {
         return this.size;
     }
 
@@ -279,7 +279,7 @@ public final class Structure {
         private final HashMap<String, Integer> identifierIndexes = new HashMap<>(); // 标志符文本到内部编号
         private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>(); // 每个标志符按出现顺序记录的槽位
 
-        // 先暂存第一行, 因读完它确定 GUI 宽度.
+        // 先暂存第一行, 因读完它确定 Pane 宽度.
         private ParsedRow parseBuffered(String row, int rowIndex) {
             IntArrayList identifiers = new IntArrayList();
             IntArrayList sourceColumns = new IntArrayList();
@@ -295,8 +295,8 @@ public final class Structure {
          *
          * @param row 模板行文本
          * @param rowIndex 行号, 用于错误定位
-         * @param tokenConsumer 接收标志符的回调, (identifier 标志符内部编号, sourceColumn 模板中的原始列号, logicalColumn GUI 槽位列号)
-         * @return 该行的 GUI 槽位数量
+         * @param tokenConsumer 接收标志符的回调, (identifier 标志符内部编号, sourceColumn 模板中的原始列号, logicalColumn Pane 槽位列号)
+         * @return 该行的 Pane 槽位数量
          * @throws IllegalArgumentException 模板语法错误时抛出
          */
         private int parse(String row, int rowIndex, TriIntConsumer tokenConsumer) {
@@ -438,12 +438,12 @@ public final class Structure {
         /**
          * 把解析结果整理成不可变的 Structure.
          *
-         * @param size GUI 尺寸
+         * @param size Pane 尺寸
          * @param identifierBySlot 槽位到标志符编号的映射
          * @param sourceColumns 槽位到原始列号的映射
          * @return 创建完成的布局
          */
-        private Structure finish(GuiSize size, int[] identifierBySlot, int[] sourceColumns) {
+        private Structure finish(PaneSize size, int[] identifierBySlot, int[] sourceColumns) {
             String[] identifiers = this.identifiers.toArray(String[]::new);
             // 每个标志符的槽位列表整理成预先选好的 SlotSequence
             SlotSequence[] slots = new SlotSequence[identifiers.length];

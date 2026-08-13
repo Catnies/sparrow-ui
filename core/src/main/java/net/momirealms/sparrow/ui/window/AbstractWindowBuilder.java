@@ -2,8 +2,8 @@ package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -229,18 +229,18 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
      * 根据本次 Window 玩家创建引用该玩家背包的 ReferencingInventory.
      *
      * @param viewer 查看者
-     * @return 本次 Window 使用的 9x4 GUI
+     * @return 本次 Window 使用的 9x4 Pane
      */
     @NotNull
-    protected static Gui viewerReferencingInventory(@NotNull Player viewer) {
+    protected static Pane viewerReferencingInventory(@NotNull Player viewer) {
         ReferencingInventory inventory = ReferencingInventory.fromPlayerStorageContents(viewer.getInventory());
-        inventory.guiPriority(OperationCategory.ADD, Integer.MAX_VALUE);
-        inventory.guiPriority(OperationCategory.COLLECT, Integer.MIN_VALUE);
-        Gui gui = Gui.empty(9, 4);
+        inventory.operationPriority(OperationCategory.ADD, Integer.MAX_VALUE);
+        inventory.operationPriority(OperationCategory.COLLECT, Integer.MIN_VALUE);
+        Pane pane = Pane.empty(9, 4);
         for (int slot = 0; slot < inventory.size(); slot++) {
-            gui.setElement(slot, SlotElement.inventory(inventory, slot));
+            pane.setElement(slot, Element.inventory(inventory, slot));
         }
-        return gui;
+        return pane;
     }
 
     /**

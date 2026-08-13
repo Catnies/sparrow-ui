@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -53,7 +53,7 @@ public final class SlotPatterns {
     private static void emitColumnMajor(SlotSequence candidates, IntConsumer output) {
         boolean[] selected = selectedSlots(candidates);
         // 外层遍历列, 内层遍历行, 把坐标换算回槽位编号
-        GuiSize size = candidates.guiSize();
+        PaneSize size = candidates.paneSize();
         for (int x = 0; x < size.width(); x++) {
             for (int y = 0; y < size.height(); y++) {
                 int slot = size.indexOfTrusted(x, y);
@@ -107,7 +107,7 @@ public final class SlotPatterns {
      * @return 选中位图, 下标为槽位编号
      */
     private static boolean[] selectedSlots(SlotSequence candidates) {
-        boolean[] selected = new boolean[candidates.guiSize().area()];
+        boolean[] selected = new boolean[candidates.paneSize().area()];
         int[] slots = candidates.unsafeSlots();
         for (int index = 0; index < slots.length; index++) {
             selected[slots[index]] = true;

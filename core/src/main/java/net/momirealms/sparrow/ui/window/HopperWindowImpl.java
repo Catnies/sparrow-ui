@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import org.bukkit.entity.Player;
@@ -27,29 +27,29 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
 
     static final class BuilderImpl extends AbstractWindowBuilder<HopperWindow, HopperWindow.Builder>
             implements HopperWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(5, 1));
-        private @Nullable Gui lowerGui;
+        private Pane upperPane = Pane.empty(new PaneSize(5, 1));
+        private @Nullable Pane lowerPane;
 
         BuilderImpl() {
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
         }
 
         @NotNull
         @Override
-        public HopperWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = upperGui;
+        public HopperWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = upperPane;
             return this;
         }
 
         @NotNull
         @Override
-        public HopperWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public HopperWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -68,11 +68,11 @@ final class HopperWindowImpl extends AbstractWindow<MenuHandle> implements Hoppe
         @NotNull
         @Override
         protected HopperWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 5 || this.upperGui.height() != 1)
-                throw new IllegalArgumentException("hopper upper GUI must have size 5x1");
+            if (this.upperPane.width() != 5 || this.upperPane.height() != 1)
+                throw new IllegalArgumentException("hopper upper Pane must have size 5x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
-            WindowLayout layout = WindowLayout.split(this.upperGui, lowerGui);
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
+            WindowLayout layout = WindowLayout.split(this.upperPane, lowerPane);
             return new HopperWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }
     }

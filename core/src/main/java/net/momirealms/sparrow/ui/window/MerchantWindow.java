@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.Observable;
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.item.Item;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,7 +13,7 @@ import java.util.function.Consumer;
 public interface MerchantWindow extends Window {
 
     /**
-     * 创建使用 3x1 上部 GUI 的 Builder.
+     * 创建使用 3x1 上部 Pane 的 Builder.
      *
      * @return 商人 Window Builder
      */
@@ -251,22 +251,22 @@ public interface MerchantWindow extends Window {
     interface Builder extends Window.Builder<MerchantWindow, Builder> {
 
         /**
-         * 设置必须为 3x1 的上部 GUI.
+         * 设置必须为 3x1 的上部 Pane.
          *
-         * @param upperGui 商人三个协议槽位(raw slot)对应的 GUI
+         * @param upperPane 商人三个协议槽位(raw slot)对应的 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setUpperGui(@NotNull Gui upperGui);
+        Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
          * 设置初始商人等级.

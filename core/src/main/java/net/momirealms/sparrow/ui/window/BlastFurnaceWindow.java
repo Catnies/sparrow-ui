@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,16 +50,16 @@ public interface BlastFurnaceWindow extends RecipeBookWindow {
     interface Builder extends RecipeBookWindow.Builder<BlastFurnaceWindow, Builder> {
 
         @NotNull
-        Builder setInputGui(@NotNull Gui inputGui);
+        Builder setInputPane(@NotNull Pane inputPane);
 
         @NotNull
-        Builder setFuelGui(@NotNull Gui fuelGui);
+        Builder setFuelPane(@NotNull Pane fuelPane);
 
         @NotNull
-        Builder setResultGui(@NotNull Gui resultGui);
+        Builder setResultPane(@NotNull Pane resultPane);
 
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         @NotNull
         Builder setCookProgress(double progress);

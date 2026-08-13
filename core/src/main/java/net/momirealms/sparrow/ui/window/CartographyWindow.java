@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.map.MapCursor;
@@ -19,7 +19,7 @@ public interface CartographyWindow extends Window {
     int MAP_SIZE = 128;
 
     /**
-     * 创建使用 1x2 输入 GUI 与 1x1 结果 GUI 的 Builder.
+     * 创建使用 1x2 输入 Pane 与 1x1 结果 Pane 的 Builder.
      *
      * @return 制图台窗口 Builder
      */
@@ -191,31 +191,31 @@ public interface CartographyWindow extends Window {
     interface Builder extends Window.Builder<CartographyWindow, Builder> {
 
         /**
-         * 设置映射协议槽位(raw slot)0 和 1 的 1x2 输入 GUI.
+         * 设置映射协议槽位(raw slot)0 和 1 的 1x2 输入 Pane.
          *
-         * @param inputGui 输入 GUI
+         * @param inputPane 输入 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setInputGui(@NotNull Gui inputGui);
+        Builder setInputPane(@NotNull Pane inputPane);
 
         /**
-         * 设置映射协议槽位(raw slot)2 的 1x1 结果 GUI.
+         * 设置映射协议槽位(raw slot)2 的 1x1 结果 Pane.
          *
-         * @param resultGui 结果 GUI
+         * @param resultPane 结果 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setResultGui(@NotNull Gui resultGui);
+        Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
          * 设置初始图标.

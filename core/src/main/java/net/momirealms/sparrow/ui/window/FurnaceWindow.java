@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,40 +50,40 @@ public interface FurnaceWindow extends RecipeBookWindow {
     interface Builder extends RecipeBookWindow.Builder<FurnaceWindow, Builder> {
 
         /**
-         * 设置映射协议槽位(raw slot)0 的 1x1 输入 GUI.
+         * 设置映射协议槽位(raw slot)0 的 1x1 输入 Pane.
          *
-         * @param inputGui 输入 GUI
+         * @param inputPane 输入 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setInputGui(@NotNull Gui inputGui);
+        Builder setInputPane(@NotNull Pane inputPane);
 
         /**
-         * 设置映射协议槽位(raw slot)1 的 1x1 燃料 GUI.
+         * 设置映射协议槽位(raw slot)1 的 1x1 燃料 Pane.
          *
-         * @param fuelGui 燃料 GUI
+         * @param fuelPane 燃料 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setFuelGui(@NotNull Gui fuelGui);
+        Builder setFuelPane(@NotNull Pane fuelPane);
 
         /**
-         * 设置映射协议槽位(raw slot)2 的 1x1 结果 GUI.
+         * 设置映射协议槽位(raw slot)2 的 1x1 结果 Pane.
          *
-         * @param resultGui 结果 GUI
+         * @param resultPane 结果 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setResultGui(@NotNull Gui resultGui);
+        Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
          * 设置初始烹饪进度.

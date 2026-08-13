@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.gui;
+package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
@@ -16,14 +16,14 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * GUI Builder 的通用实现.
+ * Pane Builder 的通用实现.
  * <p>它记录每个 Structure 标志符要填充的内容, 并统一处理背景,
  * 冻结状态, 构建后修改和失败位置诊断.
  */
-abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBuilder<G, B>> implements Gui.Builder<G, B> {
-    private final Structure structure; // GUI 布局
-    private final SlotElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
-    private final ArrayList<Consumer<? super G>> modifiers; // GUI 创建后按顺序执行
+abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
+    private final Structure structure; // Pane 布局
+    private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
+    private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
 
     private ItemProvider background; // 空槽位背景, 可为 null
     private boolean frozen;          // 是否禁止玩家交互
@@ -31,11 +31,11 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     /**
      * 基于布局创建 Builder.
      *
-     * @param structure GUI 布局
+     * @param structure Pane 布局
      */
-    AbstractGuiBuilder(Structure structure) {
+    AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
-        this.ingredients = new SlotElementSupplier[structure.identifierCount()];
+        this.ingredients = new ElementSupplier[structure.identifierCount()];
         this.modifiers = new ArrayList<>();
     }
 
@@ -44,7 +44,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
      *
      * @param source 来源 Builder
      */
-    AbstractGuiBuilder(AbstractGuiBuilder<G, B> source) {
+    AbstractPaneBuilder(AbstractPaneBuilder<G, B> source) {
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
         this.modifiers = new ArrayList<>(source.modifiers);
@@ -60,32 +60,32 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
 
     @Override
     @NotNull
-    public final B addIngredient(@NotNull String identifier, @NotNull SlotElementSupplier supplier) {
+    public final B addIngredient(@NotNull String identifier, @NotNull ElementSupplier supplier) {
         return this.bindIngredient(identifier, supplier);
     }
 
     @Override
     @NotNull
-    public final B addIngredient(char identifier, @NotNull SlotElementSupplier supplier) {
+    public final B addIngredient(char identifier, @NotNull ElementSupplier supplier) {
         return this.addIngredient(String.valueOf(identifier), supplier);
     }
 
     @Override
     @NotNull
-    public final B addIngredient(@NotNull String identifier, @NotNull SlotElement element) {
-        return this.bindIngredient(identifier, SlotElementSupplier.fixed(element));
+    public final B addIngredient(@NotNull String identifier, @NotNull Element element) {
+        return this.bindIngredient(identifier, ElementSupplier.fixed(element));
     }
 
     @Override
     @NotNull
-    public final B addIngredient(char identifier, @NotNull SlotElement element) {
+    public final B addIngredient(char identifier, @NotNull Element element) {
         return this.addIngredient(String.valueOf(identifier), element);
     }
 
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Item item) {
-        return this.bindIngredient(identifier, SlotElementSupplier.fixed(new SlotElement.Item(item)));
+        return this.bindIngredient(identifier, ElementSupplier.fixed(new Element.Item(item)));
     }
 
     @Override
@@ -97,7 +97,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder) {
-        return this.bindIngredient(identifier, (ignoredSize, ignoredOccurrence) -> new SlotElement.Item(itemBuilder.build()));
+        return this.bindIngredient(identifier, (ignoredSize, ignoredOccurrence) -> new Element.Item(itemBuilder.build()));
     }
 
     @Override
@@ -115,19 +115,19 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier) {
-        return this.bindIngredient(identifier, SlotElementSupplier.items(itemSupplier));
+        return this.bindIngredient(identifier, ElementSupplier.items(itemSupplier));
     }
 
     @Override
     @NotNull
-    public final B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends SlotElement> elementSupplier) {
-        return this.bindIngredient(identifier, SlotElementSupplier.fromSupplier(elementSupplier));
+    public final B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends Element> elementSupplier) {
+        return this.bindIngredient(identifier, ElementSupplier.fromSupplier(elementSupplier));
     }
 
     @Override
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull SparrowInventory inventory) {
-        return this.bindIngredient(identifier, SlotElementSupplier.inventory(inventory));
+        return this.bindIngredient(identifier, ElementSupplier.inventory(inventory));
     }
 
     @Override
@@ -138,14 +138,14 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
 
     @Override
     @NotNull
-    public final B addIngredient(@NotNull String identifier, @NotNull Gui gui) {
-        return this.addIngredient(identifier, gui, 0, 0);
+    public final B addIngredient(@NotNull String identifier, @NotNull Pane pane) {
+        return this.addIngredient(identifier, pane, 0, 0);
     }
 
     @Override
     @NotNull
-    public final B addIngredient(@NotNull String identifier, @NotNull Gui gui, int offsetX, int offsetY) {
-        return this.bindIngredient(identifier, SlotElementSupplier.gui(gui, offsetX, offsetY));
+    public final B addIngredient(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY) {
+        return this.bindIngredient(identifier, ElementSupplier.pane(pane, offsetX, offsetY));
     }
 
     @Override
@@ -199,12 +199,12 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     @NotNull
     public final G build() {
         // 先创建一份全空槽位数组
-        SlotElement[] elements = new SlotElement[this.structure.size().area()];
-        Arrays.fill(elements, SlotElement.Empty.INSTANCE);
+        Element[] elements = new Element[this.structure.size().area()];
+        Arrays.fill(elements, Element.Empty.INSTANCE);
 
         // 按标志符编号生成槽位内容, 失败时附加模板位置
         for (int identifierIndex = 0; identifierIndex < this.ingredients.length; identifierIndex++) {
-            SlotElementSupplier supplier = this.ingredients[identifierIndex];
+            ElementSupplier supplier = this.ingredients[identifierIndex];
             if (supplier == null) {
                 continue;
             }
@@ -214,7 +214,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
             for (int occurrence = 0; occurrence < indices.length; occurrence++) {
                 int slot = indices[occurrence];
                 try {
-                    SlotElement element = Objects.requireNonNull(supplier.get(slots, occurrence), "ingredient");
+                    Element element = Objects.requireNonNull(supplier.get(slots, occurrence), "ingredient");
                     elements[slot] = element;
                 } catch (RuntimeException exception) {
                     throw this.instantiationFailure(identifierIndex, slot, exception);
@@ -222,12 +222,12 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
             }
         }
 
-        // 所有槽位都生成成功后才创建 GUI, 然后执行修改器
-        G gui = this.create(this.structure, elements, this.background, this.frozen);
+        // 所有槽位都生成成功后才创建 Pane, 然后执行修改器
+        G pane = this.create(this.structure, elements, this.background, this.frozen);
         for (Consumer<? super G> modifier : this.modifiers) {
-            modifier.accept(gui);
+            modifier.accept(pane);
         }
-        return gui;
+        return pane;
     }
 
     @NotNull
@@ -239,7 +239,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
     @NotNull
     protected abstract G create(
             @NotNull Structure structure,
-            SlotElement @NotNull [] elements,
+            Element @NotNull [] elements,
             @Nullable ItemProvider background,
             boolean frozen
     );
@@ -251,7 +251,7 @@ abstract class AbstractGuiBuilder<G extends AbstractGui, B extends AbstractGuiBu
      * @param supplier 元素生成器
      * @return 当前 Builder
      */
-    private B bindIngredient(String identifier, SlotElementSupplier supplier) {
+    private B bindIngredient(String identifier, ElementSupplier supplier) {
         this.ingredients[this.structure.identifierIndex(identifier)] = supplier;
         return this.self();
     }

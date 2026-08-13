@@ -4,9 +4,9 @@ import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSlotAttachment;
-import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
+import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
@@ -25,8 +25,8 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * 记录 Window 中一个槽位当前显示的内容.
  *
- * <p>它从根 GUI 的指定槽位出发, 跟随 {@link SlotElement.GuiLink} 一层层进入子 GUI,
- * 直到找到 Item, Inventory连接或空槽位. GUI 变了要重新解析整条路径; 最终 Item 变了或
+ * <p>它从根 Pane 的指定槽位出发, 跟随 {@link Element.PaneLink} 一层层进入子 Pane,
+ * 直到找到 Item, Inventory连接或空槽位. Pane 变了要重新解析整条路径; 最终 Item 变了或
  * Inventory 有事务通知, 只需要重新渲染一次.
  *
  * <p>路径解析, 显示, 交互和关闭都在玩家实体线程执行.
@@ -35,8 +35,8 @@ import java.util.concurrent.atomic.AtomicReference;
 final class DisplayedSlotPath implements AutoCloseable {
     private final Window window;    // 所属 Window
     private final int windowSlot;   // 本路径服务的 Window 槽位
-    private final Gui rootGui;      // 路径起点的根 GUI
-    private final int rootSlot;     // 路径起点在根 GUI 中的槽位
+    private final Pane rootPane;      // 路径起点的根 Pane
+    private final int rootSlot;     // 路径起点在根 Pane 中的槽位
     private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
 
     private PathState current;          // 当前已启用的路径快照
@@ -47,14 +47,14 @@ final class DisplayedSlotPath implements AutoCloseable {
      *
      * @param window 所属 Window
      * @param windowSlot Window 槽位编号
-     * @param rootGui 显示路径的根 GUI
-     * @param rootSlot 根 GUI 槽位编号
+     * @param rootPane 显示路径的根 Pane
+     * @param rootSlot 根 Pane 槽位编号
      */
-    DisplayedSlotPath(@NotNull Window window, int windowSlot, @NotNull Gui rootGui, int rootSlot) {
+    DisplayedSlotPath(@NotNull Window window, int windowSlot, @NotNull Pane rootPane, int rootSlot) {
         this.window = window;
         this.windowSlot = windowSlot;
-        this.rootGui = rootGui;
-        this.rootSlot = rootGui.size().checkSlot(rootSlot);
+        this.rootPane = rootPane;
+        this.rootSlot = rootPane.size().checkSlot(rootSlot);
         this.renderContext = new RenderContext(window, windowSlot);
 
         try {
@@ -68,7 +68,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 重新跟随 GUI 链接, 建一条新的显示路径替换当前的.
+     * 重新跟随 Pane 链接, 建一条新的显示路径替换当前的.
      * <p>新路径全部准备成功后才替换; 中途任何订阅失败, 新路径直接关掉, 旧路径继续工作.
      */
     void resolve() {
@@ -110,7 +110,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      *   <li>若路径终点为 InventoryLink, 优先显示 Inventory 的槽位映射,
      *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.</li>
      *   <li>若路径终点为 Item, 显示该 Item</li>
-     *   <li>若路径终点为 Empty, 回退为最深层 GUI 的背景</li>
+     *   <li>若路径终点为 Empty, 回退为最深层 Pane 的背景</li>
      *   <li>若仍无结果, 返回空物品作为最终兜底</li>
      * </ol>
      *
@@ -191,12 +191,12 @@ final class DisplayedSlotPath implements AutoCloseable {
      * @return Inventory 连接, 没有时为 null
      */
     @org.jetbrains.annotations.Nullable
-    SlotElement.InventoryLink inventoryLink() {
+    Element.InventoryLink inventoryLink() {
         return this.currentState().inventoryLink;
     }
 
     /**
-     * 返回路径是否按冻结处理: 经过已冻结 GUI, 或槽位被 Window 冻结;
+     * 返回路径是否按冻结处理: 经过已冻结 Pane, 或槽位被 Window 冻结;
      * 冻结槽不参与点击语义与 Item 分派.
      *
      * @return 路径按冻结处理时返回 true
@@ -205,7 +205,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         return this.windowFrozen() || this.currentState().frozen;
     }
 
-    // Window 侧的单槽冻结与沿途 GUI 冻结同待遇, 任一生效本路径即按冻结处理.
+    // Window 侧的单槽冻结与沿途 Pane 冻结同待遇, 任一生效本路径即按冻结处理.
     private boolean windowFrozen() {
         return this.window.frozenAt(this.windowSlot);
     }
@@ -224,7 +224,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
     }
 
-    // 强制处理尚未解析的 GUI 变化, 让 Window 在提交旧候选前看到交互终点或冻结状态的改变.
+    // 强制处理尚未解析的 Pane 变化, 让 Window 在提交旧候选前看到交互终点或冻结状态的改变.
     void refreshInteractionState() {
         this.currentState();
     }
@@ -239,7 +239,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 关闭当前路径并取消所有 GUI 和 Item 订阅.
+     * 关闭当前路径并取消所有 Pane 和 Item 订阅.
      * 重复调用安全.
      */
     @Override
@@ -258,42 +258,42 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 从根 GUI 槽位开始一层层跟随 GuiLink, 并订阅沿途的每个 GUI 槽位和最终 Item.
-     * <p>遇到空槽位或 Item 就停. 遇到重复的 GUI 说明链接成环, 直接失败.
+     * 从根 Pane 槽位开始一层层跟随 PaneLink, 并订阅沿途的每个 Pane 槽位和最终 Item.
+     * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
      *
      * @param candidate 正在准备的新路径
      */
     private void prepare(PathState candidate) {
-        Gui gui = this.rootGui;
-        int guiSlot = this.rootSlot;
+        Pane pane = this.rootPane;
+        int paneSlot = this.rootSlot;
 
         while (true) {
             // 链接成环直接失败
-            if (candidate.contains(gui)) {
-                throw new IllegalStateException("GUI link cycle detected at depth " + candidate.depth + " for local slot " + guiSlot);
+            if (candidate.contains(pane)) {
+                throw new IllegalStateException("Pane link cycle detected at depth " + candidate.depth + " for local slot " + paneSlot);
             }
 
-            // 订阅这一层 GUI 的槽位: GUI 的失效通知会要求重建路径
-            GuiSlotAttachment attachment = gui.attach(guiSlot, ignoredInvalidation -> candidate.notifyWindows(true));
-            candidate.add(gui, attachment);
-            // 记录沿途最深层背景; 任何一层 GUI 冻结, 整条路径都视为经过已冻结 GUI
+            // 订阅这一层 Pane 的槽位: Pane 的失效通知会要求重建路径
+            PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> candidate.notifyWindows(true));
+            candidate.add(pane, attachment);
+            // 记录沿途最深层背景; 任何一层 Pane 冻结, 整条路径都视为经过已冻结 Pane
             if (attachment.background() != null) {
                 candidate.background = attachment.background();
             }
             candidate.frozen |= attachment.frozen();
 
-            // 按槽位元素决定走向: GuiLink 继续深入, 其余三种都是终点
+            // 按槽位元素决定走向: PaneLink 继续深入, 其余三种都是终点
             switch (attachment.element()) {
-                case SlotElement.GuiLink link -> {
-                    gui = link.gui();
-                    guiSlot = link.slot();
+                case Element.PaneLink link -> {
+                    pane = link.pane();
+                    paneSlot = link.slot();
                 }
-                case SlotElement.Item(var item) -> {
+                case Element.Item(var item) -> {
                     candidate.item = item;
                     candidate.itemAttachment = item.attach(this.window, ignore -> candidate.notifyWindows(false));
                     return;
                 }
-                case SlotElement.InventoryLink link -> {
+                case Element.InventoryLink link -> {
                     candidate.inventoryLink = link;
                     candidate.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
                         // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
@@ -311,7 +311,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                     });
                     return;
                 }
-                case SlotElement.Empty ignoredEmpty -> {
+                case Element.Empty ignoredEmpty -> {
                     return;
                 }
             }
@@ -319,7 +319,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回当前路径状态. GUI 结构变过时先重建路径再返回;
+     * 返回当前路径状态. Pane 结构变过时先重建路径再返回;
      * Item 变化不用重建, 直接返回现有状态.
      *
      * @return 当前路径状态
@@ -349,8 +349,8 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 保存一次已解析路径的状态和全部订阅.
-     * <p>沿途 GUI 和最终 Item 通过各自的失效回调通知此路径:
-     * GUI 更新要求重建路径, Item 更新只要求重新渲染, 不会重建挂载.
+     * <p>沿途 Pane 和最终 Item 通过各自的失效回调通知此路径:
+     * Pane 更新要求重建路径, Item 更新只要求重新渲染, 不会重建挂载.
      * 回调绑定在路径实例上, 因此旧路径退役后延迟到达的通知会被忽略.
      */
     private static final class PathState implements AutoCloseable {
@@ -370,21 +370,21 @@ final class DisplayedSlotPath implements AutoCloseable {
         private final int windowSlot;   // 本路径服务的 Window 槽位
         private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING); // 生命周期与待处理通知的门闩, 用 CAS 更新
 
-        private Gui[] guis = new Gui[4]; // 从根 GUI 到最深层 GUI
-        private GuiSlotAttachment[] guiAttachments = new GuiSlotAttachment[4]; // 与 guis 使用相同下标
-        private int depth;               // 路径当前深度, 即 guis 中已使用的层数
+        private Pane[] panes = new Pane[4]; // 从根 Pane 到最深层 Pane
+        private PaneSlotAttachment[] paneAttachments = new PaneSlotAttachment[4]; // 与 panes 使用相同下标
+        private int depth;               // 路径当前深度, 即 panes 中已使用的层数
 
         // Item 部分, 与 Inventory 链接互斥
         private Item item; // 路径终点的 Item
         private ItemAttachment itemAttachment = ItemAttachment.PASSIVE; // 最终的 Item 的 ItemAttachment
 
         // Inventory 链接部分, 与 Item 互斥
-        private SlotElement.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
+        private Element.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
         private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
         private Subscription visualSubscription;         // Inventory 视觉映射变更的渲染订阅
 
-        private ItemProvider background;    // 沿路径找到的最深层非 null 的 GUI 背景.
-        private boolean frozen;             // 路径上任何 GUI 冻结时都为 true
+        private ItemProvider background;    // 沿路径找到的最深层非 null 的 Pane 背景.
+        private boolean frozen;             // 路径上任何 Pane 冻结时都为 true
         private boolean resourcesClosed;    // 订阅是否已全部关闭, 保证 close 幂等
 
         /**
@@ -402,7 +402,7 @@ final class DisplayedSlotPath implements AutoCloseable {
          * 处理一次失效通知. 任意线程都可能调用, 所以这里只改标志位和脏标记,
          * 真正的重建由实体线程下次读取路径时再做.
          *
-         * @param resolveRequired true 表示通知来自 GUI, 要重建整条路径;
+         * @param resolveRequired true 表示通知来自 Pane, 要重建整条路径;
          *                        false 表示只来自最终 Item, 重新渲染就够了
          */
         private void notifyWindows(boolean resolveRequired) {
@@ -449,14 +449,14 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 检查 GUI 是否已经出现在当前路径中, 用于拒绝循环链接.
+         * 检查 Pane 是否已经出现在当前路径中, 用于拒绝循环链接.
          *
-         * @param gui 要检查的 GUI
+         * @param pane 要检查的 Pane
          * @return 已经出现时为 true
          */
-        private boolean contains(Gui gui) {
+        private boolean contains(Pane pane) {
             for (int index = 0; index < this.depth; index++) {
-                if (this.guis[index] == gui) {
+                if (this.panes[index] == pane) {
                     return true;
                 }
             }
@@ -464,19 +464,19 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 记录一层 GUI 及其槽位订阅, 必要时扩容数组.
+         * 记录一层 Pane 及其槽位订阅, 必要时扩容数组.
          *
-         * @param gui 路径中的 GUI
-         * @param attachment GUI 槽位订阅
+         * @param pane 路径中的 Pane
+         * @param attachment Pane 槽位订阅
          */
-        private void add(Gui gui, GuiSlotAttachment attachment) {
-            if (this.depth == this.guis.length) {
+        private void add(Pane pane, PaneSlotAttachment attachment) {
+            if (this.depth == this.panes.length) {
                 int newLength = this.depth * 2;
-                this.guis = Arrays.copyOf(this.guis, newLength);
-                this.guiAttachments = Arrays.copyOf(this.guiAttachments, newLength);
+                this.panes = Arrays.copyOf(this.panes, newLength);
+                this.paneAttachments = Arrays.copyOf(this.paneAttachments, newLength);
             }
-            this.guis[this.depth] = gui;
-            this.guiAttachments[this.depth] = attachment;
+            this.panes[this.depth] = pane;
+            this.paneAttachments[this.depth] = attachment;
             this.depth++;
         }
 
@@ -513,7 +513,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 返回 GUI 结构变化是否要求这条路径重新解析.
+         * 返回 Pane 结构变化是否要求这条路径重新解析.
          *
          * @return 需要重新解析时返回 true
          */
@@ -529,7 +529,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 关闭路径上的所有订阅, 并清掉 Item, 背景和 GUI 引用.
+         * 关闭路径上的所有订阅, 并清掉 Item, 背景和 Pane 引用.
          * <p>某个订阅关闭失败也会继续关其余的, 最后再把收集到的异常抛出来. 重复调用安全.
          */
         @Override
@@ -558,12 +558,12 @@ final class DisplayedSlotPath implements AutoCloseable {
                 failure = ThrowableUtils.captureUnchecked(failure, previousVisualSubscription::close);
             }
 
-            // 从最深层 GUI 向根 GUI 逆序取消订阅
+            // 从最深层 Pane 向根 Pane 逆序取消订阅
             for (int index = this.depth - 1; index >= 0; index--) {
-                GuiSlotAttachment guiAttachment = this.guiAttachments[index];
-                this.guiAttachments[index] = null;
-                this.guis[index] = null;
-                failure = ThrowableUtils.captureUnchecked(failure, guiAttachment::close);
+                PaneSlotAttachment paneAttachment = this.paneAttachments[index];
+                this.paneAttachments[index] = null;
+                this.panes[index] = null;
+                failure = ThrowableUtils.captureUnchecked(failure, paneAttachment::close);
             }
             this.depth = 0;
 

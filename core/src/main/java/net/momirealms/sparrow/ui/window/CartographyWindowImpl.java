@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.CartographyMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import org.bukkit.entity.Player;
@@ -145,9 +145,9 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<CartographyWindow, CartographyWindow.Builder> implements CartographyWindow.Builder {
-        private Gui inputGui = Gui.empty(new GuiSize(1, 2));
-        private Gui resultGui = Gui.empty(new GuiSize(1, 1));
-        private @Nullable Gui lowerGui;
+        private Pane inputPane = Pane.empty(new PaneSize(1, 2));
+        private Pane resultPane = Pane.empty(new PaneSize(1, 1));
+        private @Nullable Pane lowerPane;
         private byte[] canvas = new byte[MAP_SIZE * MAP_SIZE];
         private Set<MapIcon> icons = Set.of();
         private View view = View.NORMAL;
@@ -157,9 +157,9 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.inputGui = source.inputGui;
-            this.resultGui = source.resultGui;
-            this.lowerGui = source.lowerGui;
+            this.inputPane = source.inputPane;
+            this.resultPane = source.resultPane;
+            this.lowerPane = source.lowerPane;
             this.canvas = source.canvas.clone();
             this.icons = CartographyWindowImpl.copyIcons(source.icons);
             this.view = source.view;
@@ -167,22 +167,22 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
 
         @Override
         @NotNull
-        public CartographyWindow.Builder setInputGui(@NotNull Gui inputGui) {
-            this.inputGui = inputGui;
+        public CartographyWindow.Builder setInputPane(@NotNull Pane inputPane) {
+            this.inputPane = inputPane;
             return this;
         }
 
         @Override
         @NotNull
-        public CartographyWindow.Builder setResultGui(@NotNull Gui resultGui) {
-            this.resultGui = resultGui;
+        public CartographyWindow.Builder setResultPane(@NotNull Pane resultPane) {
+            this.resultPane = resultPane;
             return this;
         }
 
         @Override
         @NotNull
-        public CartographyWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public CartographyWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -240,16 +240,16 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
         @Override
         @NotNull
         protected CartographyWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.inputGui.width() != 1 || this.inputGui.height() != 2)
-                throw new IllegalArgumentException("cartography input GUI must have size 1x2");
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
-                throw new IllegalArgumentException("cartography result GUI must have size 1x1");
+            if (this.inputPane.width() != 1 || this.inputPane.height() != 2)
+                throw new IllegalArgumentException("cartography input Pane must have size 1x2");
+            if (this.resultPane.width() != 1 || this.resultPane.height() != 1)
+                throw new IllegalArgumentException("cartography result Pane must have size 1x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.inputGui),
-                    WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.inputPane),
+                    WindowLayout.Region.upper(this.resultPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return new CartographyWindowImpl(
                     WindowManager.getInstance(),

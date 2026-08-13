@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import org.bukkit.entity.Player;
@@ -26,38 +26,38 @@ final class GrindstoneWindowImpl extends AbstractWindow<MenuHandle> implements G
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<GrindstoneWindow, GrindstoneWindow.Builder> implements GrindstoneWindow.Builder {
-        private Gui inputGui = Gui.empty(new GuiSize(1, 2));
-        private Gui resultGui = Gui.empty(new GuiSize(1, 1));
-        private @Nullable Gui lowerGui;
+        private Pane inputPane = Pane.empty(new PaneSize(1, 2));
+        private Pane resultPane = Pane.empty(new PaneSize(1, 1));
+        private @Nullable Pane lowerPane;
 
         BuilderImpl() {
         }
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.inputGui = source.inputGui;
-            this.resultGui = source.resultGui;
-            this.lowerGui = source.lowerGui;
+            this.inputPane = source.inputPane;
+            this.resultPane = source.resultPane;
+            this.lowerPane = source.lowerPane;
         }
 
         @Override
         @NotNull
-        public GrindstoneWindow.Builder setInputGui(@NotNull Gui inputGui) {
-            this.inputGui = inputGui;
+        public GrindstoneWindow.Builder setInputPane(@NotNull Pane inputPane) {
+            this.inputPane = inputPane;
             return this;
         }
 
         @Override
         @NotNull
-        public GrindstoneWindow.Builder setResultGui(@NotNull Gui resultGui) {
-            this.resultGui = resultGui;
+        public GrindstoneWindow.Builder setResultPane(@NotNull Pane resultPane) {
+            this.resultPane = resultPane;
             return this;
         }
 
         @Override
         @NotNull
-        public GrindstoneWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public GrindstoneWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -76,16 +76,16 @@ final class GrindstoneWindowImpl extends AbstractWindow<MenuHandle> implements G
         @Override
         @NotNull
         protected GrindstoneWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.inputGui.width() != 1 || this.inputGui.height() != 2)
-                throw new IllegalArgumentException("grindstone input GUI must have size 1x2");
-            if (this.resultGui.width() != 1 || this.resultGui.height() != 1)
-                throw new IllegalArgumentException("grindstone result GUI must have size 1x1");
+            if (this.inputPane.width() != 1 || this.inputPane.height() != 2)
+                throw new IllegalArgumentException("grindstone input Pane must have size 1x2");
+            if (this.resultPane.width() != 1 || this.resultPane.height() != 1)
+                throw new IllegalArgumentException("grindstone result Pane must have size 1x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.inputGui),
-                    WindowLayout.Region.upper(this.resultGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.inputPane),
+                    WindowLayout.Region.upper(this.resultPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return new GrindstoneWindowImpl(WindowManager.getInstance(), viewer, layout, settings);
         }

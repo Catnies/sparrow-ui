@@ -3,8 +3,8 @@ package net.momirealms.sparrow.ui.window;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.SlotElement;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -23,44 +23,44 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * 由一名玩家查看的 GUI 会话.
+ * 由一名玩家查看的 Pane 会话.
  * <p>所有变更方法都可以从任意线程调用. 命令会按玩家串行执行, 并只在玩家实体线程修改
- * GUI, 菜单和协议状态. 查询方法返回最近一次已应用状态的线程安全快照.
+ * Pane, 菜单和协议状态. 查询方法返回最近一次已应用状态的线程安全快照.
  */
 public interface Window {
 
     /**
      * 创建普通窗口的 Builder.
-     * 普通窗口由 {@code gui} 作为上半部分, 下半部分映射玩家原生物品栏.
+     * 普通窗口由 {@code pane} 作为上半部分, 下半部分映射玩家原生物品栏.
      *
-     * @param gui 上半部分 GUI
+     * @param pane 上半部分 Pane
      * @return 可重复使用的 Builder
      */
-    static @NotNull NormalWindow.Builder builder(@NotNull Gui gui) {
-        return NormalWindow.builder().setUpperGui(gui);
+    static @NotNull NormalWindow.Builder builder(@NotNull Pane pane) {
+        return NormalWindow.builder().setUpperPane(pane);
     }
 
     /**
      * 创建上下分离窗口的 Builder.
-     * 上下两个 GUI 分别控制容器和玩家物品栏区域.
+     * 上下两个 Pane 分别控制容器和玩家物品栏区域.
      *
-     * @param upperGui 上半部分 GUI
-     * @param lowerGui 下半部分 9x4 GUI
+     * @param upperPane 上半部分 Pane
+     * @param lowerPane 下半部分 9x4 Pane
      * @return 可重复使用的 Builder
      */
-    static @NotNull NormalWindow.Builder splitBuilder(@NotNull Gui upperGui, @NotNull Gui lowerGui) {
-        return NormalWindow.builder().setUpperGui(upperGui).setLowerGui(lowerGui);
+    static @NotNull NormalWindow.Builder splitBuilder(@NotNull Pane upperPane, @NotNull Pane lowerPane) {
+        return NormalWindow.builder().setUpperPane(upperPane).setLowerPane(lowerPane);
     }
 
     /**
      * 创建合并窗口的 Builder.
-     * 单个 GUI 同时覆盖容器和玩家物品栏区域.
+     * 单个 Pane 同时覆盖容器和玩家物品栏区域.
      *
-     * @param gui 合并后的 GUI
+     * @param pane 合并后的 Pane
      * @return 可重复使用的 Builder
      */
-    static @NotNull NormalWindow.Builder mergedBuilder(@NotNull Gui gui) {
-        return NormalWindow.mergedBuilder(gui);
+    static @NotNull NormalWindow.Builder mergedBuilder(@NotNull Pane pane) {
+        return NormalWindow.mergedBuilder(pane);
     }
 
     /**
@@ -126,7 +126,7 @@ public interface Window {
 
     /**
      * 返回指定协议槽位是否被本 Window 冻结.
-     * 只反映 {@link #frozenAt(int, boolean)} 设置的窗口侧状态, 路径上 GUI 自身的冻结不计入.
+     * 只反映 {@link #frozenAt(int, boolean)} 设置的窗口侧状态, 路径上 Pane 自身的冻结不计入.
      *
      * @param windowSlot 协议槽位(raw slot)
      * @return 该槽位被本 Window 冻结时返回 true
@@ -135,9 +135,9 @@ public interface Window {
 
     /**
      * 设置指定协议槽位是否被本 Window 冻结.
-     * 冻结后该槽位与路径经过已冻结 GUI 同待遇: 不参与点击语义, 不派发任何事件, 也不分派 Item 点击,
+     * 冻结后该槽位与路径经过已冻结 Pane 同待遇: 不参与点击语义, 不派发任何事件, 也不分派 Item 点击,
      * 客户端预测会被纠正回来, 显示内容不受影响.
-     * 与 {@link Gui#setFrozen} 相互独立, 任一生效该槽位即被冻结, 本方法的解冻只撤销窗口侧的这一份.
+     * 与 {@link Pane#setFrozen} 相互独立, 任一生效该槽位即被冻结, 本方法的解冻只撤销窗口侧的这一份.
      *
      * @param windowSlot 协议槽位(raw slot)
      * @param frozen true 表示冻结
@@ -146,7 +146,7 @@ public interface Window {
 
     /**
      * 返回本 Window 是否冻结玩家副手交互.
-     * <p>副手不属于 Window 的协议槽位, 因此不会出现在 {@link #frozenAt(int)} 或 GUI 路径中.
+     * <p>副手不属于 Window 的协议槽位, 因此不会出现在 {@link #frozenAt(int)} 或 Pane 路径中.
      * 本状态只阻止玩家经当前 Window 发起的副手交换, 不阻止插件或其他服务端逻辑直接修改副手.
      *
      * @return 副手交互被冻结时返回 true
@@ -396,56 +396,56 @@ public interface Window {
     boolean isCloseable();
 
     /**
-     * 返回占据玩家物品栏区域的下部 GUI.
-     * <p>合并窗口的 upper 与 lower 区域会返回同一个根 GUI.
+     * 返回占据玩家物品栏区域的下部 Pane.
+     * <p>合并窗口的 upper 与 lower 区域会返回同一个根 Pane.
      *
-     * @return 下部 GUI
+     * @return 下部 Pane
      */
     @NotNull
-    Gui lowerGui();
+    Pane lowerPane();
 
     /**
-     * 返回下部 GUI 按默认布局引用的 ReferencingInventory.
+     * 返回下部 Pane 按默认布局引用的 ReferencingInventory.
      *
      * @return 默认 ReferencingInventory
      */
     @Nullable
     default ReferencingInventory defaultLowerInventory() {
-        Gui lowerGui = this.lowerGui();
-        if (lowerGui.width() != 9 || lowerGui.height() != 4) {
+        Pane lowerPane = this.lowerPane();
+        if (lowerPane.width() != 9 || lowerPane.height() != 4) {
             return null;
         }
-        // 默认 lower 由首槽标识; 只有需要区分同形自定义 GUI 时才记录构建来源.
-        return lowerGui.element(0) instanceof SlotElement.InventoryLink(ReferencingInventory inventory, int slot) && slot == 0
+        // 默认 lower 由首槽标识; 只有需要区分同形自定义 Pane 时才记录构建来源.
+        return lowerPane.element(0) instanceof Element.InventoryLink(ReferencingInventory inventory, int slot) && slot == 0
                 ? inventory
                 : null;
     }
 
     /**
-     * 返回 Window 直接拥有的根 GUI, 不包含嵌套 GUI.
+     * 返回 Window 直接拥有的根 Pane, 不包含嵌套 Pane.
      *
-     * @return 根 GUI 列表
+     * @return 根 Pane 列表
      */
     @Unmodifiable
-    @NotNull List<Gui> guis();
+    @NotNull List<Pane> panes();
 
     /**
-     * 返回 Window 槽位对应的根 GUI 链接.
+     * 返回 Window 槽位对应的根 Pane 链接.
      *
      * @param windowSlot Window 槽位
-     * @return 根 GUI 链接
+     * @return 根 Pane 链接
      */
     @NotNull
-    SlotElement.GuiLink guiAt(int windowSlot);
+    Element.PaneLink paneAt(int windowSlot);
 
     /**
-     * 返回玩家快捷栏槽位对应的根 GUI 链接.
+     * 返回玩家快捷栏槽位对应的根 Pane 链接.
      *
      * @param hotbarSlot 快捷栏索引
-     * @return 根 GUI 链接
+     * @return 根 Pane 链接
      */
     @NotNull
-    SlotElement.GuiLink guiAtHotbar(int hotbarSlot);
+    Element.PaneLink paneAtHotbar(int hotbarSlot);
 
     /**
      * 返回玩家快捷栏槽位对应的协议槽位.
@@ -660,7 +660,7 @@ public interface Window {
 
         /**
          * 创建独立的 Builder 副本.
-         * 可变处理器列表会被复制, 已引用的 GUI 与函数对象保持复用.
+         * 可变处理器列表会被复制, 已引用的 Pane 与函数对象保持复用.
          *
          * @return Builder 副本
          */
@@ -668,7 +668,7 @@ public interface Window {
 
         /**
          * 使用已设置的查看者创建 Window.
-         * <p>若未显式设置 lower GUI, 此调用会同步读取查看者的 Bukkit 背包来创建
+         * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
          * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
          *
          * @return 新的未打开 Window
@@ -678,7 +678,7 @@ public interface Window {
 
         /**
          * 为指定查看者创建 Window.
-         * <p>若未显式设置 lower GUI, 此调用会同步读取查看者的 Bukkit 背包来创建
+         * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
          * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
          *
          * @param viewer 查看者

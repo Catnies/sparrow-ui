@@ -14,7 +14,7 @@ public interface AsyncItemProvider {
 
     /**
      * 启动一次重算并返回 Future.
-     * <strong>不得改动 Window、GUI、Inventory, 也不得额外请求刷新或同步.</strong>
+     * <strong>不得改动 Window、Pane、Inventory, 也不得额外请求刷新或同步.</strong>
      *
      * @param context 当前渲染上下文
      * @return 本次重算的结果阶段

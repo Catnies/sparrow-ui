@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.window.click.EnchantSelectClick;
-import net.momirealms.sparrow.ui.gui.Gui;
-import net.momirealms.sparrow.ui.gui.GuiSize;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.EnchantmentMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
@@ -179,8 +179,8 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<EnchantmentWindow, EnchantmentWindow.Builder> implements EnchantmentWindow.Builder {
-        private Gui upperGui = Gui.empty(new GuiSize(2, 1));
-        private @Nullable Gui lowerGui;
+        private Pane upperPane = Pane.empty(new PaneSize(2, 1));
+        private @Nullable Pane lowerPane;
         private EnchantOption[] options = new EnchantOption[OPTION_COUNT]; // 三个初始按钮, null 表示禁用
         private int enchantmentSeed;
         private List<Consumer<EnchantSelectClick>> enchantSelectionHandlers = new ArrayList<>();
@@ -190,8 +190,8 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
         private BuilderImpl(@NotNull BuilderImpl source) {
             super(source);
-            this.upperGui = source.upperGui;
-            this.lowerGui = source.lowerGui;
+            this.upperPane = source.upperPane;
+            this.lowerPane = source.lowerPane;
             this.options = source.options.clone();
             this.enchantmentSeed = source.enchantmentSeed;
             this.enchantSelectionHandlers = new ArrayList<>(source.enchantSelectionHandlers);
@@ -199,15 +199,15 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder setUpperGui(@NotNull Gui upperGui) {
-            this.upperGui = Objects.requireNonNull(upperGui, "upperGui");
+        public EnchantmentWindow.Builder setUpperPane(@NotNull Pane upperPane) {
+            this.upperPane = Objects.requireNonNull(upperPane, "upperPane");
             return this;
         }
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder setLowerGui(@Nullable Gui lowerGui) {
-            this.lowerGui = lowerGui;
+        public EnchantmentWindow.Builder setLowerPane(@Nullable Pane lowerPane) {
+            this.lowerPane = lowerPane;
             return this;
         }
 
@@ -255,13 +255,13 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         @Override
         @NotNull
         protected EnchantmentWindow createWindow(@NotNull Player viewer, @NotNull AbstractWindow.Settings settings) {
-            if (this.upperGui.width() != 2 || this.upperGui.height() != 1)
-                throw new IllegalArgumentException("enchantment upper GUI must have size 2x1");
+            if (this.upperPane.width() != 2 || this.upperPane.height() != 1)
+                throw new IllegalArgumentException("enchantment upper Pane must have size 2x1");
 
-            Gui lowerGui = this.lowerGui == null ? viewerReferencingInventory(viewer) : this.lowerGui;
+            Pane lowerPane = this.lowerPane == null ? viewerReferencingInventory(viewer) : this.lowerPane;
             WindowLayout layout = WindowLayout.of(
-                    WindowLayout.Region.upper(this.upperGui),
-                    WindowLayout.Region.lower(lowerGui)
+                    WindowLayout.Region.upper(this.upperPane),
+                    WindowLayout.Region.lower(lowerPane)
             );
             return new EnchantmentWindowImpl(
                     WindowManager.getInstance(),

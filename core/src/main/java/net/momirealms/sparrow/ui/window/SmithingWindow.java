@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.gui.Gui;
+import net.momirealms.sparrow.ui.pane.Pane;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public interface SmithingWindow extends Window {
 
     /**
-     * 创建默认使用 4x1 上部 GUI 的 Builder.
+     * 创建默认使用 4x1 上部 Pane 的 Builder.
      *
      * @return 锻造台窗口 Builder
      */
@@ -22,22 +22,22 @@ public interface SmithingWindow extends Window {
     interface Builder extends Window.Builder<SmithingWindow, Builder> {
 
         /**
-         * 设置必须为 4x1 的上部 GUI.
+         * 设置必须为 4x1 的上部 Pane.
          *
-         * @param upperGui 上部 GUI
+         * @param upperPane 上部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setUpperGui(@NotNull Gui upperGui);
+        Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 GUI; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
          *
-         * @param lowerGui 下部 GUI
+         * @param lowerPane 下部 Pane
          * @return 此 Builder
          */
         @NotNull
-        Builder setLowerGui(@Nullable Gui lowerGui);
+        Builder setLowerPane(@Nullable Pane lowerPane);
 
         @Override
         @NotNull
