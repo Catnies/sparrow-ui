@@ -102,6 +102,17 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
             this.slot = slot;
         }
 
+        /**
+         * 创建到子 Pane 槽位的连接, 跳过重复边界检查.
+         *
+         * @param pane 子 Pane
+         * @param slot 已校验的子 Pane 槽位编号
+         * @return Pane 连接元素
+         */
+        static PaneLink trusted(Pane pane, int slot) {
+            return new PaneLink(pane, slot, true);
+        }
+
         @NotNull
         public Pane pane() {
             return this.pane;
@@ -112,14 +123,19 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
         }
 
         /**
-         * 创建到子 Pane 槽位的连接, 跳过重复边界检查.
+         * 指向同一个子 Pane 的同一个槽位就相等.
          *
-         * @param pane 子 Pane
-         * @param slot 已校验的子 Pane 槽位编号
-         * @return Pane 连接元素
+         * @param object 比较对象
+         * @return 指向同一处时为 true
          */
-        static PaneLink trusted(Pane pane, int slot) {
-            return new PaneLink(pane, slot, true);
+        @Override
+        public boolean equals(Object object) {
+            return object instanceof PaneLink other && this.pane == other.pane && this.slot == other.slot;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(this.pane) * 31 + this.slot;
         }
     }
 

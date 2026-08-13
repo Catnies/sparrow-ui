@@ -13,7 +13,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public sealed interface Pane permits AbstractPane {
@@ -805,6 +807,77 @@ public sealed interface Pane permits AbstractPane {
     Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Pane> callback);
 
     /**
+     * 让选中槽位的内容一直跟随一个序列: 序列的第 n 项写进选中槽位的第 n 个.
+     * <p>创建时就地求值一次, 之后每次序列失效都在 Paper 全局异步调度器上重算,
+     * 因此序列的派生函数与 {@code toElement} 都只能读那些在异步域访问安全的数据.
+     *
+     * @param slots 投影负责的槽位, 必须属于本 Pane
+     * @param source 序列来源
+     * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+     * @return 投影, 可用来提前停止
+     */
+    @NotNull
+    default <T> SlotProjection project(
+            @NotNull SlotSequence slots,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return SlotProjection.attach(this, slots, source, toElement);
+    }
+
+    /**
+     * 让选中槽位的内容一直跟随一个序列, 并指定在哪里求值.
+     * <p>要在 {@code toElement} 里读某个玩家的实体域数据时, 换成该玩家的实体调度.
+     *
+     * @param slots 投影负责的槽位, 必须属于本 Pane
+     * @param source 序列来源
+     * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+     * @param executor 执行求值的执行器
+     * @return 投影, 可用来提前停止
+     */
+    @NotNull
+    default <T> SlotProjection project(
+            @NotNull SlotSequence slots,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        return SlotProjection.attach(this, slots, source, toElement, executor);
+    }
+
+    /**
+     * 让选中槽位的内容一直跟随一个已经是 Element 的序列.
+     *
+     * @param slots 投影负责的槽位, 必须属于本 Pane
+     * @param source 序列来源
+     * @return 投影, 可用来提前停止
+     */
+    @NotNull
+    default SlotProjection projectElements(
+            @NotNull SlotSequence slots,
+            @NotNull Signal<? extends List<? extends Element>> source
+    ) {
+        return SlotProjection.attachElements(this, slots, source);
+    }
+
+    /**
+     * 让选中槽位的内容一直跟随一个已经是 Element 的序列, 并指定在哪里求值.
+     *
+     * @param slots 投影负责的槽位, 必须属于本 Pane
+     * @param source 序列来源
+     * @param executor 执行求值的执行器
+     * @return 投影, 可用来提前停止
+     */
+    @NotNull
+    default SlotProjection projectElements(
+            @NotNull SlotSequence slots,
+            @NotNull Signal<? extends List<? extends Element>> source,
+            @NotNull Executor executor
+    ) {
+        return SlotProjection.attachElements(this, slots, source, executor);
+    }
+
+    /**
      * 通过 Structure 标志符填充槽位, 并创建 Pane.
      *
      * <p>同一 Builder 可以重复构建 Pane. {@link #copy()} 返回可独立修改的副本.</p>
@@ -957,6 +1030,71 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredient(char identifier, @NotNull SparrowInventory inventory);
+
+        /**
+         * 让同一标志符的槽位一直跟随一个序列: 序列的第 n 项写进该标志符第 n 次出现的槽位.
+         * <p>序列本身已经是 Element 时, 用 {@code addModifier(pane -> pane.projectElements(pane.slots(identifier), ...))}.
+         *
+         * @param identifier 标志符
+         * @param source 序列来源
+         * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Signal<? extends List<? extends T>> source,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个序列.
+         *
+         * @param identifier 单字符标志
+         * @param source 序列来源
+         * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Signal<? extends List<? extends T>> source,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个序列, 并指定在哪里求值.
+         *
+         * @param identifier 标志符
+         * @param source 序列来源
+         * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Signal<? extends List<? extends T>> source,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个序列, 并指定在哪里求值.
+         *
+         * @param identifier 单字符标志
+         * @param source 序列来源
+         * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Signal<? extends List<? extends T>> source,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
 
         /**
          * 按二维形状把同一标志符的槽位连接到子 Pane.

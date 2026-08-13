@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,7 +14,9 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -24,6 +27,7 @@ import java.util.function.Supplier;
 abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
     private final Structure structure; // Pane 布局
     private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
+    private final ArrayList<ProjectionIngredient> projections; // 建出 Pane 之后再挂上的投影, 按声明顺序
     private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
     private final LinkedHashSet<SparrowInventory> linkedInventories; // 额外参与的 Inventory, 按声明顺序
 
@@ -38,6 +42,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
         this.ingredients = new ElementSupplier[structure.identifierCount()];
+        this.projections = new ArrayList<>();
         this.modifiers = new ArrayList<>();
         this.linkedInventories = new LinkedHashSet<>();
     }
@@ -50,6 +55,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     AbstractPaneBuilder(AbstractPaneBuilder<G, B> source) {
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
+        this.projections = new ArrayList<>(source.projections);
         this.modifiers = new ArrayList<>(source.modifiers);
         this.linkedInventories = new LinkedHashSet<>(source.linkedInventories);
         this.background = source.background;
@@ -138,6 +144,55 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @NotNull
     public final B addIngredient(char identifier, @NotNull SparrowInventory inventory) {
         return this.addIngredient(String.valueOf(identifier), inventory);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(identifier, source, toElement, SlotProjection.defaultExecutor());
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(String.valueOf(identifier), source, toElement);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(toElement, "toElement");
+        Objects.requireNonNull(executor, "executor");
+        @SuppressWarnings("unchecked")
+        Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
+        // 标志符先在这里解析, 拼错的模板不必等到 build 才发现
+        this.projections.add(new ProjectionIngredient(this.structure.identifierIndex(identifier), source, erased, executor));
+        return this.self();
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Signal<? extends List<? extends T>> source,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        return this.addIngredient(String.valueOf(identifier), source, toElement, executor);
     }
 
     @Override
@@ -234,10 +289,21 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             }
         }
 
-        // 所有槽位都生成成功后才创建 Pane, 然后执行修改器
+        // 所有槽位都生成成功后才创建 Pane, 然后挂投影, 最后执行修改器
         G pane = this.create(this.structure, elements, this.background, this.frozen);
         for (SparrowInventory inventory : this.linkedInventories) {
             pane.linkInventory(inventory);
+        }
+        // 投影就地求值一次, 因此 build 返回时这些槽位已经是序列当前的样子
+        for (int index = 0; index < this.projections.size(); index++) {
+            ProjectionIngredient projection = this.projections.get(index);
+            SlotProjection.attachErased(
+                    pane,
+                    this.structure.slots(projection.identifierIndex()),
+                    projection.source(),
+                    projection.toElement(),
+                    projection.executor()
+            );
         }
         for (Consumer<? super G> modifier : this.modifiers) {
             modifier.accept(pane);
@@ -269,6 +335,21 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private B bindIngredient(String identifier, ElementSupplier supplier) {
         this.ingredients[this.structure.identifierIndex(identifier)] = supplier;
         return this.self();
+    }
+
+    /**
+     * 一条投影声明: 哪个标志符的槽位, 跟随哪个序列, 以及怎么把序列里的一条数据变成 Element.
+     *
+     * @param identifierIndex 标志符内部编号
+     * @param source 序列来源
+     * @param toElement 元素转换函数, 类型参数已擦除
+     */
+    private record ProjectionIngredient(
+            int identifierIndex,
+            Signal<? extends List<?>> source,
+            Function<Object, ? extends Element> toElement,
+            Executor executor
+    ) {
     }
 
     /**
