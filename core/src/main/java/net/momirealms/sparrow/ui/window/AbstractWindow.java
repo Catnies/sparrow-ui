@@ -119,6 +119,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable ScheduledTask tickTask;       // 周期 tick 任务
     private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照
     private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
+    private @Nullable List<SparrowInventory> refreshInventories; // 每 tick 要刷新的 Inventory, null 表示要重新收集
+    private @Nullable Pane[] refreshPanes;          // 收集刷新目标时路径上出现过的 Pane, 已去重
+    private @Nullable Object[] refreshDeclarations; // 与 refreshPanes 同下标, 收集当时各自的 linkedInventories(), 只比较引用
     private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
     private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
     private final BitSet renderedBeforeEvent = new BitSet(); // 本 tick 已在 Bukkit 事件前渲染, 仍待最终同步的槽位
@@ -705,7 +708,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 输入稳定后再汇总所有本 tick 的失效并发送一次同步
         this.windowTick++;
-        // 刷新连接的 Inventory: ReferencingInventory 把 Bukkit 容器变更同步进镜像并生成 External 事件, 其他 Inventory 不处理.
+        // 刷新连接的 Inventory, ReferencingInventory 把 Bukkit 容器变更同步进镜像并生成 External 事件, 其他 Inventory 不处理.
         // 因为刷新不是点击语义, 所以 Pane 冻结槽和 Window 虚拟槽位连接的 Inventory 也要同步.
         this.refreshLinkedInventories(this.paths);
         // 定时标脏光标物品.
@@ -1055,17 +1058,73 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 对指定路径数组里的连接Inventory逐一刷新, 同一个Inventory只刷新一次.
+     * <p>这个方法每 tick 都跑, 但要刷新的其实就那么一两个 Inventory, 而且几乎从不变化.
+     * 所以名单收集一次就存下来, 只在显示路径重建过, 或者哪个 Pane 改了声明时才重新收集.
      *
      * @param paths 显示路径, 为 null 时不做任何事
      */
     private void refreshLinkedInventories(@Nullable DisplayedSlotPath[] paths) {
-        LinkedHashSet<SparrowInventory> seen = new LinkedHashSet<>();
-        this.forEachLinkedInventory(paths, false, link -> {
-            SparrowInventory inventory = link.inventory();
-            if (seen.add(inventory)) {
-                inventory.refresh();
-            }
+        if (this.refreshInventories == null || this.declarationsChanged()) {
+            this.collectRefreshTargets(paths);
+        }
+        List<SparrowInventory> targets = this.refreshInventories;
+        assert targets != null;
+        for (int index = 0; index < targets.size(); index++) {
+            targets.get(index).refresh();
+        }
+    }
+
+    /**
+     * 重新收集每 tick 要刷新的 Inventory, 同时记下这次依据了哪些 Pane 以及它们当时的声明.
+     *
+     * @param paths 显示路径, 为 null 时收集结果为空
+     */
+    private void collectRefreshTargets(@Nullable DisplayedSlotPath[] paths) {
+        LinkedHashSet<SparrowInventory> targets = new LinkedHashSet<>();
+        this.forEachLinkedInventory(paths, false, link -> targets.add(link.inventory()));
+
+        ArrayList<Pane> panes = new ArrayList<>();
+        ArrayList<Object> declarations = new ArrayList<>();
+        this.forEachPathPane(paths, pane -> {
+            // 一个 Pane 通常铺满一大片槽位, 每个槽位都会走到这里, 只记第一次
+            if (panes.contains(pane)) return;
+            panes.add(pane);
+            Set<SparrowInventory> declared = pane.linkedInventories();
+            declarations.add(declared);
+            // Pane 声明关联的 Inventory 一个槽位都没被展示, 但它同样参与点击, 外部变更也要吸收
+            targets.addAll(declared);
         });
+
+        this.refreshInventories = List.copyOf(targets);
+        this.refreshPanes = panes.toArray(new Pane[0]);
+        this.refreshDeclarations = declarations.toArray();
+    }
+
+    /**
+     * 检查上次收集之后有没有哪个 Pane 改过自己声明的额外参与 Inventory.
+     * <p>Pane 用写时复制保存声明, 声明一变就换一个新的 Set, 所以比引用就够, 不必逐个比内容.
+     *
+     * @return 需要重新收集时返回 true
+     */
+    private boolean declarationsChanged() {
+        Pane[] panes = this.refreshPanes;
+        if (panes == null) {
+            return true;
+        }
+        for (int index = 0; index < panes.length; index++) {
+            if (panes[index].linkedInventories() != this.refreshDeclarations[index]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 丢弃存下来的刷新名单.
+     * <p>显示路径重建之后, 路径终点连接的 Inventory 和路径经过的 Pane 都可能换了.
+     */
+    void invalidateRefreshTargets() {
+        this.refreshInventories = null;
     }
 
     /**
@@ -1092,6 +1151,41 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             Element.InventoryLink link = path.inventoryLink();
             if (link != null) {
                 action.accept(link);
+            }
+        }
+    }
+
+    /**
+     * 遍历显示路径经过的每一层 Pane 所声明的额外参与 Inventory.
+     * <p>同一个 Inventory 可能被多个 Pane 声明, 因此会重复交给 {@code action}, 由调用方去重.
+     *
+     * @param paths 显示路径, 为 null 时不做任何事
+     * @param action 对每个声明的 Inventory 执行的操作
+     */
+    private void forEachPaneLinkedInventory(
+            @Nullable DisplayedSlotPath[] paths,
+            @NotNull Consumer<SparrowInventory> action
+    ) {
+        this.forEachPathPane(paths, pane -> {
+            // 绝大多数 Pane 一个都没声明, 这里直接跳过
+            for (SparrowInventory inventory : pane.linkedInventories()) {
+                action.accept(inventory);
+            }
+        });
+    }
+
+    /**
+     * 遍历显示路径经过的每一层 Pane. 同一个 Pane 出现在多条路径上时会重复交给 {@code action}.
+     *
+     * @param paths 显示路径, 为 null 时不做任何事
+     * @param action 对每一层 Pane 执行的操作
+     */
+    private void forEachPathPane(@Nullable DisplayedSlotPath[] paths, @NotNull Consumer<? super Pane> action) {
+        if (paths == null) return;
+        for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
+            DisplayedSlotPath path = paths[windowSlot];
+            if (path != null) {
+                path.forEachPane(action);
             }
         }
     }
@@ -1284,6 +1378,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.tickTask = null;
         this.menuHandle = null;
         this.paths = null;
+        this.refreshInventories = null;
+        this.refreshPanes = null;
+        this.refreshDeclarations = null;
         this.localSlots = null;
         this.localCursor = null;
         this.sentTitle = null;
@@ -1433,9 +1530,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         LinkedHashMap<SparrowInventory, BitSet> visible = new LinkedHashMap<>();
         this.forEachLinkedInventory(this.paths, true, link ->
                 visible.computeIfAbsent(link.inventory(), inventory -> new BitSet(inventory.size())).set(link.slot()));
+        // Pane 声明关联的 Inventory, 没有任何槽位被展示, 可见集留空.
+        this.forEachPaneLinkedInventory(this.paths, inventory ->
+                visible.computeIfAbsent(inventory, target -> new BitSet(target.size())));
+
         List<ClickSemantics.LinkedInventory> linked = new ArrayList<>(visible.size());
-        visible.forEach((inventory, slots) -> linked.add(new ClickSemantics.LinkedInventory(
-                inventory, inventory.includeObscuredSlots() ? this.withObscuredSlots(inventory, slots) : slots)));
+        visible.forEach((inventory, slots) -> {
+            BitSet participating = inventory.includeObscuredSlots() ? this.withObscuredSlots(inventory, slots) : slots;
+            // 一个槽位都不参与就不进目标列表.
+            if (!participating.isEmpty()) {
+                linked.add(new ClickSemantics.LinkedInventory(inventory, participating));
+            }
+        });
         return List.copyOf(linked);
     }
 

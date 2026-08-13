@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -24,6 +25,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private final Structure structure; // Pane 布局
     private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
     private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
+    private final LinkedHashSet<SparrowInventory> linkedInventories; // 额外参与的 Inventory, 按声明顺序
 
     private ItemProvider background; // 空槽位背景, 可为 null
     private boolean frozen;          // 是否禁止玩家交互
@@ -37,6 +39,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         this.structure = structure;
         this.ingredients = new ElementSupplier[structure.identifierCount()];
         this.modifiers = new ArrayList<>();
+        this.linkedInventories = new LinkedHashSet<>();
     }
 
     /**
@@ -48,6 +51,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
         this.modifiers = new ArrayList<>(source.modifiers);
+        this.linkedInventories = new LinkedHashSet<>(source.linkedInventories);
         this.background = source.background;
         this.frozen = source.frozen;
     }
@@ -170,6 +174,13 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B linkInventory(@NotNull SparrowInventory inventory) {
+        this.linkedInventories.add(inventory);
+        return this.self();
+    }
+
+    @Override
+    @NotNull
     public final B addModifier(@NotNull Consumer<? super G> modifier) {
         this.modifiers.add(modifier);
         return this.self();
@@ -224,6 +235,9 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
         // 所有槽位都生成成功后才创建 Pane, 然后执行修改器
         G pane = this.create(this.structure, elements, this.background, this.frozen);
+        for (SparrowInventory inventory : this.linkedInventories) {
+            pane.linkInventory(inventory);
+        }
         for (Consumer<? super G> modifier : this.modifiers) {
             modifier.accept(pane);
         }

@@ -12,6 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -755,6 +756,32 @@ public sealed interface Pane permits AbstractPane {
     void setFrozen(boolean frozen);
 
     /**
+     * 声明一个额外参与本 Pane 所在 Window 的 Inventory.
+     * <p>它的槽位一个都不必被展示: 快速转移与双击收集寻找目标时照样会看到它.
+     * 用来表达"这块面板背后还连着别的容器", 例如分页仓库当前只展示第一页,
+     * 却希望 Shift 点击能落进其余几页.
+     *
+     * @param inventory 要额外带进参与集的 Inventory
+     */
+    void linkInventory(@NotNull SparrowInventory inventory);
+
+    /**
+     * 取消一个已声明的额外参与 Inventory.
+     *
+     * @param inventory 要取消的 Inventory
+     * @return 该 Inventory 原本已被声明时返回 true
+     */
+    boolean unlinkInventory(@NotNull SparrowInventory inventory);
+
+    /**
+     * 返回本 Pane 声明的全部额外参与 Inventory.
+     *
+     * @return 按声明顺序排列的不可变快照
+     */
+    @NotNull
+    Set<SparrowInventory> linkedInventories();
+
+    /**
      * 订阅一个槽位的更新, 并返回订阅时的元素, 背景和冻结状态.
      *
      * @param slot 槽位编号
@@ -979,6 +1006,15 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B setFrozen(boolean frozen);
+
+        /**
+         * 声明一个额外参与的 Inventory, 语义见 {@link Pane#linkInventory(SparrowInventory)}.
+         *
+         * @param inventory 要额外带进参与集的 Inventory
+         * @return 当前 Builder
+         */
+        @NotNull
+        B linkInventory(@NotNull SparrowInventory inventory);
 
         /**
          * 添加一个在 Pane 创建后执行的修改操作.

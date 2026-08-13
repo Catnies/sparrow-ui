@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.pane;
 import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -10,7 +11,10 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -27,6 +31,8 @@ abstract non-sealed class AbstractPane implements Pane {
 
     private ItemProvider background;    // 空槽位显示的背景, 可为 null
     private boolean frozen;             // 是否禁止玩家交互
+    // 额外参与的 Inventory, 写时整体替换为新的不可变快照, 读不加锁
+    private volatile Set<SparrowInventory> linkedInventories = Set.of();
 
     AbstractPane(Structure structure, Element[] elements, ItemProvider background, boolean frozen) {
         this.structure = structure;
@@ -223,6 +229,38 @@ abstract non-sealed class AbstractPane implements Pane {
             observers = this.snapshotAll();
         }
         this.publish(observers);
+    }
+
+    @Override
+    public final void linkInventory(@NotNull SparrowInventory inventory) {
+        synchronized (this) {
+            if (this.linkedInventories.contains(inventory)) {
+                return;
+            }
+            // 写时复制: 读方在点击规划的热路径上, 让它拿到一份不会再变的快照
+            LinkedHashSet<SparrowInventory> updated = new LinkedHashSet<>(this.linkedInventories);
+            updated.add(inventory);
+            this.linkedInventories = Collections.unmodifiableSet(updated);
+        }
+    }
+
+    @Override
+    public final boolean unlinkInventory(@NotNull SparrowInventory inventory) {
+        synchronized (this) {
+            if (!this.linkedInventories.contains(inventory)) {
+                return false;
+            }
+            LinkedHashSet<SparrowInventory> updated = new LinkedHashSet<>(this.linkedInventories);
+            updated.remove(inventory);
+            this.linkedInventories = Collections.unmodifiableSet(updated);
+            return true;
+        }
+    }
+
+    @Override
+    @NotNull
+    public final Set<SparrowInventory> linkedInventories() {
+        return this.linkedInventories;
     }
 
     @NotNull

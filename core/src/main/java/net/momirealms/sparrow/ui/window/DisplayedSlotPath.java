@@ -20,17 +20,15 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * 记录 Window 中一个槽位当前显示的内容.
- *
  * <p>它从根 Pane 的指定槽位出发, 跟随 {@link Element.PaneLink} 一层层进入子 Pane,
- * 直到找到 Item, Inventory连接或空槽位. Pane 变了要重新解析整条路径; 最终 Item 变了或
+ * 直到找到 Item, Inventory连接或空槽位. Pane 变了要重新解析路径; 最终 Item 变了或
  * Inventory 有事务通知, 只需要重新渲染一次.
- *
- * <p>路径解析, 显示, 交互和关闭都在玩家实体线程执行.
- * 观察通知可以来自其他线程, 但只会给 Window 槽位打脏标记, 不会直接动路径.
  */
 final class DisplayedSlotPath implements AutoCloseable {
     private final Window window;    // 所属 Window
@@ -38,9 +36,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     private final Pane rootPane;      // 路径起点的根 Pane
     private final int rootSlot;     // 路径起点在根 Pane 中的槽位
     private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
-
-    private PathState current;          // 当前已启用的路径快照
-    private volatile boolean closed;    // 路径是否已关闭, 关闭后迟到的通知直接忽略
+    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.RESOLVING);
+    private PathState current;  // 当前已解析出的路径
 
     /**
      * 创建并立即解析一个 Window 槽位的显示路径.
@@ -68,39 +65,28 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 重新跟随 Pane 链接, 建一条新的显示路径替换当前的.
-     * <p>新路径全部准备成功后才替换; 中途任何订阅失败, 新路径直接关掉, 旧路径继续工作.
+     * 重新跟随 Pane 链接解析这条显示路径.
+     * <p>位置没变的层直接沿用原来的订阅; 要新建的部分全部成功之后才换上去.
+     * 中途任何订阅失败, 新路径只关掉自己刚建的那几层, 沿用的层仍旧归旧路径, 旧路径继续工作.
      */
     void resolve() {
         this.requireOpen();
-        PathState candidate = new PathState(this.window, this.windowSlot);
+        this.beginResolve();
         try {
-            this.prepare(candidate);
+            this.resolveLayers();
         } catch (RuntimeException | Error throwable) {
-            // 准备失败: 关掉候选已建立的部分, 旧路径不受影响
-            candidate.retire();
-            ThrowableUtils.captureUnchecked(throwable, candidate::close);
+            // 解析失败, 保留"还要再解析一次"的要求, 下次读取路径时再试.
+            while (true) {
+                Phase phase = this.phase.get();
+                if (phase == Phase.CLOSED || this.phase.compareAndSet(phase, Phase.ACTIVE_RESOLVE_REQUIRED)) {
+                    break;
+                }
+            }
             throw throwable;
         }
-
-        // 准备成功: 退役旧路径, 候选转正; 准备期间攒下的更新补一个脏标记
-        PathState previous = this.current;
-        boolean interactionChanged = previous != null
-                && (previous.frozen != candidate.frozen || !Objects.equals(previous.inventoryLink, candidate.inventoryLink));
-        try {
-            if (previous != null) {
-                previous.retire();
-                previous.close();
-            }
-        } finally {
-            this.current = candidate;
-            // todo 这里是不是有点牵强, 我的意思是调用方法.
-            if (interactionChanged && this.window instanceof AbstractWindow<?> abstractWindow) {
-                abstractWindow.notifyInteractionPathChanged();
-            }
-            if (candidate.activate()) { // 如果在准备阶段有更新请求过来, 则标记脏位.
-                this.window.notifyUpdate(this.windowSlot);
-            }
+        if (this.endResolve()) {
+            // 解析期间有通知到过, 这里补标一次脏槽位
+            this.window.notifyUpdate(this.windowSlot);
         }
     }
 
@@ -108,10 +94,10 @@ final class DisplayedSlotPath implements AutoCloseable {
      * 生成当前槽位应显示的 ItemStack, 按以下优先级查找:
      * <ol>
      *   <li>若路径终点为 InventoryLink, 优先显示 Inventory 的槽位映射,
-     *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.</li>
-     *   <li>若路径终点为 Item, 显示该 Item</li>
-     *   <li>若路径终点为 Empty, 回退为最深层 Pane 的背景</li>
-     *   <li>若仍无结果, 返回空物品作为最终兜底</li>
+     *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.
+     *   <li>若路径终点为 Item, 显示该 Item.
+     *   <li>若路径终点为 Empty, 回退为最深层 Pane 的背景.
+     *   <li>若仍无结果, 返回空物品作为最终兜底.
      * </ol>
      *
      * @return 当前槽位应显示的 ItemStack, 不会为 {@code null}
@@ -224,9 +210,21 @@ final class DisplayedSlotPath implements AutoCloseable {
         return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
     }
 
-    // 强制处理尚未解析的 Pane 变化, 让 Window 在提交旧候选前看到交互终点或冻结状态的改变.
+    // 强制处理还没解析的 Pane 变化, 让 Window 在提交旧的点击候选前看到交互终点或冻结状态的改变.
     void refreshInteractionState() {
         this.currentState();
+    }
+
+    /**
+     * 遍历路径当前经过的每一层 Pane, 从根 Pane 到最深层.
+     *
+     * @param action 对每一层 Pane 执行的操作
+     */
+    void forEachPane(@NotNull Consumer<? super Pane> action) {
+        PathState state = this.currentState();
+        for (int index = 0; index < state.depth; index++) {
+            action.accept(state.panes[index]);
+        }
     }
 
     /**
@@ -235,7 +233,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      * @return 已关闭时为 true
      */
     boolean isClosed() {
-        return this.closed;
+        return this.phase.get() == Phase.CLOSED;
     }
 
     /**
@@ -244,74 +242,275 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     @Override
     public void close() {
-        if (this.closed) {
+        if (this.phase.getAndSet(Phase.CLOSED) == Phase.CLOSED) {
             return;
         }
-        this.closed = true;
-
         PathState previous = this.current;
         this.current = null;
         if (previous != null) {
-            previous.retire();
+            // 整条路径都要关掉, 没有哪一层需要留给别人
+            previous.ownedFrom = 0;
             previous.close();
         }
     }
 
     /**
-     * 从根 Pane 槽位开始一层层跟随 PaneLink, 并订阅沿途的每个 Pane 槽位和最终 Item.
-     * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
-     *
-     * @param candidate 正在准备的新路径
+     * 解析路径, 先算出有多少层可以沿用, 再决定是只刷新背景, 还是重建剩下的部分.
      */
-    private void prepare(PathState candidate) {
+    private void resolveLayers() {
+        PathState previous = this.current;
+        int reusable = this.reusableDepth(previous);
+
+        // 每一层的位置和终点元素都没变: 一个订阅都不用动, 只重新算背景和冻结状态
+        if (previous != null && reusable == previous.depth && this.leafUnchanged(previous)) {
+            boolean previousFrozen = previous.frozen;
+            this.applyDecorations(previous);
+            if (previousFrozen != previous.frozen) {
+                this.notifyInteractionPathChanged();
+            }
+            return;
+        }
+
+        PathState next = new PathState();
+        next.reuse(previous, reusable);
+        try {
+            this.prepare(next, reusable);
+        } catch (RuntimeException | Error throwable) {
+            // 建到一半失败: 只关掉自己新建的层, 沿用的层还归旧路径, 旧路径不受影响
+            next.ownedFrom = reusable;
+            ThrowableUtils.captureUnchecked(throwable, next::close);
+            throw throwable;
+        }
+        this.applyDecorations(next);
+
+        boolean interactionChanged = previous != null
+                && (previous.frozen != next.frozen || !Objects.equals(previous.inventoryLink, next.inventoryLink));
+        // 沿用深度和新旧层数三者相等, 才说明经过的 Pane 一个没换; 终点 Inventory 也没换的话,
+        // Window 那份刷新名单就还是对的. 只换 Item 终点的路径(投影刷新就是这样)不必惊动它.
+        boolean refreshTargetsStale = previous == null
+                || reusable != previous.depth
+                || reusable != next.depth
+                || !Objects.equals(previous.inventoryLink, next.inventoryLink);
+        try {
+            if (previous != null) {
+                // 沿用的层已经交给新路径, 旧路径只关掉自己独有的那几层
+                previous.ownedFrom = reusable;
+                previous.close();
+            }
+        } finally {
+            this.current = next;
+            if (this.window instanceof AbstractWindow<?> abstractWindow) {
+                if (refreshTargetsStale) {
+                    abstractWindow.invalidateRefreshTargets();
+                }
+                if (interactionChanged) {
+                    abstractWindow.notifyInteractionPathChanged();
+                }
+            }
+        }
+    }
+
+    /**
+     * 沿旧路径逐层比对, 返回有多少层的订阅可以直接沿用.
+     * <p>比的是每一层订阅的是哪个 Pane 的哪个槽位, 不是槽位里放着什么: 订阅订的是位置,
+     * 位置上换了元素正是它要通知的事, 位置没变就不必重订.
+     *
+     * @param previous 上一次解析出的路径, 首次解析时为 null
+     * @return 可以沿用的层数
+     */
+    private int reusableDepth(PathState previous) {
+        if (previous == null || previous.depth == 0) {
+            return 0;
+        }
+
+        // 第 0 层订的就是 rootPane 的 rootSlot, 这两个值不会变, 所以总能沿用
+        int reusable = 1;
         Pane pane = this.rootPane;
         int paneSlot = this.rootSlot;
+        while (reusable < previous.depth) {
+            // 这一层现在指向哪里, 决定下一层还在不在原来的位置
+            if (!(pane.element(paneSlot) instanceof Element.PaneLink link)) {
+                break;
+            }
+            if (previous.panes[reusable] != link.pane() || previous.paneSlots[reusable] != link.slot()) {
+                break;
+            }
+            pane = link.pane();
+            paneSlot = link.slot();
+            reusable++;
+        }
+        return reusable;
+    }
+
+    /**
+     * 在每一层都能沿用的前提下, 再看终点元素有没有变.
+     *
+     * @param previous 上一次解析出的路径
+     * @return 终点没变时返回 true
+     */
+    private boolean leafUnchanged(@NotNull PathState previous) {
+        int leafDepth = previous.depth - 1;
+        Element element = previous.panes[leafDepth].element(previous.paneSlots[leafDepth]);
+        return Objects.equals(element, previous.leafElement);
+    }
+
+    /**
+     * 重新算一遍整条路径的背景与冻结状态.
+     * <p>背景取沿途最深层的非 null 值; 任何一层 Pane 冻结, 整条路径都视为经过已冻结 Pane.
+     *
+     * @param state 要刷新的路径
+     */
+    private void applyDecorations(@NotNull PathState state) {
+        ItemProvider background = null;
+        boolean frozen = false;
+        for (int index = 0; index < state.depth; index++) {
+            Pane pane = state.panes[index];
+            ItemProvider paneBackground = pane.background();
+            if (paneBackground != null) {
+                background = paneBackground;
+            }
+            frozen |= pane.frozen();
+        }
+        state.background = background;
+        state.frozen = frozen;
+    }
+
+    /**
+     * 从指定层开始跟随 PaneLink, 订阅沿途的每个 Pane 槽位和最终 Item.
+     * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
+     *
+     * @param next 正在准备的新路径, 已经沿用了 {@code from} 之前的层
+     * @param from 需要重新订阅的第一层
+     */
+    private void prepare(PathState next, int from) {
+        Pane pane;
+        int paneSlot;
+
+        if (from == 0) {
+            pane = this.rootPane;
+            paneSlot = this.rootSlot;
+        } else {
+            // 沿用的最后一层现在指向哪里; 已经不是 PaneLink 就说明路径到它为止
+            Element element = next.panes[from - 1].element(next.paneSlots[from - 1]);
+            if (!(element instanceof Element.PaneLink link)) {
+                this.attachLeaf(next, element);
+                return;
+            }
+            pane = link.pane();
+            paneSlot = link.slot();
+        }
 
         while (true) {
             // 链接成环直接失败
-            if (candidate.contains(pane)) {
-                throw new IllegalStateException("Pane link cycle detected at depth " + candidate.depth + " for local slot " + paneSlot);
+            if (next.contains(pane)) {
+                throw new IllegalStateException("Pane link cycle detected at depth " + next.depth + " for local slot " + paneSlot);
             }
 
-            // 订阅这一层 Pane 的槽位: Pane 的失效通知会要求重建路径
-            PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> candidate.notifyWindows(true));
-            candidate.add(pane, attachment);
-            // 记录沿途最深层背景; 任何一层 Pane 冻结, 整条路径都视为经过已冻结 Pane
-            if (attachment.background() != null) {
-                candidate.background = attachment.background();
-            }
-            candidate.frozen |= attachment.frozen();
+            // 订阅这一层 Pane 的槽位: 槽位内容变了会要求重新解析路径.
+            // 这一层将来被丢弃时会把 discarded 置起来 —— 取消订阅和派发通知可能同时发生,
+            // 那一刻挤进来的通知要当作没收到.
+            AtomicBoolean discarded = new AtomicBoolean();
+            PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> {
+                if (!discarded.get()) {
+                    this.onInvalidation(true);
+                }
+            });
+            next.add(pane, paneSlot, attachment, discarded);
 
             // 按槽位元素决定走向: PaneLink 继续深入, 其余三种都是终点
-            switch (attachment.element()) {
-                case Element.PaneLink link -> {
-                    pane = link.pane();
-                    paneSlot = link.slot();
-                }
-                case Element.Item(var item) -> {
-                    candidate.item = item;
-                    candidate.itemAttachment = item.attach(this.window, ignore -> candidate.notifyWindows(false));
+            if (attachment.element() instanceof Element.PaneLink link) {
+                pane = link.pane();
+                paneSlot = link.slot();
+                continue;
+            }
+            this.attachLeaf(next, attachment.element());
+            return;
+        }
+    }
+
+    /**
+     * 记录路径终点并为它建立订阅.
+     * <p>终点订阅不会跨解析沿用, 所以它们直接看所属路径的 {@code resourcesClosed}
+     * 判断自己还算不算数, 不必像每一层那样各带一个标志.
+     *
+     * @param next 正在准备的新路径
+     * @param leaf 终点元素
+     */
+    private void attachLeaf(PathState next, Element leaf) {
+        next.leafElement = leaf;
+        switch (leaf) {
+            case Element.Item(var item) -> {
+                next.item = item;
+                next.itemAttachment = item.attach(this.window, ignore -> {
+                    if (!next.resourcesClosed) {
+                        this.onInvalidation(false);
+                    }
+                });
+            }
+            case Element.InventoryLink link -> {
+                next.inventoryLink = link;
+                next.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
+                    if (next.resourcesClosed) {
+                        return;
+                    }
+                    // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
+                    for (int i = 0; i < event.slotChanges().size(); i++) {
+                        if (event.slotChanges().get(i).slot() == link.slot()) {
+                            this.onInvalidation(false);
+                            return;
+                        }
+                    }
+                });
+                next.visualSubscription = link.inventory().subscribeVisualInvalidation(slot -> {
+                    if (!next.resourcesClosed && (slot == SparrowInventory.ALL_SLOTS || slot == link.slot())) {
+                        this.onInvalidation(false);
+                    }
+                });
+            }
+            case Element.PaneLink ignoredLink -> throw new IllegalStateException("pane link cannot be a path leaf");
+            case Element.Empty ignoredEmpty -> {
+            }
+        }
+    }
+
+    // 交互终点或冻结状态变了, 让 Window 作废那些在交互开始之后才改变的点击候选.
+    private void notifyInteractionPathChanged() {
+        if (this.window instanceof AbstractWindow<?> abstractWindow) {
+            abstractWindow.notifyInteractionPathChanged();
+        }
+    }
+
+    /**
+     * 处理一次失效通知.
+     * <p>任意线程都可能调用, 这里只改 {@link Phase} 和脏标记.
+     *
+     * @param structural true 表示通知来自 Pane 槽位, 路径结构可能变了, 要重新解析;
+     *                   false 表示只来自终点的 Item 或 Inventory, 重新渲染就够了
+     */
+    private void onInvalidation(boolean structural) {
+        while (true) {
+            Phase phase = this.phase.get();
+            switch (phase) {
+                case CLOSED, RESOLVING_RESOLVE_PENDING -> {
                     return;
                 }
-                case Element.InventoryLink link -> {
-                    candidate.inventoryLink = link;
-                    candidate.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
-                        // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
-                        for (int i = 0; i < event.slotChanges().size(); i++) {
-                            if (event.slotChanges().get(i).slot() == link.slot()) {
-                                candidate.notifyWindows(false);
-                                return;
-                            }
-                        }
-                    });
-                    candidate.visualSubscription = link.inventory().subscribeVisualInvalidation(slot -> {
-                        if (slot == SparrowInventory.ALL_SLOTS || slot == link.slot()) {
-                            candidate.notifyWindows(false);
-                        }
-                    });
+                // 正在解析: 先把通知记下来, 解析结束时一起处理
+                case RESOLVING, RESOLVING_RENDER_PENDING -> {
+                    Phase pending = structural ? Phase.RESOLVING_RESOLVE_PENDING : Phase.RESOLVING_RENDER_PENDING;
+                    if (phase == pending || this.phase.compareAndSet(phase, pending)) {
+                        return;
+                    }
+                }
+                // 结构变了要先重新解析, 内容变了直接标脏就行
+                case ACTIVE -> {
+                    if (structural && !this.phase.compareAndSet(phase, Phase.ACTIVE_RESOLVE_REQUIRED)) {
+                        continue;
+                    }
+                    this.window.notifyUpdate(this.windowSlot);
                     return;
                 }
-                case Element.Empty ignoredEmpty -> {
+                case ACTIVE_RESOLVE_REQUIRED -> {
+                    this.window.notifyUpdate(this.windowSlot);
                     return;
                 }
             }
@@ -319,8 +518,44 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 返回当前路径状态. Pane 结构变过时先重建路径再返回;
-     * Item 变化不用重建, 直接返回现有状态.
+     * 进入解析, 这期间到达的通知先记在 phase 上, 结束时一并处理.
+     */
+    private void beginResolve() {
+        while (true) {
+            Phase phase = this.phase.get();
+            if (phase == Phase.CLOSED) {
+                throw new IllegalStateException("displayed path is closed");
+            }
+            if (this.phase.compareAndSet(phase, Phase.RESOLVING)) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * 结束一次解析.
+     *
+     * @return 解析期间收到过通知, 需要标记脏槽位时返回 true
+     */
+    private boolean endResolve() {
+        while (true) {
+            Phase phase = this.phase.get();
+            if (phase == Phase.CLOSED) {
+                return false;
+            }
+            // 解析期间来过结构通知, 那就还得再解析一次
+            Phase settled = phase == Phase.RESOLVING_RESOLVE_PENDING
+                    ? Phase.ACTIVE_RESOLVE_REQUIRED
+                    : Phase.ACTIVE;
+            if (this.phase.compareAndSet(phase, settled)) {
+                return phase != Phase.RESOLVING;
+            }
+        }
+    }
+
+    /**
+     * 返回当前路径状态. Pane 结构变过时先重新解析再返回;
+     * Item 变化不用解析, 直接返回现有状态.
      *
      * @return 当前路径状态
      */
@@ -330,7 +565,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (this.current == null) {
             throw new IllegalStateException("displayed path has not been resolved");
         }
-        if (this.current.requiresResolve()) {
+        if (this.phase.get() == Phase.ACTIVE_RESOLVE_REQUIRED) {
             this.resolve();
         }
         return this.current;
@@ -342,37 +577,38 @@ final class DisplayedSlotPath implements AutoCloseable {
      * @throws IllegalStateException 路径已关闭时抛出
      */
     private void requireOpen() {
-        if (this.closed) {
+        if (this.phase.get() == Phase.CLOSED) {
             throw new IllegalStateException("displayed path is closed");
         }
     }
 
     /**
-     * 保存一次已解析路径的状态和全部订阅.
-     * <p>沿途 Pane 和最终 Item 通过各自的失效回调通知此路径:
-     * Pane 更新要求重建路径, Item 更新只要求重新渲染, 不会重建挂载.
-     * 回调绑定在路径实例上, 因此旧路径退役后延迟到达的通知会被忽略.
+     * 路径当前处在哪一步, 以及解析期间收到但还没来得及处理的通知.
+     */
+    private enum Phase {
+        RESOLVING,                  // 正在解析, 这期间到达的通知先记在这里
+        RESOLVING_RENDER_PENDING,   // 解析期间来过内容通知, 解析完要标记脏槽位
+        RESOLVING_RESOLVE_PENDING,  // 解析期间来过结构通知, 解析完还得再解析一次
+        ACTIVE,                     // 正常显示中
+        ACTIVE_RESOLVE_REQUIRED,    // 结构变过了, 下次读取路径之前先重新解析
+        CLOSED                      // 已关闭, 之后到达的通知一律忽略
+    }
+
+    /**
+     * 一次解析的结果: 路径经过的每一层, 终点, 以及沿途算出的背景和冻结状态.
+     *
+     * <p>它只保存结构和订阅, 不管通知怎么分发 —— 订阅回调都绑在 {@link DisplayedSlotPath} 上,
+     * 所以沿用到下一次解析的层照样有效.
      */
     private static final class PathState implements AutoCloseable {
-        /**
-         * 保存路径的生命周期, 以及尚未处理的刷新要求.
-         */
-        private enum GateState {
-            PREPARING,                  // 正在建立订阅, 尚未成为当前路径
-            PREPARING_RENDER_PENDING,   // 准备期间收到渲染通知, 启用后标记脏槽位
-            PREPARING_RESOLVE_PENDING,  // 准备期间收到结构通知, 启用后需要重建路径
-            ACTIVE,                     // 当前正在显示的路径
-            ACTIVE_RESOLVE_REQUIRED,    // 当前路径收到结构通知, 下次读取前重建
-            RETIRED                     // 已被替换, 忽略迟到的通知
-        }
-
-        private final Window window;    // 所属 Window, 用于标记脏槽位
-        private final int windowSlot;   // 本路径服务的 Window 槽位
-        private final AtomicReference<GateState> gate = new AtomicReference<>(GateState.PREPARING); // 生命周期与待处理通知的门闩, 用 CAS 更新
-
-        private Pane[] panes = new Pane[4]; // 从根 Pane 到最深层 Pane
+        private Pane[] panes = new Pane[4];  // 从根 Pane 到最深层 Pane
+        private int[] paneSlots = new int[4]; // 与 panes 使用相同下标, 记录每层订阅的槽位
         private PaneSlotAttachment[] paneAttachments = new PaneSlotAttachment[4]; // 与 panes 使用相同下标
-        private int depth;               // 路径当前深度, 即 panes 中已使用的层数
+        private AtomicBoolean[] discardedLayers = new AtomicBoolean[4]; // 与 panes 使用相同下标, 置起来表示这一层已被丢弃
+        private int depth;      // 路径当前深度, 即 panes 中已使用的层数
+        private int ownedFrom;  // 关闭时从这一层开始取消订阅, 更靠前的层已经交给新路径
+
+        private Element leafElement; // 路径终点的元素, 用来判断终点有没有变
 
         // Item 部分, 与 Inventory 链接互斥
         private Item item; // 路径终点的 Item
@@ -380,71 +616,23 @@ final class DisplayedSlotPath implements AutoCloseable {
 
         // Inventory 链接部分, 与 Item 互斥
         private Element.InventoryLink inventoryLink; // 路径终点的 Inventory 连接
-        private Subscription inventorySubscription;      // Inventory post 事件的渲染订阅
-        private Subscription visualSubscription;         // Inventory 视觉映射变更的渲染订阅
+        private Subscription inventorySubscription;  // Inventory post 事件的渲染订阅
+        private Subscription visualSubscription;     // Inventory 视觉映射变更的渲染订阅
 
         private ItemProvider background;    // 沿路径找到的最深层非 null 的 Pane 背景.
         private boolean frozen;             // 路径上任何 Pane 冻结时都为 true
-        private boolean resourcesClosed;    // 订阅是否已全部关闭, 保证 close 幂等
+        // 终点订阅靠它判断自己还算不算数, 见 attachLeaf; 同时保证 close 幂等
+        private volatile boolean resourcesClosed;
 
         /**
-         * 创建一条还在准备中的候选路径.
+         * 沿用旧路径开头若干层的订阅.
          *
-         * @param window 所属 Window
-         * @param windowSlot 本路径服务的 Window 槽位
+         * @param source 上一次解析出的路径, {@code count} 为 0 时允许为 null
+         * @param count 沿用的层数
          */
-        private PathState(Window window, int windowSlot) {
-            this.window = window;
-            this.windowSlot = windowSlot;
-        }
-
-        /**
-         * 处理一次失效通知. 任意线程都可能调用, 所以这里只改标志位和脏标记,
-         * 真正的重建由实体线程下次读取路径时再做.
-         *
-         * @param resolveRequired true 表示通知来自 Pane, 要重建整条路径;
-         *                        false 表示只来自最终 Item, 重新渲染就够了
-         */
-        private void notifyWindows(boolean resolveRequired) {
-            while (true) {
-                GateState state = this.gate.get();
-                switch (state) {
-                    // 准备期间收到通知: 先记下来, 启用时一起处理
-                    case PREPARING -> {
-                        GateState updated = resolveRequired
-                                ? GateState.PREPARING_RESOLVE_PENDING
-                                : GateState.PREPARING_RENDER_PENDING;
-                        if (this.gate.compareAndSet(state, updated)) {
-                            return;
-                        }
-                    }
-                    // 渲染通知已记录; 结构通知要升级成重建标记
-                    case PREPARING_RENDER_PENDING -> {
-                        if (!resolveRequired) {
-                            return;
-                        }
-                        if (this.gate.compareAndSet(state, GateState.PREPARING_RESOLVE_PENDING)) {
-                            return;
-                        }
-                    }
-                    // 重建已记录或路径已注销: 不需要再做任何事
-                    case PREPARING_RESOLVE_PENDING, RETIRED -> {
-                        return;
-                    }
-                    // 当前路径收到结构通知: 标记下次读取前重建; 两种通知都要标脏
-                    case ACTIVE -> {
-                        if (resolveRequired && !this.gate.compareAndSet(state, GateState.ACTIVE_RESOLVE_REQUIRED)) {
-                            continue;
-                        }
-                        this.window.notifyUpdate(this.windowSlot);
-                        return;
-                    }
-                    // 重建已标记, 补一个脏标记即可
-                    case ACTIVE_RESOLVE_REQUIRED -> {
-                        this.window.notifyUpdate(this.windowSlot);
-                        return;
-                    }
-                }
+        private void reuse(PathState source, int count) {
+            for (int index = 0; index < count; index++) {
+                this.add(source.panes[index], source.paneSlots[index], source.paneAttachments[index], source.discardedLayers[index]);
             }
         }
 
@@ -464,73 +652,32 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 记录一层 Pane 及其槽位订阅, 必要时扩容数组.
+         * 记录一层 Pane, 它的槽位及槽位订阅, 必要时扩容数组.
          *
          * @param pane 路径中的 Pane
+         * @param paneSlot 该层订阅的 Pane 槽位
          * @param attachment Pane 槽位订阅
+         * @param discarded 这一层被丢弃后置起来的标志
          */
-        private void add(Pane pane, PaneSlotAttachment attachment) {
+        private void add(Pane pane, int paneSlot, PaneSlotAttachment attachment, AtomicBoolean discarded) {
             if (this.depth == this.panes.length) {
                 int newLength = this.depth * 2;
                 this.panes = Arrays.copyOf(this.panes, newLength);
+                this.paneSlots = Arrays.copyOf(this.paneSlots, newLength);
                 this.paneAttachments = Arrays.copyOf(this.paneAttachments, newLength);
+                this.discardedLayers = Arrays.copyOf(this.discardedLayers, newLength);
             }
             this.panes[this.depth] = pane;
+            this.paneSlots[this.depth] = paneSlot;
             this.paneAttachments[this.depth] = attachment;
+            this.discardedLayers[this.depth] = discarded;
             this.depth++;
         }
 
         /**
-         * 把候选路径转正成当前路径.
-         *
-         * @return 准备期间收到过更新时返回 true
-         */
-        private boolean activate() {
-            while (true) {
-                GateState state = this.gate.get();
-                GateState activated;
-                boolean pending;
-                switch (state) {
-                    case PREPARING -> {
-                        activated = GateState.ACTIVE;
-                        pending = false;
-                    }
-                    case PREPARING_RENDER_PENDING -> {
-                        activated = GateState.ACTIVE;
-                        pending = true;
-                    }
-                    case PREPARING_RESOLVE_PENDING -> {
-                        activated = GateState.ACTIVE_RESOLVE_REQUIRED;
-                        pending = true;
-                    }
-                    default -> throw new IllegalStateException("only a preparing path can be activated");
-                }
-                // 比较一下在进行转正期间, 有没有其他线程发起修改 gate, 如果有则需要重新解析.
-                if (this.gate.compareAndSet(state, activated)) {
-                    return pending;
-                }
-            }
-        }
-
-        /**
-         * 返回 Pane 结构变化是否要求这条路径重新解析.
-         *
-         * @return 需要重新解析时返回 true
-         */
-        private boolean requiresResolve() {
-            return this.gate.get() == GateState.ACTIVE_RESOLVE_REQUIRED;
-        }
-
-        /**
-         * 把路径标记为已注销, 之后迟到的通知直接忽略.
-         */
-        private void retire() {
-            this.gate.getAndSet(GateState.RETIRED);
-        }
-
-        /**
-         * 关闭路径上的所有订阅, 并清掉 Item, 背景和 Pane 引用.
-         * <p>某个订阅关闭失败也会继续关其余的, 最后再把收集到的异常抛出来. 重复调用安全.
+         * 关闭本路径独有的订阅, 并清掉 Item, 背景和 Pane 引用.
+         * <p>{@code ownedFrom} 之前的层已经交给新路径, 只断引用不取消订阅.
+         * 某个订阅关闭失败也会继续关其余的, 最后再把收集到的异常抛出来. 重复调用安全.
          */
         @Override
         public void close() {
@@ -546,6 +693,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             this.visualSubscription = null;
             this.item = null;
             this.inventoryLink = null;
+            this.leafElement = null;
             this.background = null;
 
             Throwable failure = ThrowableUtils.captureUnchecked(null, previousItemAttachment::close);
@@ -561,9 +709,15 @@ final class DisplayedSlotPath implements AutoCloseable {
             // 从最深层 Pane 向根 Pane 逆序取消订阅
             for (int index = this.depth - 1; index >= 0; index--) {
                 PaneSlotAttachment paneAttachment = this.paneAttachments[index];
+                AtomicBoolean discarded = this.discardedLayers[index];
                 this.paneAttachments[index] = null;
+                this.discardedLayers[index] = null;
                 this.panes[index] = null;
-                failure = ThrowableUtils.captureUnchecked(failure, paneAttachment::close);
+                if (index >= this.ownedFrom) {
+                    // 先把这一层标成丢弃再取消订阅: 取消订阅和派发通知可能同时发生
+                    discarded.set(true);
+                    failure = ThrowableUtils.captureUnchecked(failure, paneAttachment::close);
+                }
             }
             this.depth = 0;
 
