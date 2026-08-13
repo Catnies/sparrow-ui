@@ -2,6 +2,8 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Objects;
+
 public final class Signals {
     private static volatile TickingSignal ticking;
 
@@ -50,5 +52,27 @@ public final class Signals {
             return ticking();
         }
         return ((TickingSignal) ticking()).every(periodTicks);
+    }
+
+    /**
+     * 按 key 在分区之间切换, 值取自 {@code key} 当前选中的那个分区.
+     * <p>{@code key} 换了或选中的分区失效都向下游失效; {@code key} 重算后仍是同一个 key 时什么都不发生.
+     * <p>某个 key 第一次被选中时才取它的分区, 因此异步分区源的首载也发生在这一刻.
+     * <p>选中的分区句柄由返回的 signal 强持有, 换 key 时释放.
+     *
+     * <pre>{@code
+     * MutableSignal<Integer> page = Signal.of(0);
+     * KeyedSignal<Integer, List<Row>> pages = KeyedSignal.async(List.of(), executor, dao::query);
+     * Signal<List<Row>> current = Signals.switching(pages, page);
+     * }</pre>
+     *
+     * @param source 分区数据源
+     * @param key 选择分区的 key, 值不得为 {@code null}
+     * @return 切换后的 signal
+     */
+    @NotNull
+    public static <K, T> Signal<T> switching(@NotNull KeyedSignal<K, T> source, @NotNull Signal<K> key) {
+        Objects.requireNonNull(source, "source");
+        return new SwitchingSignal<>(source, AbstractSignal.require(key));
     }
 }
