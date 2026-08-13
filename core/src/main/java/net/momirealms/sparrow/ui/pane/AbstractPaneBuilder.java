@@ -175,6 +175,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @Override
     @NotNull
     public final B linkInventory(@NotNull SparrowInventory inventory) {
+        Objects.requireNonNull(inventory);
         this.linkedInventories.add(inventory);
         return this.self();
     }

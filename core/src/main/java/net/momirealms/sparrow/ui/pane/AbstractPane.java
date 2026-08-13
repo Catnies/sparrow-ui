@@ -233,6 +233,7 @@ abstract non-sealed class AbstractPane implements Pane {
 
     @Override
     public final void linkInventory(@NotNull SparrowInventory inventory) {
+        Objects.requireNonNull(inventory);
         synchronized (this) {
             if (this.linkedInventories.contains(inventory)) {
                 return;
@@ -246,6 +247,7 @@ abstract non-sealed class AbstractPane implements Pane {
 
     @Override
     public final boolean unlinkInventory(@NotNull SparrowInventory inventory) {
+        Objects.requireNonNull(inventory);
         synchronized (this) {
             if (!this.linkedInventories.contains(inventory)) {
                 return false;
