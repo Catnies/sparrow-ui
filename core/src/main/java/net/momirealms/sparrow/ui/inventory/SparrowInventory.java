@@ -17,6 +17,7 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
+import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
@@ -93,6 +94,7 @@ public abstract class SparrowInventory {
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
 
+    @Nullable private volatile Signal<Long> contentSignal;             // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅递增
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
@@ -1161,6 +1163,30 @@ public abstract class SparrowInventory {
     @NotNull
     public Subscription subscribePostUpdate(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
         return this.updateChannel().subscribePost(observer);
+    }
+
+    /**
+     * 返回本 Inventory 的内容修订计数: 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
+     * <p>第一次调用时创建, 之后恒返回同一个实例; 它是给 Signal 管线用的失效载体, 计数值本身没有含义.
+     *
+     * @return 内容修订计数
+     */
+    @NotNull
+    public final Signal<Long> contentSignal() {
+        Signal<Long> signal = this.contentSignal;
+        if (signal == null) {
+            synchronized (this) {
+                signal = this.contentSignal;
+                if (signal == null) {
+                    MutableSignal<Long> created = Signal.of(0L);
+                    // 订阅凭证本 Inventory 的事务订阅器持有, 与本 Inventory 同生命周期.
+                    this.subscribePostUpdate(ignoredEvent -> created.update(revision -> revision + 1L));
+                    this.contentSignal = created;
+                    signal = created;
+                }
+            }
+        }
+        return signal;
     }
 
     /**
