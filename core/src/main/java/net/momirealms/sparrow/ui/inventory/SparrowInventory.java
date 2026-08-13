@@ -1168,6 +1168,9 @@ public abstract class SparrowInventory {
     /**
      * 返回本 Inventory 的内容修订计数: 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
      * <p>第一次调用时创建, 之后恒返回同一个实例; 它是给 Signal 管线用的失效载体, 计数值本身没有含义.
+     * <p><strong>递增在提交线程上同步派发</strong>, 所以下游的失效回调也跑在那里, 挂在它下面的
+     * {@link Signal#mapDistinct} 会把重算函数拖进事务的提交收尾; 开了串行 Post 派发的 Inventory 还会因此阻塞后续提交线程.
+     * 重算稍贵就别挂 {@code mapDistinct}, 改用 {@link Signal#map} 或 {@link Signal#combine} 这类只在拉取时求值的派生.
      *
      * @return 内容修订计数
      */

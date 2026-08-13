@@ -149,6 +149,15 @@ public class SparrowUI implements Listener {
     }
 
     /**
+     * 返回当前用于处理 UI 用法警告的处理器.
+     *
+     * @return 当前的警告处理器
+     */
+    public Consumer<? super String> warningHandler() {
+        return this.warningHandler;
+    }
+
+    /**
      * 设置用于处理 UI 用法警告的处理器.
      *
      * @param warningHandler 新的警告处理器

@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
     private final Structure structure; // Pane 布局
     private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
-    private final ArrayList<ProjectionIngredient> projections; // 建出 Pane 之后再挂上的投影, 按声明顺序
+    private final ProjectionIngredient[] projections; // 与 ingredients 同下标, 建出 Pane 之后再挂上
     private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
     private final LinkedHashSet<SparrowInventory> linkedInventories; // 额外参与的 Inventory, 按声明顺序
 
@@ -42,7 +42,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
         this.ingredients = new ElementSupplier[structure.identifierCount()];
-        this.projections = new ArrayList<>();
+        this.projections = new ProjectionIngredient[structure.identifierCount()];
         this.modifiers = new ArrayList<>();
         this.linkedInventories = new LinkedHashSet<>();
     }
@@ -55,7 +55,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     AbstractPaneBuilder(AbstractPaneBuilder<G, B> source) {
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
-        this.projections = new ArrayList<>(source.projections);
+        this.projections = source.projections.clone();
         this.modifiers = new ArrayList<>(source.modifiers);
         this.linkedInventories = new LinkedHashSet<>(source.linkedInventories);
         this.background = source.background;
@@ -179,8 +179,11 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         Objects.requireNonNull(executor, "executor");
         @SuppressWarnings("unchecked")
         Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
-        // 标志符先在这里解析, 拼错的模板不必等到 build 才发现
-        this.projections.add(new ProjectionIngredient(this.structure.identifierIndex(identifier), source, erased, executor));
+        // 标志符先在这里解析.
+        int identifierIndex = this.structure.identifierIndex(identifier);
+        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容
+        this.projections[identifierIndex] = new ProjectionIngredient(source, erased, executor);
+        this.ingredients[identifierIndex] = null;
         return this.self();
     }
 
@@ -295,11 +298,14 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             pane.linkInventory(inventory);
         }
         // 投影就地求值一次, 因此 build 返回时这些槽位已经是序列当前的样子
-        for (int index = 0; index < this.projections.size(); index++) {
-            ProjectionIngredient projection = this.projections.get(index);
+        for (int identifierIndex = 0; identifierIndex < this.projections.length; identifierIndex++) {
+            ProjectionIngredient projection = this.projections[identifierIndex];
+            if (projection == null) {
+                continue;
+            }
             SlotProjection.attachErased(
                     pane,
-                    this.structure.slots(projection.identifierIndex()),
+                    this.structure.slots(identifierIndex),
                     projection.source(),
                     projection.toElement(),
                     projection.executor()
@@ -333,19 +339,22 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
      * @return 当前 Builder
      */
     private B bindIngredient(String identifier, ElementSupplier supplier) {
-        this.ingredients[this.structure.identifierIndex(identifier)] = supplier;
+        int identifierIndex = this.structure.identifierIndex(identifier);
+        this.ingredients[identifierIndex] = supplier;
+        // 静态内容同样挤掉这个标志符上先声明的投影, 否则投影会在 build 末尾把它盖回去
+        this.projections[identifierIndex] = null;
         return this.self();
     }
 
     /**
-     * 一条投影声明: 哪个标志符的槽位, 跟随哪个序列, 以及怎么把序列里的一条数据变成 Element.
+     * 一条投影声明: 跟随哪个序列, 怎么把序列里的一条数据变成 Element, 以及在哪里求值.
+     * <p>它保存在与 {@code ingredients} 同下标的位置上, 因此是哪个标志符由下标决定.
      *
-     * @param identifierIndex 标志符内部编号
      * @param source 序列来源
      * @param toElement 元素转换函数, 类型参数已擦除
+     * @param executor 执行求值的执行器
      */
     private record ProjectionIngredient(
-            int identifierIndex,
             Signal<? extends List<?>> source,
             Function<Object, ? extends Element> toElement,
             Executor executor

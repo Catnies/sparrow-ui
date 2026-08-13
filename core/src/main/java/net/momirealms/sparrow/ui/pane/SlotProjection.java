@@ -33,7 +33,7 @@ public final class SlotProjection implements AutoCloseable {
     private final Function<Object, ? extends Element> toElement;
     private final Executor executor;
 
-    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.IDLE);
+    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.SCHEDULED); // 占住第一轮, 订阅在构造器里就挂上了
     private final Subscription binding;
     private volatile boolean closed;
 
@@ -132,7 +132,7 @@ public final class SlotProjection implements AutoCloseable {
         return create(pane, slots, source, toElement, executor);
     }
 
-    // 建好投影并立即求值一次, 让调用方拿到手时区域已经是对的.
+    // 建好投影并跑完第一轮.
     private static SlotProjection create(
             Pane pane,
             SlotSequence slots,
@@ -144,7 +144,8 @@ public final class SlotProjection implements AutoCloseable {
             throw new IllegalArgumentException("slot sequence belongs to " + slots.paneSize() + ", expected " + pane.size());
         }
         SlotProjection projection = new SlotProjection(pane, slots, source, toElement, executor);
-        projection.evaluateReporting();
+        // 就地跑完第一轮, 调用方拿到手时区域已经是对的.
+        projection.runRound();
         return projection;
     }
 
@@ -179,7 +180,7 @@ public final class SlotProjection implements AutoCloseable {
                 }
                 case IDLE -> {
                     if (this.phase.compareAndSet(Phase.IDLE, Phase.SCHEDULED)) {
-                        this.executor.execute(this::runRound);
+                        this.submitRound();
                         return;
                     }
                 }
@@ -199,10 +200,20 @@ public final class SlotProjection implements AutoCloseable {
                     return;
                 }
                 if (this.phase.compareAndSet(Phase.RESCHEDULE, Phase.SCHEDULED)) {
-                    this.executor.execute(this::runRound);
+                    this.submitRound();
                     return;
                 }
             }
+        }
+    }
+
+    // 提交一轮求值. 执行器拒绝任务时把状态放回 IDLE.
+    private void submitRound() {
+        try {
+            this.executor.execute(this::runRound);
+        } catch (RuntimeException | Error exception) {
+            this.phase.set(Phase.IDLE);
+            throw exception;
         }
     }
 
@@ -223,7 +234,8 @@ public final class SlotProjection implements AutoCloseable {
         if (this.closed) return;
         Iterator<?> values = this.source.get().iterator();
         int length = this.slots.length();
-        for (int occurrence = 0; occurrence < length; occurrence++) {
+        // 每格都复查一次 closed, 关闭之后最多再写完手上这一格
+        for (int occurrence = 0; occurrence < length && !this.closed; occurrence++) {
             // 序列先用完就把余下的槽位清空; 序列还有剩也就到此为止, 多出来的部分不要
             Element element = values.hasNext() ? this.toElement.apply(values.next()) : Element.empty();
             int slot = this.slots.slotAt(occurrence);
@@ -243,8 +255,9 @@ public final class SlotProjection implements AutoCloseable {
     }
 
     /**
-     * 停止投影, 不再跟随序列, 也不再写入.
-     * <p>已经写进去的内容原样留在 Pane 上, 重复调用安全.
+     * 停止投影, 不再跟随序列.
+     * <p>调用时若已经有一轮求值在写这片槽位, 它最多再写完手上那一格.
+     * 已经写进去的内容原样留在 Pane 上, 重复调用安全.
      */
     @Override
     public void close() {

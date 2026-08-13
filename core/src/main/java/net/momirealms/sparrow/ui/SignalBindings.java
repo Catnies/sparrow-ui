@@ -19,7 +19,7 @@ public final class SignalBindings {
     public Subscription add(@NotNull Subscription subscription) {
         this.subscriptions.removeIf(Subscription::isClosed);
         this.subscriptions.add(subscription);
-        return new WeakHandle(new WeakReference<>(subscription));
+        return new WeakHandle(new WeakReference<>(this), new WeakReference<>(subscription));
     }
 
     /**
@@ -27,7 +27,7 @@ public final class SignalBindings {
      * <p>{@code bind} 的返回值经常被存起来留着以后解绑, 若强持有真正的凭证, 就会顺着凭证一路钉住回调和持有方,
      * 故对外只给弱句柄: 持有方还在就能解绑, 持有方已经走了就什么都不做.
      */
-    private record WeakHandle(WeakReference<Subscription> target) implements Subscription {
+    private record WeakHandle(WeakReference<SignalBindings> owner, WeakReference<Subscription> target) implements Subscription {
 
         @Override
         public boolean isClosed() {
@@ -38,8 +38,14 @@ public final class SignalBindings {
         @Override
         public void close() {
             @Nullable Subscription binding = this.target.get();
-            if (binding != null) {
-                binding.close();
+            if (binding == null) {
+                return;
+            }
+            binding.close();
+            // 顺手从持有方摘掉.
+            @Nullable SignalBindings bindings = this.owner.get();
+            if (bindings != null) {
+                bindings.subscriptions.remove(binding);
             }
         }
     }
