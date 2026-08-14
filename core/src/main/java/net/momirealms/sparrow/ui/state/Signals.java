@@ -75,6 +75,7 @@ public final class Signals {
     @NotNull
     public static <K, T> Signal<T> switching(@NotNull KeyedSignal<K, T> source, @NotNull Signal<K> key) {
         Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(key, "key");
         return new SwitchingSignal<>(source, AbstractSignal.require(key));
     }
 
@@ -99,6 +100,7 @@ public final class Signals {
             @NotNull Signal<? extends Collection<? extends T>> sources,
             @NotNull Function<? super T, ? extends Signal<?>> signalOf
     ) {
+        Objects.requireNonNull(sources, "sources");
         Objects.requireNonNull(signalOf, "signalOf");
         return new MergingSignal<>(AbstractSignal.require(sources), signalOf);
     }

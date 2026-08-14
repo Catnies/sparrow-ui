@@ -51,23 +51,8 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        Subscription[] subscriptions = new Subscription[this.sources.length];
-        int attached = 0;
-        try {
-            for (int i = 0; i < this.sources.length; i++) {
-                // 这里使用弱订阅, 不能让来源反过来钉住本节点.
-                subscriptions[i] = this.sources[i].onDirty(this::notifyDirty);
-                attached++;
-            }
-        } catch (RuntimeException | Error exception) {
-            // 某个来源激活失败(如 mapDistinct 的基线 mapper 抛出)时倒序撤销已挂的订阅,
-            // 否则这些订阅无人持有回执, 泄漏且重试会累积重复监听.
-            for (int i = attached - 1; i >= 0; i--) {
-                subscriptions[i].close();
-            }
-            throw exception;
-        }
-        this.upstream = subscriptions;
+        // 这里使用弱订阅, 不能让来源反过来钉住本节点.
+        this.upstream = attachAll(this.sources, this::notifyDirty);
     }
 
     @Override

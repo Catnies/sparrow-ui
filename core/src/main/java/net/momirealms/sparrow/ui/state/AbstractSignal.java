@@ -160,6 +160,44 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return (AbstractSignal<T>) Objects.requireNonNull(signal, "signal");
     }
 
+    /**
+     * 给一批来源挂上同一个失效回调.
+     *
+     * @param sources 要挂的来源
+     * @param listener 失效回调
+     * @return 与 sources 同下标的订阅凭证
+     */
+    @NotNull
+    static Subscription[] attachAll(AbstractSignal<?>[] sources, @NotNull Runnable listener) {
+        Subscription[] subscriptions = new Subscription[sources.length];
+        int attached = 0;
+        try {
+            for (int index = 0; index < sources.length; index++) {
+                subscriptions[index] = sources[index].onDirty(listener);
+                attached++;
+            }
+        } catch (RuntimeException | Error exception) {
+            // 中途有谁激活失败就倒序撤销已经挂上的那些, 再把异常原样抛出
+            for (int index = attached - 1; index >= 0; index--) {
+                subscriptions[index].close();
+            }
+            throw exception;
+        }
+        return subscriptions;
+    }
+
+    /**
+     * 关闭一批凭证, 为 {@code null} 时无操作.
+     *
+     * @param subscriptions 订阅凭证
+     */
+    static void closeAll(Subscription @Nullable [] subscriptions) {
+        if (subscriptions == null) return;
+        for (int index = 0; index < subscriptions.length; index++) {
+            subscriptions[index].close();
+        }
+    }
+
     // 值与版本的原子快照对.
     record Versioned<V>(V value, long version) {
     }

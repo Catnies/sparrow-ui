@@ -86,7 +86,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         // 无下游订阅时不挂转发, 版本改由 version 的拉取路径推进
         Subscription[] previous = this.memberUpstream;
         if (previous != null) {
-            this.memberUpstream = this.attach(members);
+            this.memberUpstream = attachAll(members, this::onUpstreamDirty);
         }
         long sum = versionSumOf(members);
         this.version++;
@@ -109,30 +109,6 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
             members[index++] = AbstractSignal.require(this.signalOf.apply(element));
         }
         return members;
-    }
-
-    /**
-     * 给每个成员挂上失效转发.
-     *
-     * @param members 成员 signal
-     * @return 与成员同下标的转发凭证
-     */
-    private Subscription[] attach(AbstractSignal<?>[] members) {
-        Subscription[] subscriptions = new Subscription[members.length];
-        int attached = 0;
-        try {
-            for (int index = 0; index < members.length; index++) {
-                subscriptions[index] = members[index].onDirty(this::onUpstreamDirty);
-                attached++;
-            }
-        } catch (RuntimeException | Error exception) {
-            // 某个成员激活失败时倒序撤销已挂的订阅, 否则这些订阅无人持有回执
-            for (int index = attached - 1; index >= 0; index--) {
-                subscriptions[index].close();
-            }
-            throw exception;
-        }
-        return subscriptions;
     }
 
     // 集合或某个成员失效: 重新对齐一次, 真的变了才向下游通知.
@@ -161,7 +137,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
                 this.alignLocked();
                 Aligned current = this.aligned;
                 assert current != null; // alignLocked 一定会留下一次对齐结果
-                this.memberUpstream = this.attach(current.members());
+                this.memberUpstream = attachAll(current.members(), this::onUpstreamDirty);
                 // 上一句之前发生的成员失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
                 discarded = this.alignLocked();
             } catch (RuntimeException | Error exception) {
@@ -205,18 +181,6 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
             sum += members[index].version();
         }
         return sum;
-    }
-
-    /**
-     * 关闭一批订阅凭证, 为 {@code null} 时无操作.
-     *
-     * @param subscriptions 订阅凭证
-     */
-    private static void closeAll(Subscription @Nullable [] subscriptions) {
-        if (subscriptions == null) return;
-        for (int index = 0; index < subscriptions.length; index++) {
-            subscriptions[index].close();
-        }
     }
 
     // 一次对齐结果: 成员 signal, 算出这批成员时集合的版本, 以及记下这一次时成员的版本之和.
