@@ -9,6 +9,7 @@ import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -770,15 +771,17 @@ public sealed interface Pane permits AbstractPane {
     void linkInventory(@NotNull SparrowInventory inventory);
 
     /**
-     * 取消一个已声明的额外参与 Inventory.
+     * 取消一个逐个声明进来的额外参与 Inventory.
+     * <p>只认逐个声明的那些. 经 {@link #linkInventory(InventorySequence)} 整条带进来的要摘掉整条序列.
      *
      * @param inventory 要取消的 Inventory
-     * @return 该 Inventory 原本已被声明时返回 true
+     * @return 该 Inventory 原本已被逐个声明时返回 true
      */
     boolean unlinkInventory(@NotNull SparrowInventory inventory);
 
     /**
-     * 返回本 Pane 声明的全部额外参与 Inventory.
+     * 返回逐个声明进来的那些额外参与 Inventory.
+     * <p>不含经 {@link #linkInventory(InventorySequence)} 整条带进来的成员.
      *
      * @return 按声明顺序排列的不可变快照
      */
@@ -803,12 +806,22 @@ public sealed interface Pane permits AbstractPane {
     boolean unlinkInventory(@NotNull InventorySequence sequence);
 
     /**
-     * 返回本 Pane 声明的全部额外参与序列.
+     * 返回整条声明进来的那些额外参与序列.
+     * <p>不含逐个声明汇成的那条内部序列, 逐个声明的看 {@link #linkedInventories()}.
      *
      * @return 按声明顺序排列的不可变快照
      */
     @NotNull
     Set<InventorySequence> linkedSequences();
+
+    /**
+     * 返回本 Pane 带进参与集的全部序列.
+     *
+     * @return 按声明顺序排列的不可变快照
+     */
+    @ApiStatus.Internal
+    @NotNull
+    Set<InventorySequence> participatingSequences();
 
     /**
      * 订阅一个槽位的更新, 并返回订阅时的元素, 背景和冻结状态.

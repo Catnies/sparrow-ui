@@ -122,7 +122,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
     private @Nullable List<SparrowInventory> refreshInventories; // 每 tick 要刷新的 Inventory, null 表示要重新收集
     private @Nullable Pane[] refreshPanes;          // 收集刷新目标时路径上出现过的 Pane, 已去重
-    private @Nullable Object[] refreshDeclarations; // 每个 Pane 占两格, 收集当时各自的 linkedInventories() 与 linkedSequences(), 只比较引用
+    private @Nullable Object[] refreshDeclarations; // 与 refreshPanes 同下标, 收集当时各自的 participatingSequences(), 只比较引用
     private @Nullable InventorySequence[] refreshSequences; // 收集刷新目标时路径上出现过的序列, 已去重
     private @Nullable Object[] refreshSequenceMembers;      // 与 refreshSequences 同下标, 收集当时各自的成员名单, 只比较引用
     private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
@@ -1093,7 +1093,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             // 一个 Pane 通常铺满一大片槽位, 每个槽位都会走到这里, 只记第一次
             if (panes.contains(pane)) return;
             panes.add(pane);
-            Set<InventorySequence> declared = pane.linkedSequences();
+            Set<InventorySequence> declared = pane.participatingSequences();
             declarations.add(declared);
             sequences.addAll(declared);
         });
@@ -1123,7 +1123,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         Pane[] panes = this.refreshPanes;
         if (panes == null) return true;
         for (int index = 0; index < panes.length; index++) {
-            if (panes[index].linkedSequences() != this.refreshDeclarations[index]) {
+            if (panes[index].participatingSequences() != this.refreshDeclarations[index]) {
                 return true;
             }
         }
@@ -1187,7 +1187,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     ) {
         this.forEachPathPane(paths, pane -> {
             // 绝大多数 Pane 一个都没声明, 这里直接跳过, 序列的成员随时会变, 每次规划都现取一份, 不缓存.
-            for (InventorySequence sequence : pane.linkedSequences()) {
+            for (InventorySequence sequence : pane.participatingSequences()) {
                 List<SparrowInventory> members = sequence.inventories();
                 for (int index = 0; index < members.size(); index++) {
                     action.accept(members.get(index));
