@@ -1,0 +1,15 @@
+package net.momirealms.sparrow.ui.proxy.minecraft.world.entity;
+
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
+import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
+import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
+import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
+
+@ReflectionProxy(name = "net.minecraft.world.entity.Entity")
+public interface EntityProxy {
+    EntityProxy INSTANCE = ASMProxyFactory.create(EntityProxy.class);
+    Class<?> CLASS = SparrowClass.find("net.minecraft.world.entity.Entity");
+
+    @MethodInvoker(name = "isRemoved")
+    boolean isRemoved(Object target);
+}

@@ -3,10 +3,14 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.CompoundContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.EntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.level.block.entity.BlockEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.HumanEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -119,6 +123,33 @@ abstract class ContainerStorage implements ExternalStorage {
         Object container() {
             return this.container;
         }
+
+        @Override
+        public boolean alive() {
+            return alive(this.container);
+        }
+
+        /**
+         * 判断一个 NMS 容器背后的东西是不是还在.
+         * <p>方块容器与矿车、船这类实体容器, NMS 那边的容器对象本身就是方块实体或实体, 直接问它自己
+         * 被移除了没有. 大箱子是两个容器拼起来的, 任何一半没了都算没了.
+         *
+         * @param container NMS 容器
+         * @return 还在时返回 true
+         */
+        private static boolean alive(Object container) {
+            if (BlockEntityProxy.CLASS.isInstance(container)) {
+                return !BlockEntityProxy.INSTANCE.isRemoved(container);
+            }
+            if (EntityProxy.CLASS.isInstance(container)) {
+                return !EntityProxy.INSTANCE.isRemoved(container);
+            }
+            if (CompoundContainerProxy.CLASS.isInstance(container)) {
+                return alive(CompoundContainerProxy.INSTANCE.getContainer1(container))
+                        && alive(CompoundContainerProxy.INSTANCE.getContainer2(container));
+            }
+            return true;
+        }
     }
 
     /**
@@ -139,6 +170,13 @@ abstract class ContainerStorage implements ExternalStorage {
         Object container() {
             // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个
             return CraftInventoryProxy.INSTANCE.getInventory(this.owner.getInventory());
+        }
+
+        @Override
+        public boolean alive() {
+            // 玩家退出后那个背包就与服务端脱钩了: 写进去的不再存盘, 从里面取出的却还在存档里,
+            // 前者丢件后者刷件. 死亡重生不算脱钩, 所以这里问的是在不在线, 不是活没活着.
+            return !(this.owner instanceof Player player) || player.isOnline();
         }
     }
 }

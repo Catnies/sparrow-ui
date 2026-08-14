@@ -178,7 +178,7 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
-        @Nullable ItemStack[] copy = this.readView();
+        @Nullable ItemStack[] copy = this.unsafeSnapshot();
         for (int slot = 0; slot < copy.length; slot++) {
             copy[slot] = ItemUtils.copyOrNull(copy[slot]);
         }
