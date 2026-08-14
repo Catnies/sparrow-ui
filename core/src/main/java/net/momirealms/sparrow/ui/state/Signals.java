@@ -2,7 +2,9 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
 import java.util.Objects;
+import java.util.function.Function;
 
 public final class Signals {
     private static volatile TickingSignal ticking;
@@ -74,5 +76,30 @@ public final class Signals {
     public static <K, T> Signal<T> switching(@NotNull KeyedSignal<K, T> source, @NotNull Signal<K> key) {
         Objects.requireNonNull(source, "source");
         return new SwitchingSignal<>(source, AbstractSignal.require(key));
+    }
+
+    /**
+     * 组合集合的成员, 集合换了成员, 或任何一个成员失效, 返回的 signal 都失效.
+     * <p>成员数量可以随时变化, 这是它与 {@link Signal#combine} 的区别.
+     * <p>返回值是一个只增不减的计数, 数字本身没有含义, 只用来承载失效.
+     * <p>集合每次变化都必须给出一个与旧值不判等的新集合: 原地改掉同一个集合再写回去, 上游会认为值没变,
+     * 连失效都不会发出来. 集合的迭代顺序还要稳定, 否则同一批成员会被当成换过了.
+     *
+     * <pre>{@code
+     * MutableSignal<List<SparrowInventory>> chests = Signal.of(List.of(left, right));
+     * Signal<Long> anyChestChanged = Signals.merging(chests, SparrowInventory::contentSignal);
+     * }</pre>
+     *
+     * @param sources 给出当前成员的集合, 值不得为 {@code null}
+     * @param signalOf 把成员换算成它的失效来源
+     * @return 汇合后的 signal
+     */
+    @NotNull
+    public static <T> Signal<Long> merging(
+            @NotNull Signal<? extends Collection<? extends T>> sources,
+            @NotNull Function<? super T, ? extends Signal<?>> signalOf
+    ) {
+        Objects.requireNonNull(signalOf, "signalOf");
+        return new MergingSignal<>(AbstractSignal.require(sources), signalOf);
     }
 }

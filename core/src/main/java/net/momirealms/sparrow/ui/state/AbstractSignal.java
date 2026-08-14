@@ -24,6 +24,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         MapDistinctSignal,
         CombinedSignal,
         SwitchingSignal,
+        MergingSignal,
         AsyncSignalImpl,
         KeyedSignalImpl.SyncPartition,
         PartitionHandle,

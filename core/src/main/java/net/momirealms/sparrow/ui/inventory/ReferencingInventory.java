@@ -209,8 +209,8 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * 让本 Inventory 退役, 内容存放的地方已经不在了, 这个 Inventory 从此不再可用.
      * <p>退役之后读到的一律是空, 写入一律失败(在途的与新发起的事务都会以
-     * {@link TransactionResult.Conflicted} 收场), 快速转移与双击收集也不再把它当成目标. 展示它的
-     * Window 会把那些槽位重新渲染成空.
+     * {@link TransactionResult.Conflicted} 收场), 快速转移与双击收集也不再把它当成目标.
+     * 展示它的Window 会把那些槽位重新渲染成空.
      * <p>可以直接调用(例如在方块破坏事件里), 也可以交给 {@link ExternalStorage#alive()} 让每 tick 的
      * {@link #refresh()} 自己发现. 重复调用没有额外效果.
      */
