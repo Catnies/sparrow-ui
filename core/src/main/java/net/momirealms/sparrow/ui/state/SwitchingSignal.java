@@ -72,6 +72,9 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
 
     /**
      * 重新选一次分区, 并在换了分区或分区失效过时推进版本. 已经对齐时无操作.
+     * <p>版本一律先推进再发布快照. {@link #version()} 按 selected 到 version 的顺序读, 这里写成相反的顺序,
+     * 读者才不会看见新快照却配上旧版本 —— 那会让没有下游订阅的拉取路径把这次变化整个漏掉.
+     * 反过来看见旧快照配新版本是安全的: 那只会让下游多算一遍.
      *
      * @return 需要在锁外关闭的上一条分区转发凭证, 没有换分区时为 {@code null}
      */
@@ -83,8 +86,8 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
             // 还是同一个分区, 只看它自上次记录以来有没有失效过
             long partitionVersion = current.partition().version();
             if (current.partitionVersion() != partitionVersion) {
-                this.selected = new Selected<>(currentKey, current.partition(), partitionVersion);
                 this.version++;
+                this.selected = new Selected<>(currentKey, current.partition(), partitionVersion);
             }
             return null;
         }
@@ -96,8 +99,9 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
             this.partitionUpstream = partition.onDirty(this::onUpstreamDirty);
         }
         // 取版本快照
-        this.selected = new Selected<>(currentKey, partition, partition.version());
+        long partitionVersion = partition.version();
         this.version++;
+        this.selected = new Selected<>(currentKey, partition, partitionVersion);
         return previous;
     }
 
@@ -122,6 +126,7 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
+        Subscription discarded = null;
         synchronized (this.switchLock) {
             this.keyUpstream = this.key.onDirty(this::onUpstreamDirty);
             try {
@@ -129,16 +134,23 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
                 Selected<K, T> current = this.selected;
                 assert current != null; // refreshLocked 一定会留下一个选中结果
                 this.partitionUpstream = current.partition().onDirty(this::onUpstreamDirty);
-                // 上一句之前发生的分区失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里
-                this.refreshLocked();
+                // 上一句之前发生的分区失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
+                discarded = this.refreshLocked();
             } catch (RuntimeException | Error exception) {
                 // key 求值抛出时撤销已挂的订阅, 让 register 的回滚留下干净现场.
+                if (this.partitionUpstream != null) {
+                    this.partitionUpstream.close();
+                    this.partitionUpstream = null;
+                }
                 this.keyUpstream.close();
                 this.keyUpstream = null;
                 throw exception;
             }
             // 没有基线时首次订阅会把无订阅期间攒下的版本推进误判为变化, 手动对齐.
             this.notifiedVersion = this.version;
+        }
+        if (discarded != null) {
+            discarded.close();
         }
     }
 

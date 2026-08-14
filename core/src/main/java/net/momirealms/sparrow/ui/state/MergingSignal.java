@@ -58,6 +58,9 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
 
     /**
      * 把成员列表对齐到集合当前内容, 换过成员或成员失效过时推进版本, 已经对齐时只更新记账.
+     * <p>版本一律先推进再发布快照. {@link #version()} 按 aligned 到 version 的顺序读, 这里写成相反的顺序,
+     * 读者才不会看见新快照却配上旧版本 —— 那会让没有下游订阅的拉取路径把这次变化整个漏掉.
+     * 反过来看见旧快照配新版本是安全的: 那只会让下游多算一遍.
      *
      * @return 需要在锁外关闭的上一批成员转发凭证, 没有换成员时为 {@code null}
      */
@@ -72,11 +75,11 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         // 成员没换, 只看自上次记录以来有没有失效过
         if (current != null && Arrays.equals(current.members(), members)) {
             long sum = versionSumOf(members);
-            // 集合版本一并记新, 否则集合每失效一次都要白重算一遍成员
-            this.aligned = new Aligned(members, sourcesVersion, sum);
             if (sum != current.memberVersionSum()) {
                 this.version++;
             }
+            // 集合版本一并记新, 否则集合每失效一次都要白重算一遍成员
+            this.aligned = new Aligned(members, sourcesVersion, sum);
             return null;
         }
 
@@ -85,8 +88,9 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         if (previous != null) {
             this.memberUpstream = this.attach(members);
         }
-        this.aligned = new Aligned(members, sourcesVersion, versionSumOf(members));
+        long sum = versionSumOf(members);
         this.version++;
+        this.aligned = new Aligned(members, sourcesVersion, sum);
         return previous;
     }
 
@@ -150,6 +154,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
 
     @Override
     protected void onActive() {
+        Subscription[] discarded = null;
         synchronized (this.mergeLock) {
             this.sourcesUpstream = this.sources.onDirty(this::onUpstreamDirty);
             try {
@@ -157,10 +162,12 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
                 Aligned current = this.aligned;
                 assert current != null; // alignLocked 一定会留下一次对齐结果
                 this.memberUpstream = this.attach(current.members());
-                // 上一句之前发生的成员失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里
-                this.alignLocked();
+                // 上一句之前发生的成员失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
+                discarded = this.alignLocked();
             } catch (RuntimeException | Error exception) {
                 // 集合求值或成员换算抛出时撤销已挂的订阅, 让 register 的回滚留下干净现场.
+                closeAll(this.memberUpstream);
+                this.memberUpstream = null;
                 this.sourcesUpstream.close();
                 this.sourcesUpstream = null;
                 throw exception;
@@ -168,6 +175,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
             // 没有基线时首次订阅会把无订阅期间攒下的版本推进误判为变化, 手动对齐.
             this.notifiedVersion = this.version;
         }
+        closeAll(discarded);
     }
 
     @Override
