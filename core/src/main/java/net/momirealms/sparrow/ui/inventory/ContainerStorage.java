@@ -6,7 +6,9 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemSta
 import net.momirealms.sparrow.ui.proxy.minecraft.world.CompoundContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.EntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MerchantContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.block.entity.BlockEntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.level.block.entity.LecternInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.HumanEntity;
@@ -105,7 +107,6 @@ abstract class ContainerStorage implements ExternalStorage {
 
     /**
      * 定位真正存放这一格的那个容器, 并把槽号换算到它自己的坐标里.
-     * <p>
      *
      * @param container NMS 容器
      * @param slot 该容器内的槽位
@@ -150,8 +151,7 @@ abstract class ContainerStorage implements ExternalStorage {
 
         /**
          * 判断一个 NMS 容器背后的东西是不是还在.
-         * <p>方块容器与矿车、船这类实体容器, NMS 那边的容器对象本身就是方块实体或实体, 直接问它自己
-         * 被移除了没有. 大箱子是两个容器拼起来的, 任何一半没了都算没了.
+         * <p>方块容器与矿车、船这类实体容器, NMS 那边的容器对象本身就是方块实体或实体, 检查宿主是否移除.
          *
          * @param container NMS 容器
          * @return 还在时返回 true
@@ -163,9 +163,18 @@ abstract class ContainerStorage implements ExternalStorage {
             if (EntityProxy.CLASS.isInstance(container)) {
                 return !EntityProxy.INSTANCE.isRemoved(container);
             }
+            // 大箱子是两个容器拼起来的, 任何一半没了都算没了
             if (CompoundContainerProxy.CLASS.isInstance(container)) {
                 return alive(CompoundContainerProxy.INSTANCE.getContainer1(container))
                         && alive(CompoundContainerProxy.INSTANCE.getContainer2(container));
+            }
+            // 讲台的容器是 LecternBlockEntity 的内部类, 它自己不是方块实体, 得检查讲台
+            if (LecternInventoryProxy.CLASS.isInstance(container)) {
+                return alive(LecternInventoryProxy.INSTANCE.getLectern(container));
+            }
+            // 交易容器同理, 它记着自己属于哪个商人, 而村民与流浪商人本身就是实体
+            if (MerchantContainerProxy.CLASS.isInstance(container)) {
+                return alive(MerchantContainerProxy.INSTANCE.getMerchant(container));
             }
             return true;
         }
@@ -199,9 +208,7 @@ abstract class ContainerStorage implements ExternalStorage {
 
         @Override
         public boolean alive() {
-            // 玩家退出后那个背包就与服务端脱钩了: 写进去的不再存盘, 从里面取出的却还在存档里,
-            // 前者丢件后者刷件. 死亡重生不算脱钩, 所以这里问的是在不在线, 不是活没活着.
-            return !(this.owner instanceof Player player) || player.isOnline();
+            return !(this.owner instanceof Player player) || player.isConnected();
         }
 
         // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个.

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import org.bukkit.entity.HumanEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -22,12 +23,16 @@ final class BukkitStorage implements ExternalStorage {
     private final int bukkitMaxStackSize;    // 容器的堆叠上限, 构造时缓存
     private final Object identity;           // SlotKey 的判等归属, 构造时定下
 
+    private final @Nullable HumanEntity owner; // 玩家背包的主人, 其余容器为 null
+
     BukkitStorage(@NotNull Inventory bukkitInventory, @NotNull Function<Inventory, @Nullable ItemStack[]> contentsGetter) {
         this.bukkitInventory = bukkitInventory;
         this.contentsGetter = contentsGetter;
+        this.owner = bukkitInventory instanceof PlayerInventory playerInventory ? playerInventory.getHolder() : null;
         this.size = contentsGetter.apply(bukkitInventory).length;
         this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
-        this.identity = identityOf(bukkitInventory);
+        // 玩家背包用主人的 UUID: 重生会换掉那个背包对象, 拿它当归属重生前后就不判等了
+        this.identity = this.owner == null ? bukkitInventory : this.owner.getUniqueId();
     }
 
     /**
@@ -93,21 +98,8 @@ final class BukkitStorage implements ExternalStorage {
         return new SlotKey(this.identity, slot);
     }
 
-    /**
-     * 定下一个 Bukkit 容器的判等归属.
-     *
-     * @param inventory 被引用的 Bukkit 容器
-     * @return 判等归属
-     */
-    @NotNull
-    private static Object identityOf(@NotNull Inventory inventory) {
-        // 玩家背包用主人的 UUID
-        if (inventory instanceof PlayerInventory playerInventory) {
-            HumanEntity owner = playerInventory.getHolder();
-            if (owner != null) {
-                return owner.getUniqueId();
-            }
-        }
-        return inventory;
+    @Override
+    public boolean alive() {
+        return !(this.owner instanceof Player player) || player.isConnected();
     }
 }

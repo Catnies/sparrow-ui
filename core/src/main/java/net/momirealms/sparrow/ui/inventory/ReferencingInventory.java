@@ -266,11 +266,11 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>先比对一次, 把积压的外部变更派发出去, 再基于最新内容规划.
+     * <p>先确认存储还在, 再比对一次把积压的外部变更派发出去, 然后基于最新内容规划.
      */
     @Override
     void prepareWrite() {
-        this.reconcileFromStorage();
+        this.refresh();
     }
 
     /**

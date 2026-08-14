@@ -16,7 +16,7 @@ public interface ExternalStorage {
     /**
      * 直接封装一个 NMS 容器.
      * <p>槽位数量、堆叠上限与读写都取自这个容器自己.
-     * 存活判断认得方块实体、实体与拼接容器三种形态, 其余形态一律当作还可用.
+     * 存活判断顺着容器问回它所属的方块实体或实体, 问不出来的一律当作还可用.
      *
      * @param container {@code net.minecraft.world.Container} 实例
      * @return 该容器的外部存储
