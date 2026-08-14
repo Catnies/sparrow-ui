@@ -13,6 +13,9 @@ public interface ContainerProxy {
     @MethodInvoker(name = "getContainerSize")
     int getContainerSize(Object target);
 
+    @MethodInvoker(name = "getMaxStackSize")
+    int getMaxStackSize(Object target);
+
     @MethodInvoker(name = "getItem")
     Object getItem(Object target, int slot);
 

@@ -26,9 +26,9 @@ import java.util.function.UnaryOperator;
  * {@code prepareWrite} 在任何写入口读取规划内容之前先比对一次, 把积压的外部变更先派发出去.
  * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册调度任务.
  */
-@ApiStatus.Experimental
 public final class ReferencingInventory extends SparrowInventory {
     private final ExternalStorage storage;   // 内容实际存放的地方, 读写一律以它为准
+    private final @Nullable Inventory referenced;   // 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器时为 null
     private final SlotKey[] externalSlots;   // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
@@ -42,19 +42,22 @@ public final class ReferencingInventory extends SparrowInventory {
      * 它永远是空的, 也永远不会被交换.
      *
      * @param storage 内容实际存放的外部存储
+     * @param referenced 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器时为 {@code null}
      * @param initialKnown lastKnown 的初值, 已按当前 Inventory 槽位排列, 空物品已转为 {@code null}
      * @param slotMapping 当前 Inventory 槽位到存储槽位的映射
      * @param addOrder ADD 类别的遍历顺序, {@code null} 回退自然顺序
      */
     private ReferencingInventory(
             ExternalStorage storage,
+            @Nullable Inventory referenced,
             @Nullable ItemStack[] initialKnown,
             SlotOrder slotMapping,
             @Nullable SlotOrder addOrder
     ) {
         super(new ItemStack[initialKnown.length]);
         this.storage = storage;
-        this.externalSlots = externalSlots(storage.identity(), slotMapping);
+        this.referenced = referenced;
+        this.externalSlots = externalSlots(storage, slotMapping);
         this.addOrder = addOrder;
         this.lastKnown = initialKnown;
     }
@@ -104,7 +107,7 @@ public final class ReferencingInventory extends SparrowInventory {
     public static ReferencingInventory of(@NotNull ExternalStorage storage) {
         @Nullable ItemStack[] raw = storage.readAll();
         SlotOrder slotMapping = SlotOrder.of(identitySlots(raw.length));
-        return new ReferencingInventory(storage, readLogicalContents(raw, slotMapping), slotMapping, null);
+        return new ReferencingInventory(storage, null, readLogicalContents(raw, slotMapping), slotMapping, null);
     }
 
     /**
@@ -130,22 +133,17 @@ public final class ReferencingInventory extends SparrowInventory {
             throw new IllegalArgumentException("slot mapping size " + slotMapping.size() + " does not match contents size " + raw.length);
         }
         @Nullable SlotOrder addOrder = reverseAddOrder ? SlotOrder.natural(raw.length).reversed() : null;
-        return new ReferencingInventory(
-                storage,
-                readLogicalContents(raw, slotMapping),
-                slotMapping,
-                addOrder
-        );
+        return new ReferencingInventory(storage, inventory, readLogicalContents(raw, slotMapping), slotMapping, addOrder);
     }
 
     /**
-     * 返回被引用的 Bukkit 容器, 如果存储实现不是 Inventory 则返回 {@code null}.
+     * 返回被引用的 Bukkit 容器, 内容不住在 Bukkit 容器里时返回 {@code null}.
      *
      * @return 被引用的容器
      */
     @Nullable
     public Inventory referencedInventory() {
-        return this.storage.identity() instanceof Inventory inventory ? inventory : null;
+        return this.referenced;
     }
 
     /**
@@ -256,11 +254,12 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>返回存储槽对应的 SlotKey: 两个 ReferencingInventory 指向同一存储归属和同一存储槽位时, SlotKey 相同.
+     * <p>返回外部存储给出的 SlotKey, 构造时逐槽算好,
+     * 两个 ReferencingInventory 最终写同一格时, SlotKey 相同.
      */
     @Override
     @NotNull
-    SlotKey physicalKey(int slot) {
+    public SlotKey physicalKey(int slot) {
         return this.externalSlots[slot];
     }
 
@@ -413,14 +412,14 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * 为每个当前 Inventory 槽位建立对应的 {@link SlotKey}.
      *
-     * @param identity 存储归属
+     * @param storage 内容实际存放的外部存储
      * @param slotMapping 当前 Inventory 槽位到存储槽位的映射
      * @return 每个当前 Inventory 槽位的 SlotKey
      */
-    private static SlotKey[] externalSlots(Object identity, SlotOrder slotMapping) {
+    private static SlotKey[] externalSlots(ExternalStorage storage, SlotOrder slotMapping) {
         SlotKey[] externalSlots = new SlotKey[slotMapping.size()];
         for (int slot = 0; slot < slotMapping.size(); slot++) {
-            externalSlots[slot] = new SlotKey(identity, slotMapping.slotAt(slot));
+            externalSlots[slot] = storage.keyOf(slotMapping.slotAt(slot));
         }
         return externalSlots;
     }

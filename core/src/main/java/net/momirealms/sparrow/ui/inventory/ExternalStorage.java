@@ -14,6 +14,19 @@ import org.jetbrains.annotations.Nullable;
 public interface ExternalStorage {
 
     /**
+     * 直接封装一个 NMS 容器.
+     * <p>槽位数量、堆叠上限与读写都取自这个容器自己.
+     * 存活判断认得方块实体、实体与拼接容器三种形态, 其余形态一律当作还可用.
+     *
+     * @param container {@code net.minecraft.world.Container} 实例
+     * @return 该容器的外部存储
+     */
+    @NotNull
+    static ExternalStorage ofContainer(@NotNull Object container) {
+        return new ContainerStorage.Fixed(container);
+    }
+
+    /**
      * 存储的槽位数量, 构造后不得变化.
      *
      * @return 槽位数量
@@ -64,13 +77,16 @@ public interface ExternalStorage {
     int maxStackSize(int slot);
 
     /**
-     * {@link SlotKey} 判等使用的存储归属: 两个 Inventory 引用同一存储的同一槽位时判定为同一存储位置.
+     * 把存储槽位换算成 {@link SlotKey}, 两个 Inventory 落到同一个 SlotKey 时判定为同一个存储位置.
+     * <p>归属要按值判等并在存储活着的期间保持稳定, 不要交出每次取用都新建的包装对象.
+     * 拼起来的存储要把归属下放到真正存放这一格的那一层, 并把槽号换算到那一层的坐标里.
      *
-     * @return 存储归属
+     * @param slot 存储槽位
+     * @return 该槽位的 SlotKey
      */
     @NotNull
-    default Object identity() {
-        return this;
+    default SlotKey keyOf(int slot) {
+        return new SlotKey(this, slot);
     }
 
     /**

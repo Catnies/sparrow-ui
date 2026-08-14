@@ -20,12 +20,14 @@ final class BukkitStorage implements ExternalStorage {
     private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 读取被引用区段(getContents / getStorageContents)
     private final int size;                  // 被引用区段的槽位数量, 构造时取样
     private final int bukkitMaxStackSize;    // 容器的堆叠上限, 构造时缓存
+    private final Object identity;           // SlotKey 的判等归属, 构造时定下
 
     BukkitStorage(@NotNull Inventory bukkitInventory, @NotNull Function<Inventory, @Nullable ItemStack[]> contentsGetter) {
         this.bukkitInventory = bukkitInventory;
         this.contentsGetter = contentsGetter;
         this.size = contentsGetter.apply(bukkitInventory).length;
         this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
+        this.identity = identityOf(bukkitInventory);
     }
 
     /**
@@ -49,12 +51,11 @@ final class BukkitStorage implements ExternalStorage {
             if (owner == null || !ContainerStorage.SLOT_ALIGNED_PLAYER_INVENTORIES.contains(inventory.getClass()) || size != inventory.getStorageContents().length) {
                 return new BukkitStorage(inventory, contentsGetter);
             }
-            return new ContainerStorage.OfPlayer(inventory, owner, size);
+            return new ContainerStorage.OfPlayer(owner, size);
         }
         // 特例: 只有 Bukkit 实现和 NMS 的槽号一一对应的才可以走 NMS 实现.
         if (ContainerStorage.SLOT_ALIGNED_INVENTORIES.contains(inventory.getClass())) {
-            Object container = CraftInventoryProxy.INSTANCE.getInventory(inventory);
-            return new ContainerStorage.Fixed(inventory, container, size);
+            return new ContainerStorage.Fixed(CraftInventoryProxy.INSTANCE.getInventory(inventory));
         }
         // 其余走 Bukkit 回退实现.
         return new BukkitStorage(inventory, contentsGetter);
@@ -88,7 +89,25 @@ final class BukkitStorage implements ExternalStorage {
 
     @Override
     @NotNull
-    public Object identity() {
-        return this.bukkitInventory;
+    public SlotKey keyOf(int slot) {
+        return new SlotKey(this.identity, slot);
+    }
+
+    /**
+     * 定下一个 Bukkit 容器的判等归属.
+     *
+     * @param inventory 被引用的 Bukkit 容器
+     * @return 判等归属
+     */
+    @NotNull
+    private static Object identityOf(@NotNull Inventory inventory) {
+        // 玩家背包用主人的 UUID
+        if (inventory instanceof PlayerInventory playerInventory) {
+            HumanEntity owner = playerInventory.getHolder();
+            if (owner != null) {
+                return owner.getUniqueId();
+            }
+        }
+        return inventory;
     }
 }

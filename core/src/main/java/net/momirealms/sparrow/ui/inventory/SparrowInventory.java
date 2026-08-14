@@ -51,8 +51,7 @@ import java.util.function.UnaryOperator;
  * 两种在写操作遇到并发冲突时都返回 {@link TransactionResult.Conflicted} 且不产生修改.
  * <p><strong>自己拿着状态数组的那一种, 无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>:
  * 提交只换数组不改元素, 因此比对数组引用就足以发现并发写入.
- * ReferencingInventory 靠内容比对发现变更: 外部把存储里的物品就地改了数量, 组件或 PDC,
- * 都会在下一次比对时被发现, 以 {@link UpdateReason.External} 原因派发 post 事件并同步显示.
+ * ReferencingInventory 靠内容比对发现变更, 外部存储里的物品改了数据, 会在下一次比对时发现, 以 {@link UpdateReason.External} 原因派发 post 事件并同步显示.
  * <p>对象身份约定对两种实现一致: 一笔事务写过的槽位, 提交后一律是新实例; 没写过的槽位与等值写入的槽位,
  * 实例原样不动. 光标, 副手和事件负载都是副本. 跨事务追踪变化请订阅事件, 不要指望缓存的实例跟着槽位变.
  * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
@@ -164,13 +163,14 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 把槽位换算成 SlotKey.
+     * 把槽位换算成 {@link SlotKey}.
+     * <p>两个 Inventory 的两个槽位给出同一个 SlotKey, 就说明它们最终写的是同一格.
      *
      * @param slot 槽位序号, 从 0 开始
      * @return 该槽的 SlotKey
      */
     @NotNull
-    SlotKey physicalKey(int slot) {
+    public SlotKey physicalKey(int slot) {
         return new SlotKey(this, slot);
     }
 

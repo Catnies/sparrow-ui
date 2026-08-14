@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,7 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Set;
 
 /**
- * NMS 容器的外部存储适配: 读写直达被引用容器背后的 NMS 容器.
+ * NMS 容器的外部存储适配: 槽位数量、堆叠上限与读写全部取自 NMS 容器自己.
  */
 abstract class ContainerStorage implements ExternalStorage {
     /**
@@ -51,20 +50,18 @@ abstract class ContainerStorage implements ExternalStorage {
             "org.bukkit.craftbukkit.inventory.CraftInventoryPlayer"
     );
 
-    private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 只用来给出判等身份
-    private final int size;                  // 被引用区段的槽位数量, 构造时取样
-    private final int maxStackSize;          // 容器的堆叠上限, 构造时缓存
+    private final int size;         // 被引用区段的槽位数量, 构造时取样
+    private final int maxStackSize; // 容器的堆叠上限, 构造时缓存
 
     /**
-     * 记下判等身份与两个构造期取样的常量.
+     * 记下两个构造期取样的常量.
      *
-     * @param bukkitInventory 被引用的 Bukkit 容器
      * @param size 被引用区段的槽位数量
+     * @param maxStackSize 容器的堆叠上限
      */
-    private ContainerStorage(@NotNull Inventory bukkitInventory, int size) {
-        this.bukkitInventory = bukkitInventory;
+    private ContainerStorage(int size, int maxStackSize) {
         this.size = size;
-        this.maxStackSize = bukkitInventory.getMaxStackSize();
+        this.maxStackSize = maxStackSize;
     }
 
     /**
@@ -102,9 +99,31 @@ abstract class ContainerStorage implements ExternalStorage {
 
     @Override
     @NotNull
-    public Object identity() {
-        // 判等身份交给 Bukkit 容器, 同一个容器的两个 CraftInventory 包装仍然判定为同一处存储.
-        return this.bukkitInventory;
+    public SlotKey keyOf(int slot) {
+        return keyOf(this.container(), slot);
+    }
+
+    /**
+     * 定位真正存放这一格的那个容器, 并把槽号换算到它自己的坐标里.
+     * <p>
+     *
+     * @param container NMS 容器
+     * @param slot 该容器内的槽位
+     * @return 该槽位的 SlotKey
+     */
+    @NotNull
+    private static SlotKey keyOf(Object container, int slot) {
+        // CompoundContainer (比如大箱子) 是两个 Container 接起来的, 归属需要具体到被包装的 Container
+        if (CompoundContainerProxy.CLASS.isInstance(container)) {
+            Object first = CompoundContainerProxy.INSTANCE.getContainer1(container);
+            int firstSize = ContainerProxy.INSTANCE.getContainerSize(first);
+            if (slot < firstSize) {
+                return keyOf(first, slot);
+            }
+            return keyOf(CompoundContainerProxy.INSTANCE.getContainer2(container), slot - firstSize);
+        }
+        // 其余的正常引用 container 本身
+        return new SlotKey(container, slot);
     }
 
     /**
@@ -113,8 +132,8 @@ abstract class ContainerStorage implements ExternalStorage {
     static final class Fixed extends ContainerStorage {
         private final Object container; // 构造时解出来的 NMS 容器
 
-        Fixed(@NotNull Inventory bukkitInventory, @NotNull Object container, int size) {
-            super(bukkitInventory, size);
+        Fixed(@NotNull Object container) {
+            super(ContainerProxy.INSTANCE.getContainerSize(container), ContainerProxy.INSTANCE.getMaxStackSize(container));
             this.container = container;
         }
 
@@ -160,16 +179,22 @@ abstract class ContainerStorage implements ExternalStorage {
     static final class OfPlayer extends ContainerStorage {
         private final HumanEntity owner; // 背包主人, 跨死亡重生稳定
 
-        OfPlayer(@NotNull Inventory bukkitInventory, @NotNull HumanEntity owner, int size) {
-            super(bukkitInventory, size);
+        OfPlayer(@NotNull HumanEntity owner, int size) {
+            super(size, ContainerProxy.INSTANCE.getMaxStackSize(containerOf(owner)));
             this.owner = owner;
         }
 
         @Override
         @NotNull
         Object container() {
-            // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个
-            return CraftInventoryProxy.INSTANCE.getInventory(this.owner.getInventory());
+            return containerOf(this.owner);
+        }
+
+        @Override
+        @NotNull
+        public SlotKey keyOf(int slot) {
+            // 归属跟着玩家走: 重生换掉的是背包, 那条 NMS 背包拿来当归属重生前后就不判等了
+            return new SlotKey(this.owner.getUniqueId(), slot);
         }
 
         @Override
@@ -177,6 +202,12 @@ abstract class ContainerStorage implements ExternalStorage {
             // 玩家退出后那个背包就与服务端脱钩了: 写进去的不再存盘, 从里面取出的却还在存档里,
             // 前者丢件后者刷件. 死亡重生不算脱钩, 所以这里问的是在不在线, 不是活没活着.
             return !(this.owner instanceof Player player) || player.isOnline();
+        }
+
+        // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个.
+        @NotNull
+        private static Object containerOf(@NotNull HumanEntity owner) {
+            return CraftInventoryProxy.INSTANCE.getInventory(owner.getInventory());
         }
     }
 }
