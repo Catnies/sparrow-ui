@@ -1536,6 +1536,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         List<ClickSemantics.LinkedInventory> linked = new ArrayList<>(visible.size());
         visible.forEach((inventory, slots) -> {
+            // 已经退役的 Inventory 背后没有容器了, 不作为快速转移与双击收集的目标.
+            if (inventory.retired()) return;
             BitSet participating = inventory.includeObscuredSlots() ? this.withObscuredSlots(inventory, slots) : slots;
             // 一个槽位都不参与就不进目标列表.
             if (!participating.isEmpty()) {

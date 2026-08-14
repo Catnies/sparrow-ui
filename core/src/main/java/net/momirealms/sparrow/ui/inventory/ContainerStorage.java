@@ -42,6 +42,10 @@ abstract class ContainerStorage implements ExternalStorage {
             "org.bukkit.craftbukkit.inventory.CraftInventoryMerchant",
             "org.bukkit.craftbukkit.inventory.CraftInventoryShelf"
     );
+    // 存储区段与 NMS 背包槽号一一对应的玩家背包实现.
+    static final Set<Class<?>> SLOT_ALIGNED_PLAYER_INVENTORIES = BukkitProxy.findClasses(
+            "org.bukkit.craftbukkit.inventory.CraftInventoryPlayer"
+    );
 
     private final Inventory bukkitInventory; // 被引用的 Bukkit 容器, 只用来给出判等身份
     private final int size;                  // 被引用区段的槽位数量, 构造时取样

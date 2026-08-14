@@ -94,7 +94,7 @@ public abstract class SparrowInventory {
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
 
-    @Nullable private volatile Signal<Long> contentSignal;             // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅递增
+    @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅和退役递增
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
@@ -449,6 +449,17 @@ public abstract class SparrowInventory {
      */
     public boolean frozen() {
         return this.frozen;
+    }
+
+    /**
+     * 返回本 Inventory 是否已经退役.
+     * <p>退役表示内容存放的地方已经不在了, 这个 Inventory 从此读到的是空, 写入一律失败, 也不再作为
+     * 快速转移与双击收集的目标. 只有 {@link ReferencingInventory} 会退役, 其余实现恒为 {@code false}.
+     *
+     * @return 已经退役时返回 true
+     */
+    public boolean retired() {
+        return false;
     }
 
     /**
@@ -1176,7 +1187,7 @@ public abstract class SparrowInventory {
      */
     @NotNull
     public final Signal<Long> contentSignal() {
-        Signal<Long> signal = this.contentSignal;
+        MutableSignal<Long> signal = this.contentSignal;
         if (signal == null) {
             synchronized (this) {
                 signal = this.contentSignal;
@@ -1190,6 +1201,27 @@ public abstract class SparrowInventory {
             }
         }
         return signal;
+    }
+
+    /**
+     * 递增内容修订计数, 让挂在 {@link #contentSignal()} 下面的派生重算.
+     * <p>给退役这类"内容不再是原来那样了, 但没有产生任何槽位变更"的时刻用. 谁都没调用过
+     * {@code contentSignal()} 时什么都不做.
+     */
+    final void updateContentSignal() {
+        MutableSignal<Long> signal = this.contentSignal;
+        if (signal != null) {
+            signal.update(revision -> revision + 1L);
+        }
+    }
+
+    /**
+     * 向订阅者发出视觉映射变更通知.
+     *
+     * @param slot 受影响的槽位序号, {@link #ALL_SLOTS} 表示全部槽位
+     */
+    final void publishVisualDirty(int slot) {
+        this.visualInvalidations.publish(slot);
     }
 
     /**

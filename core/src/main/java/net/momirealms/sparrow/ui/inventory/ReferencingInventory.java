@@ -2,7 +2,6 @@ package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
-import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -19,18 +18,10 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * 内容放在外部存储里的 Inventory 实现: 一切以那个存储为准, 本类自己不留一份内容.
- * 读操作直接读存储; 写操作先走事务规划, 提交后落进存储: 存储现值与提交内容相等的槽位跳过不写,
- * 其余槽位换成新实例写进去 —— 引擎写过的槽位一律是新实例, 没写过与等值写入的槽位实例原样不动.
- * <p>本类自己只留两样东西: 一份 <strong>lastKnown</strong>(上次见到的内容, 只用来发现外部的直接修改,
- * 永不写回存储, 永不当规划基准, 里面的实例也永不外借)和一个 <strong>modCount</strong>(并发校验用的计数,
- * 每次自己写入或吸收外部变更后加一, 让所有在途的规划全部对不上).
- * 外部世界(漏斗, 其他插件)直接改了存储, 会在下一次比对时被发现, 以 {@link UpdateReason.External}
- * 原因只派发 post 事件, 存储里的物品实例保持不变.
+ * 内容放在外部存储里的 Inventory 实现.
  * <p><strong>串行访问由调用方负责.</strong> 所有读写都必须在存储可合法访问的上下文中串行执行
  * (Bukkit 存储即容器的属主线程); 接入 Window 期间, 玩家实体线程就是事实上的串行化线程.
  * 本类不判断平台或存储的执行所有者, 也不调度到其线程. 平台抛出的访问异常会沿调用栈传播;
- * 异常可能发生在 Sparrow 状态已提交或外部存储已部分写入之后, 因此不能根据异常推断本次操作为零变更.
  * <p>规划基准是新建时逐槽读存储填出来的临时数组, 每次规划都重新建一份, 只用来读内容;
  * {@code prepareWrite} 在任何写入口读取规划内容之前先比对一次, 把积压的外部变更先派发出去.
  * <p>Window 每个 tick 调用一次 {@link #refresh()}; 本类自己不注册调度任务.
@@ -42,7 +33,8 @@ public final class ReferencingInventory extends SparrowInventory {
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
     private final @Nullable ItemStack[] lastKnown;  // 上次见到的内容, 逐槽一份副本, 只用来发现外部改动
-    private long modCount;                          // 并发校验用的计数: 自己写入或吸收外部变更后加一
+    private volatile boolean retired;               // 存储已经不在了, 之后读到空, 写入一律失败
+    private long modCount;                          // 并发校验用的计数, 自己写入或吸收外部变更后加一
 
     /**
      * 以给定外部存储和一份初始内容创建 ReferencingInventory.
@@ -175,6 +167,7 @@ public final class ReferencingInventory extends SparrowInventory {
     @Override
     @Nullable
     public ItemStack unsafeItemAt(int slot) {
+        if (this.retired) return null;
         return ItemUtils.nullIfEmpty(this.storage.read(this.externalSlots[slot].slot()));
     }
 
@@ -185,7 +178,7 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
-        @Nullable ItemStack[] copy = this.mapView(this.storage.readAll());
+        @Nullable ItemStack[] copy = this.readView();
         for (int slot = 0; slot < copy.length; slot++) {
             copy[slot] = ItemUtils.copyOrNull(copy[slot]);
         }
@@ -199,15 +192,42 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Override
     public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
-        return this.mapView(this.storage.readAll());
+        return this.readView();
+    }
+
+    @Override
+    public void refresh() {
+        // 存储没了就地退役, 这一轮不再去读它
+        if (this.retired) return;
+        if (!this.storage.alive()) {
+            this.retire();
+            return;
+        }
+        this.reconcileFromStorage();
     }
 
     /**
-     * {@inheritDoc}
+     * 让本 Inventory 退役, 内容存放的地方已经不在了, 这个 Inventory 从此不再可用.
+     * <p>退役之后读到的一律是空, 写入一律失败(在途的与新发起的事务都会以
+     * {@link TransactionResult.Conflicted} 收场), 快速转移与双击收集也不再把它当成目标. 展示它的
+     * Window 会把那些槽位重新渲染成空.
+     * <p>可以直接调用(例如在方块破坏事件里), 也可以交给 {@link ExternalStorage#alive()} 让每 tick 的
+     * {@link #refresh()} 自己发现. 重复调用没有额外效果.
      */
+    public void retire() {
+        if (this.retired) {
+            return;
+        }
+        this.retired = true;
+        // 作废全部在途规划基准, 之后新建的基准由 PlannedRoot.Live.isStale 一律判定失效.
+        this.modCount++;
+        this.publishVisualDirty(ALL_SLOTS);
+        this.updateContentSignal();
+    }
+
     @Override
-    public void refresh() {
-        this.reconcileFromStorage();
+    public boolean retired() {
+        return this.retired;
     }
 
     /**
@@ -262,7 +282,7 @@ public final class ReferencingInventory extends SparrowInventory {
     @Override
     @NotNull
     PlannedRoot openPlan() {
-        return new PlannedRoot.Live(this, this.mapView(this.storage.readAll()), this.modCount);
+        return new PlannedRoot.Live(this, this.readView(), this.modCount);
     }
 
     // 当前 modCount, 供本 Inventory 建出的规划基准判断自己有没有失效.
@@ -295,6 +315,7 @@ public final class ReferencingInventory extends SparrowInventory {
      * 调用方保证运行期访问被正确串行化, 因此派发被拒绝说明调用边界被破坏, 交给统一异常处理器上报.
      */
     private void reconcileFromStorage() {
+        if (this.retired) return;
         // 比较阶段直接用存储读出来的引用, 不复制物品 —— 绝大多数 tick 根本没有外部变更, 只有对不上的那一格才由 SlotChange 复制
         @Nullable ItemStack[] raw = this.storage.readAll();
         @Nullable List<SlotChange> deltas = null;
@@ -332,12 +353,27 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
+     * 读出存储当前全部内容, 按当前 Inventory 槽位排列.
+     * <p>退役之后不再去碰存储: 那个容器已经与服务端脱钩, 里面剩下的东西不该再出现在菜单里,
+     * 也不该成为任何一笔事务的规划依据, 所以这里给出的是一整排空槽位.
+     *
+     * @return 按当前 Inventory 槽位排列的视图数组
+     */
+    private @Nullable ItemStack @NotNull [] readView() {
+        if (this.retired) {
+            return new ItemStack[this.externalSlots.length];
+        }
+        return this.mapView(this.storage.readAll());
+    }
+
+    /**
      * 把存储原始内容按当前 Inventory 槽位顺序整理成视图数组, 元素零拷贝, 空物品折为 {@code null}.
      *
      * @param raw 存储原始内容
      * @return 按当前 Inventory 槽位排列的视图数组
      */
-    private @Nullable ItemStack @NotNull [] mapView(@Nullable ItemStack[] raw) {
+    @Nullable
+    private ItemStack @NotNull [] mapView(@Nullable ItemStack[] raw) {
         @Nullable ItemStack[] view = new ItemStack[this.externalSlots.length];
         for (int slot = 0; slot < view.length; slot++) {
             view[slot] = ItemUtils.nullIfEmpty(raw[this.externalSlots[slot].slot()]);

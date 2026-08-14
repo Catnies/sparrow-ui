@@ -1,8 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -10,7 +8,6 @@ import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -49,7 +46,7 @@ final class BukkitStorage implements ExternalStorage {
         // 特例: 为玩家背包创建外部存储.
         if (inventory instanceof PlayerInventory playerInventory) {
             HumanEntity owner = playerInventory.getHolder();
-            if (owner == null || size != inventory.getStorageContents().length) {
+            if (owner == null || !ContainerStorage.SLOT_ALIGNED_PLAYER_INVENTORIES.contains(inventory.getClass()) || size != inventory.getStorageContents().length) {
                 return new BukkitStorage(inventory, contentsGetter);
             }
             return new ContainerStorage.OfPlayer(inventory, owner, size);

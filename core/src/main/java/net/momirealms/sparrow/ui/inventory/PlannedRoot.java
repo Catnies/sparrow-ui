@@ -138,7 +138,8 @@ abstract sealed class PlannedRoot {
 
         @Override
         boolean isStale() {
-            return this.owner.liveModCount() != this.modCountAtPlan;
+            // 已退役的 Inventory 没有任何基准还成立, 事务一律以 Conflicted 收场
+            return this.owner.retired() || this.owner.liveModCount() != this.modCountAtPlan;
         }
 
         @Override

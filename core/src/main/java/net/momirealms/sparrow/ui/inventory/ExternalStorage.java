@@ -72,4 +72,15 @@ public interface ExternalStorage {
     default Object identity() {
         return this;
     }
+
+    /**
+     * 检查和内容存放的地方是不是还在.
+     * <p>{@link ReferencingInventory#refresh()} 每次都会执行, 若回答 {@code false},
+     * Inventory 则就地删除: 之后读到的是空, 写入一律失败, 快速转移与双击收集也不再把它当成目标.
+     *
+     * @return 还在时返回 true
+     */
+    default boolean alive() {
+        return true;
+    }
 }
