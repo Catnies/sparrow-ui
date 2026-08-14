@@ -13,7 +13,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 在代理接口首次解析前配置 sparrow-reflection 的版本条件和 Paper 映射.
@@ -44,6 +46,25 @@ public final class BukkitProxy {
             SReflection.setRemapper(CraftBukkitRemapper.create(remapper));
         }
         BukkitProxy.initialized = true;
+    }
+
+    /**
+     * 按类名解析类, 丢掉当前服务端上不存在的那些.
+     * <p>调用方拿到的是解析结果本身, 因此可以直接比较运行期类型, 不必再关心不同发行版把类放在
+     * 哪个包下面.
+     *
+     * @param names 类名
+     * @return 解析成功的类
+     */
+    public static Set<Class<?>> findClasses(String... names) {
+        HashSet<Class<?>> found = new HashSet<>(names.length);
+        for (int index = 0; index < names.length; index++) {
+            Class<?> resolved = SparrowClass.find(names[index]);
+            if (resolved != null) {
+                found.add(resolved);
+            }
+        }
+        return Set.copyOf(found);
     }
 
     private static Remapper createFromPaperJar() {

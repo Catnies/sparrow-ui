@@ -131,7 +131,7 @@ public final class ReferencingInventory extends SparrowInventory {
             UnaryOperator<int[]> slotReorder,
             boolean reverseAddOrder
     ) {
-        BukkitStorage storage = new BukkitStorage(inventory, contentsGetter);
+        ExternalStorage storage = BukkitStorage.of(inventory, contentsGetter);
         @Nullable ItemStack[] raw = storage.readAll();
         SlotOrder slotMapping = SlotOrder.of(slotReorder.apply(identitySlots(raw.length)));
         if (slotMapping.size() != raw.length) {

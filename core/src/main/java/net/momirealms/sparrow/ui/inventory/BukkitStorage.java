@@ -1,10 +1,16 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.proxy.BukkitProxy;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -23,6 +29,38 @@ final class BukkitStorage implements ExternalStorage {
         this.contentsGetter = contentsGetter;
         this.size = contentsGetter.apply(bukkitInventory).length;
         this.bukkitMaxStackSize = bukkitInventory.getMaxStackSize();
+    }
+
+    /**
+     * 为 Bukkit Inventory 创建外部存储, 并根据情况挑选实现.
+     * <p>走 NMS 的前提是被引用部分的槽号与 NMS 槽号一一对应, 否则同一个槽在两边指向不同位置.
+     * 如果一个 Bukkit Inventory 背后不是 NMS 实现, 那么则回退在本类的 Bukkit 实现.
+     *
+     * @param inventory 被引用的 Bukkit Inventory
+     * @param contentsGetter 从 Inventory 读取被引用区段的函数
+     * @return 该容器的外部存储
+     */
+    @NotNull
+    static ExternalStorage of(
+            @NotNull Inventory inventory,
+            @NotNull Function<Inventory, @Nullable ItemStack[]> contentsGetter
+    ) {
+        int size = contentsGetter.apply(inventory).length;
+        // 特例: 为玩家背包创建外部存储.
+        if (inventory instanceof PlayerInventory playerInventory) {
+            HumanEntity owner = playerInventory.getHolder();
+            if (owner == null || size != inventory.getStorageContents().length) {
+                return new BukkitStorage(inventory, contentsGetter);
+            }
+            return new ContainerStorage.OfPlayer(inventory, owner, size);
+        }
+        // 特例: 只有 Bukkit 实现和 NMS 的槽号一一对应的才可以走 NMS 实现.
+        if (ContainerStorage.SLOT_ALIGNED_INVENTORIES.contains(inventory.getClass())) {
+            Object container = CraftInventoryProxy.INSTANCE.getInventory(inventory);
+            return new ContainerStorage.Fixed(inventory, container, size);
+        }
+        // 其余走 Bukkit 回退实现.
+        return new BukkitStorage(inventory, contentsGetter);
     }
 
     @Override

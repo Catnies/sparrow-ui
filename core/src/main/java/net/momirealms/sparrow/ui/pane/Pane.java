@@ -760,8 +760,9 @@ public sealed interface Pane permits AbstractPane {
     /**
      * 声明一个额外参与本 Pane 所在 Window 的 Inventory.
      * <p>它的槽位一个都不必被展示: 快速转移与双击收集寻找目标时照样会看到它.
-     * 用来表达"这块面板背后还连着别的容器", 例如分页仓库当前只展示第一页,
-     * 却希望 Shift 点击能落进其余几页.
+     * 用来表达"这块面板背后还连着别的容器", 例如分页仓库当前只展示第一页, 却希望 Shift 点击能落进其余几页.
+     * <p><strong>必须同时打开该 Inventory 的 {@link SparrowInventory#includeObscuredSlots(boolean)}</strong>.
+     * <p>声明只在本 Pane 处于当前显示路径上时生效.
      *
      * @param inventory 要额外带进参与集的 Inventory
      */
