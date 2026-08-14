@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
@@ -782,7 +783,32 @@ public sealed interface Pane permits AbstractPane {
      * @return 按声明顺序排列的不可变快照
      */
     @NotNull
-    Set<SparrowInventory> linkedInventories();
+    List<SparrowInventory> linkedInventories();
+
+    /**
+     * 声明一整个序列额外参与本 Pane 所在 Window, 语义同
+     * {@link #linkInventory(SparrowInventory)}, 只是成员随序列变化, 不必逐个声明.
+     * <p>参与集在每次规划时现取序列的成员, 因此中途增减成员立刻生效, 不需要重新声明.
+     *
+     * @param sequence 要额外带进参与集的序列
+     */
+    void linkInventory(@NotNull InventorySequence sequence);
+
+    /**
+     * 取消一个已声明的额外参与序列.
+     *
+     * @param sequence 要取消的序列
+     * @return 该序列原本已被声明时返回 true
+     */
+    boolean unlinkInventory(@NotNull InventorySequence sequence);
+
+    /**
+     * 返回本 Pane 声明的全部额外参与序列.
+     *
+     * @return 按声明顺序排列的不可变快照
+     */
+    @NotNull
+    Set<InventorySequence> linkedSequences();
 
     /**
      * 订阅一个槽位的更新, 并返回订阅时的元素, 背景和冻结状态.

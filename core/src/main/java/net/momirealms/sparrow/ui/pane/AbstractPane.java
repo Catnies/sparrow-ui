@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.pane;
 import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -13,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -31,8 +33,9 @@ abstract non-sealed class AbstractPane implements Pane {
 
     private ItemProvider background;    // 空槽位显示的背景, 可为 null
     private boolean frozen;             // 是否禁止玩家交互
-    // 额外参与的 Inventory, 写时整体替换为新的不可变快照, 读不加锁
-    private volatile Set<SparrowInventory> linkedInventories = Set.of();
+    // 额外参与的 Inventory 序列, 写时整体替换为新的不可变快照, 读不加锁
+    private volatile Set<InventorySequence> linkedSequences = Set.of();
+    @Nullable private volatile InventorySequence ownSequence; // 逐个声明的 Inventory 都放在这条序列里, 它同样登记在 linkedSequences
 
     AbstractPane(Structure structure, Element[] elements, ItemProvider background, boolean frozen) {
         this.structure = structure;
@@ -234,35 +237,79 @@ abstract non-sealed class AbstractPane implements Pane {
     @Override
     public final void linkInventory(@NotNull SparrowInventory inventory) {
         Objects.requireNonNull(inventory);
-        synchronized (this) {
-            if (this.linkedInventories.contains(inventory)) {
-                return;
-            }
-            // 写时复制: 读方在点击规划的热路径上, 让它拿到一份不会再变的快照
-            LinkedHashSet<SparrowInventory> updated = new LinkedHashSet<>(this.linkedInventories);
-            updated.add(inventory);
-            this.linkedInventories = Collections.unmodifiableSet(updated);
-        }
+        InventorySequence own = this.ownSequence();
+        own.add(inventory);
+        // 这个序列可能被 unlinkInventory 摘掉过, 顺手放回去; 已经在里面时无操作
+        this.linkInventory(own);
     }
 
     @Override
     public final boolean unlinkInventory(@NotNull SparrowInventory inventory) {
         Objects.requireNonNull(inventory);
+        InventorySequence own = this.ownSequence;
+        return own != null && own.remove(inventory);
+    }
+
+    @Override
+    @NotNull
+    public final List<SparrowInventory> linkedInventories() {
+        InventorySequence own = this.ownSequence;
+        return own == null ? List.of() : own.inventories();
+    }
+
+    @Override
+    public final void linkInventory(@NotNull InventorySequence sequence) {
+        Objects.requireNonNull(sequence);
         synchronized (this) {
-            if (!this.linkedInventories.contains(inventory)) {
+            if (this.linkedSequences.contains(sequence)) {
+                return;
+            }
+            LinkedHashSet<InventorySequence> updated = new LinkedHashSet<>(this.linkedSequences);
+            updated.add(sequence);
+            this.linkedSequences = Collections.unmodifiableSet(updated);
+        }
+    }
+
+    @Override
+    public final boolean unlinkInventory(@NotNull InventorySequence sequence) {
+        Objects.requireNonNull(sequence);
+        synchronized (this) {
+            if (!this.linkedSequences.contains(sequence)) {
                 return false;
             }
-            LinkedHashSet<SparrowInventory> updated = new LinkedHashSet<>(this.linkedInventories);
-            updated.remove(inventory);
-            this.linkedInventories = Collections.unmodifiableSet(updated);
+            LinkedHashSet<InventorySequence> updated = new LinkedHashSet<>(this.linkedSequences);
+            updated.remove(sequence);
+            this.linkedSequences = Collections.unmodifiableSet(updated);
             return true;
         }
     }
 
     @Override
     @NotNull
-    public final Set<SparrowInventory> linkedInventories() {
-        return this.linkedInventories;
+    public final Set<InventorySequence> linkedSequences() {
+        return this.linkedSequences;
+    }
+
+    /**
+     * 返回本 Pane 自己那条序列, 逐个声明的 Inventory 都存在里面.
+     * <p>第一次逐个声明时才创建. 它同样登记在 {@link #linkedSequences()} 里, 于是"声明了哪些 Inventory"
+     * 与"声明了哪些序列"对外只剩一种形状, 读方不必分两路展开; 已经退役的成员也随它一起被剔除.
+     *
+     * @return 本 Pane 自己那条序列
+     */
+    @NotNull
+    private InventorySequence ownSequence() {
+        InventorySequence current = this.ownSequence;
+        if (current == null) {
+            synchronized (this) {
+                current = this.ownSequence;
+                if (current == null) {
+                    current = InventorySequence.of();
+                    this.ownSequence = current;
+                }
+            }
+        }
+        return current;
     }
 
     @NotNull

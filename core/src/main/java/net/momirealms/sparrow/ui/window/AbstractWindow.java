@@ -19,6 +19,7 @@ import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.InteractionEdits;
+import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
@@ -121,7 +122,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
     private @Nullable List<SparrowInventory> refreshInventories; // 每 tick 要刷新的 Inventory, null 表示要重新收集
     private @Nullable Pane[] refreshPanes;          // 收集刷新目标时路径上出现过的 Pane, 已去重
-    private @Nullable Object[] refreshDeclarations; // 与 refreshPanes 同下标, 收集当时各自的 linkedInventories(), 只比较引用
+    private @Nullable Object[] refreshDeclarations; // 每个 Pane 占两格, 收集当时各自的 linkedInventories() 与 linkedSequences(), 只比较引用
+    private @Nullable InventorySequence[] refreshSequences; // 收集刷新目标时路径上出现过的序列, 已去重
+    private @Nullable Object[] refreshSequenceMembers;      // 与 refreshSequences 同下标, 收集当时各自的成员名单, 只比较引用
     private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
     private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
     private final BitSet renderedBeforeEvent = new BitSet(); // 本 tick 已在 Bukkit 事件前渲染, 仍待最终同步的槽位
@@ -1085,34 +1088,50 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         ArrayList<Pane> panes = new ArrayList<>();
         ArrayList<Object> declarations = new ArrayList<>();
+        LinkedHashSet<InventorySequence> sequences = new LinkedHashSet<>();
         this.forEachPathPane(paths, pane -> {
             // 一个 Pane 通常铺满一大片槽位, 每个槽位都会走到这里, 只记第一次
             if (panes.contains(pane)) return;
             panes.add(pane);
-            Set<SparrowInventory> declared = pane.linkedInventories();
+            Set<InventorySequence> declared = pane.linkedSequences();
             declarations.add(declared);
-            // Pane 声明关联的 Inventory 一个槽位都没被展示, 但它同样参与点击, 外部变更也要吸收
-            targets.addAll(declared);
+            sequences.addAll(declared);
         });
+
+        // Pane 声明关联的 Inventory 一个槽位都没被展示, 但它同样参与点击, 外部变更也要吸收;
+        ArrayList<Object> sequenceMembers = new ArrayList<>(sequences.size());
+        for (InventorySequence sequence : sequences) {
+            List<SparrowInventory> members = sequence.inventories();
+            sequenceMembers.add(members);
+            targets.addAll(members);
+        }
 
         this.refreshInventories = List.copyOf(targets);
         this.refreshPanes = panes.toArray(new Pane[0]);
         this.refreshDeclarations = declarations.toArray();
+        this.refreshSequences = sequences.toArray(new InventorySequence[0]);
+        this.refreshSequenceMembers = sequenceMembers.toArray();
     }
 
     /**
-     * 检查上次收集之后有没有哪个 Pane 改过自己声明的额外参与 Inventory.
-     * <p>Pane 用写时复制保存声明, 声明一变就换一个新的 Set, 所以比引用就够, 不必逐个比内容.
+     * 检查上次收集之后有没有哪个 Pane 改过声明, 或者哪个序列换过成员.
+     * <p>Pane 用写时复制保存声明, 序列每次增减成员也换一份新名单, 所以两边都比引用就够,不必逐个比内容.
      *
      * @return 需要重新收集时返回 true
      */
     private boolean declarationsChanged() {
         Pane[] panes = this.refreshPanes;
-        if (panes == null) {
-            return true;
-        }
+        if (panes == null) return true;
         for (int index = 0; index < panes.length; index++) {
-            if (panes[index].linkedInventories() != this.refreshDeclarations[index]) {
+            if (panes[index].linkedSequences() != this.refreshDeclarations[index]) {
+                return true;
+            }
+        }
+        InventorySequence[] sequences = this.refreshSequences;
+        assert sequences != null;
+        for (int index = 0; index < sequences.length; index++) {
+            // 顺带把已经退役的成员剔出去, 名单一换这里就会发现
+            if (sequences[index].inventories() != this.refreshSequenceMembers[index]) {
                 return true;
             }
         }
@@ -1167,9 +1186,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull Consumer<SparrowInventory> action
     ) {
         this.forEachPathPane(paths, pane -> {
-            // 绝大多数 Pane 一个都没声明, 这里直接跳过
-            for (SparrowInventory inventory : pane.linkedInventories()) {
-                action.accept(inventory);
+            // 绝大多数 Pane 一个都没声明, 这里直接跳过, 序列的成员随时会变, 每次规划都现取一份, 不缓存.
+            for (InventorySequence sequence : pane.linkedSequences()) {
+                List<SparrowInventory> members = sequence.inventories();
+                for (int index = 0; index < members.size(); index++) {
+                    action.accept(members.get(index));
+                }
             }
         });
     }
@@ -1381,6 +1403,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.refreshInventories = null;
         this.refreshPanes = null;
         this.refreshDeclarations = null;
+        this.refreshSequences = null;
+        this.refreshSequenceMembers = null;
         this.localSlots = null;
         this.localCursor = null;
         this.sentTitle = null;
