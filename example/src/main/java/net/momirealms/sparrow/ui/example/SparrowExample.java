@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.example;
 
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.example.command.SparrowCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class SparrowExample extends JavaPlugin {
@@ -10,5 +11,6 @@ public final class SparrowExample extends JavaPlugin {
     public void onEnable() {
         INSTANCE = this;
         SparrowUI.getInstance().setUp(this);
+        SparrowCommand.register();
     }
 }
