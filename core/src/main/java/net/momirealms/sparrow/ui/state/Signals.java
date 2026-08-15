@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.state;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -76,7 +77,42 @@ public final class Signals {
     public static <K, T> Signal<T> switching(@NotNull KeyedSignal<K, T> source, @NotNull Signal<K> key) {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(key, "key");
-        return new SwitchingSignal<>(source, AbstractSignal.require(key));
+        return new SwitchingSignal<>(source::at, AbstractSignal.require(key));
+    }
+
+    /**
+     * 按 key 在若干现成的 signal 之间切换, 值取自 {@code key} 当前选中的那一个.
+     * <p>与分区版的区别在来源上, 本版本从各自独立的 signal 来源, 各有各的失效.
+     * 没被选中的来源不参与失效传播, 也不会被求值.
+     *
+     * <pre>{@code
+     * MutableSignal<Category> tab = Signal.of(Category.WEAPONS);
+     * Signal<List<Entry>> shown = Signals.switching(Map.of(
+     *         Category.WEAPONS, weapons,
+     *         Category.ARMOR, armor), tab);
+     * }</pre>
+     *
+     * @param sources 每个 key 对应一个来源, 不能为空
+     * @param key 选择来源的 key, 取值必须是 {@code sources} 里有的那些
+     * @return 切换后的 signal
+     */
+    @NotNull
+    public static <K, T> Signal<T> switching(@NotNull Map<K, ? extends Signal<T>> sources, @NotNull Signal<K> key) {
+        Objects.requireNonNull(key, "key");
+        Map<K, ? extends Signal<T>> copied = Map.copyOf(sources);
+        if (copied.isEmpty()) {
+            throw new IllegalArgumentException("sources must not be empty");
+        }
+        return new SwitchingSignal<>(
+                selected -> {
+                    Signal<T> source = copied.get(selected);
+                    if (source == null) {
+                        throw new IllegalArgumentException("no source for key: " + selected);
+                    }
+                    return source;
+                },
+                AbstractSignal.require(key)
+        );
     }
 
     /**
