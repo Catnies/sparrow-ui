@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.pane.page.Scroll;
+import net.momirealms.sparrow.ui.pane.page.Tab;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -30,6 +31,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private final Structure structure; // Pane 布局
     private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
     private final ProjectionIngredient[] projections; // 与 ingredients 同下标, 建出 Pane 之后再挂上
+    private final Tab<?>[] tabIngredients; // 与 ingredients 同下标, 建出 Pane 之后连接选中子 Pane
     private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
     private final LinkedHashSet<SparrowInventory> linkedInventories; // 额外参与的 Inventory, 按声明顺序
 
@@ -45,6 +47,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         this.structure = structure;
         this.ingredients = new ElementSupplier[structure.identifierCount()];
         this.projections = new ProjectionIngredient[structure.identifierCount()];
+        this.tabIngredients = new Tab<?>[structure.identifierCount()];
         this.modifiers = new ArrayList<>();
         this.linkedInventories = new LinkedHashSet<>();
     }
@@ -58,6 +61,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
         this.projections = source.projections.clone();
+        this.tabIngredients = source.tabIngredients.clone();
         this.modifiers = new ArrayList<>(source.modifiers);
         this.linkedInventories = new LinkedHashSet<>(source.linkedInventories);
         this.background = source.background;
@@ -318,6 +322,25 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B addIngredient(@NotNull String identifier, @NotNull Tab<?> tab) {
+        Objects.requireNonNull(tab, "tab");
+        // 标志符先在这里解析.
+        int identifierIndex = this.structure.identifierIndex(identifier);
+        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份
+        this.tabIngredients[identifierIndex] = tab;
+        this.ingredients[identifierIndex] = null;
+        this.projections[identifierIndex] = null;
+        return this.self();
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(char identifier, @NotNull Tab<?> tab) {
+        return this.addIngredient(String.valueOf(identifier), tab);
+    }
+
+    @Override
+    @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Pane pane) {
         return this.addIngredient(identifier, pane, 0, 0);
     }
@@ -433,6 +456,14 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
                     projection.executor()
             );
         }
+        // 标签组同样就地铺一轮, build 返回时区域已经是选中标签的样子
+        for (int identifierIndex = 0; identifierIndex < this.tabIngredients.length; identifierIndex++) {
+            Tab<?> tab = this.tabIngredients[identifierIndex];
+            if (tab == null) {
+                continue;
+            }
+            attachTab(pane, this.structure.slots(identifierIndex), tab);
+        }
         for (Consumer<? super G> modifier : this.modifiers) {
             modifier.accept(pane);
         }
@@ -463,8 +494,9 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private B bindIngredient(String identifier, ElementSupplier supplier) {
         int identifierIndex = this.structure.identifierIndex(identifier);
         this.ingredients[identifierIndex] = supplier;
-        // 静态内容同样挤掉这个标志符上先声明的投影, 否则投影会在 build 末尾把它盖回去
+        // 静态内容同样挤掉这个标志符上先声明的投影和标签组, 否则它们会在 build 末尾把它盖回去
         this.projections[identifierIndex] = null;
+        this.tabIngredients[identifierIndex] = null;
         return this.self();
     }
 
@@ -490,10 +522,51 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         Objects.requireNonNull(executor, "executor");
         // 标志符先在这里解析.
         int identifierIndex = this.structure.identifierIndex(identifier);
-        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容
+        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容和标签组
         this.projections[identifierIndex] = new ProjectionIngredient(source, toElement, executor, pattern);
         this.ingredients[identifierIndex] = null;
+        this.tabIngredients[identifierIndex] = null;
         return this.self();
+    }
+
+    /**
+     * 让一片槽位跟随标签组当前选中的子 Pane, 切换标签时整片重铺.
+     * <p>绑定挂在宿主 Pane 上, 宿主经这条绑定持有铺放, 也随宿主一起结束.
+     * 铺放是纯结构操作, 在切换标签的调用线程上同步完成.
+     *
+     * @param pane 接收铺放的宿主 Pane
+     * @param slots 标签组负责的槽位
+     * @param tab 标签组
+     */
+    private static void attachTab(AbstractPane pane, SlotSequence slots, Tab<?> tab) {
+        Signal<Pane> selected = tab.pane();
+        pane.bind(selected, host -> layTab(host, slots, selected.get()));
+        // 就地铺一轮, 调用方拿到手时区域已经是对的
+        layTab(pane, slots, selected.get());
+    }
+
+    /**
+     * 把选中的子 Pane 铺进区域: 区域保持二维形状按相对坐标连接过去.
+     * <p>子 Pane 盖不住的槽位补空; 内容没变的槽位不写, 因此切到已经选中的标签零写入.
+     *
+     * @param host 接收铺放的宿主 Pane
+     * @param slots 本次要铺的槽位
+     * @param selected 当前选中的子 Pane
+     */
+    private static void layTab(Pane host, SlotSequence slots, Pane selected) {
+        PaneSize childSize = selected.size();
+        int length = slots.length();
+        for (int occurrence = 0; occurrence < length; occurrence++) {
+            int childX = slots.xAt(occurrence) - slots.minX();
+            int childY = slots.yAt(occurrence) - slots.minY();
+            Element element = childX < childSize.width() && childY < childSize.height()
+                    ? Element.PaneLink.trusted(selected, childSize.indexOfTrusted(childX, childY))
+                    : Element.empty();
+            int slot = slots.slotAt(occurrence);
+            if (!element.equals(host.element(slot))) {
+                host.setElement(slot, element);
+            }
+        }
     }
 
     /**

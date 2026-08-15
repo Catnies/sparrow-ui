@@ -9,6 +9,7 @@ import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.pane.page.Scroll;
+import net.momirealms.sparrow.ui.pane.page.Tab;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -1306,6 +1307,27 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredient(char identifier, @NotNull Scroll<? extends Item> scroll);
+
+        /**
+         * 让同一标志符的槽位一直显示标签组当前选中的子 Pane: 区域保持二维形状连接过去, 切换标签时整片重铺.
+         * <p>子 Pane 盖不住的槽位显示为空; 切到已经选中的标签什么都不会发生.
+         *
+         * @param identifier 标志符
+         * @param tab 标签组
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Tab<?> tab);
+
+        /**
+         * 让单字符标志的槽位一直显示标签组当前选中的子 Pane.
+         *
+         * @param identifier 单字符标志
+         * @param tab 标签组
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Tab<?> tab);
 
         /**
          * 按二维形状把同一标志符的槽位连接到子 Pane.
