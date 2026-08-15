@@ -16,7 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -68,7 +68,7 @@ public interface Window {
      *
      * @return 打开请求的执行结果
      */
-    @NotNull CompletionStage<OpenResult> open();
+    @NotNull CompletableFuture<OpenResult> open();
 
     /**
      * 请求关闭 Window.
@@ -76,7 +76,7 @@ public interface Window {
      *
      * @return 关闭请求的执行结果
      */
-    @NotNull CompletionStage<CloseResult> close();
+    @NotNull CompletableFuture<CloseResult> close();
 
     /**
      * 设置动态标题来源并请求刷新.
@@ -693,7 +693,7 @@ public interface Window {
          * @param viewer 查看者
          * @return 打开请求的执行结果
          */
-        default @NotNull CompletionStage<OpenResult> open(@NotNull Player viewer) {
+        default @NotNull CompletableFuture<OpenResult> open(@NotNull Player viewer) {
             return this.build(viewer).open();
         }
     }

@@ -40,7 +40,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -573,7 +573,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
-    public CompletionStage<OpenResult> open() {
+    public CompletableFuture<OpenResult> open() {
         return this.manager.open(this);
     }
 
@@ -1350,7 +1350,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
-    public CompletionStage<CloseResult> close() {
+    public CompletableFuture<CloseResult> close() {
         return this.manager.close(this);
     }
 
@@ -1522,7 +1522,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @return 命令的完成阶段
      */
     @NotNull
-    protected final <T> CompletionStage<T> submit(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
+    protected final <T> CompletableFuture<T> submit(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
         return this.manager.submit(this, action, retiredAction);
     }
 

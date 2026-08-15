@@ -21,7 +21,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -466,7 +466,7 @@ public final class ItemBuilder {
                 if (lazyProvider == null) return;
 
                 // 同步抛出同样视为解析失败, 与异步异常走同一通道
-                CompletionStage<? extends ItemProvider> stage;
+                CompletableFuture<? extends ItemProvider> stage;
                 try {
                     stage = Objects.requireNonNull(lazyProvider.resolve(), "lazyProvider result");
                 } catch (Throwable throwable) {
@@ -530,7 +530,7 @@ public final class ItemBuilder {
 
             // 提交一次重算.
             private void submit(SlotState state, RenderContext context) {
-                CompletionStage<? extends ItemStack> stage;
+                CompletableFuture<? extends ItemStack> stage;
                 try {
                     stage = Objects.requireNonNull(this.asyncProvider.provide(context), "asyncProvider result");
                 } catch (Throwable throwable) {

@@ -5,7 +5,6 @@ import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 
 @FunctionalInterface
@@ -17,7 +16,7 @@ public interface LazyItemProvider {
      *
      * @return 本次解析的结果阶段
      */
-    CompletionStage<? extends ItemProvider> resolve();
+    CompletableFuture<? extends ItemProvider> resolve();
 
     /**
      * 把同步的解析函数放到 Paper 全局异步调度器上执行.

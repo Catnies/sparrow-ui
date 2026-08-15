@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public interface RecipeBookWindow extends Window {
@@ -21,7 +21,7 @@ public interface RecipeBookWindow extends Window {
      * @return ghost recipe 发送结果
      */
     @NotNull
-    CompletionStage<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId);
+    CompletableFuture<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId);
 
     /**
      * 替换玩家选择原版配方时调用的处理器.

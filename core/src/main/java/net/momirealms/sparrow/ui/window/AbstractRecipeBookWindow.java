@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends AbstractWindow<M> implements RecipeBookWindow {
@@ -32,7 +32,7 @@ abstract class AbstractRecipeBookWindow<M extends RecipeBookMenuHandle> extends 
 
     @Override
     @NotNull
-    public final CompletionStage<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId) {
+    public final CompletableFuture<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId) {
         return this.submit(
                 () -> {
                     M menuHandle = this.menuHandle();

@@ -78,7 +78,7 @@ public final class WindowManager implements Listener {
      * @return 打开结果阶段
      */
     @NotNull
-    CompletionStage<Window.OpenResult> open(AbstractWindow<?> window) {
+    CompletableFuture<Window.OpenResult> open(AbstractWindow<?> window) {
         return this.submit(
                 window,
                 () -> this.openNow(window),
@@ -160,7 +160,7 @@ public final class WindowManager implements Listener {
      * @return 关闭结果阶段
      */
     @NotNull
-    CompletionStage<Window.CloseResult> close(AbstractWindow<?> window) {
+    CompletableFuture<Window.CloseResult> close(AbstractWindow<?> window) {
         boolean wasOpen = window.isOpen();
         return this.submit(
                 window,
@@ -190,9 +190,11 @@ public final class WindowManager implements Listener {
      * @return 命令完成阶段
      */
     @NotNull
-    <T> CompletionStage<T> submit(AbstractWindow<?> window, Callable<T> action, Callable<T> retiredAction) {
+    <T> CompletableFuture<T> submit(AbstractWindow<?> window, Callable<T> action, Callable<T> retiredAction) {
         if (!this.shutdown.get()) {
-            return this.lane(window.viewer()).submit(action, retiredAction);
+            // 通道给的是只读阶段, toCompletableFuture 每次生成一个独立的 future:
+            // 调用方取消自己拿到的这一个, 既动不了队列里的命令, 也不影响别人的观察.
+            return this.lane(window.viewer()).submit(action, retiredAction).toCompletableFuture();
         }
         try {
             return CompletableFuture.completedFuture(retiredAction.call());
