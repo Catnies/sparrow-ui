@@ -10,4 +10,7 @@ public interface ComponentProxy {
 
     @MethodInvoker(name = "empty", isStatic = true)
     Object empty();
+
+    @MethodInvoker(name = "literal", isStatic = true)
+    Object literal(String text);
 }

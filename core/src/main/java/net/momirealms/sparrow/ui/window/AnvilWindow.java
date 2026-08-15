@@ -49,6 +49,8 @@ public interface AnvilWindow extends Window {
 
     /**
      * 设置输入槽为空时是否以不可见占位物保持文本框可编辑.
+     * <p>启用后, 占位物会携带最近一次由客户端提交的重命名文本;
+     * 纠正客户端对空输入槽的点击预测时, 文本框不会被空名称重置.
      *
      * @param textFieldAlwaysEnabled 是否始终启用文本框
      */
@@ -128,6 +130,7 @@ public interface AnvilWindow extends Window {
 
         /**
          * 设置输入槽为空时是否仍启用文本框.
+         * 语义同 {@link AnvilWindow#setTextFieldAlwaysEnabled(boolean)}.
          *
          * @param textFieldAlwaysEnabled 是否始终启用文本框
          * @return 此 Builder
