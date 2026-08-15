@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -196,6 +197,66 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             @NotNull Executor executor
     ) {
         return this.addIngredient(String.valueOf(identifier), source, toElement, executor);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Page<T> page,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(identifier, page.content(), toElement);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Page<T> page,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(String.valueOf(identifier), page, toElement);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Page<T> page,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        return this.addIngredient(identifier, page.content(), toElement, executor);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Page<T> page,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        return this.addIngredient(String.valueOf(identifier), page, toElement, executor);
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(
+            @NotNull String identifier,
+            @NotNull Page<? extends Item> page
+    ) {
+        return this.addIngredient(identifier, page.content(), Element::item);
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(
+            char identifier,
+            @NotNull Page<? extends Item> page
+    ) {
+        return this.addIngredient(String.valueOf(identifier), page);
     }
 
     @Override

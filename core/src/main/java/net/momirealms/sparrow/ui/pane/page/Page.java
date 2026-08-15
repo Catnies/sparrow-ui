@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.pane.page;
 
+import net.momirealms.sparrow.ui.state.AsyncSignal;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -7,7 +8,11 @@ import net.momirealms.sparrow.ui.state.Signals;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.function.Function;
+import java.util.function.IntConsumer;
+import java.util.function.IntFunction;
+import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 
 /**
@@ -15,11 +20,10 @@ import java.util.function.IntUnaryOperator;
  * <p>翻页按钮由使用方点击里调 {@link #advance(int)} 或 {@link #page(int)}, 而显示挂在 {@link #page()} 上.
  *
  * <pre>{@code
- * Structure structure = Structure.of("VVVVVVVVV", "VVVVVVVVV", "P#######N");
- * Pagination<Element> pages = Pagination.of(matched, structure.slots("V").length());
+ * Page<Item> pages = Page.of(allItems, 18);
  *
- * NormalPane pane = Pane.builder(structure)
- *         .addIngredient('V', pages.currentPage(), element -> element)
+ * NormalPane pane = Pane.builder("VVVVVVVVV", "VVVVVVVVV", "P#######N")
+ *         .addIngredient('V', pages)
  *         .addIngredient('N', Item.builder()
  *                 .dependsOn(pages.page())
  *                 .setItemProvider(context -> nextArrow(pages))
@@ -30,12 +34,65 @@ import java.util.function.IntUnaryOperator;
  *
  * @param <T> 序列里一条数据的类型
  */
-public final class Pagination<T> {
+public final class Page<T> {
+    private static final IntConsumer NONE = ignoredIndex -> {}; // 没有装载动作的翻页用的空回调
+
     private final MutableSignal<Integer> requested = Signal.of(0); // 使用方要求的页码, 可能越界, 由 pageIndex 夹取
     private final Signal<Integer> pageCount;
     private final Signal<Integer> pageIndex;
     private final Signal<List<T>> content;
     private final Signal<Integer> contentSize;
+    private final IntConsumer refreshAt;   // 吃当前页码, 把它和页数重新装载; 只有 async 工厂给出真实现
+    private final IntConsumer prefetchAt;  // 吃目标页码, 提前装载; 只有 async 工厂给出真实现
+
+    /**
+     * 全量丢入的翻页声明, 内容当场定死, 每页条数相同.
+     * <p>会复制一份, 之后改动传进来的那个 List 不影响翻页.
+     *
+     * @param content 完整内容
+     * @param pageSize 一页显示多少条, 必须为正数
+     * @return 分页
+     */
+    @NotNull
+    public static <T> Page<T> of(@NotNull List<? extends T> content, int pageSize) {
+        return of(Signal.of(List.copyOf(content)), pageSize);
+    }
+
+    /**
+     * 全量丢入且每页条数不同的翻页声明, 每页条数由页码决定.
+     *
+     * @param content 完整内容, 会复制一份
+     * @param pageSizeOf 给出第 n 页显示多少条, 必须返回正数
+     * @return 分页
+     */
+    @NotNull
+    public static <T> Page<T> of(@NotNull List<? extends T> content, @NotNull IntUnaryOperator pageSizeOf) {
+        return of(Signal.of(List.copyOf(content)), pageSizeOf);
+    }
+
+    /**
+     * 异步按需装载的翻页声明, 翻到哪一页才在 {@code executor} 上装载哪一页, 总页数也在那里算.
+     * <p>未装载完成的页显示空内容, 装载完成后自己刷新, 装载过的页留在缓存里.
+     *
+     * @param executor 执行装载的执行器
+     * @param pageOf 装载第 n 页的内容, 在 executor 线程执行, 必须线程安全
+     * @param pageCountOf 给出总页数, 在 executor 线程执行, 小于 1 时按 1 处理
+     * @return 分页
+     */
+    @NotNull
+    public static <T> Page<T> async(@NotNull Executor executor, @NotNull IntFunction<? extends List<T>> pageOf, @NotNull IntSupplier pageCountOf) {
+        KeyedSignal<Integer, List<T>> pages = KeyedSignal.async(List.of(), executor, pageOf::apply);
+        AsyncSignal<Integer> pageCount = Signal.async(1, executor, pageCountOf::getAsInt);
+        return new Page<>(
+                pageCount.map(count -> Math.max(1, count)),
+                index -> Signals.switching(pages, index),
+                index -> {
+                    pages.dirty(index);
+                    pageCount.dirty();
+                },
+                pages::at
+        );
+    }
 
     /**
      * 基础翻页声明, 每页条数相同, 总页数由序列长度算出来.
@@ -45,12 +102,12 @@ public final class Pagination<T> {
      * @return 分页
      */
     @NotNull
-    public static <T> Pagination<T> of(@NotNull Signal<? extends List<? extends T>> source, int pageSize) {
+    public static <T> Page<T> of(@NotNull Signal<? extends List<? extends T>> source, int pageSize) {
         if (pageSize <= 0) {
             throw new IllegalArgumentException("pageSize must be positive: " + pageSize);
         }
         Signal<Integer> pageCount = source.map(list -> Math.max(1, (list.size() + pageSize - 1) / pageSize));
-        return new Pagination<>(pageCount, index -> Signal.combine(source, index, (list, pageIndex) -> slice(list, pageIndex * pageSize, pageSize)));
+        return new Page<>(pageCount, index -> Signal.combine(source, index, (list, pageIndex) -> slice(list, pageIndex * pageSize, pageSize)), NONE, NONE);
     }
 
     /**
@@ -63,8 +120,8 @@ public final class Pagination<T> {
      * @return 分页
      */
     @NotNull
-    public static <T> Pagination<T> of(@NotNull KeyedSignal<Integer, List<T>> pages, @NotNull Signal<Integer> pageCount) {
-        return new Pagination<>(pageCount.map(count -> Math.max(1, count)), index -> Signals.switching(pages, index));
+    public static <T> Page<T> of(@NotNull KeyedSignal<Integer, List<T>> pages, @NotNull Signal<Integer> pageCount) {
+        return new Page<>(pageCount.map(count -> Math.max(1, count)), index -> Signals.switching(pages, index), NONE, NONE);
     }
 
     /**
@@ -78,7 +135,7 @@ public final class Pagination<T> {
      * @return 分页
      */
     @NotNull
-    public static <T> Pagination<T> of(@NotNull Signal<? extends List<? extends T>> source, @NotNull IntUnaryOperator pageSizeOf) {
+    public static <T> Page<T> of(@NotNull Signal<? extends List<? extends T>> source, @NotNull IntUnaryOperator pageSizeOf) {
         // 从第 0 页开始按每页条数排下去, 排完内容用了几页就是几页.
         Signal<Integer> pageCount = source.map(list -> countOf(list.size(), pageSizeOf));
         Function<Signal<Integer>, Signal<List<T>>> contentOf = index -> Signal.combine(
@@ -87,14 +144,16 @@ public final class Pagination<T> {
                     return slice(list, offsetOf(pageIndex, pageSizeOf), sizeAt(pageIndex, pageSizeOf));
                 }
         );
-        return new Pagination<>(pageCount, contentOf);
+        return new Page<>(pageCount, contentOf, NONE, NONE);
     }
 
-    private Pagination(Signal<Integer> pageCount, Function<Signal<Integer>, Signal<List<T>>> contentOf) {
+    private Page(Signal<Integer> pageCount, Function<Signal<Integer>, Signal<List<T>>> contentOf, IntConsumer refreshAt, IntConsumer prefetchAt) {
         this.pageCount = pageCount;
         this.pageIndex = Signal.combine(this.requested, pageCount, (req, count) -> Math.clamp(req, 0, count - 1));
         this.content = contentOf.apply(this.pageIndex);
         this.contentSize = this.content.map(List::size);
+        this.refreshAt = refreshAt;
+        this.prefetchAt = prefetchAt;
     }
 
     /**
@@ -136,6 +195,26 @@ public final class Pagination<T> {
      */
     public void page(int index) {
         this.requested.set(Math.clamp(index, 0, this.pageCount.get() - 1));
+    }
+
+    /**
+     * 把当前页和总页数重新装载一遍.
+     * <p>只有 {@link #async} 建出的翻页有装载动作.
+     */
+    public void refresh() {
+        this.refreshAt.accept(this.pageIndex.get());
+    }
+
+    /**
+     * 把相对当前页第 {@code step} 页提前装载好, 翻过去时不用等, 越界时夹到最近的一端.
+     * <p>只有 {@link #async} 建出的翻页有装载动作, 已经装载过的页不会重查.
+     *
+     * @param step 相对当前页的页数, 负数往前
+     */
+    public void prefetch(int step) {
+        int targetIndex = this.pageIndex.get() + step;
+        targetIndex = Math.clamp(targetIndex, 0, this.pageCount.get() - 1);
+        this.prefetchAt.accept(targetIndex);
     }
 
     /**

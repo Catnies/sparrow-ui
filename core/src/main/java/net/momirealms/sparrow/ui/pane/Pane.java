@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -1135,6 +1136,90 @@ public sealed interface Pane permits AbstractPane {
                 @NotNull Function<? super T, ? extends Element> toElement,
                 @NotNull Executor executor
         );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个翻页的当前页, 当前页第 n 条写进该标志符第 n 次出现的槽位.
+         *
+         * @param identifier 标志符
+         * @param page 翻页
+         * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Page<T> page,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个翻页的当前页.
+         *
+         * @param identifier 单字符标志
+         * @param page 翻页
+         * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Page<T> page,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个翻页的当前页, 并指定在哪里求值.
+         *
+         * @param identifier 标志符
+         * @param page 翻页
+         * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Page<T> page,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个翻页的当前页, 并指定在哪里求值.
+         *
+         * @param identifier 单字符标志
+         * @param page 翻页
+         * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Page<T> page,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个翻页的当前页, 页里的内容已经是 Item.
+         *
+         * @param identifier 标志符
+         * @param page 内容是 Item 的翻页
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Page<? extends Item> page);
+
+        /**
+         * 让单字符标志的槽位一直跟随一个翻页的当前页, 页里的内容已经是 Item.
+         *
+         * @param identifier 单字符标志
+         * @param page 内容是 Item 的翻页
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Page<? extends Item> page);
 
         /**
          * 按二维形状把同一标志符的槽位连接到子 Pane.
