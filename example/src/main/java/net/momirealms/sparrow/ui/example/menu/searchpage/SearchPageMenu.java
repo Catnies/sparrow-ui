@@ -55,18 +55,6 @@ public final class SearchPageMenu {
     private final Page<MaterialEntry> pages;   // 把筛选结果按每页 27 个切分后的分页状态
 
     /**
-     * 创建一次菜单打开所需的独立搜索状态, 让不同玩家的输入和页码互不影响.
-     */
-    private SearchPageMenu() {
-        // input 是搜索数据流的起点, 变化后会重新得到整份筛选结果
-        this.input = Signal.of("");
-        Signal<List<MaterialEntry>> results = this.input.mapDistinct(SearchPageMenu::filterMaterials);
-        // 结果数量和分页器共同消费同一份筛选结果, 避免维护两套容易失配的状态
-        this.resultCount = results.map(List::size);
-        this.pages = Page.of(results, PAGE_SIZE);
-    }
-
-    /**
      * 为指定玩家异步构建并打开一个新的搜索翻页菜单.
      *
      * <p>菜单对象、Pane 和 Window 在 Paper 全局异步调度器中构建.
@@ -89,6 +77,18 @@ public final class SearchPageMenu {
                     .build(viewer);
             return anvilWindow.open();
         }).thenCompose(opening -> opening);
+    }
+
+    /**
+     * 创建一次菜单打开所需的独立搜索状态, 让不同玩家的输入和页码互不影响.
+     */
+    private SearchPageMenu() {
+        // input 是搜索数据流的起点, 变化后会重新得到整份筛选结果
+        this.input = Signal.of("");
+        Signal<List<MaterialEntry>> results = this.input.mapDistinct(SearchPageMenu::filterMaterials);
+        // 结果数量和分页器共同消费同一份筛选结果, 避免维护两套容易失配的状态
+        this.resultCount = results.map(List::size);
+        this.pages = Page.of(results, PAGE_SIZE);
     }
 
     /**

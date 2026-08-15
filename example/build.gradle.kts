@@ -5,6 +5,7 @@ import xyz.jpenilla.runtask.service.DownloadsAPIService
 plugins {
     `java-library`
     alias(libs.plugins.shadow)
+    id("io.papermc.paperweight.userdev") version "2.0.0-beta.21"
     id("de.eldoria.plugin-yml.paper") version "0.9.0"
     id("xyz.jpenilla.run-paper") version "3.0.2"
 }
@@ -12,6 +13,7 @@ plugins {
 group = "net.momirealms"
 version = "1.0.0"
 description = "Reference examples for SparrowUI"
+paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArtifactConfiguration.MOJANG_PRODUCTION
 
 java {
     toolchain {
@@ -26,7 +28,7 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
-    compileOnly("io.papermc.paper:paper-api:26.2.build.+")
+    paperweight.paperDevBundle("26.2.build.+")
     compileOnly(libs.jetbrains.annotations)
     compileOnly(libs.jspecify)
 }
