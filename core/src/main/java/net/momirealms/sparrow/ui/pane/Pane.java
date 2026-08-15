@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.page.Page;
+import net.momirealms.sparrow.ui.pane.page.Scroll;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -1220,6 +1221,91 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredient(char identifier, @NotNull Page<? extends Item> page);
+
+        /**
+         * 让同一标志符的槽位一直跟随一个滚动的当前屏, 这一屏第 n 条写进该标志符第 n 次出现的槽位.
+         * <p>槽位顺序跟着滚动方向走, 竖着滚按行, 横着滚按列.
+         *
+         * @param identifier 标志符
+         * @param scroll 滚动
+         * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Scroll<T> scroll,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个滚动的当前屏.
+         *
+         * @param identifier 单字符标志
+         * @param scroll 滚动
+         * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Scroll<T> scroll,
+                @NotNull Function<? super T, ? extends Element> toElement
+        );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个滚动的当前屏, 并指定在某个执行器求值.
+         *
+         * @param identifier 标志符
+         * @param scroll 滚动
+         * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                @NotNull String identifier,
+                @NotNull Scroll<T> scroll,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
+
+        /**
+         * 让单字符标志的槽位一直跟随一个滚动的当前屏, 并指定在哪里求值.
+         *
+         * @param identifier 单字符标志
+         * @param scroll 滚动
+         * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
+         * @param executor 执行求值的执行器
+         * @return 当前 Builder
+         */
+        @NotNull
+        <T> B addIngredient(
+                char identifier,
+                @NotNull Scroll<T> scroll,
+                @NotNull Function<? super T, ? extends Element> toElement,
+                @NotNull Executor executor
+        );
+
+        /**
+         * 让同一标志符的槽位一直跟随一个滚动的当前屏, 屏里的内容已经是 Item.
+         *
+         * @param identifier 标志符
+         * @param scroll 内容是 Item 的滚动
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(@NotNull String identifier, @NotNull Scroll<? extends Item> scroll);
+
+        /**
+         * 让单字符标志的槽位一直跟随一个滚动的当前屏, 屏里的内容已经是 Item.
+         *
+         * @param identifier 单字符标志
+         * @param scroll 内容是 Item 的滚动
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Scroll<? extends Item> scroll);
 
         /**
          * 按二维形状把同一标志符的槽位连接到子 Pane.

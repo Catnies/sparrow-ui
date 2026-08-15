@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.page.Page;
+import net.momirealms.sparrow.ui.pane.page.Scroll;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -175,17 +176,9 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             @NotNull Function<? super T, ? extends Element> toElement,
             @NotNull Executor executor
     ) {
-        Objects.requireNonNull(source, "source");
-        Objects.requireNonNull(toElement, "toElement");
-        Objects.requireNonNull(executor, "executor");
         @SuppressWarnings("unchecked")
         Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
-        // 标志符先在这里解析.
-        int identifierIndex = this.structure.identifierIndex(identifier);
-        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容
-        this.projections[identifierIndex] = new ProjectionIngredient(source, erased, executor);
-        this.ingredients[identifierIndex] = null;
-        return this.self();
+        return this.bindProjection(identifier, source, erased, executor, null);
     }
 
     @Override
@@ -257,6 +250,70 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             @NotNull Page<? extends Item> page
     ) {
         return this.addIngredient(String.valueOf(identifier), page);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Scroll<T> scroll,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(identifier, scroll, toElement, SlotProjection.defaultExecutor());
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Scroll<T> scroll,
+            @NotNull Function<? super T, ? extends Element> toElement
+    ) {
+        return this.addIngredient(String.valueOf(identifier), scroll, toElement);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            @NotNull String identifier,
+            @NotNull Scroll<T> scroll,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        @SuppressWarnings("unchecked")
+        Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
+        // 横着滚的内容按列切, 槽位也按列主序喂, 第 n 条才落在第 n 个列位上
+        SlotPattern pattern = scroll.orientation() == Scroll.Orientation.HORIZONTAL ? SlotPatterns.COLUMN_MAJOR : null;
+        return this.bindProjection(identifier, scroll.content(), erased, executor, pattern);
+    }
+
+    @Override
+    @NotNull
+    public final <T> B addIngredient(
+            char identifier,
+            @NotNull Scroll<T> scroll,
+            @NotNull Function<? super T, ? extends Element> toElement,
+            @NotNull Executor executor
+    ) {
+        return this.addIngredient(String.valueOf(identifier), scroll, toElement, executor);
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(
+            @NotNull String identifier,
+            @NotNull Scroll<? extends Item> scroll
+    ) {
+        return this.addIngredient(identifier, scroll, Element::item);
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(
+            char identifier,
+            @NotNull Scroll<? extends Item> scroll
+    ) {
+        return this.addIngredient(String.valueOf(identifier), scroll);
     }
 
     @Override
@@ -364,9 +421,13 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             if (projection == null) {
                 continue;
             }
+            SlotSequence projected = this.structure.slots(identifierIndex);
+            if (projection.pattern() != null) {
+                projected = projected.transform(projection.pattern());
+            }
             SlotProjection.attachErased(
                     pane,
-                    this.structure.slots(identifierIndex),
+                    projected,
                     projection.source(),
                     projection.toElement(),
                     projection.executor()
@@ -408,17 +469,47 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     }
 
     /**
+     * 将标志符转换为内部编号并保存投影声明.
+     *
+     * @param identifier 标志符
+     * @param source 序列来源
+     * @param toElement 元素转换函数, 类型参数已擦除
+     * @param executor 执行求值的执行器
+     * @param pattern 槽位顺序变换, {@code null} 表示保持标志符原序
+     * @return 当前 Builder
+     */
+    private B bindProjection(
+            String identifier,
+            Signal<? extends List<?>> source,
+            Function<Object, ? extends Element> toElement,
+            Executor executor,
+            @Nullable SlotPattern pattern
+    ) {
+        Objects.requireNonNull(source, "source");
+        Objects.requireNonNull(toElement, "toElement");
+        Objects.requireNonNull(executor, "executor");
+        // 标志符先在这里解析.
+        int identifierIndex = this.structure.identifierIndex(identifier);
+        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容
+        this.projections[identifierIndex] = new ProjectionIngredient(source, toElement, executor, pattern);
+        this.ingredients[identifierIndex] = null;
+        return this.self();
+    }
+
+    /**
      * 一条投影声明: 跟随哪个序列, 怎么把序列里的一条数据变成 Element, 以及在哪里求值.
      * <p>它保存在与 {@code ingredients} 同下标的位置上, 因此是哪个标志符由下标决定.
      *
      * @param source 序列来源
      * @param toElement 元素转换函数, 类型参数已擦除
      * @param executor 执行求值的执行器
+     * @param pattern 槽位顺序变换, {@code null} 表示保持标志符原序
      */
     private record ProjectionIngredient(
             Signal<? extends List<?>> source,
             Function<Object, ? extends Element> toElement,
-            Executor executor
+            Executor executor,
+            @Nullable SlotPattern pattern
     ) {
     }
 
