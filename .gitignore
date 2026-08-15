@@ -46,6 +46,5 @@ bin/
 ### Custom ###
 /docs/
 /.agent/
-/plugin/run/
-/plugin/.old_code/
-/plugin/src/main/java/
+/example/run/
+/example/.old_code/
