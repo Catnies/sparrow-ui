@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
+import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -47,6 +48,7 @@ public class SparrowUI implements Listener {
         }
 
         BukkitProxyInstaller.setUp();
+        MapColorPalette.initialize();
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
         this.windowManager = WindowManager.create();

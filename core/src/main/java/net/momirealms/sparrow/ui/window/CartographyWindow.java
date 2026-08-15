@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
 import net.momirealms.sparrow.ui.pane.Pane;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.map.MapCursor;
-import org.bukkit.map.MapPalette;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -34,8 +34,8 @@ public interface CartographyWindow extends Window {
      * @param x 左上角 x 坐标
      * @param y 左上角 y 坐标
      * @param image 不越过 128x128 画布的图片
+     * @throws IllegalStateException SparrowUI 尚未完成初始化
      */
-    @SuppressWarnings("removal")
     default void applyPatch(int x, int y, @NotNull BufferedImage image) {
         Objects.requireNonNull(image, "image");
         this.applyPatch(new MapPatch(
@@ -43,7 +43,7 @@ public interface CartographyWindow extends Window {
                 y,
                 image.getWidth(),
                 image.getHeight(),
-                MapPalette.imageToBytes(image)
+                MapColorPalette.imageToBytes(image)
         ));
     }
 
@@ -240,6 +240,7 @@ public interface CartographyWindow extends Window {
          *
          * @param image 初始图片
          * @return 此 Builder
+         * @throws IllegalStateException SparrowUI 尚未完成初始化
          */
         @NotNull
         Builder setMap(@NotNull BufferedImage image);

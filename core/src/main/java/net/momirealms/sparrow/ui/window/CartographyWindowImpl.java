@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.internal.menu.CartographyMenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import org.bukkit.entity.Player;
-import org.bukkit.map.MapPalette;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -206,15 +206,14 @@ final class CartographyWindowImpl extends AbstractWindow<CartographyMenuHandle> 
             return this;
         }
 
-        @Override
         @NotNull
-        @SuppressWarnings("removal")
+        @Override
         public CartographyWindow.Builder setMap(@NotNull BufferedImage image) {
             Objects.requireNonNull(image, "image");
             if (image.getWidth() != MAP_SIZE || image.getHeight() != MAP_SIZE) {
                 throw new IllegalArgumentException("cartography map image must have size 128x128");
             }
-            this.canvas = MapPalette.imageToBytes(image);
+            this.canvas = MapColorPalette.imageToBytes(image);
             return this;
         }
 
