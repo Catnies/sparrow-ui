@@ -712,6 +712,19 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 直接覆盖写入单个槽位, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要覆盖进去的物品, {@code null} 表示清空
+     * @return 事务结果
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @NotNull
+    public TransactionResult setItem(int slot, @Nullable ItemStack item) {
+        return this.setItem(UpdateReason.Program.INSTANCE, slot, item);
+    }
+
+    /**
      * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消;
      * post 事件仍会正常派发.
      *
@@ -724,6 +737,20 @@ public abstract class SparrowInventory {
     @NotNull
     public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
         return this.commitSingle(reason, slot, item, true);
+    }
+
+    /**
+     * 与 {@link #setItem(int, ItemStack)} 相同, 但跳过 pre 事件且无法被取消;
+     * post 事件仍会正常派发.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要覆盖进去的物品, {@code null} 表示清空
+     * @return 事务结果
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @NotNull
+    public TransactionResult forceSetItem(int slot, @Nullable ItemStack item) {
+        return this.forceSetItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
     /**
@@ -772,6 +799,19 @@ public abstract class SparrowInventory {
         }
         TransactionResult result = this.commitScoped(reason, basis, plan.deltas());
         return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
+    }
+
+    /**
+     * 往指定槽位尽量放入物品, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要放入的物品
+     * @return 放入结果, 其中 remaining 是没能放入的数量
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @NotNull
+    public AddResult putItem(int slot, @NotNull ItemStack item) {
+        return this.putItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
     /**
