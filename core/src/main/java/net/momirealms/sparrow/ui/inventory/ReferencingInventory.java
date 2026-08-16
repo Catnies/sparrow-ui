@@ -219,7 +219,7 @@ public final class ReferencingInventory extends SparrowInventory {
         this.retired = true;
         // 作废全部在途规划基准, 之后新建的基准由 PlannedRoot.Live.isStale 一律判定失效.
         this.modCount++;
-        this.publishVisualDirty(ALL_SLOTS);
+        this.visual().dirty();
         this.updateContentSignal();
     }
 

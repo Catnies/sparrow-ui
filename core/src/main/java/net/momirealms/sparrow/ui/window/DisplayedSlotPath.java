@@ -412,7 +412,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             AtomicBoolean discarded = new AtomicBoolean();
             PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> {
                 if (!discarded.get()) {
-                    this.onInvalidation(true);
+                    this.onDirty(true);
                 }
             });
             next.add(pane, paneSlot, attachment, discarded);
@@ -443,7 +443,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 next.item = item;
                 next.itemAttachment = item.attach(this.window, ignore -> {
                     if (!next.resourcesClosed) {
-                        this.onInvalidation(false);
+                        this.onDirty(false);
                     }
                 });
             }
@@ -456,14 +456,14 @@ final class DisplayedSlotPath implements AutoCloseable {
                     // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
                     for (int i = 0; i < event.slotChanges().size(); i++) {
                         if (event.slotChanges().get(i).slot() == link.slot()) {
-                            this.onInvalidation(false);
+                            this.onDirty(false);
                             return;
                         }
                     }
                 });
-                next.visualSubscription = link.inventory().subscribeVisualInvalidation(slot -> {
-                    if (!next.resourcesClosed && (slot == SparrowInventory.ALL_SLOTS || slot == link.slot())) {
-                        this.onInvalidation(false);
+                next.visualSubscription = link.inventory().attachVisualDirty(link.slot(), () -> {
+                    if (!next.resourcesClosed) {
+                        this.onDirty(false);
                     }
                 });
             }
@@ -487,7 +487,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      * @param structural true 表示通知来自 Pane 槽位, 路径结构可能变了, 要重新解析;
      *                   false 表示只来自终点的 Item 或 Inventory, 重新渲染就够了
      */
-    private void onInvalidation(boolean structural) {
+    private void onDirty(boolean structural) {
         while (true) {
             Phase phase = this.phase.get();
             switch (phase) {

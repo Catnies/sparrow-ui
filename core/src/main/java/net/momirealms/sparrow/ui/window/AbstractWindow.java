@@ -63,7 +63,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param backOnPlayerClose 玩家主动关闭时是否返回来源窗口
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
-     * @param cursorVisualizer 光标显示转换器
+     * @param cursorVisualizerProvider 光标显示转换器
      */
     record Settings(
             @NotNull Supplier<? extends Component> titleSupplier,
@@ -74,7 +74,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             boolean backOnPlayerClose,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
-            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
+            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider
     ) {
     }
 
@@ -89,6 +89,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final WindowLayout layout;
     private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
     private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
+    private final CursorVisualImpl cursorVisual;        // 光标视觉配置
     private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
     private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
     private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
@@ -109,7 +110,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
     private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
     private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
-    private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer; // 光标显示转换器
     private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
     private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
 
@@ -158,10 +158,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.backOnPlayerClose = settings.backOnPlayerClose();
         this.serverWindowState = settings.windowState();
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
-        this.cursorVisualizer = settings.cursorVisualizer();
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
         this.cursorRenderContext = RenderContext.cursor(this);
+        this.cursorVisual = new CursorVisualImpl(
+                this.signalBindings,
+                settings.cursorVisualizerProvider(),
+                action -> this.submit(action, "Failed to update Window cursor visualizer")
+        );
     }
 
     @Override
@@ -467,22 +471,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    @NotNull
     @Override
-    public void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
-        Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
-        this.submit(
-                () -> {
-                    this.cursorVisualizer = cursorVisualizer;
-                    this.cursorDirty = true;
-                },
-                "Failed to update Window cursor visualizer"
-        );
+    public CursorVisual cursorVisual() {
+        return this.cursorVisual;
+    }
+
+    @Override
+    public void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider) {
+        this.cursorVisual.visualizerProvider(cursorVisualizerProvider);
     }
 
     @NotNull
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer() {
-        return this.cursorVisualizer;
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider() {
+        return this.cursorVisual.visualizerProvider();
     }
 
     @Override
@@ -633,6 +636,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             menuOpening = true;
             menuHandle.prepareOpen(replacingWindow);
+            this.cursorVisual.takeDirty();
             MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
             Component title = this.title;
             menuHandle.open(title, this.protocolSlots(localSlots), localCursor);
@@ -1228,6 +1232,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.open || menu == null || localSlots == null || paths == null) {
             return;
         }
+        this.cursorDirty |= this.cursorVisual.takeDirty();
         this.forceReopen |= forceReopen;
 
         // 先消费跨线程写入的失效集合, 再在实体线程生成本轮 Window 槽位渲染结果
@@ -1340,11 +1345,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
         ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
         try {
-            ItemProvider visualizer = this.cursorVisualizer.apply(actual.isEmpty() ? null : actual.clone());
-            if (visualizer == null) {
+            ItemProvider visualizerProvider = this.cursorVisual.visualizerProvider().apply(
+                    actual.isEmpty() ? null : actual.clone()
+            );
+            if (visualizerProvider == null) {
                 return new MenuHandle.CursorSnapshot(actual, actual.clone());
             }
-            ItemStack visual = ItemUtils.copyOrEmpty(visualizer.provide(this.cursorRenderContext));
+            ItemStack visual = ItemUtils.copyOrEmpty(visualizerProvider.provide(this.cursorRenderContext));
             return new MenuHandle.CursorSnapshot(actual, visual);
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);

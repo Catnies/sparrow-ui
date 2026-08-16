@@ -40,7 +40,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private boolean backOnPlayerClose;
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
-    private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer = ignoredCursor -> null;
+    private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider = ignoredCursor -> null;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {
@@ -56,7 +56,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.backOnPlayerClose = source.backOnPlayerClose;
         this.windowState = source.windowState;
         this.windowStateChangeHandlers = new ArrayList<>(source.windowStateChangeHandlers);
-        this.cursorVisualizer = source.cursorVisualizer;
+        this.cursorVisualizerProvider = source.cursorVisualizerProvider;
         this.modifiers = new ArrayList<>(source.modifiers);
     }
 
@@ -184,11 +184,10 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         return this.self();
     }
 
+    @NotNull
     @Override
-    public final @NotNull B setCursorVisualizer(
-            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
-    ) {
-        this.cursorVisualizer = cursorVisualizer;
+    public final B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
+        this.cursorVisualizerProvider = cursorVisualizer;
         return this.self();
     }
 
@@ -264,7 +263,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
                 this.backOnPlayerClose,
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),
-                this.cursorVisualizer
+                this.cursorVisualizerProvider
         );
     }
 }

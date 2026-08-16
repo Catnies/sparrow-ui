@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -336,19 +337,41 @@ public interface Window {
     void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
-     * 设置光标显示转换器.
-     * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
+     * 返回只控制客户端光标的视觉配置与失效范围.
+     * <p>同一 Window 始终返回同一个对象; 标脏不会影响 Window 槽位或请求全量同步.
      *
-     * @param cursorVisualizer 光标显示转换器
+     * @return 光标视觉配置与失效范围
      */
-    void setCursorVisualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer);
+    @NotNull
+    CursorVisual cursorVisual();
 
     /**
-     * 当前光标显示转换器.
+     * 设置返回 ItemProvider 的光标显示转换器.
+     * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
      *
-     * @return 光标显示转换器
+     * @param cursorVisualizerProvider 光标 ItemProvider 显示转换器
      */
-    @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizer();
+    void setCursorVisualizerProvider(
+            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider
+    );
+
+    /**
+     * 使用直接返回 ItemStack 的映射设置光标显示转换器.
+     * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
+     *
+     * @param cursorVisualizer 光标物品显示转换器
+     */
+    default void setCursorVisualizerItem(@NotNull Function<@Nullable ItemStack, @Nullable ItemStack> cursorVisualizer) {
+        this.cursorVisual().visualizer(cursorVisualizer);
+    }
+
+    /**
+     * 当前返回 ItemProvider 的光标显示转换器.
+     *
+     * @return 光标 ItemProvider 显示转换器
+     */
+    @NotNull
+    Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider();
 
     /**
      * 通知 Window 对指定槽位的显示内容进行更新.
@@ -623,14 +646,29 @@ public interface Window {
         @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
         /**
-         * 设置光标显示转换器.
+         * 设置返回 ItemProvider 的光标显示转换器.
          *
-         * @param cursorVisualizer 光标显示转换器
+         * @param cursorVisualizerProvider 光标 ItemProvider 显示转换器
          * @return 此 Builder
          */
-        @NotNull B setCursorVisualizer(
-                @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
-        );
+        @NotNull
+        B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider);
+
+        /**
+         * 使用直接返回 ItemStack 的映射设置光标显示转换器.
+         * 参数为实际光标副本, 空光标以 null 表示.
+         *
+         * @param cursorVisualizer 光标物品显示转换器
+         * @return 此 Builder
+         */
+        @NotNull
+        default B setCursorVisualizerItem(@NotNull Function<@Nullable ItemStack, @Nullable ItemStack> cursorVisualizer) {
+            Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
+            return this.setCursorVisualizerProvider(actual -> {
+                ItemStack visual = cursorVisualizer.apply(actual);
+                return visual == null ? null : ItemProvider.constant(visual);
+            });
+        }
 
         /**
          * 替换创建完成后依次执行的 Window 修改器列表.

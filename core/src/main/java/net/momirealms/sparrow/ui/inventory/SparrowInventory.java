@@ -59,7 +59,6 @@ import java.util.function.UnaryOperator;
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
-    public static final int ALL_SLOTS = -1; // 视觉映射变更通知中表示"全部槽位"的载荷
     static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
 
@@ -67,14 +66,11 @@ public abstract class SparrowInventory {
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
     private final SignalBindings signalBindings = new SignalBindings();                   // 本 Inventory 持有的 Signal 绑定
+    private final InventoryVisualImpl visual; // 视觉配置, Signal 绑定与逐槽显示路径失效路由
 
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
     @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
     @Nullable private volatile Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
-
-    @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer; // 容器全局视觉映射, 逐槽映射放行时使用
-    @Nullable private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> @NotNull [] visualizersBySlot; // 容器逐槽视觉映射, 层级最高
-    @Nullable private volatile ItemProvider background; // 空槽占位背景, 独立于视觉映射的最底层
 
     // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; 没有设置过时是 0.
     private volatile int addOperationPriority;
@@ -91,7 +87,6 @@ public abstract class SparrowInventory {
 
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
-    private final ObservableDispatcher<Integer> visualInvalidations = new ObservableDispatcher<>(); // 视觉映射变更通知, 载荷为受影响槽位, ALL_SLOTS 表示全部
 
     @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅和退役递增
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
@@ -110,12 +105,10 @@ public abstract class SparrowInventory {
         }
         this.state = slots;
         this.naturalOrder = SlotOrder.natural(initial.length);
+        this.visual = new InventoryVisualImpl(this.signalBindings, initial.length);
         @SuppressWarnings("unchecked")
         @Nullable Predicate<ItemStack>[] placementRulesBySlot = (Predicate<ItemStack>[]) new Predicate<?>[initial.length];
         this.placementRulesBySlot = placementRulesBySlot;
-        @SuppressWarnings("unchecked")
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizersBySlot = (Function<@Nullable ItemStack, @Nullable ItemProvider>[]) new Function<?, ?>[initial.length];
-        this.visualizersBySlot = visualizersBySlot;
     }
 
     /**
@@ -246,6 +239,16 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 返回此 Inventory 的视觉配置与失效范围.
+     *
+     * @return 视觉配置与失效范围
+     */
+    @NotNull
+    public final InventoryVisual visual() {
+        return this.visual;
+    }
+
+    /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
      * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
@@ -254,11 +257,20 @@ public abstract class SparrowInventory {
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
      * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
      *
-     * @param visualizer 新的全局视觉映射, {@code null} 表示不参与这一层
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
-    public void setVisualizer(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer) {
-        this.visualizer = visualizer;
-        this.visualInvalidations.publish(ALL_SLOTS);
+    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual.visualizerProvider(visualizerProvider);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射设置容器全局视觉映射.
+     * 映射接收槽位当前真实内容(空槽为 {@code null}).
+     *
+     * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
+     */
+    public void setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual.visualizerItem(visualizer);
     }
 
     /**
@@ -267,26 +279,34 @@ public abstract class SparrowInventory {
      * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizer() {
-        return this.visualizer;
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider() {
+        return this.visual.visualizerProvider();
     }
 
     /**
      * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层:
      * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
      * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
-     * <p>映射的输入输出约定与 {@link #setVisualizer(Function)} 相同.
+     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
      *
      * @param slot 槽位序号
-     * @param visualizer 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setVisualizer(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer) {
-        Objects.checkIndex(slot, this.size());
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizersBySlot = this.visualizersBySlot.clone();
-        visualizersBySlot[slot] = visualizer;
-        this.visualizersBySlot = visualizersBySlot;
-        this.visualInvalidations.publish(slot);
+    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual.visualizerProvider(slot, visualizerProvider);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射替换一个槽位的逐槽视觉映射.
+     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     *
+     * @param slot 槽位序号
+     * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setVisualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual.visualizerItem(slot, visualizer);
     }
 
     /**
@@ -297,9 +317,8 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizer(int slot) {
-        Objects.checkIndex(slot, this.size());
-        return this.visualizersBySlot[slot];
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider(int slot) {
+        return this.visual.visualizerProvider(slot);
     }
 
     /**
@@ -308,8 +327,7 @@ public abstract class SparrowInventory {
      * @param background 空槽占位背景, {@code null} 表示清除背景
      */
     public void setBackground(@Nullable ItemProvider background) {
-        this.background = background;
-        this.visualInvalidations.publish(ALL_SLOTS);
+        this.visual.background(background);
     }
 
     /**
@@ -318,7 +336,7 @@ public abstract class SparrowInventory {
      * @param background 空槽占位背景
      */
     public void setBackground(@NotNull ItemStack background) {
-        this.setBackground(ItemProvider.constant(background));
+        this.visual.backgroundItem(background);
     }
 
     /**
@@ -328,7 +346,7 @@ public abstract class SparrowInventory {
      */
     @Nullable
     public ItemProvider getBackground() {
-        return this.background;
+        return this.visual.background();
     }
 
     /**
@@ -343,22 +361,7 @@ public abstract class SparrowInventory {
      */
     @Nullable
     public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> slotVisualizer = this.visualizersBySlot[slot];
-        if (slotVisualizer != null) {
-            ItemProvider mapped = slotVisualizer.apply(actual);
-            if (mapped != null) {
-                return mapped;
-            }
-        }
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> globalVisualizer = this.visualizer;
-        if (globalVisualizer != null) {
-            ItemProvider mapped = globalVisualizer.apply(actual);
-            if (mapped != null) {
-                return mapped;
-            }
-        }
-        // 背景只垫在空槽下面, 非空槽由渲染层按真实内容显示
-        return actual == null ? this.background : null;
+        return this.visual.visualize(slot, actual);
     }
 
     /**
@@ -1256,15 +1259,6 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 向订阅者发出视觉映射变更通知.
-     *
-     * @param slot 受影响的槽位序号, {@link #ALL_SLOTS} 表示全部槽位
-     */
-    final void publishVisualDirty(int slot) {
-        this.visualInvalidations.publish(slot);
-    }
-
-    /**
      * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
      * 当 Signal 被标脏时, 会触发传入的回调函数.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
@@ -1281,15 +1275,19 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 订阅视觉映射变更通知, 载荷为受影响的槽位序号, {@link #ALL_SLOTS} 表示全部槽位.
-     * 显示端收到通知后应重新渲染对应槽位; 通知可能来自任意调用配置方法的线程.
+     * 把显示路径附着到一个精确槽位的视觉失效路由.
+     * <p>失效可能从任意线程发出; 回调不会在路由内部的同步区间执行.
      *
-     * @param observer 通知处理器
-     * @return 订阅凭证, 关闭后不再接收通知
+     * @param slot 路径显示的 Inventory 槽位
+     * @param invalidator 路径失效动作
+     * @return 附着凭证, 关闭后不再接收失效
      */
     @NotNull
-    public Subscription subscribeVisualInvalidation(@NotNull Observer<? super Integer> observer) {
-        return this.visualInvalidations.subscribe(observer);
+    @ApiStatus.Internal
+    public final Subscription attachVisualDirty(int slot, @NotNull Runnable invalidator) {
+        Objects.checkIndex(slot, this.size());
+        Objects.requireNonNull(invalidator, "invalidator");
+        return this.visual.attach(slot, invalidator);
     }
 
     /**

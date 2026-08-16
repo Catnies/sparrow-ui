@@ -10,7 +10,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ObservableDispatcher<T> implements Observable<T> {
-
     private final CopyOnWriteArrayList<Entry<T>> entries = new CopyOnWriteArrayList<>();
 
     @Override
@@ -23,9 +22,6 @@ public final class ObservableDispatcher<T> implements Observable<T> {
 
     /**
      * 向遍历时仍处于活动状态的每个订阅发布更新.
-     *
-     * <p>运行时异常会被隔离, 直到所有活动观察者均已遍历完成. 随后重新抛出第一个异常,
-     * 并将之后的异常作为被抑制异常附加到该异常中.
      *
      * @param update 更新数据
      */
