@@ -37,7 +37,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Runnable> openHandlers = new ArrayList<>();
     private List<Consumer<InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
     private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
-    private Supplier<? extends @Nullable Window> fallbackWindow = () -> null;
+    private boolean backOnPlayerClose;
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
     private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer = ignoredCursor -> null;
@@ -53,7 +53,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.openHandlers = new ArrayList<>(source.openHandlers);
         this.closeHandlers = new ArrayList<>(source.closeHandlers);
         this.outsideClickHandlers = new ArrayList<>(source.outsideClickHandlers);
-        this.fallbackWindow = source.fallbackWindow;
+        this.backOnPlayerClose = source.backOnPlayerClose;
         this.windowState = source.windowState;
         this.windowStateChangeHandlers = new ArrayList<>(source.windowStateChangeHandlers);
         this.cursorVisualizer = source.cursorVisualizer;
@@ -159,8 +159,8 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     @Override
-    public final @NotNull B setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
-        this.fallbackWindow = fallbackWindow;
+    public final @NotNull B setBackOnPlayerClose(boolean backOnPlayerClose) {
+        this.backOnPlayerClose = backOnPlayerClose;
         return this.self();
     }
 
@@ -261,7 +261,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
                 List.copyOf(this.openHandlers),
                 List.copyOf(this.closeHandlers),
                 List.copyOf(boundOutsideClickHandlers),
-                this.fallbackWindow,
+                this.backOnPlayerClose,
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),
                 this.cursorVisualizer

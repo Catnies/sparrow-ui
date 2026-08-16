@@ -163,22 +163,21 @@ public interface Window {
     void offhandFrozen(boolean frozen);
 
     /**
-     * 设置玩家主动关闭时要解析并打开的后备 Window.
-     * Supplier 仅在玩家主动关闭后读取.
+     * 返回玩家主动关闭本窗口时, 所在会话是否返回来源窗口.
      *
-     * @param fallbackWindow 后备 Window 来源
+     * @return 玩家主动关闭时是否返回来源窗口
      */
-    void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
+    boolean backOnPlayerClose();
 
     /**
-     * 设置玩家主动关闭时要打开的固定后备 Window.
-     * 传入 null 可清除后备 Window.
+     * 设置玩家主动关闭本窗口时, 所在会话是否返回来源窗口. 默认 false.
+     * <p>仅当本窗口是某个会话的链顶时有意义, true 且存在来源窗口时返回上一层,
+     * 否则会话以 PLAYER 原因结束. 不在任何会话中的窗口忽略此开关, 玩家关闭就是关闭.
+     * <p>本开关只作用于玩家主动关闭(reason == PLAYER), 不影响程序化导航.
      *
-     * @param fallbackWindow 后备 Window
+     * @param backOnPlayerClose true 表示返回来源窗口
      */
-    default void setFallbackWindow(@Nullable Window fallbackWindow) {
-        this.setFallbackWindow(() -> fallbackWindow);
-    }
+    void backOnPlayerClose(boolean backOnPlayerClose);
 
     /**
      * 替换打开后依次执行的处理器列表.
@@ -589,22 +588,13 @@ public interface Window {
         B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
         /**
-         * 设置玩家主动关闭时要解析的后备 Window.
+         * 设置玩家主动关闭时是否返回来源窗口, 默认 false.
+         * 语义同 {@link Window#backOnPlayerClose(boolean)}.
          *
-         * @param fallbackWindow 后备 Window 来源
+         * @param backOnPlayerClose true 表示返回来源窗口
          * @return 此 Builder
          */
-        @NotNull B setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow);
-
-        /**
-         * 设置玩家主动关闭时要打开的固定后备 Window.
-         *
-         * @param fallbackWindow 后备 Window, null 表示不打开后备 Window
-         * @return 此 Builder
-         */
-        default @NotNull B setFallbackWindow(@Nullable Window fallbackWindow) {
-            return this.setFallbackWindow(() -> fallbackWindow);
-        }
+        @NotNull B setBackOnPlayerClose(boolean backOnPlayerClose);
 
         /**
          * 设置初始服务器窗口状态.

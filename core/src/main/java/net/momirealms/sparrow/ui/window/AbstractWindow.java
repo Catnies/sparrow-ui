@@ -60,7 +60,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param openHandlers 打开处理器
      * @param closeHandlers 关闭处理器
      * @param outsideClickHandlers 容器外点击处理器
-     * @param fallbackWindow 玩家关闭后的后备 Window 来源
+     * @param backOnPlayerClose 玩家主动关闭时是否返回来源窗口
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
      * @param cursorVisualizer 光标显示转换器
@@ -71,7 +71,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Runnable> openHandlers,
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
             @NotNull List<Consumer<WindowOutsideClick>> outsideClickHandlers,
-            @NotNull Supplier<? extends @Nullable Window> fallbackWindow,
+            boolean backOnPlayerClose,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
             @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer
@@ -106,9 +106,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
     private volatile boolean open;      // Window 是否处于打开状态
     private volatile boolean closeable; // 是否接受客户端主动关闭
+    private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
     private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
     private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
-    private volatile Supplier<? extends @Nullable Window> fallbackWindow; // 玩家主动关闭后的回退的 Window 来源
     private volatile Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer; // 光标显示转换器
     private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
     private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
@@ -155,7 +155,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.openHandlers = new HandlerList<>(settings.openHandlers());
         this.closeHandlers = new HandlerList<>(settings.closeHandlers());
         this.outsideClickHandlers = new HandlerList<>(settings.outsideClickHandlers());
-        this.fallbackWindow = settings.fallbackWindow();
+        this.backOnPlayerClose = settings.backOnPlayerClose();
         this.serverWindowState = settings.windowState();
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.cursorVisualizer = settings.cursorVisualizer();
@@ -272,11 +272,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     @Override
-    public void setFallbackWindow(@NotNull Supplier<? extends @Nullable Window> fallbackWindow) {
-        Objects.requireNonNull(fallbackWindow, "fallbackWindow");
+    public boolean backOnPlayerClose() {
+        return this.backOnPlayerClose;
+    }
+
+    @Override
+    public void backOnPlayerClose(boolean backOnPlayerClose) {
         this.submit(
-                () -> this.fallbackWindow = fallbackWindow,
-                "Failed to update Window fallback"
+                () -> this.backOnPlayerClose = backOnPlayerClose,
+                "Failed to update Window back-on-player-close state"
         );
     }
 
@@ -1359,10 +1363,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.open) return false;
 
         Throwable failure = this.teardownOnEntity(reason);
-        // 只有玩家主动关闭才进入 fallback
-        if (reason == InventoryCloseEvent.Reason.PLAYER) {
-            this.openFallback();
-        }
         this.fireCloseHandlers(reason);
         ThrowableUtils.throwIfUnchecked(failure);
         return true;
@@ -1370,7 +1370,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 服务器已经接管关闭流程后, 只回收 Window 的本地资源并通知关闭处理器.
-     * 该路径不再次主动关闭容器, 也不触发 Fallback Window.
+     * 该路径不再次主动关闭容器.
      *
      * @param reason Bukkit 容器关闭原因
      * @return 是否关闭了一个打开的 Window
@@ -1443,21 +1443,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 "Failed to handle Window close",
                 this.manager::report
         );
-    }
-
-    // 玩家主动关闭后, 解析并打开后备 Window.
-    private void openFallback() {
-        try {
-            Window fallback = this.fallbackWindow.get();
-            if (fallback != null) {
-                fallback.open().exceptionally(throwable -> {
-                    this.manager.report("Failed to open Window fallback", throwable);
-                    return null;
-                });
-            }
-        } catch (Throwable throwable) {
-            this.manager.report("Failed to resolve or open Window fallback", throwable);
-        }
     }
 
     // 调度器意外退役时回收本地资源, 不发客户端关闭包, 也不调用用户关闭处理器.
