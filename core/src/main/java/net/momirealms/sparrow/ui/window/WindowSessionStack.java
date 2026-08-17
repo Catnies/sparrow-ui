@@ -35,7 +35,17 @@ class WindowSessionStack extends AbstractWindowSession {
     void stepBack() {
         AbstractWindow<?> popped = (AbstractWindow<?>) this.stack.remove(this.stack.size() - 1);
         // 环形栈里同一实例可能在更深处还压着, 那时它仍是本会话的成员
-        if (!this.stack.contains(popped)) {
+        this.discard(popped, this.stack.contains(popped));
+    }
+
+    /**
+     * 处置被弹出的窗, 不再出现在栈中时解除会话归属并丢弃引用.
+     *
+     * @param popped 刚弹出的窗
+     * @param stillPresent 同一实例是否还在栈的更深处
+     */
+    void discard(@NotNull AbstractWindow<?> popped, boolean stillPresent) {
+        if (!stillPresent) {
             popped.session(null);
         }
     }
