@@ -61,6 +61,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param closeHandlers 关闭处理器
      * @param outsideClickHandlers 容器外点击处理器
      * @param backOnPlayerClose 玩家主动关闭时是否返回来源窗口
+     * @param data 随 Window 携带的用户对象
+     * @param sessionKind 本窗成为链根时新会话的类型
+     * @param sessionEndHandlers 本窗成为链根时装进新会话的结束处理器
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
      * @param cursorVisualizerProvider 光标显示转换器
@@ -72,6 +75,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
             @NotNull List<Consumer<WindowOutsideClick>> outsideClickHandlers,
             boolean backOnPlayerClose,
+            @Nullable Object data,
+            @NotNull WindowSession.Kind sessionKind,
+            @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
             @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider
@@ -97,6 +103,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
     private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 Pane 冻结按或合成
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
+    private final @Nullable Object data;                // 随窗携带的用户对象
+    private final WindowSession.Kind sessionKind;       // 成为链根时新会话的类型
+    private final List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers; // 成为链根时装进新会话的结束处理器
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
     private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;   // 容器外点击处理器
@@ -108,6 +117,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile boolean open;      // Window 是否处于打开状态
     private volatile boolean closeable; // 是否接受客户端主动关闭
     private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
+    private volatile @Nullable WindowSessionImpl session; // 所属会话, 不在任何链上时为 null
     private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
     private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
     private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
@@ -156,6 +166,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.closeHandlers = new HandlerList<>(settings.closeHandlers());
         this.outsideClickHandlers = new HandlerList<>(settings.outsideClickHandlers());
         this.backOnPlayerClose = settings.backOnPlayerClose();
+        this.data = settings.data();
+        this.sessionKind = settings.sessionKind();
+        this.sessionEndHandlers = settings.sessionEndHandlers();
         this.serverWindowState = settings.windowState();
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.dirtySlots = new BitSet(layout.size());
@@ -286,6 +299,30 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 () -> this.backOnPlayerClose = backOnPlayerClose,
                 "Failed to update Window back-on-player-close state"
         );
+    }
+
+    @Nullable
+    @Override
+    public WindowSession session() {
+        return this.session;
+    }
+
+    @Nullable
+    @Override
+    public Object data() {
+        return this.data;
+    }
+
+    // 本窗成为链根时新会话的类型.
+    @NotNull
+    WindowSession.Kind sessionKind() {
+        return this.sessionKind;
+    }
+
+    // 本窗成为链根时装进新会话的结束处理器.
+    @NotNull
+    List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers() {
+        return this.sessionEndHandlers;
     }
 
     @Override
@@ -1357,6 +1394,27 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.manager.report("Failed to render Window cursor visualizer", throwable);
             return new MenuHandle.CursorSnapshot(actual, actual.clone());
         }
+    }
+
+    @NotNull
+    @Override
+    public CompletableFuture<Window> openNext(@NotNull Window next) {
+        if (next.viewer() != this.viewer) {
+            throw new IllegalArgumentException("next Window belongs to another viewer");
+        }
+        return this.manager.openNext(this, (AbstractWindow<?>) next);
+    }
+
+    @NotNull
+    @Override
+    public CompletableFuture<Window> back() {
+        return this.manager.back(this, false);
+    }
+
+    @NotNull
+    @Override
+    public CompletableFuture<Window> backOrClose() {
+        return this.manager.back(this, true);
     }
 
     @NotNull

@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -72,6 +73,90 @@ public interface Window {
     @NotNull CompletableFuture<OpenResult> open();
 
     /**
+     * 从本 Window 打开下一扇 Window, 本 Window 退到链下等着被返回.
+     * <p>本 Window 已在某条会话链上时新窗口加入那条链, 不在时两者组成一条新链;
+     *
+     * @param next 要打开的下一扇 Window, 必须与本 Window 属于同一名玩家
+     * @return 打开后的 next; 玩家不可用或所在会话已结束等打不开的情况以 null 完成
+     */
+    @NotNull CompletableFuture<Window> openNext(@NotNull Window next);
+
+    /**
+     * 以本 Window 的查看者创建下一扇 Window 并打开它, 语义同 {@link #openNext(Window)}.
+     * <p>此方法先同步调用 {@link Builder#build(Player)}, 因而同样受其实体线程约束;
+     * 想把构建放到别的线程, 自己 build 完再用 {@link #openNext(CompletionStage)}.
+     *
+     * @param next 下一扇 Window 的 Builder
+     * @return 打开后的 Window; 打不开时以 null 完成
+     */
+    @NotNull
+    default CompletableFuture<Window> openNext(@NotNull Builder<?, ?> next) {
+        return this.openNext(next.build(this.viewer()));
+    }
+
+    /**
+     * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #openNext(Window)}.
+     * <p>构建在哪个线程完成由调用方决定, 方法只负责把打开送进玩家的实体线程.
+     *
+     * @param next 构建中的下一扇 Window
+     * @return 打开后的 Window; 打不开时以 null 完成
+     */
+    @NotNull
+    default CompletableFuture<Window> openNext(@NotNull CompletionStage<? extends Window> next) {
+        return next.thenCompose(this::openNext).toCompletableFuture();
+    }
+
+    /**
+     * 回到会话的上一层, 来源以原实例重新打开.
+     * <p>只有本 Window 是某条会话链的链顶且链上有来源时才发生返回; 位于链底或不属于任何会话时
+     * 不做任何事, 本 Window 保持打开.
+     *
+     * @return 返回后的新链顶; 没有发生返回时以 null 完成
+     */
+    @NotNull CompletableFuture<Window> back();
+
+    /**
+     * 回到会话的上一层, 没有上一层可回时关闭本 Window.
+     * <p>链上有来源时等同 {@link #back()}; 位于链底或不属于任何会话时等同 {@link #close()},
+     * 链底的关闭会照常结束所在会话. 通用"返回/关闭"按钮用这个.
+     *
+     * @return 返回后的新链顶; 走了关闭路径时以 null 完成
+     */
+    @NotNull CompletableFuture<Window> backOrClose();
+
+    /**
+     * 本 Window 所属的会话.
+     * <p>{@code build()} 后尚未打开时为 null; 经 {@link #open()} 直接打开时成为新链根并在此刻创建会话;
+     * 经 {@link #openNext} 被打开时归属来源所在的会话; 离开链(栈弹出丢弃, 被链外 Window 顶替, 会话结束)后回到 null.
+     *
+     * @return 所属会话, 不属于任何链时为 null
+     */
+    @Nullable
+    WindowSession session();
+
+    /**
+     * 随本 Window 携带的用户对象, 通常是构建它的菜单对象.
+     * <p>库只负责保管, 从不读取其中内容; 引用的寿命与本 Window 在会话中的留存一致,
+     * 因此 STACK 弹出即弃, RETAINED_STACK 与 TREE 保留到会话结束.
+     *
+     * @return 携带的对象, 未设置时为 null
+     */
+    @Nullable
+    Object data();
+
+    /**
+     * 以给定类型读取携带的用户对象.
+     *
+     * @param type 期望类型
+     * @return 携带的对象, 未设置时为 null
+     * @throws ClassCastException 携带对象不是该类型时
+     */
+    @Nullable
+    default <T> T data(@NotNull Class<T> type) {
+        return type.cast(this.data());
+    }
+
+    /**
      * 请求关闭 Window.
      * closeable 只限制玩家主动关闭, 不限制插件命令.
      *
@@ -100,7 +185,6 @@ public interface Window {
      * @param title 新标题
      */
     default void setTitle(@NotNull String title) {
-        //todo 接入 minimessage
         this.setTitle(Component.text(title));
     }
 
@@ -620,6 +704,32 @@ public interface Window {
         @NotNull B setBackOnPlayerClose(boolean backOnPlayerClose);
 
         /**
+         * 设置随 Window 携带的用户对象, 语义见 {@link Window#data()}.
+         *
+         * @param data 携带的对象
+         * @return 此 Builder
+         */
+        @NotNull B setData(@NotNull Object data);
+
+        /**
+         * 设置本 Window 成为链根时新会话的类型, 默认 {@link WindowSession.Kind#STACK}.
+         * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
+         *
+         * @param kind 会话类型
+         * @return 此 Builder
+         */
+        @NotNull B setSessionKind(@NotNull WindowSession.Kind kind);
+
+        /**
+         * 追加一个会话结束处理器: 本 Window 成为链根时装进新会话, 整段交互结束时恰好触发一次.
+         * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
+         *
+         * @param handler 结束处理器, 参数为结束原因
+         * @return 此 Builder
+         */
+        @NotNull B addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> handler);
+
+        /**
          * 设置初始服务器窗口状态.
          *
          * @param windowState 初始状态
@@ -724,5 +834,6 @@ public interface Window {
         default @NotNull CompletableFuture<OpenResult> open(@NotNull Player viewer) {
             return this.build(viewer).open();
         }
+
     }
 }

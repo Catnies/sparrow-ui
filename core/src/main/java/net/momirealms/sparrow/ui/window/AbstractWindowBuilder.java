@@ -38,6 +38,9 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Consumer<InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
     private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
     private boolean backOnPlayerClose;
+    private @Nullable Object data;
+    private WindowSession.Kind sessionKind = WindowSession.Kind.STACK;
+    private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
     private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider = ignoredCursor -> null;
@@ -54,6 +57,9 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.closeHandlers = new ArrayList<>(source.closeHandlers);
         this.outsideClickHandlers = new ArrayList<>(source.outsideClickHandlers);
         this.backOnPlayerClose = source.backOnPlayerClose;
+        this.data = source.data;
+        this.sessionKind = source.sessionKind;
+        this.sessionEndHandlers = new ArrayList<>(source.sessionEndHandlers);
         this.windowState = source.windowState;
         this.windowStateChangeHandlers = new ArrayList<>(source.windowStateChangeHandlers);
         this.cursorVisualizerProvider = source.cursorVisualizerProvider;
@@ -165,6 +171,24 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     @Override
+    public final @NotNull B setData(@NotNull Object data) {
+        this.data = data;
+        return this.self();
+    }
+
+    @Override
+    public final @NotNull B setSessionKind(@NotNull WindowSession.Kind kind) {
+        this.sessionKind = kind;
+        return this.self();
+    }
+
+    @Override
+    public final @NotNull B addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> handler) {
+        this.sessionEndHandlers.add(HandlerList.narrowConsumer(handler));
+        return this.self();
+    }
+
+    @Override
     public final @NotNull B setWindowState(int windowState) {
         this.windowState = windowState;
         return this.self();
@@ -261,6 +285,9 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
                 List.copyOf(this.closeHandlers),
                 List.copyOf(boundOutsideClickHandlers),
                 this.backOnPlayerClose,
+                this.data,
+                this.sessionKind,
+                List.copyOf(this.sessionEndHandlers),
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),
                 this.cursorVisualizerProvider
