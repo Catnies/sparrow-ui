@@ -7,6 +7,8 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.state.MutableSignal;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.window.AnvilWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.Material;
@@ -20,21 +22,26 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 会话里负责捕捉搜索词的那一扇: 只借铁砧的文本框, 不做任何合成.
  *
- * <p>它由 {@link SearchCaptureMenu} 的搜索按钮打开, 因此列表那扇窗成了它的上一扇.
- * 离开的方式有两种, 结果一样:
+ * <p>它由 {@link SearchCaptureMenu} 的搜索按钮打开, 因此列表那扇窗成了它的上一扇. 离开有两条路:
  * <ul>
- *     <li>点结果槽的确认按钮, 也就是 {@link Window#back()};</li>
- *     <li>直接按 ESC. 本窗在 Builder 上开了 {@code setBackOnPlayerClose(true)},
- *         因此玩家主动关闭被理解成返回上一扇, 而不是结束整段会话.</li>
+ *     <li>点结果槽的确认按钮: 把攒下的草稿交给列表筛一次, 再 {@link Window#back()} 回去;</li>
+ *     <li>直接按 ESC: 原样返回, 列表那边的筛选词一个字都不动. 本窗在 Builder 上开了
+ *         {@code setBackOnPlayerClose(true)}, 因此玩家主动关闭被理解成返回上一扇, 而不是结束整段会话.</li>
  * </ul>
  *
+ * <p>输入阶段只往 {@link #draft} 里攒文本, 一次筛选都不做. 这是这个示例特意要演示的分工:
+ * 列表那边的一次 {@link SearchCaptureMenu#query(String)} 要重扫整份 Material 清单, 重算分页,
+ * 再刷新整整三行投影, 跟着击键跑就是每敲一个字白做一遍; 攒草稿只是写一个字段, 顺带让本窗
+ * 单独一格重画. 昂贵的活留到玩家确认时做一次.
+ *
  * <p>会话是 {@link net.momirealms.sparrow.ui.window.WindowSession.Kind#STACK} 型, 返回时这扇窗被弹出并丢引用,
- * 所以下次点搜索按钮进来的是一扇全新构建的铁砧: {@link #enteredWith} 每次都重新捕捉一遍,
- * 玩家可以直接从这一行看出自己进的不是上一次那扇窗.
+ * 所以下次点搜索按钮进来的是一扇全新构建的铁砧, 草稿从当时生效的筛选词重新起头:
+ * {@link #appliedOnEntry} 每次都重新捕捉一遍, 玩家可以直接从这一行看出自己进的不是上一次那扇窗.
  */
 final class SearchCaptureAnvil {
-    private final SearchCaptureMenu browser; // 上一扇携带的浏览菜单本体
-    private final String enteredWith;        // 进入本窗时的筛选词
+    private final SearchCaptureMenu browser;   // 上一扇携带的浏览菜单本体
+    private final String appliedOnEntry;       // 进入本窗时生效的筛选词
+    private final MutableSignal<String> draft; // 客户端最近一次提交的文本, 只驱动结果槽那一格
     private final AnvilWindow window;
 
     /**
@@ -58,9 +65,11 @@ final class SearchCaptureAnvil {
      */
     private SearchCaptureAnvil(@NotNull Player viewer, @NotNull SearchCaptureMenu browser) {
         this.browser = browser;
-        this.enteredWith = browser.input().get();
+        this.appliedOnEntry = browser.query();
+        // 草稿从当前生效的筛选词起头: 一个字都没输就确认, 等于什么都没改
+        this.draft = Signal.of(this.appliedOnEntry);
         this.window = AnvilWindow.builder()
-                .setTitle(Component.text("输入搜索词"))
+                .setTitle(Component.text("输入搜索词", NamedTextColor.DARK_AQUA))
                 .setUpperPane(Pane.builder("##R").addIngredient('R', this.buildConfirmButton()).build())
                 // 输入槽留空, 由 Window 提供内部占位物保持文本框可编辑
                 .setTextFieldAlwaysEnabled(true)
@@ -68,8 +77,8 @@ final class SearchCaptureAnvil {
                 .setResultAlwaysValid(true)
                 // ESC 回到列表, 而不是结束整段会话
                 .setBackOnPlayerClose(true)
-                // 客户端每提交一次文本就直接写进列表那边的搜索状态
-                .addRenameHandler(browser::query)
+                // 客户端每提交一次文本只更新草稿, 不碰列表那边的搜索状态
+                .addRenameHandler(this.draft::set)
                 .build(viewer);
         // 两个输入槽只借客户端的文本框, 不接收玩家放入的物品
         this.window.frozenAt(0, true);
@@ -78,32 +87,34 @@ final class SearchCaptureAnvil {
 
     /**
      * 创建结果槽上的确认按钮.
-     * <p>输入是即时生效的, 因此这个按钮只负责回到列表, 顺便把当前的筛选结果摆出来.
-     * 显示直接挂在上一扇的两个 Signal 上, 玩家每敲一个字它就重新渲染一次.
+     * <p>它是本窗唯一跟着击键重画的东西: 只挂在本窗自己的草稿上, 一次筛选都不触发.
      *
-     * @return 随输入实时更新的按钮 Item
+     * @return 随草稿更新的按钮 Item
      */
     @NotNull
     private Item buildConfirmButton() {
         return Item.builder()
-                .dependsOn(this.browser.input(), this.browser.resultCount())
+                .dependsOn(this.draft)
                 .setItemProvider(ignoredContext -> {
-                    String query = this.browser.input().get();
-                    ItemStack itemStack = new ItemStack(Material.ARROW);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("回到列表", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                    String draft = this.draft.get().strip();
+                    ItemStack itemStack = new ItemStack(Material.LIME_DYE);
+                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("确认搜索", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
                     itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
-                            Component.text("输入即时生效，回去就能看到结果。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                            Component.text("确认之后才真正筛选一次。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
-                            Component.text("生效筛选词: ", NamedTextColor.GRAY).append(Component.text(query.isEmpty() ? "未筛选" : query, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
-                            Component.text("命中数: ", NamedTextColor.GRAY).append(Component.text(Integer.toString(this.browser.resultCount().get()), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
-                            Component.text("进入本窗时: ", NamedTextColor.GRAY).append(Component.text(this.enteredWith.isEmpty() ? "未筛选" : this.enteredWith, NamedTextColor.DARK_AQUA)).decoration(TextDecoration.ITALIC, false),
+                            Component.text("将要搜索: ", NamedTextColor.GRAY).append(Component.text(draft.isEmpty() ? "全部" : draft, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
+                            Component.text("进入本窗时: ", NamedTextColor.GRAY).append(Component.text(this.appliedOnEntry.isEmpty() ? "未筛选" : this.appliedOnEntry, NamedTextColor.DARK_AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
-                            Component.text("点击返回列表", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false),
-                            Component.text("按 ESC 同样返回列表", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
+                            Component.text("点击应用并返回列表", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false),
+                            Component.text("按 ESC 放弃本次输入", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
                     )));
                     return itemStack;
                 })
-                .addClickHandler(click -> click.window().back())
+                .addClickHandler(click -> {
+                    // 整段交互里唯一一次筛选就在这里
+                    this.browser.query(this.draft.get());
+                    click.window().back();
+                })
                 .build();
     }
 }

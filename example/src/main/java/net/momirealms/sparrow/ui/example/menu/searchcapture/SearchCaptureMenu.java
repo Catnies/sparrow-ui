@@ -37,7 +37,8 @@ import java.util.concurrent.CompletableFuture;
  * <ol>
  *     <li>本菜单是根窗: 上三行显示当前页的 Material, 第四行放翻页, 搜索, 状态和关闭.</li>
  *     <li>点搜索按钮时 {@link SearchCaptureAnvil} 作为下一扇打开, 玩家在铁砧文本框里输入.</li>
- *     <li>铁砧按 ESC 或点确认都回到本菜单, 本菜单以原实例重新打开, 页码和搜索词都还在.</li>
+ *     <li>铁砧上点确认才把输入交回来筛一次, 按 ESC 则原样返回; 两条路都回到本菜单原实例,
+ *         页码和搜索词都还在.</li>
  * </ol>
  *
  * <p>会话相关的三处声明都写在下面的构造器里:
@@ -233,7 +234,7 @@ public final class SearchCaptureMenu {
                     ItemStack itemStack = new ItemStack(Material.COMPASS);
                     itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("搜索结果", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
                     itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
-                            Component.text("从铁砧界面回来时筛选词已经生效。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                            Component.text("在铁砧界面确认之后筛选词才会变。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("筛选词: ", NamedTextColor.GRAY).append(Component.text(query.isEmpty() ? "未筛选" : query, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.text("结果数: ", NamedTextColor.GRAY).append(Component.text(Integer.toString(this.resultCount.get()), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -270,32 +271,23 @@ public final class SearchCaptureMenu {
     }
 
     /**
-     * 当前搜索词的状态.
-     * <p>铁砧那扇窗依赖它来刷新自己的显示: 跨窗共享状态不必经过会话, 借一个 Signal 就够了.
+     * 当前生效的搜索词.
      *
      * @return 已整理过的搜索词, 未筛选时为空字符串
      */
     @NotNull
-    Signal<String> input() {
-        return this.input;
+    String query() {
+        return this.input.get();
     }
 
     /**
-     * 当前搜索词命中的 Material 数量的状态.
-     *
-     * @return 命中数量
-     */
-    @NotNull
-    Signal<Integer> resultCount() {
-        return this.resultCount;
-    }
-
-    /**
-     * 接收铁砧那边捕捉到的文本并更新搜索词.
+     * 应用一次新的搜索词.
      * <p>首尾空白会被忽略, 大小写也不会影响匹配.
      * 当有效搜索词改变时回到第一页, 避免旧页码在更短的新结果中指向页尾之外.
+     * <p>这一步要重扫整份 Material 清单并重算分页, 因此只在玩家确认时调用一次,
+     * 而不是跟着铁砧的每一次击键跑.
      *
-     * @param query 铁砧客户端提交的完整输入文本
+     * @param query 要应用的搜索文本
      */
     void query(@NotNull String query) {
         // 空字符串和纯空白都会整理成空搜索词, 对应显示全部 Material
