@@ -2,18 +2,12 @@ package net.momirealms.sparrow.ui.item.provider;
 
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.Map;
-import java.util.WeakHashMap;
-import java.util.function.Supplier;
 
 public final class RenderContext {
     private final Player player;  // 查看者, 取自所属 Window
     private final Window window;  // 所属 Window
     private final int windowSlot; // 最终槽位编号; -1 表示客户端光标
-    private Map<Object, Object> data; // 弱引用自定义数据
 
     /**
      * 为 Window 的最终槽位创建稳定的渲染上下文.
@@ -89,15 +83,5 @@ public final class RenderContext {
      */
     public boolean isCursor() {
         return this.windowSlot == -1;
-    }
-
-    @NotNull
-    @ApiStatus.Internal
-    @SuppressWarnings("unchecked")
-    public <T> T rendererState(@NotNull Object key, @NotNull Supplier<? extends T> factory) {
-        if (this.data == null) {
-            this.data = new WeakHashMap<>(4);
-        }
-        return (T) this.data.computeIfAbsent(key, ignoredKey -> factory.get());
     }
 }

@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-final class ItemWrapper implements ItemProvider {
+final class ItemWrapper implements ImmediateItemProvider {
     private final ItemStack template;
 
     /**
@@ -16,8 +16,9 @@ final class ItemWrapper implements ItemProvider {
         this.template = ItemUtils.copyOrEmpty(template);
     }
 
+    @NotNull
     @Override
-    public ItemStack provide(@NotNull RenderContext context) {
+    public ItemStack provideImmediately(@NotNull RenderContext context) {
         return this.template;
     }
 }

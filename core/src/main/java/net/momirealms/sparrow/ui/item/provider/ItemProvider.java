@@ -2,19 +2,38 @@ package net.momirealms.sparrow.ui.item.provider;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 @FunctionalInterface
 public interface ItemProvider {
-    ItemProvider EMPTY = ignoredContext -> ItemUtils.copyOrEmpty(null);
+    ItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemUtils.copyOrEmpty(null));
 
     /**
-     * 渲染本次要显示的物品.
+     * 发起本次要显示物品的计算.
      * <p><strong>不得改动 Window、Pane、Inventory, 也不得额外请求刷新或同步.</strong>
+     * <p>Future 及其成功结果都不得为 {@code null}; 空槽使用 {@link ItemStack#empty()}.
      *
      * @param context 当前渲染上下文
-     * @return 本次渲染要显示的物品
+     * @return 本次渲染最终结果的 Future
      */
-    ItemStack provide(RenderContext context);
+    @NotNull
+    CompletableFuture<? extends ItemStack> provide(RenderContext context);
+
+    /**
+     * 创建在调用线程立即完成的同步提供器.
+     *
+     * @param renderer 同步渲染函数
+     * @return 同步提供器
+     */
+    @NotNull
+    static ItemProvider sync(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
+        Objects.requireNonNull(renderer, "renderer");
+        return (ImmediateItemProvider) renderer::apply;
+    }
 
     /**
      * 基于固定物品的渲染器.
@@ -22,7 +41,8 @@ public interface ItemProvider {
      * @param template 模板物品堆
      * @return 提供器
      */
-    static ItemProvider constant(ItemStack template) {
-        return new ItemWrapper(template);
+    @NotNull
+    static ItemProvider constant(@NotNull ItemStack template) {
+        return new ItemWrapper(Objects.requireNonNull(template, "template"));
     }
 }
