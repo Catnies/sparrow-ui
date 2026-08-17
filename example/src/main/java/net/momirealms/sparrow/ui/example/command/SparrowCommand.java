@@ -6,7 +6,9 @@ import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.momirealms.sparrow.ui.example.SparrowExample;
 import net.momirealms.sparrow.ui.example.menu.cartographycarousel.CartographyCarouselCommand;
+import net.momirealms.sparrow.ui.example.menu.searchcapture.SearchCaptureCommand;
 import net.momirealms.sparrow.ui.example.menu.searchpage.SearchPageCommand;
+import net.momirealms.sparrow.ui.example.menu.skilltree.SkillTreeCommand;
 import org.jetbrains.annotations.NotNull;
 
 public final class SparrowCommand {
@@ -27,6 +29,8 @@ public final class SparrowCommand {
                 .requires(source -> source.getSender().hasPermission(PERMISSION))
                 .then(Commands.literal("open")
                         .then(SearchPageCommand.node())
+                        .then(SearchCaptureCommand.node())
+                        .then(SkillTreeCommand.node())
                         .then(CartographyCarouselCommand.node()))
                 .build();
     }

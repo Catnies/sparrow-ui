@@ -423,8 +423,6 @@ public final class ItemBuilder {
         default void onAttached() {
         }
 
-
-
         // 固定不变的显示来源
         record FixedDisplaySource(@NotNull ItemProvider provider) implements DisplaySource {
             public FixedDisplaySource {
