@@ -117,7 +117,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile boolean open;      // Window 是否处于打开状态
     private volatile boolean closeable; // 是否接受客户端主动关闭
     private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
-    private volatile @Nullable WindowSessionImpl session; // 所属会话, 不在任何链上时为 null
+    private volatile @Nullable AbstractWindowSession session; // 所属会话, 不在任何链上时为 null
     private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
     private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
     private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
@@ -305,6 +305,17 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public WindowSession session() {
         return this.session;
+    }
+
+    // 所属会话的实现视图, 供库内判定链内交接与关闭去向.
+    @Nullable
+    AbstractWindowSession sessionImpl() {
+        return this.session;
+    }
+
+    // 更新会话归属, 由会话在玩家实体线程写入.
+    void session(@Nullable AbstractWindowSession session) {
+        this.session = session;
     }
 
     @Nullable

@@ -18,7 +18,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -39,7 +38,6 @@ public final class WindowManager implements Listener {
     private final BukkitInventoryBridge bukkitBridge;
     private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
     private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>();
-    private final Map<UUID, WindowSessionImpl> sessions = new ConcurrentHashMap<>(); // 链顶正是玩家活动 Window 的会话
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();
     private final AtomicLong generations = new AtomicLong();
     private final AtomicBoolean shutdown = new AtomicBoolean();
@@ -95,7 +93,7 @@ public final class WindowManager implements Listener {
      * @param window 要打开的 Window
      * @param navigating 发起本次打开的会话, 链外打开为 null
      */
-    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable WindowSessionImpl navigating) {
+    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession navigating) {
         if (this.shutdown.get()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -108,11 +106,11 @@ public final class WindowManager implements Listener {
         }
 
         // 顶替的是别的链顶就是链外打开, 本次导航自己的链顶属链内交接, 会话不结束
-        WindowSessionImpl displaced = this.sessions.get(viewer.getUniqueId());
+        AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
+        AbstractWindowSession displaced = previous == null ? null : previous.sessionImpl();
         if (displaced == navigating) {
             displaced = null;
         }
-        AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         boolean replaceWindow = previous != null && previous != window;
         try {
             window.openOnViewerEntity(this.generations.getAndIncrement(), replaceWindow);
@@ -133,9 +131,13 @@ public final class WindowManager implements Listener {
             window.closeOnViewerEntity(InventoryCloseEvent.Reason.PLUGIN);
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
-        // 链顶已随本次打开一并关闭, 会话只做自身收尾
+        // 被顶掉的链顶已随本次打开一并关闭, 会话只做自身收尾
         if (displaced != null) {
             displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
+        }
+        // 链外打开的窗成为新链根, 会话在此刻诞生
+        if (navigating == null) {
+            window.session(AbstractWindowSession.create(this, window));
         }
         window.fireOpenHandlers();
         return Window.OpenResult.OPENED;
@@ -146,33 +148,15 @@ public final class WindowManager implements Listener {
      *
      * @param window 要打开的 Window
      * @param session 发起本次打开的会话
-     * @return 打开结果
+     * @return 打开流程执行成功时返回 true
      */
-    Window.OpenResult openInSession(AbstractWindow<?> window, WindowSessionImpl session) {
-        return this.openNow(window, session);
-    }
-
-    /**
-     * 公布会话为该玩家当前占用活动 Window 的那一个.
-     *
-     * @param session 已经打开了链顶的会话
-     */
-    void publishSession(WindowSessionImpl session) {
-        this.sessions.put(session.viewer().getUniqueId(), session);
-    }
-
-    /**
-     * 撤下会话, 之后它不再参与链外打开与关闭去向的判定.
-     *
-     * @param session 已经结束的会话
-     */
-    void unpublishSession(WindowSessionImpl session) {
-        this.sessions.remove(session.viewer().getUniqueId(), session);
+    boolean openInSession(AbstractWindow<?> window, AbstractWindowSession session) {
+        return this.openNow(window, session) == Window.OpenResult.OPENED;
     }
 
     /**
      * 请求从一个已经打开的 Window 出发打开下一扇 Window.
-     * source 在会话里就加入那条链, 不在就与它组成一条新链, 因此新窗口总是可以返回 source.
+     * source 是链顶就沿它的会话推进, 不是就先让 source 成为新链根, 因此新窗口总是可以返回 source.
      *
      * @param source 来源 Window
      * @param next 要打开的下一扇 Window
@@ -182,22 +166,20 @@ public final class WindowManager implements Listener {
     CompletableFuture<Window> openNext(AbstractWindow<?> source, AbstractWindow<?> next) {
         return this.submit(
                 next.viewer(),
-                () -> this.openNextNow(source, next) == WindowSession.NavigationResult.OPENED ? next : null,
+                () -> this.openNextNow(source, next) ? next : null,
                 () -> null
         );
     }
 
     // 在玩家实体线程解析来源所属的会话, 必要时新起一条链.
-    private WindowSession.NavigationResult openNextNow(AbstractWindow<?> source, AbstractWindow<?> next) {
-        WindowSessionImpl session = this.sessions.get(source.viewer().getUniqueId());
+    private boolean openNextNow(AbstractWindow<?> source, AbstractWindow<?> next) {
+        AbstractWindowSession session = source.sessionImpl();
         if (session != null && session.currentWindow() == source) {
-            return session.openNow(next);
+            return session.openNextNow(next);
         }
 
-        // source 不在任何链上就让它当链底, 新会话在首次打开时才公布, 旧会话因此照常按链外打开结束
-        WindowSessionImpl started = new WindowSessionImpl(this, source.viewer(), List.of());
-        started.advanceTo(source);
-        return started.openNow(next);
+        // source 不在任何链上就让它当链根; 旧会话在 openNow 里照常按链外打开结束
+        return AbstractWindowSession.create(this, source).openNextNow(next);
     }
 
     /**
@@ -261,7 +243,7 @@ public final class WindowManager implements Listener {
      * @param reason 关闭原因
      */
     private void afterChainTopClosed(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
-        WindowSessionImpl session = this.sessions.get(window.viewer().getUniqueId());
+        AbstractWindowSession session = window.sessionImpl();
         if (session == null || session.currentWindow() != window) {
             return;
         }
@@ -287,10 +269,10 @@ public final class WindowManager implements Listener {
     // 会话链顶有来源时返回上一层; 其余情况(链底, 不在会话里)按 closeAtRoot 决定关闭还是不做任何事.
     @Nullable
     private Window backNow(AbstractWindow<?> window, boolean closeAtRoot) {
-        WindowSessionImpl session = this.sessions.get(window.viewer().getUniqueId());
+        AbstractWindowSession session = window.sessionImpl();
         if (session != null && session.currentWindow() == window) {
             AbstractWindow<?> source = session.sourceWindow();
-            if (source != null && session.backNow() == WindowSession.NavigationResult.OPENED) {
+            if (source != null && session.backNow()) {
                 return source;
             }
         }
@@ -471,11 +453,6 @@ public final class WindowManager implements Listener {
     // 正常断线应已由 InventoryCloseEvent 清理 Window, 若此处仍有打开 Window, 只本地注销并警告 handler 未执行.
     private void retire(UUID playerId, Player player, PlayerCommandLane lane) {
         this.lanes.remove(playerId, lane);
-        WindowSessionImpl session = this.sessions.get(playerId);
-        if (session != null && session.viewer() == player && this.sessions.remove(playerId, session)) {
-            // 已经没有可用的实体线程, 只回收本地状态, 不触发结束处理器
-            session.retire();
-        }
         AbstractWindow<?> window = this.active.get(playerId);
         if (window == null
                 || window.viewer() != player
@@ -483,6 +460,11 @@ public final class WindowManager implements Listener {
             return;
         }
 
+        AbstractWindowSession session = window.sessionImpl();
+        if (session != null) {
+            // 已经没有可用的实体线程, 只回收本地状态, 不触发结束处理器
+            session.retire();
+        }
         boolean wasOpen = window.retireSession();
         if (!wasOpen) {
             return;
@@ -501,14 +483,17 @@ public final class WindowManager implements Listener {
             return;
         }
         // 先结束会话再逐个关闭 Window, 关闭流程因此不会再进入会话决策
-        for (WindowSessionImpl session : Set.copyOf(this.sessions.values())) {
+        for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
+            AbstractWindowSession session = window.sessionImpl();
+            if (session == null) {
+                continue;
+            }
             try {
                 session.endNow(InventoryCloseEvent.Reason.PLUGIN, false);
             } catch (RuntimeException | Error throwable) {
                 this.report("Failed to end Window session during shutdown", throwable);
             }
         }
-        this.sessions.clear();
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
             try {
                 this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);

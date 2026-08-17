@@ -14,32 +14,19 @@ import java.util.function.Consumer;
 
 /**
  * 一名玩家从进入到离开一整段多 Window 交互的会话.
- * <p>会话内经 {@link #open} 打开的 Window 构成会话链, 链底是最早打开的, 链顶是当前显示的.
- * 链内跳转与返回不触发结束处理器, 只有整段交互结束时结束处理器才恰好触发一次.
+ * <p>会话随链根的打开而诞生: {@link Window#open()} 直接打开的窗成为新链根并创建会话,
+ * {@link Window#openNext} 打开的窗归属来源所在的会话.
+ * <p>链内跳转与返回不触发会话结束处理器, 只有整段交互结束时会话结束处理器才恰好触发一次.
  */
 public interface WindowSession {
 
     /**
-     * 在会话内打开 Window 并把它压为链顶, 旧链顶保持存活地退到链下, 供 {@link #back()} 返回.
-     * <p>window 已在链中时不再新增层级, 而是把链截断回该 Window 并请求重新打开它.
-     * <p>会话内的窗口一律经本方法或 {@link Window#openNext} 打开, 直接调用 {@link Window#open()}
-     * 会被判为链外打开并结束会话.
+     * 会话的类型, 取自链根 Builder 的 {@link Window.Builder#setSessionKind} 声明.
      *
-     * @param window 要打开的 Window
-     * @return 导航请求的执行结果
-     * @throws IllegalArgumentException window 的查看者与会话玩家不一致时
+     * @return 会话类型
      */
     @NotNull
-    CompletableFuture<NavigationResult> open(@NotNull Window window);
-
-    /**
-     * 返回上一层: 关闭链顶并重新打开它的来源 Window, 来源菜单内状态原样保留.
-     * <p>链上没有来源 Window 时不做任何事并以 {@link NavigationResult#AT_ROOT} 完成.
-     *
-     * @return 导航请求的执行结果
-     */
-    @NotNull
-    CompletableFuture<NavigationResult> back();
+    Kind kind();
 
     /**
      * 结束会话: 关闭当前链顶, 以 {@link InventoryCloseEvent.Reason#PLUGIN} 触发结束处理器, 清空会话链.
@@ -101,15 +88,17 @@ public interface WindowSession {
     Player viewer();
 
     /**
-     * 当前链顶 Window.
+     * 当前链顶 Window, 会话已结束时为 null.
      *
-     * @return 链顶 Window, 尚未打开过任何窗口或会话已结束时为 null
+     * @return 链顶 Window.
      */
     @Nullable
     Window current();
 
     /**
-     * 会话链快照, 从链底到链顶.
+     * 当前路径快照, 从链根到链顶.
+     * <p>STACK 与 RETAINED_STACK 是活动栈(不含已弹出或保留区中的窗);
+     * TREE 是根到当前位置的路径(不含其他枝上的成员). 同一实例在环形栈中可出现多次.
      *
      * @return 不可变的 Window 列表
      */
@@ -117,21 +106,18 @@ public interface WindowSession {
     @NotNull List<Window> chain();
 
     /**
+     * 当前位置上面是否还有来源可回, 即 {@link Window#back()} 会不会发生返回.
+     *
+     * @return 有来源可回时返回 true
+     */
+    boolean hasBack();
+
+    /**
      * 会话是否尚未结束.
      *
      * @return 尚未结束时返回 true
      */
     boolean active();
-
-    /**
-     * 导航请求的执行结果.
-     */
-    enum NavigationResult {
-        OPENED,             // 目标 Window 的打开流程已在服务端执行.
-        AT_ROOT,            // back 时链上没有来源 Window, 未做任何事.
-        SESSION_ENDED,      // 会话已结束, 未做任何事.
-        VIEWER_UNAVAILABLE  // 玩家不可用.
-    }
 
     /**
      * 结束请求的执行结果.
@@ -159,12 +145,8 @@ public interface WindowSession {
         /**
          * 树. {@link Window#openNext} 查重: 目标已在树中时当前位置直接移过去并以原实例重新打开,
          * 不在时成为当前节点的新孩子; {@link Window#back()} 回到父节点且不丢弃任何成员.
-         * 步入过的 Window 全部保留到会话结束, 适合重新加载昂贵的菜单.
+         * 步入过的 Window 全部保留到会话结束.
          */
         TREE
     }
-
-    /**
-     * 可重复使用的会话 Builder.
-     */
 }
