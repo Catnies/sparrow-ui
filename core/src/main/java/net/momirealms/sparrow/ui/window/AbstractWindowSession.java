@@ -36,11 +36,11 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 按链根的声明创建会话并把根收为第一个成员. 只在玩家实体线程调用.
+     * 按根窗的声明创建会话并把根收为第一个成员. 只在玩家实体线程调用.
      *
      * @param manager Window 管理器
-     * @param root 已经打开的链根
-     * @return 新会话, 类型与结束处理器取自链根的 Builder 声明
+     * @param root 已经打开的根窗
+     * @return 新会话, 类型与结束处理器取自根窗的 Builder 声明
      */
     @NotNull
     static AbstractWindowSession create(@NotNull WindowManager manager, @NotNull AbstractWindow<?> root) {
@@ -54,9 +54,9 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 把已经打开的链根收为第一个成员.
+     * 把已经打开的根窗收为第一个成员.
      *
-     * @param root 已经打开的链根
+     * @param root 已经打开的根窗
      */
     void adoptRoot(@NotNull AbstractWindow<?> root) {
         this.stepInto(root);
@@ -85,7 +85,7 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 在玩家实体线程回到上一层, 来源以原实例重新打开.
+     * 在玩家实体线程回到上一扇, 上一扇以原实例重新打开.
      *
      * @return 发生了返回时返回 true
      */
@@ -93,7 +93,7 @@ abstract class AbstractWindowSession implements WindowSession {
         if (!this.active) {
             return false;
         }
-        AbstractWindow<?> source = this.sourceWindow();
+        AbstractWindow<?> source = this.previousWindow();
         if (source == null || !this.manager.openInSession(source, this)) {
             return false;
         }
@@ -116,10 +116,10 @@ abstract class AbstractWindowSession implements WindowSession {
 
     /**
      * 在玩家实体线程结束会话.
-     * 先迁移状态再关闭链顶, 因此链顶关闭不会重新进入本会话的决策; 结束处理器最后触发.
+     * 先迁移状态再关闭当前窗, 因此当前窗关闭不会重新进入本会话的决策; 结束处理器最后触发.
      *
      * @param reason 结束原因
-     * @param closeCurrent 是否需要由本次结束关闭链顶
+     * @param closeCurrent 是否需要由本次结束关闭当前窗
      * @return 结束结果
      */
     final EndResult endNow(@NotNull InventoryCloseEvent.Reason reason, boolean closeCurrent) {
@@ -142,10 +142,10 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 链顶关闭之后决定去向: 玩家主动关闭且该窗口要求返回时回到来源, 其余情况会话以该原因结束.
-     * <p>返回不成立时按结束处理, 会话不会停在一个已经关闭的链顶上.
+     * 当前窗关闭之后决定去向: 玩家主动关闭且该窗口要求返回时回到上一扇, 其余情况会话以该原因结束.
+     * <p>返回不成立时按结束处理, 会话不会停在一个已经关闭的当前窗上.
      *
-     * @param window 刚刚关闭的链顶
+     * @param window 刚刚关闭的当前窗
      * @param reason 关闭原因
      */
     void onChainTopClosed(@NotNull AbstractWindow<?> window, @NotNull InventoryCloseEvent.Reason reason) {
@@ -192,7 +192,7 @@ abstract class AbstractWindowSession implements WindowSession {
     abstract void stepInto(@NotNull AbstractWindow<?> next);
 
     /**
-     * 从当前位置返回上一层.
+     * 从当前位置返回上一扇.
      */
     abstract void stepBack();
 
@@ -207,15 +207,15 @@ abstract class AbstractWindowSession implements WindowSession {
     /**
      * 当前位置的上一层, 即 {@link #backNow()} 要回到的那一层.
      *
-     * @return 来源 Window, 当前位置已是链根时为 null.
+     * @return 上一扇 Window, 当前位置已是根窗时为 null.
      */
     @Nullable
-    abstract AbstractWindow<?> sourceWindow();
+    abstract AbstractWindow<?> previousWindow();
 
     /**
-     * 返回链根到当前位置的路径.
+     * 返回根窗到当前位置的路径.
      *
-     * @return 当前路径, 链根在前
+     * @return 当前路径, 根窗在前
      */
     @NotNull
     abstract List<Window> currentPath();

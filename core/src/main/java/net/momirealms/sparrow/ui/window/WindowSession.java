@@ -14,14 +14,14 @@ import java.util.function.Consumer;
 
 /**
  * 一名玩家从进入到离开一整段多 Window 交互的会话.
- * <p>会话随链根的打开而诞生: {@link Window#open()} 直接打开的窗成为新链根并创建会话,
- * {@link Window#openNext} 打开的窗归属来源所在的会话.
- * <p>链内跳转与返回不触发会话结束处理器, 只有整段交互结束时会话结束处理器才恰好触发一次.
+ * <p>会话随根窗的打开而诞生: {@link Window#open()} 直接打开的窗成为新根窗并创建会话,
+ * {@link Window#openNext} 打开的窗归属上一扇所在的会话.
+ * <p>会话内跳转与返回不触发会话结束处理器, 只有整段交互结束时会话结束处理器才恰好触发一次.
  */
 public interface WindowSession {
 
     /**
-     * 会话的类型, 取自链根 Builder 的 {@link Window.Builder#setSessionKind} 声明.
+     * 会话的类型, 取自根窗 Builder 的 {@link Window.Builder#setSessionKind} 声明.
      *
      * @return 会话类型
      */
@@ -29,7 +29,7 @@ public interface WindowSession {
     Kind kind();
 
     /**
-     * 结束会话: 关闭当前链顶, 以 {@link InventoryCloseEvent.Reason#PLUGIN} 触发结束处理器, 清空会话链.
+     * 结束会话: 关闭当前当前窗, 以 {@link InventoryCloseEvent.Reason#PLUGIN} 触发结束处理器, 清空全部成员.
      * 重复调用无事发生.
      *
      * @return 结束请求的执行结果
@@ -64,9 +64,9 @@ public interface WindowSession {
     @NotNull List<Consumer<InventoryCloseEvent.Reason>> getEndHandlers();
 
     /**
-     * 在现有结束处理器末尾追加一个处理器, 它在整段交互结束时恰好触发一次, 链内跳转与返回绝不触发.
+     * 在现有结束处理器末尾追加一个处理器, 它在整段交互结束时恰好触发一次, 会话内跳转与返回绝不触发.
      * <p>参数为结束原因, 与 Bukkit 关闭原因同一套枚举: PLAYER 表示玩家主动离开, DISCONNECT 表示断线,
-     * PLUGIN 表示插件结束(含 {@link #end()}), OPEN_NEW 表示链外 Window 顶替.
+     * PLUGIN 表示插件结束(含 {@link #end()}), OPEN_NEW 表示会话外 Window 顶替.
      *
      * @param endHandler 结束处理器
      */
@@ -88,15 +88,15 @@ public interface WindowSession {
     Player viewer();
 
     /**
-     * 当前链顶 Window, 会话已结束时为 null.
+     * 当前当前窗 Window, 会话已结束时为 null.
      *
-     * @return 链顶 Window.
+     * @return 当前窗 Window.
      */
     @Nullable
     Window current();
 
     /**
-     * 当前路径快照, 从链根到链顶.
+     * 当前路径快照, 从根窗到当前窗.
      * <p>STACK 与 RETAINED_STACK 是活动栈(不含已弹出或保留区中的窗);
      * TREE 是根到当前位置的路径(不含其他枝上的成员). 同一实例在环形栈中可出现多次.
      *
@@ -106,9 +106,9 @@ public interface WindowSession {
     @NotNull List<Window> chain();
 
     /**
-     * 当前位置上面是否还有来源可回, 即 {@link Window#back()} 会不会发生返回.
+     * 当前位置上面是否还有上一扇可回, 即 {@link Window#back()} 会不会发生返回.
      *
-     * @return 有来源可回时返回 true
+     * @return 有上一扇可回时返回 true
      */
     boolean hasBack();
 
@@ -128,7 +128,7 @@ public interface WindowSession {
     }
 
     /**
-     * 会话的类型, 由根窗 Builder 的 {@link Window.Builder#setSessionKind} 声明, 决定链的结构与离场处置.
+     * 会话的类型, 由根窗 Builder 的 {@link Window.Builder#setSessionKind} 声明, 决定成员结构与离场处置.
      */
     enum Kind {
         /**

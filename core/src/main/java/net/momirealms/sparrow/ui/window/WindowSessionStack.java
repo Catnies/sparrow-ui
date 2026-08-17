@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * 回退弹出栈顶, 栈中不再出现该实例时丢弃对它的引用.
  */
 class WindowSessionStack extends AbstractWindowSession {
-    private final List<Window> stack = new ArrayList<>(); // 链根到栈顶, 只在玩家实体线程修改
+    private final List<Window> stack = new ArrayList<>(); // 根窗到栈顶, 只在玩家实体线程修改
 
     WindowSessionStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
         super(manager, viewer, endHandlers);
@@ -58,7 +58,7 @@ class WindowSessionStack extends AbstractWindowSession {
 
     @Nullable
     @Override
-    AbstractWindow<?> sourceWindow() {
+    AbstractWindow<?> previousWindow() {
         return this.stack.size() < 2 ? null : (AbstractWindow<?>) this.stack.get(this.stack.size() - 2);
     }
 

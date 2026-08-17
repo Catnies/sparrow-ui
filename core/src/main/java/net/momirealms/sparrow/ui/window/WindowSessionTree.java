@@ -17,7 +17,7 @@ import java.util.function.Consumer;
  */
 final class WindowSessionTree extends AbstractWindowSession {
     private @Nullable Node root;   // 第一次步入的成员成为树根
-    private @Nullable Node cursor; // 当前位置, 恒指向链顶
+    private @Nullable Node cursor; // 当前位置, 恒指向当前窗
 
     WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
         super(manager, viewer, endHandlers);
@@ -59,7 +59,7 @@ final class WindowSessionTree extends AbstractWindowSession {
 
     @Nullable
     @Override
-    AbstractWindow<?> sourceWindow() {
+    AbstractWindow<?> previousWindow() {
         return this.cursor == null || this.cursor.parent == null ? null : this.cursor.parent.window;
     }
 
@@ -106,7 +106,7 @@ final class WindowSessionTree extends AbstractWindowSession {
         }
     }
 
-    // 树上的一次步入, 窗与它的来源关系.
+    // 树上的一次步入, 窗与它的上一扇的关系.
     private static final class Node {
         private final AbstractWindow<?> window;
         private final @Nullable Node parent;

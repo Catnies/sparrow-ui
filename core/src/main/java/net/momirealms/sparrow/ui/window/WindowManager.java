@@ -91,7 +91,7 @@ public final class WindowManager implements Listener {
      * 先完成新窗口初始化再发布 active 映射, 随后才关闭被替换的旧窗口.
      *
      * @param window 要打开的 Window
-     * @param navigating 发起本次打开的会话, 链外打开为 null
+     * @param navigating 发起本次打开的会话, 会话外打开为 null
      */
     private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession navigating) {
         if (this.shutdown.get()) {
@@ -105,7 +105,7 @@ public final class WindowManager implements Listener {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
-        // 顶替的是别的链顶就是链外打开, 本次导航自己的链顶属链内交接, 会话不结束
+        // 顶替的是别的当前窗就是会话外打开, 本次导航自己的当前窗属会话内交接, 会话不结束
         AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         AbstractWindowSession displaced = previous == null ? null : previous.sessionImpl();
         if (displaced == navigating) {
@@ -131,11 +131,11 @@ public final class WindowManager implements Listener {
             window.closeOnViewerEntity(InventoryCloseEvent.Reason.PLUGIN);
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
-        // 被顶掉的链顶已随本次打开一并关闭, 会话只做自身收尾
+        // 被顶掉的当前窗已随本次打开一并关闭, 会话只做自身收尾
         if (displaced != null) {
             displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
         }
-        // 链外打开的窗成为新链根, 会话在此刻诞生
+        // 会话外打开的窗成为新根窗, 会话在此刻诞生
         if (navigating == null) {
             window.session(AbstractWindowSession.create(this, window));
         }
@@ -156,9 +156,9 @@ public final class WindowManager implements Listener {
 
     /**
      * 请求从一个已经打开的 Window 出发打开下一扇 Window.
-     * source 是链顶就沿它的会话推进, 不是就先让 source 成为新链根, 因此新窗口总是可以返回 source.
+     * source 是当前窗就沿它的会话推进, 不是就先让 source 成为新根窗, 因此新窗口总是可以返回 source.
      *
-     * @param source 来源 Window
+     * @param source 上一扇 Window
      * @param next 要打开的下一扇 Window
      * @return 打开后的 Window, 打不开时为 null
      */
@@ -171,14 +171,14 @@ public final class WindowManager implements Listener {
         );
     }
 
-    // 在玩家实体线程解析来源所属的会话, 必要时新起一条链.
+    // 在玩家实体线程解析出发窗所属的会话, 必要时新起一段会话.
     private boolean openNextNow(AbstractWindow<?> source, AbstractWindow<?> next) {
         AbstractWindowSession session = source.sessionImpl();
         if (session != null && session.currentWindow() == source) {
             return session.openNextNow(next);
         }
 
-        // source 不在任何链上就让它当链根; 旧会话在 openNow 里照常按链外打开结束
+        // source 不在任何会话中就让它当根窗; 旧会话在 openNow 里照常按会话外打开结束
         return AbstractWindowSession.create(this, source).openNextNow(next);
     }
 
@@ -235,8 +235,8 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 链顶关闭之后由会话决定去向, 玩家主动关闭且该窗口要求返回时回到来源, 其余情况会话以该原因结束.
-     * <p>只有正占用玩家活动窗口的会话参与决策, 因此链下窗口的关闭与会话自身发起的结束都不会进入这里.
+     * 当前窗关闭之后由会话决定去向, 玩家主动关闭且该窗口要求返回时回到上一扇, 其余情况会话以该原因结束.
+     * <p>只有正占用玩家活动窗口的会话参与决策, 因此当前窗之外成员的关闭与会话自身发起的结束都不会进入这里.
      * 返回与结束都发生在关闭流程内, 与关闭本身同处一条命令.
      *
      * @param window 刚刚关闭的 Window
@@ -251,11 +251,11 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 请求回到会话的上一层.
+     * 请求回到上一扇.
      *
      * @param window 要离开的 Window
      * @param closeAtRoot 没有上一层可回时是否改为关闭该 Window
-     * @return 返回后的新链顶, 没有发生返回时为 null
+     * @return 返回后的新当前窗, 没有发生返回时为 null
      */
     @NotNull
     CompletableFuture<Window> back(AbstractWindow<?> window, boolean closeAtRoot) {
@@ -266,12 +266,12 @@ public final class WindowManager implements Listener {
         );
     }
 
-    // 会话链顶有来源时返回上一层; 其余情况(链底, 不在会话里)按 closeAtRoot 决定关闭还是不做任何事.
+    // 会话当前窗有上一扇时返回; 其余情况(根窗, 不在会话里)按 closeAtRoot 决定关闭还是不做任何事.
     @Nullable
     private Window backNow(AbstractWindow<?> window, boolean closeAtRoot) {
         AbstractWindowSession session = window.sessionImpl();
         if (session != null && session.currentWindow() == window) {
-            AbstractWindow<?> source = session.sourceWindow();
+            AbstractWindow<?> source = session.previousWindow();
             if (source != null && session.backNow()) {
                 return source;
             }

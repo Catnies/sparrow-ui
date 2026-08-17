@@ -73,8 +73,9 @@ public interface Window {
     @NotNull CompletableFuture<OpenResult> open();
 
     /**
-     * 从本 Window 打开下一扇 Window, 本 Window 退到链下等着被返回.
-     * <p>本 Window 已在某条会话链上时新窗口加入那条链, 不在时两者组成一条新链;
+     * 从本 Window 打开下一扇 Window, 本 Window 成为它的上一扇等着被返回.
+     * <p>本 Window 已在某个会话中时新窗口加入那个会话, 不在时两者组成一段新会话;
+     * 因此无论本 Window 原本是否属于会话, 新窗口都可以经 {@link #back()} 回到这里.
      *
      * @param next 要打开的下一扇 Window, 必须与本 Window 属于同一名玩家
      * @return 打开后的 next; 玩家不可用或所在会话已结束等打不开的情况以 null 完成
@@ -107,29 +108,29 @@ public interface Window {
     }
 
     /**
-     * 回到会话的上一层, 来源以原实例重新打开.
-     * <p>只有本 Window 是某条会话链的链顶且链上有来源时才发生返回; 位于链底或不属于任何会话时
+     * 回到上一扇, 上一扇以原实例重新打开.
+     * <p>只有本 Window 是某个会话的当前窗且有上一扇时才发生返回; 位于根窗或不属于任何会话时
      * 不做任何事, 本 Window 保持打开.
      *
-     * @return 返回后的新链顶; 没有发生返回时以 null 完成
+     * @return 返回后的新当前窗; 没有发生返回时以 null 完成
      */
     @NotNull CompletableFuture<Window> back();
 
     /**
-     * 回到会话的上一层, 没有上一层可回时关闭本 Window.
-     * <p>链上有来源时等同 {@link #back()}; 位于链底或不属于任何会话时等同 {@link #close()},
-     * 链底的关闭会照常结束所在会话. 通用"返回/关闭"按钮用这个.
+     * 回到上一扇, 没有上一扇可回时关闭本 Window.
+     * <p>有上一扇时等同 {@link #back()}; 位于根窗或不属于任何会话时等同 {@link #close()},
+     * 根窗的关闭会照常结束所在会话. 通用"返回/关闭"按钮用这个.
      *
-     * @return 返回后的新链顶; 走了关闭路径时以 null 完成
+     * @return 返回后的新当前窗; 走了关闭路径时以 null 完成
      */
     @NotNull CompletableFuture<Window> backOrClose();
 
     /**
      * 本 Window 所属的会话.
-     * <p>{@code build()} 后尚未打开时为 null; 经 {@link #open()} 直接打开时成为新链根并在此刻创建会话;
-     * 经 {@link #openNext} 被打开时归属来源所在的会话; 离开链(栈弹出丢弃, 被链外 Window 顶替, 会话结束)后回到 null.
+     * <p>{@code build()} 后尚未打开时为 null; 经 {@link #open()} 直接打开时成为新根窗并在此刻创建会话;
+     * 经 {@link #openNext} 被打开时归属上一扇所在的会话; 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
      *
-     * @return 所属会话, 不属于任何链时为 null
+     * @return 所属会话, 不属于任何会话时为 null
      */
     @Nullable
     WindowSession session();
@@ -248,19 +249,19 @@ public interface Window {
     void offhandFrozen(boolean frozen);
 
     /**
-     * 返回玩家主动关闭本窗口时, 所在会话是否返回来源窗口.
+     * 返回玩家主动关闭本窗口时, 所在会话是否返回上一扇.
      *
-     * @return 玩家主动关闭时是否返回来源窗口
+     * @return 玩家主动关闭时是否返回上一扇
      */
     boolean backOnPlayerClose();
 
     /**
-     * 设置玩家主动关闭本窗口时, 所在会话是否返回来源窗口. 默认 false.
-     * <p>仅当本窗口是某个会话的链顶时有意义, true 且存在来源窗口时返回上一层,
+     * 设置玩家主动关闭本窗口时, 所在会话是否返回上一扇. 默认 false.
+     * <p>仅当本窗口是某个会话的当前窗时有意义, true 且存在上一扇时返回上一扇,
      * 否则会话以 PLAYER 原因结束. 不在任何会话中的窗口忽略此开关, 玩家关闭就是关闭.
      * <p>本开关只作用于玩家主动关闭(reason == PLAYER), 不影响程序化导航.
      *
-     * @param backOnPlayerClose true 表示返回来源窗口
+     * @param backOnPlayerClose true 表示返回上一扇
      */
     void backOnPlayerClose(boolean backOnPlayerClose);
 
@@ -695,10 +696,10 @@ public interface Window {
         B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
         /**
-         * 设置玩家主动关闭时是否返回来源窗口, 默认 false.
+         * 设置玩家主动关闭时是否返回上一扇, 默认 false.
          * 语义同 {@link Window#backOnPlayerClose(boolean)}.
          *
-         * @param backOnPlayerClose true 表示返回来源窗口
+         * @param backOnPlayerClose true 表示返回上一扇
          * @return 此 Builder
          */
         @NotNull B setBackOnPlayerClose(boolean backOnPlayerClose);
@@ -712,7 +713,7 @@ public interface Window {
         @NotNull B setData(@NotNull Object data);
 
         /**
-         * 设置本 Window 成为链根时新会话的类型, 默认 {@link WindowSession.Kind#STACK}.
+         * 设置本 Window 成为根窗时新会话的类型, 默认 {@link WindowSession.Kind#STACK}.
          * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
          *
          * @param kind 会话类型
@@ -721,7 +722,7 @@ public interface Window {
         @NotNull B setSessionKind(@NotNull WindowSession.Kind kind);
 
         /**
-         * 追加一个会话结束处理器: 本 Window 成为链根时装进新会话, 整段交互结束时恰好触发一次.
+         * 追加一个会话结束处理器: 本 Window 成为根窗时装进新会话, 整段交互结束时恰好触发一次.
          * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
          *
          * @param handler 结束处理器, 参数为结束原因
