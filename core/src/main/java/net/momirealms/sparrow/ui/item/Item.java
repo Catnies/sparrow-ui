@@ -57,6 +57,7 @@ public interface Item {
      *
      * @return 此 Item 使用的 Provider
      */
+    @NotNull
     ItemProvider getItemProvider();
 
     /**

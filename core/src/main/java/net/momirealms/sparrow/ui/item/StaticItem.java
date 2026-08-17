@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -63,6 +64,7 @@ public final class StaticItem implements Item {
         this.bundleSelectHandler = bundleSelectHandler;
     }
 
+    @NonNull
     @Override
     public ItemProvider getItemProvider() {
         return this.itemProvider;
