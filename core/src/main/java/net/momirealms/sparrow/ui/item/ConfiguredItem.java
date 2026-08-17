@@ -52,6 +52,7 @@ final class ConfiguredItem implements ObservableItem {
         this.updateOnClick = updateOnClick;
     }
 
+    @NotNull
     @Override
     public ItemProvider getItemProvider() {
         return this.displaySource.provider();
