@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
@@ -13,15 +14,19 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 public abstract class AbstractItem implements ObservableItem {
-    private final ItemProvider itemProvider = this::render;
+    private final ItemProvider itemProvider;
+    private final ImmediateItemProvider placeholder;
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>();
     private final CopyOnWriteArrayList<Function<? super Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
+        this.itemProvider = this::render;
+        this.placeholder = ItemProvider.sync(this::placeholder);
     }
 
     /**
@@ -61,17 +66,37 @@ public abstract class AbstractItem implements ObservableItem {
     }
 
     /**
-     * 根据当前显示上下文同步渲染物品.
+     * 根据当前显示上下文发起一次物品渲染.
      * <p>此方法遵守 {@link ItemProvider#provide(RenderContext)} 的渲染约束.</p>
      *
      * @param context 渲染上下文
-     * @return 本次显示的物品
+     * @return 本次显示结果的 Future
      */
-    protected abstract ItemStack render(@NotNull RenderContext context);
+    @NotNull
+    protected abstract CompletableFuture<? extends ItemStack> render(RenderContext context);
 
+    /**
+     * 返回此显示位置尚无成功渲染结果时使用的占位物品.
+     * <p>后续刷新尚未完成时继续显示最近一次成功结果, 不会重新退回占位物品.
+     *
+     * @param context 渲染上下文
+     * @return 首次完成前显示的占位物品
+     */
+    @NotNull
+    protected ItemStack placeholder(@NotNull RenderContext context) {
+        return ItemStack.empty();
+    }
+
+    @NotNull
     @Override
     public final ItemProvider getItemProvider() {
         return this.itemProvider;
+    }
+
+    @NotNull
+    @Override
+    public final ImmediateItemProvider getPlaceholder() {
+        return this.placeholder;
     }
 
     @Override

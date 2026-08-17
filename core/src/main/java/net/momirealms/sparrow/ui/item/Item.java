@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.inventory.ItemStack;
@@ -59,6 +60,18 @@ public interface Item {
      */
     @NotNull
     ItemProvider getItemProvider();
+
+    /**
+     * 获取此 Item 尚无成功渲染结果时使用的占位 Provider.
+     * <p>{@link #getItemProvider()} 的 Future 首次成功前, 渲染层显示占位内容;
+     * 最近一次成功结果存在时始终优先使用成功结果.
+     *
+     * @return 占位 Provider
+     */
+    @NotNull
+    default ImmediateItemProvider getPlaceholder() {
+        return ItemProvider.EMPTY;
+    }
 
     /**
      * 处理玩家点击物品事件.

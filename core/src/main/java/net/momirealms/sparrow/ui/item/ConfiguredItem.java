@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.click.ItemInteraction;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -56,6 +57,12 @@ final class ConfiguredItem implements ObservableItem {
     @Override
     public ItemProvider getItemProvider() {
         return this.displaySource.provider();
+    }
+
+    @NotNull
+    @Override
+    public ImmediateItemProvider getPlaceholder() {
+        return this.displaySource.placeholder();
     }
 
     @Override

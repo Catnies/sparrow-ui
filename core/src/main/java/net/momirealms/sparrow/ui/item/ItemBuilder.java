@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.item.provider.AsyncItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ItemBuilder {
-    private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
+    private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
 
     private final List<ConfiguredItem.GuardEntry<ItemClick>> clickGuards = new ArrayList<>(); // 点击前置处理器
@@ -42,13 +42,59 @@ public final class ItemBuilder {
     private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
-     * 配置固定或依赖 RenderContext 的 ItemProvider.
+     * 配置在渲染线程立即返回 ItemStack 的同步 renderer.
+     *
+     * @param renderer 同步渲染函数
+     * @return 此构建器
+     */
+    public ItemBuilder setItemProvider(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
+        return this.setItemProviderAsync(ItemProvider.sync(renderer));
+    }
+
+    /**
+     * 配置固定显示的物品.
+     *
+     * @param itemStack 固定物品模板
+     * @return 此构建器
+     */
+    public ItemBuilder setItemProviderConstant(@NotNull ItemStack itemStack) {
+        return this.setItemProviderAsync(ItemProvider.constant(itemStack));
+    }
+
+    /**
+     * 配置 Future-first ItemProvider. 未完成的 Future 暂时显示最近一次成功结果或空物品.
      *
      * @param itemProvider 显示提供器
      * @return 此构建器
      */
-    public ItemBuilder setItemProvider(@NotNull ItemProvider itemProvider) {
-        this.setSource(new SourceSpec.ProviderSpec(Objects.requireNonNull(itemProvider, "itemProvider")));
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider) {
+        this.setSource(new SourceSpec.ProviderSpec(Objects.requireNonNull(itemProvider, "itemProvider"), ItemProvider.EMPTY));
+        return this;
+    }
+
+    /**
+     * 配置 Future-first ItemProvider 及其首次成功结果前显示的占位物品.
+     *
+     * @param itemProvider 显示提供器
+     * @param placeholder 首次成功结果前显示的占位物品
+     * @return 此构建器
+     */
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
+        return this.setItemProviderAsync(itemProvider, ItemProvider.constant(placeholder));
+    }
+
+    /**
+     * 配置 Future-first ItemProvider 及其首次成功结果前使用的占位提供器.
+     *
+     * @param itemProvider 显示提供器
+     * @param placeholder 首次成功结果前使用的占位提供器
+     * @return 此构建器
+     */
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
+        this.setSource(new SourceSpec.ProviderSpec(
+                Objects.requireNonNull(itemProvider, "itemProvider"),
+                Objects.requireNonNull(placeholder, "placeholder")
+        ));
         return this;
     }
 
@@ -85,52 +131,10 @@ public final class ItemBuilder {
      * @param lazyProvider 懒加载显示提供器
      * @return 此构建器
      */
-    public ItemBuilder setLazyItemProvider(@NotNull ItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) {
+    public ItemBuilder setLazyItemProvider(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) {
         this.setSource(new SourceSpec.LazySpec(
                 Objects.requireNonNull(placeholder, "placeholder"),
                 Objects.requireNonNull(lazyProvider, "lazyProvider")
-        ));
-        return this;
-    }
-
-    /**
-     * 配置每次渲染都可能重算的异步渲染显示来源, 还没有完成结果时显示空物品.
-     *
-     * @param asyncProvider 异步渲染提供器
-     * @return 此构建器
-     */
-    public ItemBuilder setAsyncItemProvider(@NotNull AsyncItemProvider asyncProvider) {
-        return this.setAsyncItemProvider(ItemProvider.EMPTY, asyncProvider);
-    }
-
-    /**
-     * 配置每次渲染都可能重算的异步渲染显示来源.
-     * <p>渲染时优先给出最近一次完成的结果, 并提交新的一次重算, 完成后刷新这一个槽位.
-     *
-     * @param placeholder 还没有完成结果时的显示内容
-     * @param asyncProvider 异步渲染提供器
-     * @return 此构建器
-     */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemStack placeholder, @NotNull AsyncItemProvider asyncProvider) {
-        this.setSource(new SourceSpec.AsyncSpec(
-                ItemProvider.constant(Objects.requireNonNull(placeholder, "placeholder")),
-                Objects.requireNonNull(asyncProvider, "asyncProvider")
-        ));
-        return this;
-    }
-
-    /**
-     * 配置每次渲染都可能重算的异步渲染显示来源.
-     * <p>渲染时优先给出最近一次完成的结果, 并提交新的一次重算, 完成后刷新这一个槽位.
-     *
-     * @param placeholder 还没有完成结果时的显示内容
-     * @param asyncProvider 异步渲染提供器
-     * @return 此构建器
-     */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider placeholder, @NotNull AsyncItemProvider asyncProvider) {
-        this.setSource(new SourceSpec.AsyncSpec(
-                Objects.requireNonNull(placeholder, "placeholder"),
-                Objects.requireNonNull(asyncProvider, "asyncProvider")
         ));
         return this;
     }
@@ -414,29 +418,33 @@ public final class ItemBuilder {
     }
 
     // Item 的显示来源, 决定每次渲染使用的提供器与挂载行为.
-    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.LazyDisplaySource, DisplaySource.AsyncDisplaySource {
+    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.LazyDisplaySource {
 
         // 获取当前渲染使用的提供器.
         ItemProvider provider();
+
+        // 获取首次成功结果前使用的占位提供器.
+        ImmediateItemProvider placeholder();
 
         // Item 挂载到槽位时的回调. 默认无操作.
         default void onAttached() {
         }
 
         // 固定不变的显示来源
-        record FixedDisplaySource(@NotNull ItemProvider provider) implements DisplaySource {
+        record FixedDisplaySource(@NotNull ItemProvider provider, @NotNull ImmediateItemProvider placeholder) implements DisplaySource {
             public FixedDisplaySource {
                 Objects.requireNonNull(provider, "provider");
+                Objects.requireNonNull(placeholder, "placeholder");
             }
         }
 
         // 第一次挂载时异步解析一次, 之后复用结果的懒加载显示来源.
         final class LazyDisplaySource implements DisplaySource {
+            private final ImmediateItemProvider placeholder; // 占位提供器, 解析出的显示来源首次成功前继续使用
             private final AtomicReference<LazyItemProvider> pendingProvider; // 挂起的提供器, 取出后置 null 保证只解析一次
             private final Runnable invalidator;                         // 解析完成后通知 Window 失效的回调
 
             private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 解析完成后替换
-            private final ItemProvider renderingProvider = context -> this.currentProvider.provide(context); // 始终委托当前提供器的渲染入口
 
             /**
              * 创建懒加载显示来源, 解析完成前渲染占位内容.
@@ -445,15 +453,21 @@ public final class ItemBuilder {
              * @param lazyProvider 懒加载显示提供器
              * @param invalidator 解析完成后通知 Window 失效的回调
              */
-            LazyDisplaySource(ItemProvider placeholder, LazyItemProvider lazyProvider, Runnable invalidator) {
-                this.currentProvider = Objects.requireNonNull(placeholder, "placeholder");
+            LazyDisplaySource(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider, Runnable invalidator) {
+                this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
+                this.currentProvider = placeholder;
                 this.pendingProvider = new AtomicReference<>(Objects.requireNonNull(lazyProvider, "lazyProvider"));
                 this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
             }
 
             @Override
             public ItemProvider provider() {
-                return this.renderingProvider;
+                return this.currentProvider;
+            }
+
+            @Override
+            public ImmediateItemProvider placeholder() {
+                return this.placeholder;
             }
 
             // 仅第一次挂载真正提交解析, 后续直接复用结果.
@@ -496,121 +510,30 @@ public final class ItemBuilder {
             }
         }
 
-        // 每次渲染都可能重算的异步渲染显示来源.
-        final class AsyncDisplaySource implements DisplaySource {
-            private final ItemProvider placeholder;         // 还没有完成结果时的显示内容
-            private final AsyncItemProvider asyncProvider;  // 用户提供的异步渲染提供器
-            private final ItemProvider renderingProvider = this::render; // 渲染入口, 按槽位取出各自的寄存状态
-
-            AsyncDisplaySource(ItemProvider placeholder, AsyncItemProvider asyncProvider) {
-                this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
-                this.asyncProvider = Objects.requireNonNull(asyncProvider, "asyncProvider");
-            }
-
-            @Override
-            public ItemProvider provider() {
-                return this.renderingProvider;
-            }
-
-            // 先决策再提交, 最后才读结果: 用户返回已完成的阶段时, 这一次渲染就能拿到真值, 不必先显示占位.
-            private ItemStack render(RenderContext context) {
-                SlotState state = context.rendererState(this, SlotState::new);
-                if (state.phase == SlotState.Phase.FRESH) {
-                    state.phase = SlotState.Phase.IDLE;
-                } else if (state.phase == SlotState.Phase.IDLE) {
-                    state.phase = SlotState.Phase.IN_FLIGHT;
-                    this.submit(state, context);
-                }
-
-                ItemStack rendered = state.lastRendered;
-                return rendered == null ? this.placeholder.provide(context) : rendered;
-            }
-
-            // 提交一次重算.
-            private void submit(SlotState state, RenderContext context) {
-                CompletableFuture<? extends ItemStack> stage;
-                try {
-                    stage = Objects.requireNonNull(this.asyncProvider.provide(context), "asyncProvider result");
-                } catch (Throwable throwable) {
-                    state.fail(throwable);
-                    return;
-                }
-
-                stage.whenComplete((item, throwable) -> {
-                    if (throwable != null) {
-                        state.fail(ThrowableUtils.unwrapCompletion(throwable));
-                    } else if (item == null) {
-                        // 完成 null 也视为失败, 要表达空槽位应当显式完成空物品
-                        state.fail(new NullPointerException("computed item"));
-                    } else {
-                        state.complete(item, context);
-                    }
-                });
-            }
-
-            // 异步渲染显示来源寄存在单个 Window 槽位上的重算状态.
-            private static final class SlotState {
-                private enum Phase {
-                    IDLE,       // 没有重算在运行, 下一次渲染提交一次
-                    IN_FLIGHT,  // 重算在运行, 渲染直接返回当前结果
-                    FRESH       // 重算刚完成, 下一次渲染只取结果不提交
-                }
-
-                private volatile Phase phase = Phase.IDLE;
-                private volatile ItemStack lastRendered; // 最近一次异步完成的服务端渲染结果; null 表示还没有
-
-                // 写结果 -> 放行 phase -> 标脏:
-                private void complete(ItemStack item, RenderContext context) {
-                    this.lastRendered = item.clone(); // 用户仍持有原物品, 复制一份归渲染层所有
-                    this.phase = Phase.FRESH;
-                    try {
-                        // 只失效自己这一个槽位, 走 Item.notifyWindow 会让 Item 的各个挂载槽触发重算.
-                        context.window().notifyUpdate(context.windowSlot());
-                    } catch (Throwable throwable) {
-                        SparrowUI.getInstance().handleException("Failed to invalidate window slot for asynchronous item", throwable);
-                    }
-                }
-
-                // 失败保留当前结果, 不标脏也不自动重试, 等下一次失效或周期刷新再提交.
-                private void fail(Throwable throwable) {
-                    this.phase = Phase.IDLE;
-                    SparrowUI.getInstance().handleException("Failed to compute asynchronous item", throwable);
-                }
-            }
-        }
     }
 
 
 
     // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
-    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.LazySpec, SourceSpec.AsyncSpec {
+    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.LazySpec {
 
         DisplaySource create(Runnable invalidator);
 
         // 固定或上下文来源声明
-        record ProviderSpec(ItemProvider provider) implements SourceSpec {
+        record ProviderSpec(ItemProvider provider, ImmediateItemProvider placeholder) implements SourceSpec {
 
             @Override
             public DisplaySource create(Runnable invalidator) {
-                return new DisplaySource.FixedDisplaySource(this.provider);
+                return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
             }
         }
 
         // 懒加载来源声明
-        record LazySpec(ItemProvider placeholder, LazyItemProvider lazyProvider) implements SourceSpec {
+        record LazySpec(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider) implements SourceSpec {
 
             @Override
             public DisplaySource create(Runnable invalidator) {
                 return new DisplaySource.LazyDisplaySource(this.placeholder, this.lazyProvider, invalidator);
-            }
-        }
-
-        // 异步渲染来源声明
-        record AsyncSpec(ItemProvider placeholder, AsyncItemProvider asyncProvider) implements SourceSpec {
-
-            @Override
-            public DisplaySource create(Runnable ignoredInvalidator) {
-                return new DisplaySource.AsyncDisplaySource(this.placeholder, this.asyncProvider);
             }
         }
     }

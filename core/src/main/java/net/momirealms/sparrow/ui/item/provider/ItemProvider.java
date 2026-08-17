@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 @FunctionalInterface
 public interface ItemProvider {
-    ItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemUtils.copyOrEmpty(null));
+    ImmediateItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemUtils.copyOrEmpty(null));
 
     /**
      * 发起本次要显示物品的计算.
@@ -30,9 +30,9 @@ public interface ItemProvider {
      * @return 同步提供器
      */
     @NotNull
-    static ItemProvider sync(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
+    static ImmediateItemProvider sync(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
         Objects.requireNonNull(renderer, "renderer");
-        return (ImmediateItemProvider) renderer::apply;
+        return renderer::apply;
     }
 
     /**
@@ -42,7 +42,7 @@ public interface ItemProvider {
      * @return 提供器
      */
     @NotNull
-    static ItemProvider constant(@NotNull ItemStack template) {
+    static ImmediateItemProvider constant(@NotNull ItemStack template) {
         return new ItemWrapper(Objects.requireNonNull(template, "template"));
     }
 }
