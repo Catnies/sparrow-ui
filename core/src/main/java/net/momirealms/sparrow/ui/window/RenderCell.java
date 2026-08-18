@@ -25,6 +25,7 @@ public final class RenderCell {
     private final String failureMessage;
 
     private final AtomicBoolean recomputeRequested = new AtomicBoolean(true);
+    private final AtomicBoolean resetRequested = new AtomicBoolean();   // 任意线程提交的作废请求, 由渲染消费
     private final AtomicLong inFlightToken = new AtomicLong(); // 0 = 空闲, ABANDONED = 已作废, 否则为在异步渲染任务的代数
     private volatile long generation = 1L;          // 当前 Provider 的代数
     private volatile @Nullable Completed displayed; // 最近完成值
@@ -46,6 +47,13 @@ public final class RenderCell {
      */
     @NotNull
     public ItemStack render(@NotNull Intent intent) {
+        // 执行作废操作
+        if (this.resetRequested.getAndSet(false)) {
+            this.activeSourceKey = null;
+            this.generation++;
+            this.inFlightToken.set(ABANDONED);
+        }
+        // 执行渲染
         return switch (intent) {
             case Intent.Direct(var value) -> {
                 this.retireSource();
@@ -54,9 +62,9 @@ public final class RenderCell {
             case Intent.Projected(var sourceKey, var provider, var placeholder, var lastResort) -> {
                 if (provider instanceof ImmediateItemProvider immediate) {
                     this.retireSource();
-                    yield immediate.provideImmediately(this.context);
+                    yield Objects.requireNonNull(immediate.provideImmediately(this.context), "rendered item");
                 }
-                // 来源换了, 旧任务与旧值一并作废, 新来源重新起算
+                // 换了来源, 旧任务与旧值一并作废, 新来源重新起算.
                 if (sourceKey != this.activeSourceKey) {
                     this.activeSourceKey = sourceKey;
                     this.generation++;
@@ -157,7 +165,7 @@ public final class RenderCell {
         }
     }
 
-    // 本轮不做异步投影, 作废在飞任务与它归属的 Provider.
+    // 作废在飞任务与归属的 Provider.
     private void retireSource() {
         if (this.activeSourceKey != null) {
             this.activeSourceKey = null;
@@ -168,11 +176,11 @@ public final class RenderCell {
 
     /**
      * 作废当前 Provider, 在飞任务与最近完成值, 下一次渲染重新起算.
-     * 仅允许所属消费方的实体调度调用.
+     * <p>在飞任务当场作废, 来源身份与代数留到下一次 {@link #render(Intent)} 换掉.
+     * 调用时正在渲染的那一帧仍按它装配时的内容显示, 作废在下一帧生效.
      */
     public void reset() {
-        this.activeSourceKey = null;
-        this.generation++;
+        this.resetRequested.set(true);
         this.inFlightToken.set(ABANDONED);
         this.recomputeRequested.set(true);
     }
