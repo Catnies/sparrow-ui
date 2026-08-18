@@ -251,6 +251,16 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 返回当前的全局视觉映射.
+     *
+     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
+     */
+    @Nullable
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider() {
+        return this.visual.getVisualizerProvider();
+    }
+
+    /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
      * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
@@ -261,8 +271,19 @@ public abstract class SparrowInventory {
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
-    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
-        this.visual.visualizerProvider(visualizerProvider);
+    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual.setVisualizerProvider(visualizerProvider);
+    }
+
+    /**
+     * 设置容器全局视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     */
+    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual.setVisualizerProvider(visualizerProvider, placeholder);
     }
 
     /**
@@ -272,28 +293,19 @@ public abstract class SparrowInventory {
      * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
      */
     public void setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
-        this.visual.visualizerItem(visualizer);
+        this.visual.setVisualizerItem(visualizer);
     }
 
     /**
-     * 返回当前的全局视觉映射.
+     * 返回某个槽位的显式视觉映射; 不含回退到的全局映射.
      *
-     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
+     * @param slot 槽位序号
+     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getVisualizerProvider() {
-        return this.visual.visualizerProvider();
-    }
-
-    /**
-     * 返回当前的全局异步视觉映射.
-     * 没有设置过或这一层是同步映射时为 {@code null}.
-     *
-     * @return 全局异步视觉映射.
-     */
-    @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerAsync() {
-        return this.visual.visualizerAsync();
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider(int slot) {
+        return this.visual.getVisualizerProvider(slot);
     }
 
     /**
@@ -306,53 +318,21 @@ public abstract class SparrowInventory {
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
-        this.visual.visualizerProvider(slot, visualizerProvider);
+    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual.setVisualizerProvider(slot, visualizerProvider);
     }
 
     /**
-     * 设置容器全局异步视觉映射.
-     * <p>映射本身在渲染线程求值, 只挑出这一槽用哪个提供器, 重活放进返回的提供器里;
-     * 返回 {@code null} 表示放行到下一层. 异步结果未完成前显示该槽真实内容,
-     * 槽位内容变化会作废尚未完成的计算与已完成的结果. 同一层的同步映射会被取代.
-     *
-     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
-     */
-    public void setVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
-        this.visual.visualizerAsync(visualizerAsync);
-    }
-
-    /**
-     * 设置容器全局异步视觉映射, 并指定未完成时显示的占位物品.
-     *
-     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位物品
-     */
-    public void setVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @NotNull ItemStack placeholder) {
-        this.visual.visualizerAsync(visualizerAsync, placeholder);
-    }
-
-    /**
-     * 设置一个槽位的异步视觉映射, 未完成时显示该槽真实内容.
+     * 替换一个槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
      *
      * @param slot 槽位序号
-     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setVisualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
-        this.visual.visualizerAsync(slot, visualizerAsync);
-    }
-
-    /**
-     * 设置一个槽位的异步视觉映射, 并指定未完成时显示的占位物品.
-     *
-     * @param slot 槽位序号
-     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位物品
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    public void setVisualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @NotNull ItemStack placeholder) {
-        this.visual.visualizerAsync(slot, visualizerAsync, placeholder);
+    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual.setVisualizerProvider(slot, visualizerProvider, placeholder);
     }
 
     /**
@@ -364,31 +344,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     public void setVisualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
-        this.visual.visualizerItem(slot, visualizer);
-    }
-
-    /**
-     * 返回某个槽位的显式视觉映射; 不含回退到的全局映射.
-     *
-     * @param slot 槽位序号
-     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getVisualizerProvider(int slot) {
-        return this.visual.visualizerProvider(slot);
-    }
-
-    /**
-     * 返回某个槽位的显式异步视觉映射, 不含回退到的全局映射.
-     *
-     * @param slot 槽位序号
-     * @return 该槽的逐槽异步视觉映射; 没有覆盖或这一层是同步映射时为 {@code null}
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerAsync(int slot) {
-        return this.visual.visualizerAsync(slot);
+        this.visual.setVisualizerItem(slot, visualizer);
     }
 
     /**
@@ -420,33 +376,17 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 返回一个槽位生效的视觉层级结果, 从高到低逐层询问, 上层放行才轮到下层:
-     * 逐槽映射, 全局映射, 空槽的占位背景.
-     * <p>{@code actual} 由调用方提供, 应当是该槽当前内容的副本; 渲染层用它避免重复读取.
+     * 返回一个槽位生效的视觉层级结果, 从高到低逐层询问, 逐槽映射 -> 全局映射 -> 空槽的占位背景.
+     * <p>{@code actual} 由调用方提供, 应当是该槽当前内容的副本, 渲染层用它避免重复读取.
      *
      * @param slot 槽位序号
      * @param actual 该槽当前真实内容, 空槽为 {@code null}
-     * @return 展示用的提供器; 所有层都缺席或放行时为 {@code null}, 表示按真实内容显示
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
-        ResolvedVisual bound = this.visual.visualize(slot, actual);
-        return bound == null ? null : bound.provider();
-    }
-
-    /**
-     * 与 {@link #visualize(int, ItemStack)} 求值同一层级,
-     * 但连同来源身份与占位一并给出, 供渲染层装配.
-     *
-     * @param slot 槽位序号
-     * @param actual 该槽当前真实内容, 空槽为 {@code null}
-     * @return 求值结果; 所有层都缺席或放行时为 {@code null}
+     * @return 求值结果, 含展示用的提供器, 来源身份与占位, 所有层都放行时为 {@code null}, 表示按真实内容显示
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
     @ApiStatus.Internal
-    public ResolvedVisual visualBinding(int slot, @Nullable ItemStack actual) {
+    public ResolvedVisual resolvedVisual(int slot, @Nullable ItemStack actual) {
         return this.visual.visualize(slot, actual);
     }
 

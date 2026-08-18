@@ -403,7 +403,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             int slot = state.inventoryLink.slot();
             ItemStack itemStack = inventory.itemAt(slot);
             ItemStack actual = ItemUtils.emptyIfNull(itemStack);
-            ResolvedVisual visual = inventory.visualBinding(slot, itemStack);
+            ResolvedVisual visual = inventory.resolvedVisual(slot, itemStack);
             if (visual == null) {
                 return this.renderCell.render(new RenderCell.Intent.Direct(actual));
             }

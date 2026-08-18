@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.util.HandlerList;
+import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -17,7 +18,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -45,7 +45,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
-    private CursorVisualImpl.Layer cursorVisualLayer = CursorVisualImpl.Layer.NONE;
+    private VisualLayer cursorVisualLayer = VisualLayer.NONE;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {
@@ -212,23 +212,11 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @NotNull
     @Override
-    public final B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizer) {
-        Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
-        this.cursorVisualLayer = new CursorVisualImpl.Layer(cursorVisualizer, null, null);
-        return this.self();
-    }
-
-    @NotNull
-    @Override
-    public final B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync) {
-        this.cursorVisualLayer = new CursorVisualImpl.Layer(null, cursorVisualizerAsync, null);
-        return this.self();
-    }
-
-    @NotNull
-    @Override
-    public final B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync, @NotNull ItemStack placeholder) {
-        this.cursorVisualLayer = new CursorVisualImpl.Layer(null, cursorVisualizerAsync, ItemProvider.constant(placeholder));
+    public final B setCursorVisualizerProvider(
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider,
+            @Nullable ImmediateItemProvider placeholder
+    ) {
+        this.cursorVisualLayer = new VisualLayer(cursorVisualizerProvider, placeholder);
         return this.self();
     }
 

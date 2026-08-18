@@ -11,19 +11,35 @@ import java.util.function.Function;
 public interface InventoryVisual extends Visual {
 
     /**
-     * 返回当前全局视觉 Provider 映射.
+     * 返回当前全局视觉映射.
      *
-     * @return 全局视觉 Provider 映射; 没有设置过时为 {@code null}
+     * @return 全局视觉映射; 没有设置过时为 {@code null}
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider();
+    Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider();
 
     /**
-     * 替换全局视觉 Provider 映射并标脏全部 Inventory 槽位.
+     * 替换全局视觉映射并标脏全部 Inventory 槽位.
+     * <p>映射本身在渲染线程求值, 只负责挑出这一槽要用哪个提供器, 重活放进返回的提供器里.
+     * 返回 {@code null} 表示本层放行. 提供器给出结果之前显示 {@code placeholder};
+     * 没有给占位就显示该槽真实内容. 提供器当场算得出结果时首帧就是真值, 用不到占位.
      *
-     * @param visualizerProvider 新的全局视觉 Provider 映射, {@code null} 表示移除这一层
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容
      */
-    void visualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider);
+    void setVisualizerProvider(
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
+            @Nullable ImmediateItemProvider placeholder
+    );
+
+    /**
+     * 替换全局视觉映射, 提供器给出结果前显示该槽真实内容.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示移除这一层
+     */
+    default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.setVisualizerProvider(visualizerProvider, null);
+    }
 
     /**
      * 使用直接返回 ItemStack 的映射替换全局视觉映射并标脏全部 Inventory 槽位.
@@ -31,28 +47,45 @@ public interface InventoryVisual extends Visual {
      *
      * @param visualizer 新的全局物品映射, {@code null} 表示移除这一层
      */
-    default void visualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
-        this.visualizerProvider(providerVisualizer(visualizer));
+    default void setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.setVisualizerProvider(VisualLayer.itemVisualizer(visualizer));
     }
 
     /**
-     * 返回一个 Inventory 槽位的显式视觉 Provider 映射.
+     * 返回一个 Inventory 槽位的显式视觉映射.
      *
      * @param slot Inventory 槽位
-     * @return 逐槽视觉 Provider 映射; 没有设置过时为 {@code null}
+     * @return 逐槽视觉映射; 没有设置过时为 {@code null}
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider(int slot);
+    Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider(int slot);
 
     /**
-     * 替换一个 Inventory 槽位的视觉 Provider 映射并只标脏该槽位.
+     * 替换一个 Inventory 槽位的视觉映射并只标脏该槽位.
+     * <p>约定与 {@link #setVisualizerProvider(Function, ImmediateItemProvider)} 相同.
      *
      * @param slot Inventory 槽位
-     * @param visualizerProvider 新的逐槽视觉 Provider 映射, {@code null} 表示移除这一层
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    void visualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider);
+    void setVisualizerProvider(
+            int slot,
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
+            @Nullable ImmediateItemProvider placeholder
+    );
+
+    /**
+     * 替换一个 Inventory 槽位的视觉映射, 提供器给出结果前显示该槽真实内容.
+     *
+     * @param slot Inventory 槽位
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.setVisualizerProvider(slot, visualizerProvider, null);
+    }
 
     /**
      * 使用直接返回 ItemStack 的映射替换一个 Inventory 槽位的视觉映射并只标脏该槽位.
@@ -62,105 +95,10 @@ public interface InventoryVisual extends Visual {
      * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    default void visualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
-        this.visualizerProvider(slot, providerVisualizer(visualizer));
+    default void setVisualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.setVisualizerProvider(slot, VisualLayer.itemVisualizer(visualizer));
     }
 
-    /**
-     * 返回当前全局异步视觉映射.
-     *
-     * @return 全局异步视觉映射; 没有设置过或该层是同步映射时为 {@code null}
-     */
-    @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync();
-
-    /**
-     * 替换全局异步视觉映射并标脏全部 Inventory 槽位.
-     * <p>映射本身在渲染线程求值, 只负责挑出这一槽要用哪个提供器, 重活放进返回的提供器里.
-     * 返回 {@code null} 表示本层放行. 异步结果未完成前显示 {@code placeholder};
-     * 没有给占位就显示该槽真实内容.
-     *
-     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容
-     */
-    void visualizerAsync(
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync,
-            @Nullable ImmediateItemProvider placeholder
-    );
-
-    /**
-     * 替换全局异步视觉映射, 未完成时显示该槽真实内容.
-     *
-     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
-     */
-    default void visualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
-        this.visualizerAsync(visualizerAsync, (ImmediateItemProvider) null);
-    }
-
-    /**
-     * 替换全局异步视觉映射, 未完成时显示固定占位物品.
-     *
-     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位物品
-     */
-    default void visualizerAsync(
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync,
-            @NotNull ItemStack placeholder
-    ) {
-        this.visualizerAsync(visualizerAsync, ItemProvider.constant(placeholder));
-    }
-
-    /**
-     * 返回一个 Inventory 槽位的异步视觉映射.
-     *
-     * @param slot Inventory 槽位
-     * @return 逐槽异步视觉映射; 没有设置过或该层是同步映射时为 {@code null}
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync(int slot);
-
-    /**
-     * 替换一个 Inventory 槽位的异步视觉映射并只标脏该槽位.
-     * <p>约定与 {@link #visualizerAsync(Function, ImmediateItemProvider)} 相同.
-     *
-     * @param slot Inventory 槽位
-     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    void visualizerAsync(
-            int slot,
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync,
-            @Nullable ImmediateItemProvider placeholder
-    );
-
-    /**
-     * 替换一个 Inventory 槽位的异步视觉映射, 未完成时显示该槽真实内容.
-     *
-     * @param slot Inventory 槽位
-     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    default void visualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
-        this.visualizerAsync(slot, visualizerAsync, (ImmediateItemProvider) null);
-    }
-
-    /**
-     * 替换一个 Inventory 槽位的异步视觉映射, 未完成时显示固定占位物品.
-     *
-     * @param slot Inventory 槽位
-     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位物品
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    default void visualizerAsync(
-            int slot,
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync,
-            @NotNull ItemStack placeholder
-    ) {
-        this.visualizerAsync(slot, visualizerAsync, ItemProvider.constant(placeholder));
-    }
     /**
      * 返回当前空槽背景.
      *
@@ -183,16 +121,5 @@ public interface InventoryVisual extends Visual {
      */
     default void backgroundItem(@NotNull ItemStack background) {
         this.background(ItemProvider.constant(background));
-    }
-
-    @Nullable
-    private static Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> providerVisualizer(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
-        if (visualizer == null) {
-            return null;
-        }
-        return actual -> {
-            ItemStack visual = visualizer.apply(actual);
-            return visual == null ? null : ItemProvider.constant(visual);
-        };
     }
 }

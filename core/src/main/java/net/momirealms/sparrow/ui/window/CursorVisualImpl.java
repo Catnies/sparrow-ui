@@ -6,11 +6,11 @@ import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
+import net.momirealms.sparrow.ui.visual.VisualLayer;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -21,11 +21,11 @@ import java.util.function.Function;
 final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
     private final Consumer<Runnable> commandSubmitter;
     private final AtomicBoolean pendingDirty = new AtomicBoolean();
-    private volatile Layer layer;
+    private volatile VisualLayer layer;
 
     CursorVisualImpl(
             @NotNull SignalBindings signalBindings,
-            @NotNull Layer layer,
+            @NotNull VisualLayer layer,
             @NotNull Consumer<Runnable> commandSubmitter
     ) {
         super(signalBindings);
@@ -33,35 +33,18 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
         this.commandSubmitter = commandSubmitter;
     }
 
-    @NotNull
-    @Override
-    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider() {
-        Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> sync = this.layer.sync;
-        return sync == null ? ignoredCursor -> null : sync;
-    }
-
-    @Override
-    public void visualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
-        Objects.requireNonNull(visualizerProvider, "visualizerProvider");
-        Layer newLayer = new Layer(visualizerProvider, null, null);
-        this.commandSubmitter.accept(() -> {
-            this.layer = newLayer;
-            this.dirty();
-        });
-    }
-
     @Nullable
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync() {
-        return this.layer.async;
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
+        return this.layer.visualizer();
     }
 
     @Override
-    public void visualizerAsync(
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync,
+    public void setVisualizerProvider(
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
             @Nullable ImmediateItemProvider placeholder
     ) {
-        Layer newLayer = new Layer(null, visualizerAsync, placeholder);
+        VisualLayer newLayer = new VisualLayer(visualizerProvider, placeholder);
         this.commandSubmitter.accept(() -> {
             this.layer = newLayer;
             this.dirty();
@@ -86,30 +69,5 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
 
     boolean takeDirty() {
         return this.pendingDirty.getAndSet(false);
-    }
-
-    /**
-     * 光标的一层视觉配置. 同步与异步互斥, 后设置的那种取代前一种.
-     * <p>本记录一经设置就不再变化, 因此渲染层可以拿它自己当来源身份.
-     */
-    record Layer(
-            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> sync,
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> async,
-            @Nullable ImmediateItemProvider asyncPlaceholder
-    ) {
-        static final Layer NONE = new Layer(null, null, null);
-
-        @Nullable
-        private ResolvedVisual visualize(@Nullable ItemStack actual) {
-            if (this.async != null) {
-                ItemProvider mapped = this.async.apply(actual);
-                return mapped == null ? null : new ResolvedVisual(this, mapped, this.asyncPlaceholder);
-            }
-            if (this.sync != null) {
-                ImmediateItemProvider mapped = this.sync.apply(actual);
-                return mapped == null ? null : ResolvedVisual.of(mapped);
-            }
-            return null;
-        }
     }
 }

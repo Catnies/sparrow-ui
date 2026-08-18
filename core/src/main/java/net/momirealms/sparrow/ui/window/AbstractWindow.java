@@ -18,6 +18,7 @@ import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -29,6 +30,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleCont
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.UnmodifiableBitSet;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
@@ -86,7 +88,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
-            @NotNull CursorVisualImpl.Layer cursorVisualLayer
+            @NotNull VisualLayer cursorVisualLayer
     ) {
     }
 
@@ -144,7 +146,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     // 光标
     private boolean cursorDirty;    // 光标是否需要重新核对
     private final CursorVisualImpl cursorVisual;        // 光标视觉配置
-    private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
+    private final RenderContext cursorRenderContext;    // 光标视觉映射的渲染上下文
     private final RenderCell cursorRenderCell;          // 光标异步视觉的投影, 跨打开代际经 reset 复用
     private final AtomicBoolean cursorCompletionPending = new AtomicBoolean(); // 光标异步视觉的完成通知, 不等同于光标本身变化
     private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照; 仅玩家实体线程访问
@@ -553,15 +555,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.cursorVisual;
     }
 
-    @NotNull
+    @Nullable
     @Override
-    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getCursorVisualizerProvider() {
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider() {
         return this.cursorVisual.visualizerProvider();
     }
 
     @Override
-    public void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider) {
-        this.cursorVisual.visualizerProvider(cursorVisualizerProvider);
+    public void setCursorVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider) {
+        this.cursorVisual.setVisualizerProvider(cursorVisualizerProvider);
     }
 
     @Override

@@ -39,7 +39,7 @@ public final class RenderCell implements AutoCloseable {
 
     /**
      * 按渲染意图渲染, 仅允许所属消费方的实体调度调用.
-     * <p>Direct 意图与同步 Adapter 直接返回立即内容并作废当前 Provider;
+     * <p>Direct 意图与 ImmediateItemProvider 直接返回立即内容并作废当前 Provider;
      * 异步 Provider 消费重算要求, 空闲时提交计算, 然后返回最近完成值或占位内容.
      *
      * @param intent 本轮渲染意图
