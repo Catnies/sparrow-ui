@@ -11,7 +11,7 @@ import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.item.provider.VisualBinding;
+import net.momirealms.sparrow.ui.visual.VisualBinding;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;

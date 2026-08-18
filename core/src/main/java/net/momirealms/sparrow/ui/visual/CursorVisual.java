@@ -1,8 +1,6 @@
-package net.momirealms.sparrow.ui.window;
+package net.momirealms.sparrow.ui.visual;
 
-import net.momirealms.sparrow.ui.Visual;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.Element;

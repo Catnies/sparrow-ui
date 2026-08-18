@@ -1,5 +1,7 @@
-package net.momirealms.sparrow.ui.item.provider;
+package net.momirealms.sparrow.ui.visual;
 
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

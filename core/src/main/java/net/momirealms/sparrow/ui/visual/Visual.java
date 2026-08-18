@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui;
+package net.momirealms.sparrow.ui.visual;
 
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.jetbrains.annotations.NotNull;
 
