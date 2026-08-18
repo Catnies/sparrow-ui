@@ -33,6 +33,7 @@ import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.UnmodifiableBitSet;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
+import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;

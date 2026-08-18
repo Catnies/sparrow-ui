@@ -85,7 +85,6 @@ public final class ItemUtils {
 
     // 修改物品的可视化组件, 使其不可见.
     public static void hideTooltips(Object item) {
-        ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.CUSTOM_NAME, ComponentProxy.INSTANCE.empty());
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.TOOLTIP_DISPLAY, TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>()));
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.ITEM_MODEL, IdentifierProxy.INSTANCE.withDefaultNamespace("air"));
     }

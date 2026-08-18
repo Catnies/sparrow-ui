@@ -1,8 +1,11 @@
 package net.momirealms.sparrow.ui.util;
 
+import org.jetbrains.annotations.ApiStatus;
+
 import java.util.BitSet;
 import java.util.stream.IntStream;
 
+@ApiStatus.Internal
 public class UnmodifiableBitSet extends BitSet {
 
     private final BitSet delegate;

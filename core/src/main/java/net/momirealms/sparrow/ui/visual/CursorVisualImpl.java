@@ -1,13 +1,10 @@
-package net.momirealms.sparrow.ui.window;
+package net.momirealms.sparrow.ui.visual;
 
 import net.momirealms.sparrow.ui.SignalBindings;
-import net.momirealms.sparrow.ui.visual.AbstractVisual;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.visual.ResolvedVisual;
-import net.momirealms.sparrow.ui.visual.CursorVisual;
-import net.momirealms.sparrow.ui.visual.VisualLayer;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,12 +15,13 @@ import java.util.function.Function;
 /**
  * 保存一个 Window 的光标映射, Signal 绑定与跨线程失效位.
  */
-final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
+@ApiStatus.Internal
+public final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
     private final Consumer<Runnable> commandSubmitter;
     private final AtomicBoolean pendingDirty = new AtomicBoolean();
     private volatile VisualLayer layer;
 
-    CursorVisualImpl(
+    public CursorVisualImpl(
             @NotNull SignalBindings signalBindings,
             @NotNull VisualLayer layer,
             @NotNull Consumer<Runnable> commandSubmitter
@@ -58,7 +56,7 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
      * @return 求值结果; 没有配置或放行时为 {@code null}, 表示按菜单实际光标显示
      */
     @Nullable
-    ResolvedVisual visualize(@NotNull ItemStack actual) {
+    public ResolvedVisual visualize(@NotNull ItemStack actual) {
         return this.layer.visualize(actual.isEmpty() ? null : actual);
     }
 
@@ -67,7 +65,7 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
         this.pendingDirty.set(true);
     }
 
-    boolean takeDirty() {
+    public boolean takeDirty() {
         return this.pendingDirty.getAndSet(false);
     }
 }

@@ -23,6 +23,7 @@ import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.visual.InventoryVisual;
+import net.momirealms.sparrow.ui.visual.InventoryVisualImpl;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
