@@ -101,6 +101,8 @@ public class SparrowUI implements Listener {
 
     /**
      * 是否应在与 UI 交互时触发 Bukkit 的相关事件:
+     * {@link org.bukkit.event.inventory.InventoryClickEvent}
+     * {@link org.bukkit.event.inventory.InventoryDragEvent}
      *
      * @param fireBukkitInventoryEvents 是否允许派发 Bukkit Inventory 事件
      */
@@ -109,7 +111,7 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 设置用于处理用户代码抛出但被 UI 抑制的异常的处理器.
+     * 用于处理抛出但被 UI 抑制的异常的处理器.
      *
      * @param exceptionHandler 新的异常处理器
      */
@@ -118,7 +120,7 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 将 UI 已隔离的异常交给当前异常处理器处理.
+     * 将已隔离的异常交给当前异常处理器处理.
      *
      * @param message 异常发生原因
      * @param throwable 原始异常
@@ -133,7 +135,6 @@ public class SparrowUI implements Listener {
     /**
      * 是否报告 UI 用法警告.
      * <p>默认开启, 可以用 JVM 参数 {@code -Dsparrow.ui.warnings=false} 改掉默认值.
-     * 只有值恰好是 {@code true}(忽略大小写)才算开启.
      *
      * @return 是否报告 UI 用法警告
      */
@@ -151,7 +152,7 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 返回当前用于处理 UI 用法警告的处理器.
+     * 返回当前用于处理用法警告的处理器.
      *
      * @return 当前的警告处理器
      */
@@ -160,7 +161,7 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 设置用于处理 UI 用法警告的处理器.
+     * 设置用于处理用法警告的处理器.
      *
      * @param warningHandler 新的警告处理器
      */
@@ -169,10 +170,9 @@ public class SparrowUI implements Listener {
     }
 
     /**
-     * 报告一条 UI 用法警告.
-     * <p>用于那些不会抛异常, 但插件作者多半想不到的行为, 例如交互在提交前被整体丢弃.
-     * 这类问题在被发现时肇事者早已返回, 堆栈没有价值, 所以只带一段说明文本.
-     * <p>{@link #warningsEnabled()} 关闭时本方法什么都不做.
+     * 报告一条用法警告.
+     * <p>用于那些不会抛异常, 但调用方多半想不到的行为,
+     * 这类问题的堆栈没有价值, 所以只带一段说明文本.
      *
      * @param message 警告内容
      */

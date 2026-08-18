@@ -26,10 +26,6 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/**
- * 将NMS 代理接口安装到 Minecraft 共享类加载器.
- * <p>代理实现必须先于任何代理接口被解析, 安装前和安装过程不能使用反射库和代理接口.
- */
 @ApiStatus.Internal
 public final class BukkitProxyInstaller {
     private static final String PROXY_ARCHIVE = "proxy.jarinjar";
@@ -170,7 +166,7 @@ public final class BukkitProxyInstaller {
     }
 
     // 持有 URLClassLoader.addURL 的全权限句柄.
-    @SuppressWarnings({"removal", "deprecation"})
+    @SuppressWarnings("deprecation")
     private static final class ClassPathAccess {
         private static final MethodHandle ADD_URL = ClassPathAccess.createAddUrlHandle(); // URLClassLoader.addURL 的全权限句柄
 

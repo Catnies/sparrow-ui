@@ -9,9 +9,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import java.util.function.Function;
 
-/**
- * 一个 Window 的光标视觉配置.
- */
 public interface CursorVisual extends Visual {
 
     /**
@@ -40,8 +37,7 @@ public interface CursorVisual extends Visual {
      * 请求替换光标异步视觉映射.
      * <p>映射本身在渲染线程求值, 只负责挑出这次要用哪个提供器, 重活放进返回的提供器里.
      * 返回 {@code null} 表示显示菜单实际光标. 异步结果未完成前显示 {@code placeholder};
-     * 没有给占位就显示菜单实际光标. 光标内容变化会作废尚未完成的计算与已完成的结果.
-     * <p>同步映射会被这次设置取代.
+     * 没有给占位就显示菜单实际光标.
      *
      * @param visualizerAsync 新的光标异步视觉映射, {@code null} 表示移除这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示菜单实际光标

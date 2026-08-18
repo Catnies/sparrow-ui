@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-@SuppressWarnings("removal")
 public final class ReflectionUtils {
     public static final Unsafe UNSAFE;
     public static final MethodHandles.Lookup LOOKUP;
@@ -21,10 +20,6 @@ public final class ReflectionUtils {
     private static final MethodHandle methodHandle$MemberName$getReferenceKind;
     private static final MethodHandle methodHandle$MethodHandles$Lookup$getDirectField;
 
-    /**
-     * 初始化底层反射能力.
-     * 该静态代码块会获取 `Unsafe`, 高权限 `Lookup` 以及若干 JDK 内部方法句柄, 以支持更激进的反射访问和 setter 解封装.
-     */
     static {
         try {
             Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");

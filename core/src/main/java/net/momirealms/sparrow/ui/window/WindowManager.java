@@ -163,23 +163,23 @@ public final class WindowManager implements Listener {
      * @return 打开后的 Window, 打不开时为 null
      */
     @NotNull
-    CompletableFuture<Window> openNext(AbstractWindow<?> source, AbstractWindow<?> next) {
+    CompletableFuture<Window> navigate(AbstractWindow<?> source, AbstractWindow<?> next) {
         return this.submit(
                 next.viewer(),
-                () -> this.openNextNow(source, next) ? next : null,
+                () -> this.navigateNow(source, next) ? next : null,
                 () -> null
         );
     }
 
     // 在玩家实体线程解析出发窗所属的会话, 必要时新起一段会话.
-    private boolean openNextNow(AbstractWindow<?> source, AbstractWindow<?> next) {
+    private boolean navigateNow(AbstractWindow<?> source, AbstractWindow<?> next) {
         AbstractWindowSession session = source.sessionImpl();
         if (session != null && session.currentWindow() == source) {
-            return session.openNextNow(next);
+            return session.navigateNow(next);
         }
 
         // source 不在任何会话中就让它当根窗; 旧会话在 openNow 里照常按会话外打开结束
-        return AbstractWindowSession.create(this, source).openNextNow(next);
+        return AbstractWindowSession.create(this, source).navigateNow(next);
     }
 
     /**
@@ -230,7 +230,7 @@ public final class WindowManager implements Listener {
 
         this.active.remove(window.viewer().getUniqueId(), window);
         boolean closed = window.closeOnViewerEntity(reason);
-        this.afterChainTopClosed(window, reason);
+        this.afterCurrentWindowClosed(window, reason);
         return closed ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED;
     }
 
@@ -242,7 +242,7 @@ public final class WindowManager implements Listener {
      * @param window 刚刚关闭的 Window
      * @param reason 关闭原因
      */
-    private void afterChainTopClosed(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
+    private void afterCurrentWindowClosed(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         AbstractWindowSession session = window.sessionImpl();
         if (session == null || session.currentWindow() != window) {
             return;
@@ -410,7 +410,7 @@ public final class WindowManager implements Listener {
                     } catch (RuntimeException | Error throwable) {
                         this.report("Failed to process disconnected Window close", throwable);
                     }
-                    this.afterChainTopClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
+                    this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
                 }
                 return;
             }
@@ -441,7 +441,7 @@ public final class WindowManager implements Listener {
             } catch (RuntimeException | Error throwable) {
                 this.report("Failed to close Window after player quit", throwable);
             }
-            this.afterChainTopClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
+            this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
         }
 
         PlayerCommandLane lane = this.lanes.get(playerId);

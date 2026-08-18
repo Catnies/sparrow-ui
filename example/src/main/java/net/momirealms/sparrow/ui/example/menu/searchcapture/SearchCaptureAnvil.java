@@ -54,7 +54,7 @@ final class SearchCaptureAnvil {
     static CompletableFuture<Window> openFrom(@NotNull Window source) {
         // 手上就有那扇窗, 直接从它的 data 槽取出菜单本体, 不需要另外传引用
         SearchCaptureMenu browser = source.data(SearchCaptureMenu.class);
-        return source.openNext(new SearchCaptureAnvil(source.viewer(), browser).window);
+        return source.navigate(new SearchCaptureAnvil(source.viewer(), browser).window);
     }
 
     /**

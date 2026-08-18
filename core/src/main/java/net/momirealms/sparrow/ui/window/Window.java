@@ -82,31 +82,31 @@ public interface Window {
      * @param next 要打开的下一扇 Window, 必须与本 Window 属于同一名玩家
      * @return 打开后的 next; 玩家不可用或所在会话已结束等打不开的情况以 null 完成
      */
-    @NotNull CompletableFuture<Window> openNext(@NotNull Window next);
+    @NotNull CompletableFuture<Window> navigate(@NotNull Window next);
 
     /**
-     * 以本 Window 的查看者创建下一扇 Window 并打开它, 语义同 {@link #openNext(Window)}.
+     * 以本 Window 的查看者创建下一扇 Window 并打开它, 语义同 {@link #navigate(Window)}.
      * <p>此方法先同步调用 {@link Builder#build(Player)}, 因而同样受其实体线程约束;
-     * 想把构建放到别的线程, 自己 build 完再用 {@link #openNext(CompletionStage)}.
+     * 想把构建放到别的线程, 自己 build 完再用 {@link #navigate(CompletionStage)}.
      *
      * @param next 下一扇 Window 的 Builder
      * @return 打开后的 Window; 打不开时以 null 完成
      */
     @NotNull
-    default CompletableFuture<Window> openNext(@NotNull Builder<?, ?> next) {
-        return this.openNext(next.build(this.viewer()));
+    default CompletableFuture<Window> navigate(@NotNull Builder<?, ?> next) {
+        return this.navigate(next.build(this.viewer()));
     }
 
     /**
-     * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #openNext(Window)}.
+     * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #navigate(Window)}.
      * <p>构建在哪个线程完成由调用方决定, 方法只负责把打开送进玩家的实体线程.
      *
      * @param next 构建中的下一扇 Window
      * @return 打开后的 Window; 打不开时以 null 完成
      */
     @NotNull
-    default CompletableFuture<Window> openNext(@NotNull CompletionStage<? extends Window> next) {
-        return next.thenCompose(this::openNext).toCompletableFuture();
+    default CompletableFuture<Window> navigate(@NotNull CompletionStage<? extends Window> next) {
+        return next.thenCompose(this::navigate).toCompletableFuture();
     }
 
     /**
@@ -130,7 +130,7 @@ public interface Window {
     /**
      * 本 Window 所属的会话.
      * <p>{@code build()} 后尚未打开时为 null; 经 {@link #open()} 直接打开时成为新根窗并在此刻创建会话;
-     * 经 {@link #openNext} 被打开时归属上一扇所在的会话; 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
+     * 经 {@link #navigate} 被打开时归属上一扇所在的会话; 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
      *
      * @return 所属会话, 不属于任何会话时为 null
      */
@@ -735,7 +735,7 @@ public interface Window {
 
         /**
          * 设置本 Window 成为根窗时新会话的类型, 默认 {@link WindowSession.Kind#STACK}.
-         * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
+         * 本 Window 经 {@link Window#navigate} 接入既有会话时此声明不生效.
          *
          * @param kind 会话类型
          * @return 此 Builder
@@ -744,7 +744,7 @@ public interface Window {
 
         /**
          * 追加一个会话结束处理器: 本 Window 成为根窗时装进新会话, 整段交互结束时恰好触发一次.
-         * 本 Window 经 {@link Window#openNext} 接入既有会话时此声明不生效.
+         * 本 Window 经 {@link Window#navigate} 接入既有会话时此声明不生效.
          *
          * @param handler 结束处理器, 参数为结束原因
          * @return 此 Builder

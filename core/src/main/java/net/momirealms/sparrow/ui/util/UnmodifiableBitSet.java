@@ -3,9 +3,6 @@ package net.momirealms.sparrow.ui.util;
 import java.util.BitSet;
 import java.util.stream.IntStream;
 
-/**
- * 构造一个包装了指定 BitSet 的不可修改 BitSet.
- */
 public class UnmodifiableBitSet extends BitSet {
 
     private final BitSet delegate;

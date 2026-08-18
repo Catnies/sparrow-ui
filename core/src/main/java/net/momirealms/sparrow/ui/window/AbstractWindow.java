@@ -1451,11 +1451,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
-    public CompletableFuture<Window> openNext(@NotNull Window next) {
+    public CompletableFuture<Window> navigate(@NotNull Window next) {
         if (next.viewer() != this.viewer) {
             throw new IllegalArgumentException("next Window belongs to another viewer");
         }
-        return this.manager.openNext(this, (AbstractWindow<?>) next);
+        return this.manager.navigate(this, (AbstractWindow<?>) next);
     }
 
     @NotNull

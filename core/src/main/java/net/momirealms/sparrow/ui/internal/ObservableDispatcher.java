@@ -20,11 +20,6 @@ public final class ObservableDispatcher<T> implements Observable<T> {
         return entry;
     }
 
-    /**
-     * 向遍历时仍处于活动状态的每个订阅发布更新.
-     *
-     * @param update 更新数据
-     */
     public void publish(T update) {
         RuntimeException failure = null;
 

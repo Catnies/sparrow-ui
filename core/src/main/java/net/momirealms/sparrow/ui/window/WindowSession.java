@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 /**
  * 一名玩家从进入到离开一整段多 Window 交互的会话.
  * <p>会话随根窗的打开而诞生: {@link Window#open()} 直接打开的窗成为新根窗并创建会话,
- * {@link Window#openNext} 打开的窗归属上一扇所在的会话.
+ * {@link Window#navigate} 打开的窗归属上一扇所在的会话.
  * <p>会话内跳转与返回不触发会话结束处理器, 只有整段交互结束时会话结束处理器才恰好触发一次.
  */
 public interface WindowSession {
@@ -132,7 +132,7 @@ public interface WindowSession {
      */
     enum Kind {
         /**
-         * 线性栈, 默认型. {@link Window#openNext} 不查重, 同一 Window 实例可以压入多次;
+         * 线性栈, 默认型. {@link Window#navigate} 不查重, 同一 Window 实例可以压入多次;
          * {@link Window#back()} 弹出栈顶, 栈中不再出现该实例时会话丢弃对它的引用.
          * 适合每次进入都应当是全新状态的菜单.
          */
@@ -143,7 +143,7 @@ public interface WindowSession {
          */
         RETAINED_STACK,
         /**
-         * 树. {@link Window#openNext} 查重: 目标已在树中时当前位置直接移过去并以原实例重新打开,
+         * 树. {@link Window#navigate} 查重: 目标已在树中时当前位置直接移过去并以原实例重新打开,
          * 不在时成为当前节点的新孩子; {@link Window#back()} 回到父节点且不丢弃任何成员.
          * 步入过的 Window 全部保留到会话结束.
          */

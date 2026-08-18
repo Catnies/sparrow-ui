@@ -8,9 +8,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Function;
 
-/**
- * 一个 Inventory 的视觉配置.
- */
 public interface InventoryVisual extends Visual {
 
     /**
@@ -70,8 +67,6 @@ public interface InventoryVisual extends Visual {
     }
 
     /**
-
-    /**
      * 返回当前全局异步视觉映射.
      *
      * @return 全局异步视觉映射; 没有设置过或该层是同步映射时为 {@code null}
@@ -83,8 +78,7 @@ public interface InventoryVisual extends Visual {
      * 替换全局异步视觉映射并标脏全部 Inventory 槽位.
      * <p>映射本身在渲染线程求值, 只负责挑出这一槽要用哪个提供器, 重活放进返回的提供器里.
      * 返回 {@code null} 表示本层放行. 异步结果未完成前显示 {@code placeholder};
-     * 没有给占位就显示该槽真实内容. 槽位内容变化会作废尚未完成的计算与已完成的结果.
-     * <p>同一层的同步映射会被这次设置取代.
+     * 没有给占位就显示该槽真实内容.
      *
      * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容

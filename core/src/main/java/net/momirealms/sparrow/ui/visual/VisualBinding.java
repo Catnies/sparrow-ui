@@ -9,9 +9,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 /**
- * 一次视觉映射求值的结果, 交给渲染层直接装配成渲染意图.
+ * 一次视觉映射求值的结果.
  *
- * @param sourceKey 产出本结果的那一层配置对象; 同一层配置不变时它稳定不变, 渲染层据此判断来源换没换
+ * @param sourceKey 产出本结果的那一层配置对象, 同一层配置不变时它稳定不变, 渲染层据此判断来源换没换
  * @param provider 本次要显示的提供器
  * @param placeholder 异步提供器首次成功结果前显示的占位, {@code null} 表示回退到调用方给的内容
  */
@@ -27,7 +27,7 @@ public record VisualBinding(
     }
 
     /**
-     * 以提供器自身作为来源身份: 提供器实例本就稳定的层直接用它当身份.
+     * 以 ItemProvider 作为来源身份.
      *
      * @param provider 本次要显示的提供器
      * @return 视觉映射结果

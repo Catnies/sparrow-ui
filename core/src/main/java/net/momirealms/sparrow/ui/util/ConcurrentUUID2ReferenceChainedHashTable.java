@@ -16,8 +16,7 @@ import java.util.function.Function;
 /**
  * UUID 到引用的并发哈希表, key 以两个 {@code long} 内联在节点里, 查找比较
  * 散列对完整 128 位做 fmix64 混合, 对顺序生成等结构性 UUID 仍保持均匀分布.
- * <p>读路径全程无锁; 写按桶串行, 锁是桶头节点自身. 并发协议沿用 Paper 服务端
- * SpottedLeaf concurrentutil 中 ConcurrentLong2ReferenceChainedHashTable 的链式方案:
+ * <p>读路径全程无锁, 写按桶串行, 锁是桶头节点自身.
  * 扩容按桶迁移, 迁移完的桶写入 {@code RESIZE_NODE} 指路, 读写与遍历跟着它转到新表.
  * <p>使用契约:
  * <ul>
@@ -71,26 +70,17 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         this.nextTable = this.table;
     }
 
-    /**
-     * 以给定的预期映射数创建, 装满预期数量前不触发扩容.
-     */
     @NotNull
     public static <V> ConcurrentUUID2ReferenceChainedHashTable<V> createWithExpected(int expected) {
         double capacity = Math.ceil((double) expected / (double) DEFAULT_LOAD_FACTOR);
         return createWithCapacity((int) Math.min(capacity, (double) Integer.MAX_VALUE), DEFAULT_LOAD_FACTOR);
     }
 
-    /**
-     * 以给定的初始容量和装载因子创建.
-     */
     @NotNull
     public static <V> ConcurrentUUID2ReferenceChainedHashTable<V> createWithCapacity(int capacity, float loadFactor) {
         return new ConcurrentUUID2ReferenceChainedHashTable<>(capacity, loadFactor);
     }
 
-    /**
-     * 返回 key 当前映射的值, 没有映射时返回 {@code null}.
-     */
     @Nullable
     public V get(@NotNull UUID key) {
         Objects.requireNonNull(key, "key");
@@ -99,11 +89,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         return node == null ? null : node.getValueVolatile();
     }
 
-    /**
-     * 返回 key 对应的节点, 没有则返回 {@code null}.
-     * <p>返回的节点可能是 compute 家族进行中的占位, 其 value 为 {@code null},
-     * 为保住写读之间的 happens-before, 占位不得视作已映射.
-     */
     @Nullable
     private TableEntry<V> getNode(long msb, long lsb) {
         int hash = hash(msb, lsb);
@@ -127,10 +112,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * key 已有映射时返回现值, 否则以函数结果建立映射并返回; 函数返回 {@code null} 则不建立.
-     * <p>命中走全链无锁预查, 读多写少的负载下绝大多数调用不碰桶锁.
-     */
     @Nullable
     public V computeIfAbsent(@NotNull UUID key, @NotNull Function<? super UUID, ? extends V> function) {
         Objects.requireNonNull(key, "key");
@@ -213,10 +194,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * 以函数对 key 的当前映射(不存在时为 {@code null})重新求值: 返回非 {@code null} 建立或更新映射,
-     * 返回 {@code null} 删除映射. 返回函数的求值结果.
-     */
     @Nullable
     public V compute(@NotNull UUID key, @NotNull BiFunction<? super UUID, ? super V, ? extends V> function) {
         Objects.requireNonNull(key, "key");
@@ -306,10 +283,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * key 已有映射时以函数重新求值: 返回非 {@code null} 更新映射, 返回 {@code null} 删除映射.
-     * 没有映射时不调用函数. 返回函数的求值结果, 未映射时返回 {@code null}.
-     */
     @Nullable
     public V computeIfPresent(@NotNull UUID key, @NotNull BiFunction<? super UUID, ? super V, ? extends V> function) {
         Objects.requireNonNull(key, "key");
@@ -364,9 +337,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * 删除 key 的映射并返回其旧值, 没有映射时返回 {@code null}.
-     */
     @Nullable
     public V remove(@NotNull UUID key) {
         Objects.requireNonNull(key, "key");
@@ -419,9 +389,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * 至少删除调用开始时已存在的全部映射; 期间并发添加的映射可能残留.
-     */
     public void clear() {
         NodeIterator<V> iterator = new NodeIterator<>(this);
         TableEntry<V> node;
@@ -430,9 +397,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * 当前映射数.
-     */
     public int size() {
         return (int) Math.clamp(this.size.get(), 0L, (long) Integer.MAX_VALUE);
     }
@@ -442,9 +406,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         return this.table.length;
     }
 
-    /**
-     * 弱一致地遍历全部 key. key 对象按内联的两个 long 即时重建.
-     */
     public void forEachKey(@NotNull Consumer<? super UUID> action) {
         Objects.requireNonNull(action, "action");
         NodeIterator<V> iterator = new NodeIterator<>(this);
@@ -454,9 +415,6 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
-    /**
-     * 弱一致地遍历全部值.
-     */
     public void forEachValue(@NotNull Consumer<? super V> action) {
         Objects.requireNonNull(action, "action");
         NodeIterator<V> iterator = new NodeIterator<>(this);
@@ -506,8 +464,7 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
     /**
      * 在 expectedCurr 表里撞见 {@code RESIZE_NODE} 后解析应当前往的表.
      * <p>迁移逻辑保证 RESIZE_NODE 只在整条链搬完后才写入原桶, 因此拿到下一张表就能看到完整的链.
-     * 但 nextTable 可能已被再下一轮扩容覆盖, 那时当前表已不是 expectedCurr, 直接改用当前表:
-     * 它要么含有完整的链, 要么继续指向下一张表.
+     * 但 nextTable 可能已被再下一轮扩容覆盖, 那时当前表已不是 expectedCurr, 直接改用当前表.
      * <p>两个字段的读取顺序不可交换.
      */
     private TableEntry<V>[] fetchNewTable(TableEntry<V>[] expectedCurr) {

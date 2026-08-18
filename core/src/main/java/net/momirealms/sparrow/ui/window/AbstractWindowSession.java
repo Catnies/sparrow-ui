@@ -70,7 +70,7 @@ abstract class AbstractWindowSession implements WindowSession {
      * @param next 要打开的 Window
      * @return 打开并推进完成时返回 true
      */
-    final boolean openNextNow(@NotNull AbstractWindow<?> next) {
+    final boolean navigateNow(@NotNull AbstractWindow<?> next) {
         if (!this.active) {
             return false;
         }

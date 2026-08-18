@@ -166,7 +166,7 @@ public final class SkillTreeMenu {
         // 同一类别永远复用同一个 future, 于是也永远是同一扇 Window;
         // TREE 会话认出老成员后只移动当前位置, 那扇窗连滚动位置都还在原处
         CompletableFuture<Window> pending = this.opened.computeIfAbsent(category, this::buildCategoryWindow);
-        source.openNext(pending).exceptionally(throwable -> {
+        source.navigate(pending).exceptionally(throwable -> {
             SparrowExample.INSTANCE.getLogger().log(Level.SEVERE, "Failed to open the " + category.title() + " skill tree", throwable);
             return null;
         });
