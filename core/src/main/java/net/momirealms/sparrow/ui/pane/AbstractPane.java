@@ -9,6 +9,11 @@ import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.visual.PaneVisual;
+import net.momirealms.sparrow.ui.visual.PaneVisualImpl;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
+import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,8 +31,8 @@ abstract non-sealed class AbstractPane implements Pane {
     private final Element[] elements;   // 每个槽位当前保存的元素
     private final SlotObserver[] observers; // 每个槽位对应一条订阅链的头节点
     private final SignalBindings signalBindings = new SignalBindings(); // 持有的 Signal 绑定
+    private final PaneVisualImpl visual;    // 视觉配置, 空槽背景与逐槽显示路径失效路由
 
-    private ItemProvider background;    // 空槽位显示的背景, 可为 null
     private boolean frozen;             // 是否禁止玩家交互
     // 额外参与的 Inventory 序列, 写时整体替换为新的不可变快照, 读不加锁
     @Nullable private volatile InventorySequence ownSequence;                  // 逐个声明的 Inventory 都放在这条序列里
@@ -37,9 +42,12 @@ abstract non-sealed class AbstractPane implements Pane {
     AbstractPane(Structure structure, Element[] elements, ItemProvider background, boolean frozen) {
         this.structure = structure;
         this.elements = elements;
-        this.background = background;
+        this.visual = new PaneVisualImpl(this.signalBindings, elements.length);
         this.frozen = frozen;
         this.observers = new SlotObserver[elements.length];
+        if (background != null) {
+            this.visual.background(background);
+        }
     }
 
     @Override
@@ -191,24 +199,36 @@ abstract non-sealed class AbstractPane implements Pane {
     }
 
     @Override
+    @NotNull
+    public final PaneVisual visual() {
+        return this.visual;
+    }
+
+    @Override
     @Nullable
-    public final synchronized ItemProvider background() {
-        return this.background;
+    @ApiStatus.Internal
+    public final ResolvedVisual resolvedOverlay(int slot, @Nullable ItemStack actual) {
+        return this.visual.visualizeOverlay(slot, actual);
+    }
+
+    @Override
+    @NotNull
+    @ApiStatus.Internal
+    public final Subscription attachVisualDirty(int slot, @NotNull Runnable invalidator) {
+        Objects.checkIndex(slot, this.elements.length);
+        Objects.requireNonNull(invalidator, "invalidator");
+        return this.visual.attach(slot, invalidator);
+    }
+
+    @Override
+    @Nullable
+    public final ItemProvider background() {
+        return this.visual.background();
     }
 
     @Override
     public final void setBackground(@Nullable ItemProvider background) {
-        SlotObserver[][] observers;
-        synchronized (this) {
-            // 背景未变化时不触发任何通知
-            if (this.background == background) {
-                return;
-            }
-            this.background = background;
-            // 背景影响所有空槽位的显示, 需要通知全部槽位的订阅
-            observers = this.snapshotAll();
-        }
-        this.publish(observers);
+        this.visual.background(background);
     }
 
     @Override
@@ -352,12 +372,7 @@ abstract non-sealed class AbstractPane implements Pane {
         }
         this.observers[slot] = subscription;
         // 快照当前状态, 与订阅一起交还调用方
-        return new PaneSlotAttachment(
-                this.elements[slot],
-                this.background,
-                this.frozen,
-                subscription
-        );
+        return new PaneSlotAttachment(this.elements[slot], this.frozen, subscription);
     }
 
     @Override

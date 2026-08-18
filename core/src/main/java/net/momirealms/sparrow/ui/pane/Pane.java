@@ -6,11 +6,14 @@ import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.pane.page.Scroll;
 import net.momirealms.sparrow.ui.pane.page.Tab;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.visual.PaneVisual;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -734,6 +737,135 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
+     * 返回本 Pane 的视觉配置: 两层视觉映射与空槽背景.
+     * <p>同一 Pane 始终返回同一个对象; 配置对显示这个 Pane 的所有 Window 生效.
+     *
+     * @return 视觉配置
+     */
+    @NotNull
+    PaneVisual visual();
+
+    /**
+     * 返回当前的全局视觉映射.
+     *
+     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按路径终点显示
+     */
+    @Nullable
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
+        return this.visual().visualizerProvider();
+    }
+
+    /**
+     * 设置 Pane 全局视觉映射. 映射盖在经过本 Pane 的显示路径上, 命中时路径终点不再参与显示;
+     * 输入是路径终点的同步可读内容, 约定见 {@link PaneVisual}. 返回 {@code null} 表示放行, 交给下一层.
+     * <p>映射只改变 Window 中的展示结果, 不影响槽位元素, 事务与点击语义.
+     * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
+     * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
+     */
+    default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual().setVisualizerProvider(visualizerProvider);
+    }
+
+    /**
+     * 设置 Pane 全局视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     */
+    default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual().setVisualizerProvider(visualizerProvider, placeholder);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射设置 Pane 全局视觉映射.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同.
+     *
+     * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
+     */
+    default void setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual().setVisualizerItem(visualizer);
+    }
+
+    /**
+     * 返回一个 Pane 槽位的显式视觉映射; 不含回退到的全局映射.
+     *
+     * @param slot Pane 槽位
+     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int slot) {
+        return this.visual().visualizerProvider(slot);
+    }
+
+    /**
+     * 替换一个 Pane 槽位的逐槽视觉映射, 它是本 Pane 层级最高的一层:
+     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
+     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
+     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
+     *
+     * @param slot Pane 槽位
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual().setVisualizerProvider(slot, visualizerProvider);
+    }
+
+    /**
+     * 替换一个 Pane 槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
+     *
+     * @param slot Pane 槽位
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual().setVisualizerProvider(slot, visualizerProvider, placeholder);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射替换一个 Pane 槽位的逐槽视觉映射.
+     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     *
+     * @param slot Pane 槽位
+     * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual().setVisualizerItem(slot, visualizer);
+    }
+
+    /**
+     * 求值一个 Pane 槽位的两层视觉映射, 不含空槽背景.
+     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
+     *
+     * @param slot Pane 槽位
+     * @param actual 路径终点的同步可读内容, 没有内容为 {@code null}
+     * @return 求值结果, 两层都缺席或放行时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    @ApiStatus.Internal
+    ResolvedVisual resolvedOverlay(int slot, @Nullable ItemStack actual);
+
+    /**
+     * 把显示路径附着到一个精确槽位的视觉失效路由.
+     * <p>失效可能从任意线程发出; 回调不会在路由内部的同步区间执行.
+     *
+     * @param slot 路径经过的 Pane 槽位
+     * @param invalidator 路径失效动作
+     * @return 附着凭证, 关闭后不再接收失效
+     */
+    @NotNull
+    @ApiStatus.Internal
+    Subscription attachVisualDirty(int slot, @NotNull Runnable invalidator);
+
+    /**
      * 返回空槽位使用的背景, 没有背景时返回 null.
      *
      * @return Pane 背景, 或 null
@@ -747,6 +879,15 @@ public sealed interface Pane permits AbstractPane {
      * @param background Pane 背景, null 表示清除背景
      */
     void setBackground(@Nullable ItemProvider background);
+
+    /**
+     * 使用 ItemStack 更改空槽位使用的背景.
+     *
+     * @param background Pane 背景
+     */
+    default void setBackground(@NotNull ItemStack background) {
+        this.setBackground(ItemProvider.constant(background));
+    }
 
     /**
      * 返回 Pane 是否已禁止玩家交互.

@@ -83,13 +83,16 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     }
 
     /**
-     * 替换空槽背景并标脏全部槽位.
+     * 替换空槽背景并标脏全部槽位. 与当前是同一个背景时不做任何事.
      *
      * @param background 空槽背景, {@code null} 表示清除
      */
     public final void background(@Nullable ItemProvider background) {
         synchronized (this.stateLock) {
             State current = this.state;
+            if (current.background == background) {
+                return;
+            }
             this.state = new State(current.global, current.bySlot, background);
         }
         this.dirty();
