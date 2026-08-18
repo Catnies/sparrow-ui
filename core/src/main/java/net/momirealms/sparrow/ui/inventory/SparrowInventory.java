@@ -286,6 +286,17 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 返回当前的全局异步视觉映射.
+     * 没有设置过或这一层是同步映射时为 {@code null}.
+     *
+     * @return 全局异步视觉映射.
+     */
+    @Nullable
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerAsync() {
+        return this.visual.visualizerAsync();
+    }
+
+    /**
      * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层:
      * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
      * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
@@ -366,6 +377,18 @@ public abstract class SparrowInventory {
     @Nullable
     public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getVisualizerProvider(int slot) {
         return this.visual.visualizerProvider(slot);
+    }
+
+    /**
+     * 返回某个槽位的显式异步视觉映射, 不含回退到的全局映射.
+     *
+     * @param slot 槽位序号
+     * @return 该槽的逐槽异步视觉映射; 没有覆盖或这一层是同步映射时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerAsync(int slot) {
+        return this.visual.visualizerAsync(slot);
     }
 
     /**

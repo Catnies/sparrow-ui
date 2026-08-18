@@ -72,7 +72,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param sessionEndHandlers 本窗成为链根时装进新会话的结束处理器
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
-     * @param cursorVisualizerProvider 光标显示转换器
+     * @param cursorVisualLayer 光标视觉配置的初始层
      */
     record Settings(
             @NotNull Supplier<? extends Component> titleSupplier,
@@ -86,7 +86,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
-            @NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider
+            @NotNull CursorVisualImpl.Layer cursorVisualLayer
     ) {
     }
 
@@ -199,7 +199,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.cursorRenderContext = RenderContext.cursor(this);
         this.cursorVisual = new CursorVisualImpl(
                 this.signalBindings,
-                settings.cursorVisualizerProvider(),
+                settings.cursorVisualLayer(),
                 action -> this.submit(action, "Failed to update Window cursor visualizer")
         );
         this.cursorRenderCell = new RenderCell(

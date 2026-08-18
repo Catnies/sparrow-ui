@@ -25,11 +25,11 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
 
     CursorVisualImpl(
             @NotNull SignalBindings signalBindings,
-            @NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider,
+            @NotNull Layer layer,
             @NotNull Consumer<Runnable> commandSubmitter
     ) {
         super(signalBindings);
-        this.layer = new Layer(visualizerProvider, null, null);
+        this.layer = layer;
         this.commandSubmitter = commandSubmitter;
     }
 
@@ -92,11 +92,13 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
      * 光标的一层视觉配置. 同步与异步互斥, 后设置的那种取代前一种.
      * <p>本记录一经设置就不再变化, 因此渲染层可以拿它自己当来源身份.
      */
-    private record Layer(
+    record Layer(
             @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> sync,
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> async,
             @Nullable ImmediateItemProvider asyncPlaceholder
     ) {
+        static final Layer NONE = new Layer(null, null, null);
+
         @Nullable
         private ResolvedVisual visualize(@Nullable ItemStack actual) {
             if (this.async != null) {

@@ -48,11 +48,7 @@ public final class RenderCell implements AutoCloseable {
     @NotNull
     public ItemStack render(@NotNull Intent intent) {
         // 执行作废操作
-        if (this.resetRequested.getAndSet(false)) {
-            this.activeSourceKey = null;
-            this.generation++;
-            this.inFlightToken.set(ABANDONED);
-        }
+        this.applyPendingReset();
         // 执行渲染
         return switch (intent) {
             case Intent.Direct(var value) -> {
@@ -64,12 +60,8 @@ public final class RenderCell implements AutoCloseable {
                     this.clearSource();
                     yield Objects.requireNonNull(immediate.provideImmediately(this.context), "rendered item");
                 }
-                // 换了来源, 旧任务与旧值一并作废, 新来源重新起算.
                 if (sourceKey != this.activeSourceKey) {
-                    this.activeSourceKey = sourceKey;
-                    this.generation++;
-                    this.inFlightToken.set(ABANDONED);
-                    this.recomputeRequested.set(true);
+                    this.switchSource(sourceKey);
                 }
                 long generation = this.generation;
                 // 计算期间到达的失效保留重算要求, 完成后再算一轮
@@ -80,12 +72,34 @@ public final class RenderCell implements AutoCloseable {
                 if (completed != null && completed.generation == generation) {
                     yield completed.item;
                 }
-                // 占位提供器当场算出内容, 没有占位时用消费方的兜底内容.
-                yield placeholder != null
-                        ? Objects.requireNonNull(placeholder.provideImmediately(this.context), "placeholder item")
-                        : lastResort;
+                yield this.renderPlaceholder(placeholder, lastResort);
             }
         };
+    }
+
+    // 执行提交的作废.
+    private void applyPendingReset() {
+        if (this.resetRequested.get() && this.resetRequested.getAndSet(false)) {
+            this.activeSourceKey = null;
+            this.generation++;
+            this.inFlightToken.set(ABANDONED);
+        }
+    }
+
+    // 换了来源, 旧任务与旧值一并作废, 新来源重新起算.
+    private void switchSource(@NotNull Object sourceKey) {
+        this.activeSourceKey = sourceKey;
+        this.generation++;
+        this.inFlightToken.set(ABANDONED);
+        this.recomputeRequested.set(true);
+    }
+
+    // 占位提供器当场算出内容, 没有占位时用消费方的兜底内容.
+    @NotNull
+    private ItemStack renderPlaceholder(@Nullable ImmediateItemProvider placeholder, @NotNull ItemStack lastResort) {
+        return placeholder != null
+                ? Objects.requireNonNull(placeholder.provideImmediately(this.context), "placeholder item")
+                : lastResort;
     }
 
     private void submit(ItemProvider provider, long generation) {

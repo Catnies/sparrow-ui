@@ -433,21 +433,30 @@ public interface Window {
     CursorVisual cursorVisual();
 
     /**
-     * 当前返回 ItemProvider 的光标显示转换器.
+     * 当前返回 ImmediateItemProvider 的光标显示转换器.
      *
-     * @return 光标 ItemProvider 显示转换器
+     * @return 光标 ImmediateItemProvider 显示转换器
      */
     @NotNull
     Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getCursorVisualizerProvider();
 
     /**
-     * 设置返回 ItemProvider 的光标显示转换器.
+     * 设置返回 ImmediateItemProvider 的光标显示转换器.
      * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
      *
-     * @param cursorVisualizerProvider 光标 ItemProvider 显示转换器
+     * @param cursorVisualizerProvider 光标 ImmediateItemProvider 显示转换器
      */
     void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider);
 
+    /**
+     * 当前的光标异步显示转换器.
+     *
+     * @return 光标异步显示转换器; 没有设置过或这一层是同步映射时为 {@code null}
+     */
+    @Nullable
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerAsync() {
+        return this.cursorVisual().visualizerAsync();
+    }
 
     /**
      * 设置光标异步显示转换器, 未完成时显示菜单实际光标.
@@ -469,6 +478,7 @@ public interface Window {
     default void setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync, @NotNull ItemStack placeholder) {
         this.cursorVisual().visualizerAsync(cursorVisualizerAsync, placeholder);
     }
+
     /**
      * 使用直接返回 ItemStack 的映射设置光标显示转换器.
      * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
@@ -778,13 +788,34 @@ public interface Window {
         @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
         /**
-         * 设置返回 ItemProvider 的光标显示转换器.
+         * 设置返回 ImmediateItemProvider 的光标显示转换器.
          *
-         * @param cursorVisualizerProvider 光标 ItemProvider 显示转换器
+         * @param cursorVisualizerProvider 光标 ImmediateItemProvider 显示转换器
          * @return 此 Builder
          */
         @NotNull
         B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider);
+
+        /**
+         * 设置光标异步显示转换器, 未完成时显示菜单实际光标.
+         * <p>与同步的光标显示转换器互斥, 后设置的那种取代前一种.
+         *
+         * @param cursorVisualizerAsync 光标异步显示转换器, {@code null} 表示不设置这一层
+         * @return 此 Builder
+         */
+        @NotNull
+        B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync);
+
+        /**
+         * 设置光标异步显示转换器, 并指定未完成时显示的占位物品.
+         * <p>与同步的光标显示转换器互斥, 后设置的那种取代前一种.
+         *
+         * @param cursorVisualizerAsync 光标异步显示转换器, {@code null} 表示不设置这一层
+         * @param placeholder 首次成功结果前显示的占位物品
+         * @return 此 Builder
+         */
+        @NotNull
+        B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync, @NotNull ItemStack placeholder);
 
         /**
          * 使用直接返回 ItemStack 的映射设置光标显示转换器.

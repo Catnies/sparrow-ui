@@ -97,6 +97,7 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
 
     @Override
     public void visualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @Nullable ImmediateItemProvider placeholder) {
+        Objects.checkIndex(slot, this.state.bySlot.length);
         Layer newLayer = new Layer(null, visualizerAsync, placeholder);
         synchronized (this.stateLock) {
             State current = this.state;

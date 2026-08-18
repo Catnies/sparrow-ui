@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.util.HandlerList;
@@ -16,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -43,7 +45,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
-    private Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider = ignoredCursor -> null;
+    private CursorVisualImpl.Layer cursorVisualLayer = CursorVisualImpl.Layer.NONE;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {
@@ -62,7 +64,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.sessionEndHandlers = new ArrayList<>(source.sessionEndHandlers);
         this.windowState = source.windowState;
         this.windowStateChangeHandlers = new ArrayList<>(source.windowStateChangeHandlers);
-        this.cursorVisualizerProvider = source.cursorVisualizerProvider;
+        this.cursorVisualLayer = source.cursorVisualLayer;
         this.modifiers = new ArrayList<>(source.modifiers);
     }
 
@@ -211,7 +213,22 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     @NotNull
     @Override
     public final B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizer) {
-        this.cursorVisualizerProvider = cursorVisualizer;
+        Objects.requireNonNull(cursorVisualizer, "cursorVisualizer");
+        this.cursorVisualLayer = new CursorVisualImpl.Layer(cursorVisualizer, null, null);
+        return this.self();
+    }
+
+    @NotNull
+    @Override
+    public final B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync) {
+        this.cursorVisualLayer = new CursorVisualImpl.Layer(null, cursorVisualizerAsync, null);
+        return this.self();
+    }
+
+    @NotNull
+    @Override
+    public final B setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync, @NotNull ItemStack placeholder) {
+        this.cursorVisualLayer = new CursorVisualImpl.Layer(null, cursorVisualizerAsync, ItemProvider.constant(placeholder));
         return this.self();
     }
 
@@ -290,7 +307,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
                 List.copyOf(this.sessionEndHandlers),
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),
-                this.cursorVisualizerProvider
+                this.cursorVisualLayer
         );
     }
 }
