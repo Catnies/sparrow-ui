@@ -34,11 +34,7 @@ public final class BukkitProxyInstaller {
     private BukkitProxyInstaller() {
     }
 
-    /**
-     * 安装并初始化当前库的反射代理运行时.
-     *
-     * @throws IllegalStateException 代理 Jar 缺失, 类路径安装失败或代理初始化失败
-     */
+    // 安装并初始化当前库的反射代理运行时.
     public static void setUp() {
         try {
             ClassLoader minecraftClassLoader = Bukkit.class.getClassLoader();

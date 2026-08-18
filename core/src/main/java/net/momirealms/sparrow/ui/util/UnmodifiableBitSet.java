@@ -10,6 +10,12 @@ public class UnmodifiableBitSet extends BitSet {
 
     private final BitSet delegate;
 
+    /**
+     * 以给定 BitSet 为底层数据创建只读视图.
+     *
+     * @param bitSet 底层 BitSet
+     * @throws NullPointerException 当 bitSet 为 null 时
+     */
     public UnmodifiableBitSet(BitSet bitSet) {
         if (bitSet == null) {
             throw new NullPointerException("bitSet must not be null");

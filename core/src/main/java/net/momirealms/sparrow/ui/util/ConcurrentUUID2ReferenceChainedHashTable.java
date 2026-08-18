@@ -32,9 +32,9 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
     private static final int DEFAULT_CAPACITY = 16;
     private static final float DEFAULT_LOAD_FACTOR = 0.75f;
     private static final int MAXIMUM_CAPACITY = Integer.MIN_VALUE >>> 1;
-    private static final int THRESHOLD_NO_RESIZE = -1;
-    private static final int THRESHOLD_RESIZING = -2;
-    private static final TableEntry<?> RESIZE_NODE = new TableEntry<>(0L, 0L, null);
+    private static final int THRESHOLD_NO_RESIZE = -1;    // 阈值哨兵: 不允许扩容
+    private static final int THRESHOLD_RESIZING = -2;     // 阈值哨兵: 正在扩容
+    private static final TableEntry<?> RESIZE_NODE = new TableEntry<>(0L, 0L, null); // 桶头哨兵: 该桶已迁移到新表
     private static final VarHandle THRESHOLD_HANDLE;
 
     static {
@@ -45,12 +45,17 @@ public final class ConcurrentUUID2ReferenceChainedHashTable<V> {
         }
     }
 
+    // size 为映射数量, loadFactor 决定扩容阈值; table 是当前桶数组, nextTable 是扩容目标表,
+    // threshold 保存扩容阈值或上面的哨兵值, 通过 VarHandle 做内存语义访问
     private final AtomicLong size = new AtomicLong();
     private final float loadFactor;
     private volatile TableEntry<V>[] table;
     private volatile TableEntry<V>[] nextTable;
     private volatile int threshold;
 
+    /**
+     * 以默认容量(16)和默认负载因子(0.75)创建空表.
+     */
     public ConcurrentUUID2ReferenceChainedHashTable() {
         this(DEFAULT_CAPACITY, DEFAULT_LOAD_FACTOR);
     }

@@ -73,8 +73,8 @@ public final class ThrowableUtils {
     }
 
     /**
-     * 执行一个可能抛出异常的提供者, 并通过 sneakyThrow 将任何捕获的异常作为非受检异常抛出.
-     * 
+     * 执行一个可能抛出异常的提供者, 任何捕获的异常都会作为非受检异常重新抛出.
+     *
      * @param supplier 可能抛出异常的逻辑代码块
      * @param <T> 返回值类型
      * @return 提供者执行后的返回值
@@ -89,9 +89,9 @@ public final class ThrowableUtils {
     }
 
     /**
-     * 利用泛型类型擦除机制, 欺骗编译器将受检异常作为非受检异常抛出.
-     * 使用时需要注意, 调用此方法后代码执行会中断.
-     * 
+     * 利用泛型类型擦除机制, 欺骗编译器把受检异常当作非受检异常抛出.
+     * 调用此方法后代码执行会中断.
+     *
      * @param t 需要抛出的异常实例
      * @param <E> 泛型异常类型
      * @return 实际上不会返回任何值, 因为总是会抛出异常
@@ -103,13 +103,19 @@ public final class ThrowableUtils {
     }
 
     /**
-     * 函数式接口, 表示一个不接受参数且返回结果的提供者, 在执行过程中可能抛出异常.
-     * 
-     * @param <T> 提供者返回的结果类型
+     * 可能抛出受检异常的供应者, 供 sneakyThrow 包装执行.
+     *
+     * @param <T> 返回的结果类型
      */
     @FunctionalInterface
     public interface ThrowableSupplier<T> {
 
+        /**
+         * 执行并返回结果, 允许抛出任意异常.
+         *
+         * @return 执行结果
+         * @throws Throwable 执行过程中抛出的任意异常
+         */
         T get() throws Throwable;
     }
 }

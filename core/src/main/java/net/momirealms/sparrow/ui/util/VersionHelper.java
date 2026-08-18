@@ -13,11 +13,11 @@ import java.util.List;
 public final class VersionHelper {
     private VersionHelper() {}
 
-    public static final String MINECRAFT_VERSION;
-    public static final int WORLD_VERSION;
-    private static final int version;
-    private static final int majorVersion;
-    private static final int minorVersion;
+    public static final String MINECRAFT_VERSION; // 服务端版本号, 例如 1.21.10
+    public static final int WORLD_VERSION;        // 服务端数据版本, 用于存档数据升级
+    private static final int version;             // 版本号编码后的整数, 例如 1.21.10 -> 12110
+    private static final int majorVersion;        // 版本字符串第二段的整数值
+    private static final int minorVersion;        // 版本字符串第三段的整数值, 两段式版本号为 0
     private static final boolean mojmap;
     private static final boolean folia;
     private static final boolean paper;
@@ -32,8 +32,9 @@ public final class VersionHelper {
     private static final boolean v26_1_2;
     private static final boolean v26_2;
 
+    // 多写几个候选名: 无混淆映射的版本缺少部分 Main 类
     private static final Class<?> UNOBFUSCATED_CLAZZ = ReflectionUtils.getClazz(
-            "net.minecraft.obfuscate.DontObfuscate", // 因为无混淆版本没有这个类所以说多写几个防止找不到了
+            "net.minecraft.obfuscate.DontObfuscate",
             "net.minecraft.data.Main",
             "net.minecraft.server.Main",
             "net.minecraft.gametest.Main",
@@ -42,6 +43,7 @@ public final class VersionHelper {
     );
 
     static {
+        // 一次性解析 version.json, 并探测运行平台特征供后续 isXxx 查询
         try (InputStream inputStream = UNOBFUSCATED_CLAZZ.getResourceAsStream("/version.json")) {
             if (inputStream == null) {
                 throw new IOException("Failed to load version.json");
@@ -71,6 +73,7 @@ public final class VersionHelper {
             // 12104 = 1.21.4
             version = parseVersionToInteger(versionString);
 
+            // 版本特征位: 达到某版本即置位, 供兼容层按版本切换实现
             v1_21_8 = version >= 12108;
             v1_21_9 = version >= 12109;
             v1_21_10 = version >= 12110;
@@ -83,7 +86,7 @@ public final class VersionHelper {
             majorVersion = major;
             minorVersion = minor;
 
-            mojmap = checkMojMap() || v26_1;
+            mojmap = checkMojMap() || v26_1; // 26.1 起官方服务端默认使用 Mojang 映射
             folia = checkFolia();
             paper = checkPaper();
             leaves = checkLeaves();
@@ -94,6 +97,7 @@ public final class VersionHelper {
     }
 
     public static int parseVersionToInteger(String versionString) {
+        // 逐段解析点分数字, 只取前三段
         int v1 = 0;
         int v2 = 0;
         int v3 = 0;
@@ -128,21 +132,34 @@ public final class VersionHelper {
         return 10000 * v1 + v2 * 100 + v3;
     }
 
-
+    /**
+     * 返回服务端主版本号, 即版本字符串第二段的整数值, 例如 1.21.10 返回 21.
+     *
+     * @return 主版本号
+     */
     public static int majorVersion() {
         return majorVersion;
     }
 
+    /**
+     * 返回服务端次版本号, 即版本字符串第三段的整数值, 两段式版本号(如 26.1)返回 0.
+     *
+     * @return 次版本号
+     */
     public static int minorVersion() {
         return minorVersion;
     }
 
+    /**
+     * 返回编码后的完整版本号整数, 编码规则见 parseVersionToInteger.
+     *
+     * @return 版本整数, 例如 1.21.10 -> 12110
+     */
     public static int version() {
         return version;
     }
 
     private static boolean checkMojMap() {
-        // Check if the server is Mojmap
         return ReflectionUtils.classExists("net.neoforged.art.internal.RenamerImpl");
     }
 
@@ -162,54 +179,119 @@ public final class VersionHelper {
         return ReflectionUtils.classExists("io.canvasmc.canvas.Config");
     }
 
+    /**
+     * 判断服务端是否为 Folia 分支.
+     *
+     * @return 是 Folia 时返回 true
+     */
     public static boolean isFolia() {
         return folia;
     }
 
+    /**
+     * 判断服务端是否为 Paper 或基于 Paper 的发行版.
+     *
+     * @return 是 Paper 系服务端时返回 true
+     */
     public static boolean isPaper() {
         return paper;
     }
 
+    /**
+     * 判断服务端是否为 Canvas 分支.
+     *
+     * @return 是 Canvas 时返回 true
+     */
     public static boolean isCanvas() {
         return canvas;
     }
 
+    /**
+     * 判断服务端是否为 Leaves 分支.
+     *
+     * @return 是 Leaves 时返回 true
+     */
     public static boolean isLeaves() {
         return leaves;
     }
 
+    /**
+     * 判断服务端是否运行在 Mojang 官方映射(无混淆)环境.
+     *
+     * @return 是 Mojmap 环境时返回 true
+     */
     public static boolean isMojmap() {
         return mojmap;
     }
 
+    /**
+     * 判断服务端版本是否不低于 1.21.8.
+     *
+     * @return 不低于 1.21.8 时返回 true
+     */
     public static boolean isOrAbove1_21_8() {
         return v1_21_8;
     }
 
+    /**
+     * 判断服务端版本是否不低于 1.21.9.
+     *
+     * @return 不低于 1.21.9 时返回 true
+     */
     public static boolean isOrAbove1_21_9() {
         return v1_21_9;
     }
 
+    /**
+     * 判断服务端版本是否不低于 1.21.10.
+     *
+     * @return 不低于 1.21.10 时返回 true
+     */
     public static boolean isOrAbove1_21_10() {
         return v1_21_10;
     }
 
+    /**
+     * 判断服务端版本是否不低于 1.21.11.
+     *
+     * @return 不低于 1.21.11 时返回 true
+     */
     public static boolean isOrAbove1_21_11() {
         return v1_21_11;
     }
 
+    /**
+     * 判断服务端版本是否不低于 26.1.
+     *
+     * @return 不低于 26.1 时返回 true
+     */
     public static boolean isOrAbove26_1() {
         return v26_1;
     }
 
+    /**
+     * 判断服务端版本是否不低于 26.1.1.
+     *
+     * @return 不低于 26.1.1 时返回 true
+     */
     public static boolean isOrAbove26_1_1() {
         return v26_1_1;
     }
 
+    /**
+     * 判断服务端版本是否不低于 26.1.2.
+     *
+     * @return 不低于 26.1.2 时返回 true
+     */
     public static boolean isOrAbove26_1_2() {
         return v26_1_2;
     }
 
+    /**
+     * 判断服务端版本是否不低于 26.2.
+     *
+     * @return 不低于 26.2 时返回 true
+     */
     public static boolean isOrAbove26_2() {
         return v26_2;
     }
@@ -218,7 +300,7 @@ public final class VersionHelper {
      * 收集当前服务端所具备的补丁标识.
      * 该列表会用于初始化代理层, 以便根据具体发行版差异加载不同兼容逻辑.
      *
-     * @return 当前服务端命中的补丁名称列表, 如 `paper`, `folia` 等
+     * @return 当前服务端命中的补丁名称列表, 如 paper, folia 等
      */
     public static List<String> getPatches() {
         List<String> patches = new ArrayList<>();
