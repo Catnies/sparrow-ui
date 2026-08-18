@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
@@ -54,7 +55,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         this.renderCell = new RenderCell(
                 this.renderContext,
                 () -> this.onDirty(Invalidation.COMPLETION),
-                "Failed to render asynchronous Window slot " + windowSlot
+                throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Window slot " + windowSlot, throwable)
         );
 
         try {

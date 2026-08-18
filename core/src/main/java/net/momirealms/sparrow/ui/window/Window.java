@@ -435,10 +435,10 @@ public interface Window {
     /**
      * 返回当前的光标视觉映射.
      *
-     * @return 光标视觉映射; 没有设置过或这一层是异步映射时为 {@code null}, 表示按菜单实际光标显示
+     * @return 光标视觉映射, 没有设置过时为 {@code null}, 表示按菜单实际光标显示
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider();
+    Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider();
 
     /**
      * 设置光标视觉映射.

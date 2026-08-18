@@ -199,15 +199,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
         this.cursorRenderContext = RenderContext.cursor(this);
-        this.cursorVisual = new CursorVisualImpl(
-                this.signalBindings,
-                settings.cursorVisualLayer(),
-                action -> this.submit(action, "Failed to update Window cursor visualizer")
-        );
+        this.cursorVisual = new CursorVisualImpl(this.signalBindings, settings.cursorVisualLayer());
         this.cursorRenderCell = new RenderCell(
                 this.cursorRenderContext,
                 () -> this.cursorCompletionPending.set(true),
-                "Failed to render asynchronous Window cursor"
+                throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Window cursor", throwable)
         );
     }
 
@@ -557,7 +553,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @Nullable
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider() {
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider() {
         return this.cursorVisual.visualizerProvider();
     }
 

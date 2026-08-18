@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
@@ -15,12 +14,13 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class RenderCell implements AutoCloseable {
     private final RenderContext context;
     private final Runnable invalidator;
-    private final String failureMessage;
+    private final Consumer<? super Throwable> exceptionHandler;
 
     private final AtomicBoolean recomputeRequested = new AtomicBoolean(true);
     private final AtomicBoolean resetRequested = new AtomicBoolean();   // 任意线程提交的作废请求, 由渲染消费
@@ -29,10 +29,10 @@ public final class RenderCell implements AutoCloseable {
     private volatile @Nullable Completed lastCompleted; // 最近完成值
     private @Nullable Object activeSourceKey;       // 当前来源的身份
 
-    public RenderCell(@NotNull RenderContext context, @NotNull Runnable invalidator, @NotNull String failureMessage) {
+    public RenderCell(@NotNull RenderContext context, @NotNull Runnable invalidator, @NotNull Consumer<? super Throwable> exceptionHandler) {
         this.context = Objects.requireNonNull(context, "context");
         this.invalidator = Objects.requireNonNull(invalidator, "invalidator");
-        this.failureMessage = Objects.requireNonNull(failureMessage, "failureMessage");
+        this.exceptionHandler = Objects.requireNonNull(exceptionHandler, "exceptionHandler");
     }
 
     /**
@@ -107,7 +107,7 @@ public final class RenderCell implements AutoCloseable {
             future = Objects.requireNonNull(provider.provide(this.context), "provider result");
         } catch (Throwable throwable) {
             this.inFlightToken.compareAndSet(generation, 0L);
-            SparrowUI.getInstance().handleException(this.failureMessage, throwable);
+            this.exceptionHandler.accept(throwable);
             return;
         }
         if (future.isDone()) {
@@ -130,7 +130,7 @@ public final class RenderCell implements AutoCloseable {
             ItemStack item = Objects.requireNonNull(future.join(), "computed item");
             this.lastCompleted = new Completed(generation, item);
         } catch (Throwable throwable) {
-            SparrowUI.getInstance().handleException(this.failureMessage, ThrowableUtils.unwrapCompletion(throwable));
+            this.exceptionHandler.accept(ThrowableUtils.unwrapCompletion(throwable));
         } finally {
             this.inFlightToken.compareAndSet(generation, 0L);
         }
@@ -143,14 +143,14 @@ public final class RenderCell implements AutoCloseable {
             return;
         }
         if (throwable != null) {
-            SparrowUI.getInstance().handleException(this.failureMessage, ThrowableUtils.unwrapCompletion(throwable));
+            this.exceptionHandler.accept(ThrowableUtils.unwrapCompletion(throwable));
             if (this.recomputeRequested.get()) {
                 this.onDirty();
             }
             return;
         }
         if (item == null) {
-            SparrowUI.getInstance().handleException(this.failureMessage, new NullPointerException("computed item"));
+            this.exceptionHandler.accept(new NullPointerException("computed item"));
             if (this.recomputeRequested.get()) {
                 this.onDirty();
             }
@@ -169,11 +169,12 @@ public final class RenderCell implements AutoCloseable {
         this.recomputeRequested.set(true);
     }
 
+    // 失效通知本身失败时走同一个处理器: 是渲染失败还是通知失败, 栈迹已经分得清.
     private void onDirty() {
         try {
             this.invalidator.run();
         } catch (RuntimeException | Error exception) {
-            SparrowUI.getInstance().handleException(this.failureMessage + " invalidation", exception);
+            this.exceptionHandler.accept(exception);
         }
     }
 

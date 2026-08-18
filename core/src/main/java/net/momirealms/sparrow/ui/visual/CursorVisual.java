@@ -10,7 +10,7 @@ import java.util.function.Function;
 public interface CursorVisual extends Visual {
 
     /**
-     * 返回最近一次已经应用的光标视觉映射.
+     * 返回当前光标视觉映射.
      *
      * @return 光标视觉映射, 没有设置过时为 {@code null}
      */
@@ -18,7 +18,7 @@ public interface CursorVisual extends Visual {
     Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider();
 
     /**
-     * 请求替换光标视觉映射.
+     * 替换光标视觉映射.
      * <p>映射本身在渲染线程求值, 只负责挑出这次要用哪个提供器, 重活放进返回的提供器里.
      * 返回 {@code null} 表示显示菜单实际光标. 提供器给出结果之前显示 {@code placeholder};
      * 没有给占位就显示菜单实际光标. 提供器当场算得出结果时首帧就是真值, 用不到占位.
@@ -34,7 +34,7 @@ public interface CursorVisual extends Visual {
     );
 
     /**
-     * 请求替换光标视觉映射, 提供器给出结果前显示菜单实际光标.
+     * 替换光标视觉映射, 提供器给出结果前显示菜单实际光标.
      *
      * @param visualizerProvider 新的光标视觉映射, {@code null} 表示移除这一层
      */
@@ -43,7 +43,7 @@ public interface CursorVisual extends Visual {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射请求替换光标视觉映射.
+     * 使用直接返回 ItemStack 的映射替换光标视觉映射.
      * <p>映射返回 {@code null} 表示显示菜单实际光标.
      *
      * @param visualizer 新的光标物品映射, {@code null} 表示移除这一层

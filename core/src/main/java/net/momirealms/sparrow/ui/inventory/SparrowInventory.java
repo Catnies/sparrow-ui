@@ -257,8 +257,8 @@ public abstract class SparrowInventory {
      * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider() {
-        return this.visual.getVisualizerProvider();
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
+        return this.visual.visualizerProvider();
     }
 
     /**
@@ -305,8 +305,8 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider(int slot) {
-        return this.visual.getVisualizerProvider(slot);
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int slot) {
+        return this.visual.visualizerProvider(slot);
     }
 
     /**

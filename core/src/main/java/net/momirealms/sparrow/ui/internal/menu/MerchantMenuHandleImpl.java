@@ -556,17 +556,17 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             this.firstInputRenderCell = new RenderCell(
                     new RenderContext(window, FIRST_INPUT_SLOT),
                     invalidator,
-                    "Failed to render asynchronous Merchant first input"
+                    throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant first input", throwable)
             );
             this.secondInputRenderCell = new RenderCell(
                     new RenderContext(window, SECOND_INPUT_SLOT),
                     invalidator,
-                    "Failed to render asynchronous Merchant second input"
+                    throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant second input", throwable)
             );
             this.resultRenderCell = new RenderCell(
                     new RenderContext(window, RESULT_SLOT),
                     invalidator,
-                    "Failed to render asynchronous Merchant result"
+                    throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant result", throwable)
             );
             Subscription tradeSubscription = null;
             ItemAttachment firstInputAttachment = null;

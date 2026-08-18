@@ -9,26 +9,16 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
-/**
- * 保存一个 Window 的光标映射, Signal 绑定与跨线程失效位.
- */
 @ApiStatus.Internal
 public final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
-    private final Consumer<Runnable> commandSubmitter;
     private final AtomicBoolean pendingDirty = new AtomicBoolean();
     private volatile VisualLayer layer;
 
-    public CursorVisualImpl(
-            @NotNull SignalBindings signalBindings,
-            @NotNull VisualLayer layer,
-            @NotNull Consumer<Runnable> commandSubmitter
-    ) {
+    public CursorVisualImpl(@NotNull SignalBindings signalBindings, @NotNull VisualLayer layer) {
         super(signalBindings);
         this.layer = layer;
-        this.commandSubmitter = commandSubmitter;
     }
 
     @Nullable
@@ -37,16 +27,14 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         return this.layer.visualizer();
     }
 
+    // 先换层再置失效位: 两次写都是 volatile 语义, 消费方看到失效位就一定看得到新的层.
     @Override
     public void setVisualizerProvider(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
             @Nullable ImmediateItemProvider placeholder
     ) {
-        VisualLayer newLayer = new VisualLayer(visualizerProvider, placeholder);
-        this.commandSubmitter.accept(() -> {
-            this.layer = newLayer;
-            this.dirty();
-        });
+        this.layer = new VisualLayer(visualizerProvider, placeholder);
+        this.dirty();
     }
 
     /**
