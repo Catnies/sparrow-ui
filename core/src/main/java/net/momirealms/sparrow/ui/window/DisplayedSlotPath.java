@@ -1,18 +1,18 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
-import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
-import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.pane.Element;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
@@ -24,18 +24,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-/**
- * 记录 Window 中一个槽位当前显示的内容.
- * <p>它从根 Pane 的指定槽位出发, 跟随 {@link Element.PaneLink} 一层层进入子 Pane,
- * 直到找到 Item, Inventory连接或空槽位. Pane 变了要重新解析路径; 最终 Item 变了或
- * Inventory 有事务通知, 只需要重新渲染一次.
- */
 final class DisplayedSlotPath implements AutoCloseable {
     private final Window window;    // 所属 Window
     private final int windowSlot;   // 本路径服务的 Window 槽位
     private final Pane rootPane;      // 路径起点的根 Pane
     private final int rootSlot;     // 路径起点在根 Pane 中的槽位
     private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
+    private final RenderCell renderCell; // 失效驱动的渲染投影
     private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.RESOLVING);
     private PathState current;  // 当前已解析出的路径
 
@@ -53,12 +48,16 @@ final class DisplayedSlotPath implements AutoCloseable {
         this.rootPane = rootPane;
         this.rootSlot = rootPane.size().checkSlot(rootSlot);
         this.renderContext = new RenderContext(window, windowSlot);
+        this.renderCell = new RenderCell(
+                this.renderContext,
+                () -> this.onDirty(Invalidation.COMPLETION),
+                "Failed to render asynchronous Window slot " + windowSlot
+        );
 
         try {
             this.resolve();
             this.window.notifyUpdate(windowSlot);
         } catch (RuntimeException | Error throwable) {
-            // 首次解析失败: 关掉已建立的订阅再抛出, 避免泄漏
             ThrowableUtils.captureUnchecked(throwable, this::close);
             throw throwable;
         }
@@ -91,166 +90,38 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 生成当前槽位应显示的 ItemStack, 按以下优先级查找:
-     * <ol>
-     *   <li>若路径终点为 InventoryLink, 优先显示 Inventory 的槽位映射,
-     *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.
-     *   <li>若路径终点为 Item, 显示该 Item.
-     *   <li>若路径终点为 Empty, 回退为最深层 Pane 的背景.
-     *   <li>若仍无结果, 返回空物品作为最终兜底.
-     * </ol>
-     *
-     * @return 当前槽位应显示的 ItemStack, 不会为 {@code null}
+     * 进入解析, 这期间到达的通知先记在 phase 上, 结束时一并处理.
      */
-    @NotNull ItemStack render() {
-        PathState state = this.currentState();
-
-        // InventoryLink: Inventory 的视觉层级和真实内容共同决定显示.
-        if (state.inventoryLink != null) {
-            SparrowInventory inventory = state.inventoryLink.inventory();
-            int slot = state.inventoryLink.slot();
-            ItemStack itemStack = inventory.itemAt(slot);
-            ItemProvider visual = inventory.visualize(slot, itemStack);
-            if (visual != null) {
-                return ItemUtils.emptyIfNull(visual.provide(this.renderContext));
+    private void beginResolve() {
+        while (true) {
+            Phase phase = this.phase.get();
+            if (phase == Phase.CLOSED) {
+                throw new IllegalStateException("displayed path is closed");
             }
-            if (itemStack != null) {
-                return itemStack;
+            if (this.phase.compareAndSet(phase, Phase.RESOLVING)) {
+                return;
             }
-            return ItemStack.empty();
-        }
-
-        ItemProvider provider = state.item == null
-                ? state.background == null ? ItemProvider.EMPTY : state.background
-                : state.item.getItemProvider();
-        return ItemUtils.emptyIfNull(provider.provide(this.renderContext));
-    }
-
-    /**
-     * 把点击转发给路径终点的 Item.
-     * 路径按冻结处理或终点不是 Item 时直接忽略.
-     *
-     * @param click 点击上下文
-     */
-    void handleClick(@NotNull ItemClick click) {
-        PathState state = this.currentState();
-        if (!state.frozen && !this.windowFrozen() && state.item != null) {
-            state.item.handleClick(click);
         }
     }
 
     /**
-     * 把拖拽手势转发给路径终点的 Item.
-     * 路径按冻结处理或终点不是 Item 时直接忽略.
+     * 结束一次解析.
      *
-     * @param drag 拖拽上下文
+     * @return 解析期间收到过通知, 需要标记脏槽位时返回 true
      */
-    void handleDrag(@NotNull ItemDragClick drag) {
-        PathState state = this.currentState();
-        if (!state.frozen && !this.windowFrozen() && state.item != null) {
-            state.item.handleDrag(drag);
-        }
-    }
-
-    /**
-     * 把收纳袋选择转发给路径终点的 Item.
-     * 路径按冻结处理或终点不是 Item 时直接忽略.
-     *
-     * @param select Bundle 选择上下文
-     */
-    void handleBundleSelect(@NotNull BundleSelectClick select) {
-        PathState state = this.currentState();
-        if (state.frozen || this.windowFrozen()) {
-            return;
-        }
-        if (state.inventoryLink != null) {
-            ClickSemantics.dispatchBundleSelectEvent(state.inventoryLink.inventory(), state.inventoryLink.slot(), select);
-        } else if (state.item != null) {
-            state.item.handleBundleSelect(select);
-        }
-    }
-
-    /**
-     * 返回路径终点的 Inventory 连接,
-     * 终点不是Inventory时返回 null.
-     *
-     * @return Inventory 连接, 没有时为 null
-     */
-    @org.jetbrains.annotations.Nullable
-    Element.InventoryLink inventoryLink() {
-        return this.currentState().inventoryLink;
-    }
-
-    /**
-     * 返回路径是否按冻结处理: 经过已冻结 Pane, 或槽位被 Window 冻结;
-     * 冻结槽不参与点击语义与 Item 分派.
-     *
-     * @return 路径按冻结处理时返回 true
-     */
-    boolean frozen() {
-        return this.windowFrozen() || this.currentState().frozen;
-    }
-
-    // Window 侧的单槽冻结与沿途 Pane 冻结同待遇, 任一生效本路径即按冻结处理.
-    private boolean windowFrozen() {
-        return this.window.frozenAt(this.windowSlot);
-    }
-
-    /**
-     * 返回显示路径终点的类型.
-     * 路径按冻结处理时一律返回 {@link ItemDragClick.Kind#FROZEN}, 不再区分终点.
-     *
-     * @return 路径终点类型
-     */
-    @NotNull
-    ItemDragClick.Kind kind() {
-        PathState state = this.currentState();
-        if (state.frozen || this.windowFrozen()) return ItemDragClick.Kind.FROZEN;
-        if (state.inventoryLink != null) return ItemDragClick.Kind.INVENTORY;
-        return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
-    }
-
-    // 强制处理还没解析的 Pane 变化, 让 Window 在提交旧的点击候选前看到交互终点或冻结状态的改变.
-    void refreshInteractionState() {
-        this.currentState();
-    }
-
-    /**
-     * 遍历路径当前经过的每一层 Pane, 从根 Pane 到最深层.
-     *
-     * @param action 对每一层 Pane 执行的操作
-     */
-    void forEachPane(@NotNull Consumer<? super Pane> action) {
-        PathState state = this.currentState();
-        for (int index = 0; index < state.depth; index++) {
-            action.accept(state.panes[index]);
-        }
-    }
-
-    /**
-     * 返回路径是否已关闭.
-     *
-     * @return 已关闭时为 true
-     */
-    boolean isClosed() {
-        return this.phase.get() == Phase.CLOSED;
-    }
-
-    /**
-     * 关闭当前路径并取消所有 Pane 和 Item 订阅.
-     * 重复调用安全.
-     */
-    @Override
-    public void close() {
-        if (this.phase.getAndSet(Phase.CLOSED) == Phase.CLOSED) {
-            return;
-        }
-        PathState previous = this.current;
-        this.current = null;
-        if (previous != null) {
-            // 整条路径都要关掉, 没有哪一层需要留给别人
-            previous.ownedFrom = 0;
-            previous.close();
+    private boolean endResolve() {
+        while (true) {
+            Phase phase = this.phase.get();
+            if (phase == Phase.CLOSED) {
+                return false;
+            }
+            // 解析期间来过结构通知, 那就还得再解析一次
+            Phase settled = phase == Phase.RESOLVING_RESOLVE_PENDING
+                    ? Phase.ACTIVE_RESOLVE_REQUIRED
+                    : Phase.ACTIVE;
+            if (this.phase.compareAndSet(phase, settled)) {
+                return phase != Phase.RESOLVING;
+            }
         }
     }
 
@@ -276,7 +147,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         try {
             this.prepare(next, reusable);
         } catch (RuntimeException | Error throwable) {
-            // 建到一半失败: 只关掉自己新建的层, 沿用的层还归旧路径, 旧路径不受影响
+            // 失败时关掉自己新建的层, 沿用的层还归旧路径, 旧路径不受影响.
             next.ownedFrom = reusable;
             ThrowableUtils.captureUnchecked(throwable, next::close);
             throw throwable;
@@ -355,27 +226,6 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 重新算一遍整条路径的背景与冻结状态.
-     * <p>背景取沿途最深层的非 null 值; 任何一层 Pane 冻结, 整条路径都视为经过已冻结 Pane.
-     *
-     * @param state 要刷新的路径
-     */
-    private void applyDecorations(@NotNull PathState state) {
-        ItemProvider background = null;
-        boolean frozen = false;
-        for (int index = 0; index < state.depth; index++) {
-            Pane pane = state.panes[index];
-            ItemProvider paneBackground = pane.background();
-            if (paneBackground != null) {
-                background = paneBackground;
-            }
-            frozen |= pane.frozen();
-        }
-        state.background = background;
-        state.frozen = frozen;
-    }
-
-    /**
      * 从指定层开始跟随 PaneLink, 订阅沿途的每个 Pane 槽位和最终 Item.
      * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
      *
@@ -412,7 +262,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             AtomicBoolean discarded = new AtomicBoolean();
             PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> {
                 if (!discarded.get()) {
-                    this.onDirty(true);
+                    this.onDirty(Invalidation.STRUCTURE);
                 }
             });
             next.add(pane, paneSlot, attachment, discarded);
@@ -443,7 +293,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 next.item = item;
                 next.itemAttachment = item.attach(this.window, ignore -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(false);
+                        this.onDirty(Invalidation.SOURCE);
                     }
                 });
             }
@@ -456,14 +306,14 @@ final class DisplayedSlotPath implements AutoCloseable {
                     // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
                     for (int i = 0; i < event.slotChanges().size(); i++) {
                         if (event.slotChanges().get(i).slot() == link.slot()) {
-                            this.onDirty(false);
+                            this.onDirty(Invalidation.SOURCE);
                             return;
                         }
                     }
                 });
                 next.visualSubscription = link.inventory().attachVisualDirty(link.slot(), () -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(false);
+                        this.onDirty(Invalidation.SOURCE);
                     }
                 });
             }
@@ -473,84 +323,25 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
-    // 交互终点或冻结状态变了, 让 Window 作废那些在交互开始之后才改变的点击候选.
-    private void notifyInteractionPathChanged() {
-        if (this.window instanceof AbstractWindow<?> abstractWindow) {
-            abstractWindow.notifyInteractionPathChanged();
-        }
-    }
-
     /**
-     * 处理一次失效通知.
-     * <p>任意线程都可能调用, 这里只改 {@link Phase} 和脏标记.
+     * 重新算一遍整条路径的背景与冻结状态.
+     * <p>背景取沿途最深层的非 null 值; 任何一层 Pane 冻结, 整条路径都视为经过已冻结 Pane.
      *
-     * @param structural true 表示通知来自 Pane 槽位, 路径结构可能变了, 要重新解析;
-     *                   false 表示只来自终点的 Item 或 Inventory, 重新渲染就够了
+     * @param state 要刷新的路径
      */
-    private void onDirty(boolean structural) {
-        while (true) {
-            Phase phase = this.phase.get();
-            switch (phase) {
-                case CLOSED, RESOLVING_RESOLVE_PENDING -> {
-                    return;
-                }
-                // 正在解析: 先把通知记下来, 解析结束时一起处理
-                case RESOLVING, RESOLVING_RENDER_PENDING -> {
-                    Phase pending = structural ? Phase.RESOLVING_RESOLVE_PENDING : Phase.RESOLVING_RENDER_PENDING;
-                    if (phase == pending || this.phase.compareAndSet(phase, pending)) {
-                        return;
-                    }
-                }
-                // 结构变了要先重新解析, 内容变了直接标脏就行
-                case ACTIVE -> {
-                    if (structural && !this.phase.compareAndSet(phase, Phase.ACTIVE_RESOLVE_REQUIRED)) {
-                        continue;
-                    }
-                    this.window.notifyUpdate(this.windowSlot);
-                    return;
-                }
-                case ACTIVE_RESOLVE_REQUIRED -> {
-                    this.window.notifyUpdate(this.windowSlot);
-                    return;
-                }
+    private void applyDecorations(@NotNull PathState state) {
+        ItemProvider background = null;
+        boolean frozen = false;
+        for (int index = 0; index < state.depth; index++) {
+            Pane pane = state.panes[index];
+            ItemProvider paneBackground = pane.background();
+            if (paneBackground != null) {
+                background = paneBackground;
             }
+            frozen |= pane.frozen();
         }
-    }
-
-    /**
-     * 进入解析, 这期间到达的通知先记在 phase 上, 结束时一并处理.
-     */
-    private void beginResolve() {
-        while (true) {
-            Phase phase = this.phase.get();
-            if (phase == Phase.CLOSED) {
-                throw new IllegalStateException("displayed path is closed");
-            }
-            if (this.phase.compareAndSet(phase, Phase.RESOLVING)) {
-                return;
-            }
-        }
-    }
-
-    /**
-     * 结束一次解析.
-     *
-     * @return 解析期间收到过通知, 需要标记脏槽位时返回 true
-     */
-    private boolean endResolve() {
-        while (true) {
-            Phase phase = this.phase.get();
-            if (phase == Phase.CLOSED) {
-                return false;
-            }
-            // 解析期间来过结构通知, 那就还得再解析一次
-            Phase settled = phase == Phase.RESOLVING_RESOLVE_PENDING
-                    ? Phase.ACTIVE_RESOLVE_REQUIRED
-                    : Phase.ACTIVE;
-            if (this.phase.compareAndSet(phase, settled)) {
-                return phase != Phase.RESOLVING;
-            }
-        }
+        state.background = background;
+        state.frozen = frozen;
     }
 
     /**
@@ -580,6 +371,228 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (this.phase.get() == Phase.CLOSED) {
             throw new IllegalStateException("displayed path is closed");
         }
+    }
+
+    /**
+     * 生成当前槽位应显示的 ItemStack.
+     * <p>意图按以下优先级装配:
+     * <ol>
+     *   <li>若路径终点为 InventoryLink, 优先显示 Inventory 的槽位映射,
+     *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.
+     *   <li>若路径终点为 Item, 显示该 Item.
+     *   <li>若路径终点为 Empty, 回退为最深层 Pane 的背景.
+     *   <li>若仍无结果, 返回空物品作为最终兜底.
+     * </ol>
+     *
+     * @return 当前槽位应显示的 ItemStack, 不会为 {@code null}
+     */
+    @NotNull ItemStack render() {
+        PathState state = this.currentState();
+        // InventoryLink
+        if (state.inventoryLink != null) {
+            SparrowInventory inventory = state.inventoryLink.inventory();
+            int slot = state.inventoryLink.slot();
+            ItemStack itemStack = inventory.itemAt(slot);
+            ItemProvider visual = inventory.visualize(slot, itemStack);
+            if (visual != null) {
+                return this.renderCell.render(new RenderCell.Intent.Projected(visual, null, ItemUtils.emptyIfNull(itemStack)));
+            }
+            return this.renderCell.render(new RenderCell.Intent.Direct(ItemUtils.emptyIfNull(itemStack)));
+        }
+        // Item
+        if (state.item != null) {
+            return this.renderCell.render(new RenderCell.Intent.Projected(state.item.getItemProvider(), state.item.getPlaceholder(), ItemStack.empty()));
+        }
+        // Empty
+        return state.background == null
+                ? this.renderCell.render(new RenderCell.Intent.Direct(ItemStack.empty()))
+                : this.renderCell.render(new RenderCell.Intent.Projected(state.background, null, ItemStack.empty()));
+    }
+
+    /**
+     * 处理一次失效通知.
+     * <p>任意线程都可能调用, 这里只改 {@link Phase} 和脏标记.
+     *
+     * @param invalidation 本次通知的来路
+     */
+    private void onDirty(@NotNull Invalidation invalidation) {
+        // 完成回执送来的是已经算好的结果, 不是新的来源失效, 不必再要求重算
+        if (invalidation != Invalidation.COMPLETION) {
+            this.renderCell.dirty();
+        }
+        boolean structural = invalidation == Invalidation.STRUCTURE;
+        while (true) {
+            Phase phase = this.phase.get();
+            switch (phase) {
+                // 正在解析, 先把通知记下来, 解析结束时一起处理
+                case RESOLVING, RESOLVING_RENDER_PENDING -> {
+                    Phase pending = structural ? Phase.RESOLVING_RESOLVE_PENDING : Phase.RESOLVING_RENDER_PENDING;
+                    if (phase == pending || this.phase.compareAndSet(phase, pending)) {
+                        return;
+                    }
+                }
+                // 结构变了要先重新解析, 内容变了直接标脏就行
+                case ACTIVE -> {
+                    if (structural && !this.phase.compareAndSet(phase, Phase.ACTIVE_RESOLVE_REQUIRED)) {
+                        continue;
+                    }
+                    this.window.notifyUpdate(this.windowSlot);
+                    return;
+                }
+                case ACTIVE_RESOLVE_REQUIRED -> {
+                    this.window.notifyUpdate(this.windowSlot);
+                    return;
+                }
+                case CLOSED, RESOLVING_RESOLVE_PENDING -> {
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * 把点击转发给路径终点的 Item.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
+     *
+     * @param click 点击上下文
+     */
+    void handleClick(@NotNull ItemClick click) {
+        PathState state = this.currentState();
+        if (!state.frozen && !this.windowFrozen() && state.item != null) {
+            state.item.handleClick(click);
+        }
+    }
+
+    /**
+     * 把拖拽手势转发给路径终点的 Item.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
+     *
+     * @param drag 拖拽上下文
+     */
+    void handleDrag(@NotNull ItemDragClick drag) {
+        PathState state = this.currentState();
+        if (!state.frozen && !this.windowFrozen() && state.item != null) {
+            state.item.handleDrag(drag);
+        }
+    }
+
+    /**
+     * 把收纳袋选择转发给路径终点的 Item.
+     * 路径按冻结处理或终点不是 Item 时直接忽略.
+     *
+     * @param select Bundle 选择上下文
+     */
+    void handleBundleSelect(@NotNull BundleSelectClick select) {
+        PathState state = this.currentState();
+        if (state.frozen || this.windowFrozen()) {
+            return;
+        }
+        if (state.inventoryLink != null) {
+            ClickSemantics.dispatchBundleSelectEvent(state.inventoryLink.inventory(), state.inventoryLink.slot(), select);
+        } else if (state.item != null) {
+            state.item.handleBundleSelect(select);
+        }
+    }
+
+    /**
+     * 返回显示路径终点的类型.
+     * 路径按冻结处理时一律返回 {@link ItemDragClick.Kind#FROZEN}, 不再区分终点.
+     *
+     * @return 路径终点类型
+     */
+    @NotNull
+    ItemDragClick.Kind kind() {
+        PathState state = this.currentState();
+        if (state.frozen || this.windowFrozen()) return ItemDragClick.Kind.FROZEN;
+        if (state.inventoryLink != null) return ItemDragClick.Kind.INVENTORY;
+        return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
+    }
+
+    // 强制处理还没解析的 Pane 变化, 让 Window 在提交旧的点击候选前看到交互终点或冻结状态的改变.
+    void refreshInteractionState() {
+        this.currentState();
+    }
+
+    // 交互终点或冻结状态变了, 让 Window 作废那些在交互开始之后才改变的点击候选.
+    private void notifyInteractionPathChanged() {
+        if (this.window instanceof AbstractWindow<?> abstractWindow) {
+            abstractWindow.notifyInteractionPathChanged();
+        }
+    }
+
+    /**
+     * 返回路径终点的 Inventory 连接,
+     * 终点不是Inventory时返回 null.
+     *
+     * @return Inventory 连接, 没有时为 null
+     */
+    @org.jetbrains.annotations.Nullable
+    Element.InventoryLink inventoryLink() {
+        return this.currentState().inventoryLink;
+    }
+
+    /**
+     * 返回路径是否按冻结处理: 经过已冻结 Pane, 或槽位被 Window 冻结;
+     * 冻结槽不参与点击语义与 Item 分派.
+     *
+     * @return 路径按冻结处理时返回 true
+     */
+    boolean frozen() {
+        return this.windowFrozen() || this.currentState().frozen;
+    }
+
+    // Window 侧的单槽冻结与沿途 Pane 冻结同待遇, 任一生效本路径即按冻结处理.
+    private boolean windowFrozen() {
+        return this.window.frozenAt(this.windowSlot);
+    }
+
+    /**
+     * 遍历路径当前经过的每一层 Pane, 从根 Pane 到最深层.
+     *
+     * @param action 对每一层 Pane 执行的操作
+     */
+    void forEachPane(@NotNull Consumer<? super Pane> action) {
+        PathState state = this.currentState();
+        for (int index = 0; index < state.depth; index++) {
+            action.accept(state.panes[index]);
+        }
+    }
+
+    /**
+     * 返回路径是否已关闭.
+     *
+     * @return 已关闭时为 true
+     */
+    boolean isClosed() {
+        return this.phase.get() == Phase.CLOSED;
+    }
+
+    /**
+     * 关闭当前路径并取消所有 Pane 和 Item 订阅.
+     * 重复调用安全.
+     */
+    @Override
+    public void close() {
+        if (this.phase.getAndSet(Phase.CLOSED) == Phase.CLOSED) {
+            return;
+        }
+        this.renderCell.retire();
+        PathState previous = this.current;
+        this.current = null;
+        if (previous != null) {
+            // 整条路径都要关掉, 没有哪一层需要留给别人
+            previous.ownedFrom = 0;
+            previous.close();
+        }
+    }
+
+    /**
+     * 一次失效通知的来路, 决定要不要重新解析路径, 要不要重新计算显示来源.
+     */
+    private enum Invalidation {
+        STRUCTURE,  // Pane 槽位变了, 路径结构可能不同, 要重新解析
+        SOURCE,     // 终点的 Item 或 Inventory 变了, 重新渲染就够
+        COMPLETION  // 投影单元的完成回执, 只消费已经算好的结果
     }
 
     /**

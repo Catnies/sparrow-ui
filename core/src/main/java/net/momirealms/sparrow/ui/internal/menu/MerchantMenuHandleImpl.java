@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
+import net.momirealms.sparrow.ui.window.RenderCell;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentExactPredicateProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMerchantOffersPacketProxy;
@@ -45,9 +46,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
     private final BiConsumer<? super String, ? super Throwable> reporter;
     private final NamespacedKey markerKey;
-    private final RenderContext firstInputContext;
-    private final RenderContext secondInputContext;
-    private final RenderContext resultContext;
+    private final Window window;
 
     private @Nullable TradeBindings bindings;
     private int level;
@@ -82,9 +81,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         );
         this.reporter = reporter;
         this.markerKey = new NamespacedKey(SparrowUI.getInstance().getPlugin(), "merchant_offer");
-        this.firstInputContext = new RenderContext(window, FIRST_INPUT_SLOT);
-        this.secondInputContext = new RenderContext(window, SECOND_INPUT_SLOT);
-        this.resultContext = new RenderContext(window, RESULT_SLOT);
+        this.window = window;
     }
 
     @Override
@@ -116,12 +113,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
     @Override
     public void setTrades(@NotNull List<MerchantWindow.Trade> trades) {
-        TradeBindings candidate = new TradeBindings(
-                trades,
-                this.firstInputContext.window(),
-                this.firstInputContext.player(),
-                this::dirtyOffers
-        );
+        TradeBindings candidate = new TradeBindings(trades, this.window, this::dirtyOffers);
         TradeBindings previous = this.bindings;
         if (previous != null) {
             previous.retire();
@@ -375,13 +367,13 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
      */
     private ItemStack render(
             @NotNull Item item,
-            @NotNull RenderContext context,
+            @NotNull RenderCell renderCell,
             @NotNull ItemStack fallback,
             int tradeIndex,
             @NotNull String role
     ) {
         try {
-            return ItemUtils.copyOrEmpty(item.getItemProvider().provide(context));
+            return renderCell.render(new RenderCell.Intent.Projected(item.getItemProvider(), item.getPlaceholder(), fallback));
         } catch (Throwable throwable) {
             this.reporter.accept(
                     "Failed to render Merchant trade " + tradeIndex + " " + role,
@@ -463,7 +455,6 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         TradeBindings(
                 @NotNull List<MerchantWindow.Trade> trades,
                 @NotNull Window window,
-                @NotNull Player viewer,
                 @NotNull Runnable invalidator
         ) {
             this.invalidator = invalidator;
@@ -472,7 +463,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             // 准备期通知被 gate 拦截, 不会让尚未发布的候选会话变脏
             try {
                 for (int index = 0; index < trades.size(); index++) {
-                    TradeBinding binding = new TradeBinding(trades.get(index), window, viewer, this::invalidate);
+                    TradeBinding binding = new TradeBinding(trades.get(index), window, this::dirty);
                     entries.add(binding);
                 }
             } catch (RuntimeException | Error throwable) {
@@ -496,7 +487,8 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private List<TradeBinding> entries() {
             return this.entries;
         }
-        private void invalidate() {
+
+        private void dirty() {
             if (this.gate.get() == GateState.ACTIVE) {
                 this.invalidator.run();
             }
@@ -544,6 +536,10 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private final ItemAttachment firstInputAttachment;
         private final ItemAttachment secondInputAttachment;
         private final ItemAttachment resultAttachment;
+        private final RenderCell firstInputRenderCell;
+        private final RenderCell secondInputRenderCell;
+        private final RenderCell resultRenderCell;
+        private final Runnable invalidator;
 
         private ItemStack firstInput = ItemStack.empty();
         private ItemStack secondInput = ItemStack.empty();
@@ -553,10 +549,25 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private TradeBinding(
                 @NotNull MerchantWindow.Trade trade,
                 @NotNull Window window,
-                @NotNull Player viewer,
                 @NotNull Runnable invalidator
         ) {
             this.trade = trade;
+            this.invalidator = invalidator;
+            this.firstInputRenderCell = new RenderCell(
+                    new RenderContext(window, FIRST_INPUT_SLOT),
+                    invalidator,
+                    "Failed to render asynchronous Merchant first input"
+            );
+            this.secondInputRenderCell = new RenderCell(
+                    new RenderContext(window, SECOND_INPUT_SLOT),
+                    invalidator,
+                    "Failed to render asynchronous Merchant second input"
+            );
+            this.resultRenderCell = new RenderCell(
+                    new RenderContext(window, RESULT_SLOT),
+                    invalidator,
+                    "Failed to render asynchronous Merchant result"
+            );
             Subscription tradeSubscription = null;
             ItemAttachment firstInputAttachment = null;
             ItemAttachment secondInputAttachment = null;
@@ -564,11 +575,12 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
 
             // 三个 Item 独立挂载, 相同 Item 引用也拥有独立的显示生命周期
             try {
-                tradeSubscription = trade.subscribe(ignoredChange -> invalidator.run());
-                firstInputAttachment = trade.getFirstInput().attach(window, ignoredItem -> invalidator.run());
-                secondInputAttachment = trade.getSecondInput().attach(window, ignoredItem -> invalidator.run());
-                resultAttachment = trade.getResult().attach(window, ignoredItem -> invalidator.run());
+                tradeSubscription = trade.subscribe(ignoredChange -> this.dirtyAll());
+                firstInputAttachment = trade.getFirstInput().attach(window, ignoredItem -> this.dirty(this.firstInputRenderCell));
+                secondInputAttachment = trade.getSecondInput().attach(window, ignoredItem -> this.dirty(this.secondInputRenderCell));
+                resultAttachment = trade.getResult().attach(window, ignoredItem -> this.dirty(this.resultRenderCell));
             } catch (RuntimeException | Error throwable) {
+                this.closeRenderCells();
                 // 构造中途失败时只关闭已经取得的资源
                 TradeBinding.close(
                         resultAttachment,
@@ -588,7 +600,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private ItemStack renderFirstInput(MerchantMenuHandleImpl owner, int tradeIndex) {
             this.firstInput = owner.render(
                     this.trade.getFirstInput(),
-                    owner.firstInputContext,
+                    this.firstInputRenderCell,
                     this.firstInput,
                     tradeIndex,
                     "first input"
@@ -599,7 +611,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private ItemStack renderSecondInput(MerchantMenuHandleImpl owner, int tradeIndex) {
             this.secondInput = owner.render(
                     this.trade.getSecondInput(),
-                    owner.secondInputContext,
+                    this.secondInputRenderCell,
                     this.secondInput,
                     tradeIndex,
                     "second input"
@@ -610,7 +622,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private ItemStack renderResult(MerchantMenuHandleImpl owner, int tradeIndex) {
             this.result = owner.render(
                     this.trade.getResult(),
-                    owner.resultContext,
+                    this.resultRenderCell,
                     this.result,
                     tradeIndex,
                     "result"
@@ -628,6 +640,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
                 return;
             }
             this.closed = true;
+            this.closeRenderCells();
             Throwable failure = TradeBinding.close(
                     this.resultAttachment,
                     this.secondInputAttachment,
@@ -636,6 +649,24 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
                     null
             );
             ThrowableUtils.throwIfUnchecked(failure);
+        }
+
+        private void dirty(RenderCell renderCell) {
+            renderCell.dirty();
+            this.invalidator.run();
+        }
+
+        private void dirtyAll() {
+            this.firstInputRenderCell.dirty();
+            this.secondInputRenderCell.dirty();
+            this.resultRenderCell.dirty();
+            this.invalidator.run();
+        }
+
+        private void closeRenderCells() {
+            this.resultRenderCell.retire();
+            this.secondInputRenderCell.retire();
+            this.firstInputRenderCell.retire();
         }
 
         /**

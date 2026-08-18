@@ -15,6 +15,7 @@ import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.state.MutableSignal;
@@ -250,7 +251,7 @@ public abstract class SparrowInventory {
     /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
-     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
+     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ImmediateItemProvider) 容器背景} 和 Pane 背景.
      * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
      * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
@@ -258,7 +259,7 @@ public abstract class SparrowInventory {
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
-    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+    public void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
         this.visual.visualizerProvider(visualizerProvider);
     }
 
@@ -278,7 +279,7 @@ public abstract class SparrowInventory {
      * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider() {
+    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getVisualizerProvider() {
         return this.visual.visualizerProvider();
     }
 
@@ -292,7 +293,7 @@ public abstract class SparrowInventory {
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+    public void setVisualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
         this.visual.visualizerProvider(slot, visualizerProvider);
     }
 
@@ -316,7 +317,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getVisualizerProvider(int slot) {
+    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getVisualizerProvider(int slot) {
         return this.visual.visualizerProvider(slot);
     }
 
@@ -325,7 +326,7 @@ public abstract class SparrowInventory {
      *
      * @param background 空槽占位背景, {@code null} 表示清除背景
      */
-    public void setBackground(@Nullable ItemProvider background) {
+    public void setBackground(@Nullable ImmediateItemProvider background) {
         this.visual.background(background);
     }
 
@@ -344,7 +345,7 @@ public abstract class SparrowInventory {
      * @return 空槽占位背景; 没有设置过时为 {@code null}
      */
     @Nullable
-    public ItemProvider getBackground() {
+    public ImmediateItemProvider getBackground() {
         return this.visual.background();
     }
 
@@ -359,7 +360,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
+    public ImmediateItemProvider visualize(int slot, @Nullable ItemStack actual) {
         return this.visual.visualize(slot, actual);
     }
 
