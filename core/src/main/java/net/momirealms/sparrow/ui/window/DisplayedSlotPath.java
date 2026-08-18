@@ -9,7 +9,6 @@ import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
-import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.visual.ResolvedVisual;
@@ -409,10 +408,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             if (visual == null) {
                 return this.renderCell.render(new RenderCell.Intent.Direct(actual));
             }
-            // 同步映射当场算出内容就把异步映射交给投影, 未完成时显示占位或该槽真实内容
-            if (visual.provider() instanceof ImmediateItemProvider immediate) {
-                return this.renderCell.render(new RenderCell.Intent.Direct(immediate.provideImmediately(this.renderContext)));
-            }
+            // 当场算得出的提供器由渲染格自己短路, 算不出的走投影, 未完成时显示占位或该槽真实内容
             return this.renderCell.render(new RenderCell.Intent.Projected(
                     visual.sourceKey(), visual.provider(), visual.placeholder(), actual));
         }

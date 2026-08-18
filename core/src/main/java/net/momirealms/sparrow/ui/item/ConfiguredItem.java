@@ -32,7 +32,7 @@ final class ConfiguredItem implements ObservableItem {
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
 
     ConfiguredItem(
-            @NotNull ItemBuilder.SourceSpec source,
+            @NotNull ItemBuilder.DisplaySourceFactory source,
             @NotNull List<? extends Function<? super Player, ? extends Signal<?>>> dependencies,
             @NotNull List<? extends GuardEntry<ItemClick>> clickGuards,
             @NotNull List<? extends GuardEntry<ItemDragClick>> dragGuards,

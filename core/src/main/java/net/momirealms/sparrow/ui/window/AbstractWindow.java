@@ -17,7 +17,6 @@ import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
-import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.visual.ResolvedVisual;
@@ -1435,15 +1434,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             // 光标映射展示, 没有映射时按菜单实际光标显示
             ResolvedVisual visual = this.cursorVisual.visualize(actual);
-            RenderCell.Intent intent;
-            if (visual == null) {
-                intent = new RenderCell.Intent.Direct(actual);
-            } else if (visual.provider() instanceof ImmediateItemProvider immediate) {
-                intent = new RenderCell.Intent.Direct(Objects.requireNonNull(immediate.provideImmediately(this.cursorRenderContext), "cursor visual"));
-            } else {
-                // 异步映射未完成时显示占位, 没有占位就显示菜单实际光标
-                intent = new RenderCell.Intent.Projected(visual.sourceKey(), visual.provider(), visual.placeholder(), actual);
-            }
+            // 当场算得出的提供器由渲染格自己短路, 算不出的走投影, 未完成时显示占位或菜单实际光标
+            RenderCell.Intent intent = visual == null
+                    ? new RenderCell.Intent.Direct(actual)
+                    : new RenderCell.Intent.Projected(visual.sourceKey(), visual.provider(), visual.placeholder(), actual);
             return new MenuHandle.CursorSnapshot(actual, ItemUtils.copyOrEmpty(this.cursorRenderCell.render(intent)));
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);

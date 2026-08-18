@@ -28,7 +28,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ItemBuilder {
-    private SourceSpec source = new SourceSpec.ProviderSpec(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
+    private DisplaySourceFactory source = new DisplaySourceFactory.ProviderFactory(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
 
     private final List<ConfiguredItem.GuardEntry<ItemClick>> clickGuards = new ArrayList<>(); // 点击前置处理器
@@ -68,7 +68,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider) {
-        this.setSource(new SourceSpec.ProviderSpec(Objects.requireNonNull(itemProvider, "itemProvider"), ItemProvider.EMPTY));
+        this.setSource(new DisplaySourceFactory.ProviderFactory(Objects.requireNonNull(itemProvider, "itemProvider"), ItemProvider.EMPTY));
         return this;
     }
 
@@ -91,7 +91,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
-        this.setSource(new SourceSpec.ProviderSpec(
+        this.setSource(new DisplaySourceFactory.ProviderFactory(
                 Objects.requireNonNull(itemProvider, "itemProvider"),
                 Objects.requireNonNull(placeholder, "placeholder")
         ));
@@ -132,7 +132,7 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder setLazyItemProvider(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) {
-        this.setSource(new SourceSpec.LazySpec(
+        this.setSource(new DisplaySourceFactory.LazyFactory(
                 Objects.requireNonNull(placeholder, "placeholder"),
                 Objects.requireNonNull(lazyProvider, "lazyProvider")
         ));
@@ -410,11 +410,35 @@ public final class ItemBuilder {
     }
 
     // 写入显示来源声明, 并保证只配置一次.
-    private void setSource(SourceSpec source) {
+    private void setSource(DisplaySourceFactory source) {
         if (this.sourceConfigured)
             throw new IllegalStateException("display source has already been configured");
         this.source = source;
         this.sourceConfigured = true;
+    }
+
+    // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
+    sealed interface DisplaySourceFactory permits DisplaySourceFactory.ProviderFactory, DisplaySourceFactory.LazyFactory {
+
+        DisplaySource create(Runnable invalidator);
+
+        // 固定或上下文来源声明
+        record ProviderFactory(ItemProvider provider, ImmediateItemProvider placeholder) implements DisplaySourceFactory {
+
+            @Override
+            public DisplaySource create(Runnable invalidator) {
+                return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
+            }
+        }
+
+        // 懒加载来源声明
+        record LazyFactory(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider) implements DisplaySourceFactory {
+
+            @Override
+            public DisplaySource create(Runnable invalidator) {
+                return new DisplaySource.LazyDisplaySource(this.placeholder, this.lazyProvider, invalidator);
+            }
+        }
     }
 
     // Item 的显示来源, 决定每次渲染使用的提供器与挂载行为.
@@ -510,29 +534,5 @@ public final class ItemBuilder {
             }
         }
 
-    }
-
-    // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
-    sealed interface SourceSpec permits SourceSpec.ProviderSpec, SourceSpec.LazySpec {
-
-        DisplaySource create(Runnable invalidator);
-
-        // 固定或上下文来源声明
-        record ProviderSpec(ItemProvider provider, ImmediateItemProvider placeholder) implements SourceSpec {
-
-            @Override
-            public DisplaySource create(Runnable invalidator) {
-                return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
-            }
-        }
-
-        // 懒加载来源声明
-        record LazySpec(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider) implements SourceSpec {
-
-            @Override
-            public DisplaySource create(Runnable invalidator) {
-                return new DisplaySource.LazyDisplaySource(this.placeholder, this.lazyProvider, invalidator);
-            }
-        }
     }
 }

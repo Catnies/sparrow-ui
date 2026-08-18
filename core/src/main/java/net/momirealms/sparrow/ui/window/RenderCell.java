@@ -18,15 +18,13 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @ApiStatus.Internal
 public final class RenderCell implements AutoCloseable {
-    private static final long ABANDONED = -1L;
-
     private final RenderContext context;
     private final Runnable invalidator;
     private final String failureMessage;
 
     private final AtomicBoolean recomputeRequested = new AtomicBoolean(true);
     private final AtomicBoolean resetRequested = new AtomicBoolean();   // 任意线程提交的作废请求, 由渲染消费
-    private final AtomicLong inFlightToken = new AtomicLong(); // 0 = 空闲, ABANDONED = 已作废, 否则为在异步渲染任务的代数
+    private final AtomicLong inFlightToken = new AtomicLong(); // 在飞异步渲染任务的代数, 0 表示没有在飞任务; 代数从 1 起且只增, 所以作废在飞任务也是写 0
     private volatile long generation = 1L;          // 当前 Provider 的代数
     private volatile @Nullable Completed lastCompleted; // 最近完成值
     private @Nullable Object activeSourceKey;       // 当前来源的身份
@@ -82,7 +80,7 @@ public final class RenderCell implements AutoCloseable {
         if (this.resetRequested.get() && this.resetRequested.getAndSet(false)) {
             this.activeSourceKey = null;
             this.generation++;
-            this.inFlightToken.set(ABANDONED);
+            this.inFlightToken.set(0L);
         }
     }
 
@@ -90,7 +88,7 @@ public final class RenderCell implements AutoCloseable {
     private void switchSource(@NotNull Object sourceKey) {
         this.activeSourceKey = sourceKey;
         this.generation++;
-        this.inFlightToken.set(ABANDONED);
+        this.inFlightToken.set(0L);
         this.recomputeRequested.set(true);
     }
 
@@ -184,7 +182,7 @@ public final class RenderCell implements AutoCloseable {
         if (this.activeSourceKey != null) {
             this.activeSourceKey = null;
             this.generation++;
-            this.inFlightToken.set(ABANDONED);
+            this.inFlightToken.set(0L);
         }
     }
 
@@ -195,7 +193,7 @@ public final class RenderCell implements AutoCloseable {
      */
     public void reset() {
         this.resetRequested.set(true);
-        this.inFlightToken.set(ABANDONED);
+        this.inFlightToken.set(0L);
         this.recomputeRequested.set(true);
     }
 
@@ -206,7 +204,7 @@ public final class RenderCell implements AutoCloseable {
     public void close() {
         this.activeSourceKey = null;
         this.generation++;
-        this.inFlightToken.set(ABANDONED);
+        this.inFlightToken.set(0L);
         this.lastCompleted = null;
     }
 
