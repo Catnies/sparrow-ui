@@ -3,17 +3,10 @@ package net.momirealms.sparrow.ui.window;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
-import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
-import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
-import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
 import net.momirealms.sparrow.ui.internal.menu.MenuInput;
@@ -21,14 +14,24 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.InteractionEdits;
 import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.item.click.ItemClick;
+import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.item.provider.VisualBinding;
+import net.momirealms.sparrow.ui.pane.Element;
+import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
-import net.momirealms.sparrow.ui.util.*;
+import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.util.HandlerList;
+import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.util.UnmodifiableBitSet;
+import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -43,6 +46,7 @@ import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -138,8 +142,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 光标
     private boolean cursorDirty;    // 光标是否需要重新核对
-    private final CursorVisualImpl cursorVisual;        // 光标视觉配置与 visualize 记忆
+    private final CursorVisualImpl cursorVisual;        // 光标视觉配置
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
+    private final RenderCell cursorRenderCell;          // 光标异步视觉的投影, 跨打开代际经 reset 复用
+    private final AtomicBoolean cursorReady = new AtomicBoolean(); // 光标异步视觉的完成通知, 不等同于光标本身变化
     private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照; 仅玩家实体线程访问
 
     // tick 任务刷新目标
@@ -194,6 +200,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 this.signalBindings,
                 settings.cursorVisualizerProvider(),
                 action -> this.submit(action, "Failed to update Window cursor visualizer")
+        );
+        this.cursorRenderCell = new RenderCell(
+                this.cursorRenderContext,
+                () -> this.cursorReady.set(true),
+                "Failed to render asynchronous Window cursor"
         );
     }
 
@@ -657,6 +668,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     void openOnViewerEntity(long generation, boolean replacingWindow) {
         // 初始化本次打开的 generation 相关状态
         this.generation = generation;
+        this.cursorRenderCell.reset();
+        this.cursorReady.set(false);
         this.windowTick = 0;
         this.cursorDirty = true;
         this.forceFull = true;
@@ -1296,7 +1309,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.open || menu == null || localSlots == null || paths == null) {
             return;
         }
-        this.cursorDirty |= this.cursorVisual.takeDirty();
+        // 视觉配置换了要重算; 完成通知只是把算好的结果刷出去, 不构成新的重算要求
+        boolean cursorVisualDirty = this.cursorVisual.takeDirty();
+        if (cursorVisualDirty) this.cursorRenderCell.dirty();
+        this.cursorDirty |= cursorVisualDirty || this.cursorReady.getAndSet(false);
         this.forceReopen |= forceReopen;
 
         // 先消费跨线程写入的失效集合, 再在实体线程生成本轮 Window 槽位渲染结果
@@ -1409,12 +1425,23 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
         ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
         try {
+            // 光标内容变了, 基于旧内容算出的异步视觉一并作废
+            MenuHandle.CursorSnapshot previous = this.localCursor;
+            if (previous == null || !previous.actual().equals(actual)) {
+                this.cursorRenderCell.reset();
+            }
             // 光标映射展示, 没有映射时按菜单实际光标显示
-            ImmediateItemProvider visual = this.cursorVisual.visualize(actual);
-            ItemStack rendered = visual != null
-                    ? ItemUtils.copyOrEmpty(visual.provideImmediately(this.cursorRenderContext))
-                    : actual;
-            return new MenuHandle.CursorSnapshot(actual, rendered);
+            VisualBinding visual = this.cursorVisual.visualize(actual);
+            RenderCell.Intent intent;
+            if (visual == null) {
+                intent = new RenderCell.Intent.Direct(actual);
+            } else if (visual.provider() instanceof ImmediateItemProvider immediate) {
+                intent = new RenderCell.Intent.Direct(Objects.requireNonNull(immediate.provideImmediately(this.cursorRenderContext), "cursor visual"));
+            } else {
+                // 异步映射未完成时显示占位, 没有占位就显示菜单实际光标
+                intent = new RenderCell.Intent.Projected(visual.sourceKey(), visual.provider(), visual.placeholder(), actual);
+            }
+            return new MenuHandle.CursorSnapshot(actual, ItemUtils.copyOrEmpty(this.cursorRenderCell.render(intent)));
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);
             return new MenuHandle.CursorSnapshot(actual, actual.clone());
@@ -1478,6 +1505,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 使后续输入与 tick 立即失效
         this.open = false;
         this.generation++;
+        this.cursorRenderCell.reset();
+        this.cursorReady.set(false);
         this.clickInterpreter.reset();
         Arrays.fill(this.bundleSelections, null);
 

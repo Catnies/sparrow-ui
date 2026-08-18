@@ -447,6 +447,27 @@ public interface Window {
      */
     void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider);
 
+
+    /**
+     * 设置光标异步显示转换器, 未完成时显示菜单实际光标.
+     * <p>映射本身在渲染线程求值, 只挑出这次用哪个提供器, 重活放进返回的提供器里;
+     * 返回 {@code null} 表示显示菜单实际光标. 光标内容变化会作废尚未完成的计算与已完成的结果.
+     *
+     * @param cursorVisualizerAsync 光标异步显示转换器, {@code null} 表示移除这一层
+     */
+    default void setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync) {
+        this.cursorVisual().visualizerAsync(cursorVisualizerAsync);
+    }
+
+    /**
+     * 设置光标异步显示转换器, 并指定未完成时显示的占位物品.
+     *
+     * @param cursorVisualizerAsync 光标异步显示转换器, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位物品
+     */
+    default void setCursorVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerAsync, @NotNull ItemStack placeholder) {
+        this.cursorVisual().visualizerAsync(cursorVisualizerAsync, placeholder);
+    }
     /**
      * 使用直接返回 ItemStack 的映射设置光标显示转换器.
      * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.

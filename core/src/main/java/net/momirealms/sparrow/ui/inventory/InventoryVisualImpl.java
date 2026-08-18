@@ -4,6 +4,8 @@ import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.AbstractVisual;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.VisualBinding;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -12,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,14 +38,31 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
     @Nullable
     @Override
     public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider() {
-        return this.state.visualizerProvider;
+        return this.state.global.sync();
     }
 
     @Override
     public void visualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
+        Layer newLayer = new Layer(visualizerProvider, null, null);
         synchronized (this.stateLock) {
             State current = this.state;
-            this.state = new State(visualizerProvider, current.visualizerProvidersBySlot, current.background);
+            this.state = new State(newLayer, current.bySlot, current.background);
+        }
+        this.dirty();
+    }
+
+    @Nullable
+    @Override
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync() {
+        return this.state.global.async();
+    }
+
+    @Override
+    public void visualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @Nullable ImmediateItemProvider placeholder) {
+        Layer newLayer = new Layer(null, visualizerAsync, placeholder);
+        synchronized (this.stateLock) {
+            State current = this.state;
+            this.state = new State(newLayer, current.bySlot, current.background);
         }
         this.dirty();
     }
@@ -50,57 +70,77 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
     @Nullable
     @Override
     public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider(int slot) {
-        Objects.checkIndex(slot, this.state.visualizerProvidersBySlot.length);
-        return this.state.visualizerProvidersBySlot[slot];
+        Objects.checkIndex(slot, this.state.bySlot.length);
+        return this.state.bySlot[slot].sync();
     }
 
     @Override
     public void visualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
-        Objects.checkIndex(slot, this.state.visualizerProvidersBySlot.length);
+        Objects.checkIndex(slot, this.state.bySlot.length);
+        Layer newLayer = new Layer(visualizerProvider, null, null);
         synchronized (this.stateLock) {
             State current = this.state;
-            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[] visualizerProvidersBySlot =
-                    current.visualizerProvidersBySlot.clone();
-            visualizerProvidersBySlot[slot] = visualizerProvider;
-            this.state = new State(current.visualizerProvider, visualizerProvidersBySlot, current.background);
+            Layer[] bySlot = current.bySlot.clone();
+            bySlot[slot] = newLayer;
+            this.state = new State(current.global, bySlot, current.background);
         }
         this.dirtyRoutes.dirty(slot);
     }
 
     @Nullable
     @Override
-    public ImmediateItemProvider background() {
+    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync(int slot) {
+        Objects.checkIndex(slot, this.state.bySlot.length);
+        return this.state.bySlot[slot].async();
+    }
+
+    @Override
+    public void visualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @Nullable ImmediateItemProvider placeholder) {
+        Layer newLayer = new Layer(null, visualizerAsync, placeholder);
+        synchronized (this.stateLock) {
+            State current = this.state;
+            Layer[] bySlot = current.bySlot.clone();
+            bySlot[slot] = newLayer;
+            this.state = new State(current.global, bySlot, current.background);
+        }
+        this.dirtyRoutes.dirty(slot);
+    }
+
+    @Nullable
+    @Override
+    public ItemProvider background() {
         return this.state.background;
     }
 
     @Override
-    public void background(@Nullable ImmediateItemProvider background) {
+    public void background(@Nullable ItemProvider background) {
         synchronized (this.stateLock) {
             State current = this.state;
-            this.state = new State(current.visualizerProvider, current.visualizerProvidersBySlot, background);
+            this.state = new State(current.global, current.bySlot, background);
         }
         this.dirty();
     }
 
+    /**
+     * 从高到低逐层求值: 逐槽层, 全局层, 空槽背景. 上层放行才轮到下层.
+     *
+     * @param slot Inventory 槽位
+     * @param actual 该槽当前真实内容, 空槽为 null
+     * @return 求值结果; 所有层都缺席或放行时为 null, 表示按真实内容显示
+     */
     @Nullable
-    ImmediateItemProvider visualize(int slot, @Nullable ItemStack actual) {
+    VisualBinding visualize(int slot, @Nullable ItemStack actual) {
         State current = this.state;
-        Objects.checkIndex(slot, current.visualizerProvidersBySlot.length);
-        @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> slotVisualizerProvider =
-                current.visualizerProvidersBySlot[slot];
-        if (slotVisualizerProvider != null) {
-            ImmediateItemProvider mapped = slotVisualizerProvider.apply(actual);
-            if (mapped != null) {
-                return mapped;
-            }
+        Objects.checkIndex(slot, current.bySlot.length);
+        VisualBinding bound = current.bySlot[slot].visualize(actual);
+        if (bound != null) {
+            return bound;
         }
-        if (current.visualizerProvider != null) {
-            ImmediateItemProvider mapped = current.visualizerProvider.apply(actual);
-            if (mapped != null) {
-                return mapped;
-            }
+        bound = current.global.visualize(actual);
+        if (bound != null) {
+            return bound;
         }
-        return actual == null ? current.background : null;
+        return actual == null && current.background != null ? VisualBinding.of(current.background) : null;
     }
 
     @NotNull
@@ -113,27 +153,53 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
         this.dirtyRoutes.dirtyAll();
     }
 
+    /**
+     * 一层视觉配置, 同步与异步在同一层里互斥, 后设置的那种取代前一种;
+     * 两者都为 {@code null} 表示这一层没有配置, 求值时直接放行到下一层.
+     * <p>本记录一经设置就不再变化, 因此渲染层可以拿它自己当来源身份.
+     */
+    private record Layer(
+            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> sync,
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> async,
+            @Nullable ImmediateItemProvider asyncPlaceholder
+    ) {
+        private static final Layer NONE = new Layer(null, null, null);
+
+        // 求值这一层, 放行时返回 null.
+        @Nullable
+        private VisualBinding visualize(@Nullable ItemStack actual) {
+            if (this.async != null) {
+                ItemProvider mapped = this.async.apply(actual);
+                return mapped == null ? null : new VisualBinding(this, mapped, this.asyncPlaceholder);
+            }
+            if (this.sync != null) {
+                ImmediateItemProvider mapped = this.sync.apply(actual);
+                return mapped == null ? null : VisualBinding.of(mapped);
+            }
+            return null;
+        }
+    }
+
     private static final class State {
-        @Nullable private final Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider;
-        @Nullable private final Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> @NotNull [] visualizerProvidersBySlot;
-        @Nullable private final ImmediateItemProvider background;
+        @NotNull private final Layer global;
+        @NotNull private final Layer @NotNull [] bySlot;
+        @Nullable private final ItemProvider background;
 
         private State(
-                @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider,
-                @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> @NotNull [] visualizerProvidersBySlot,
-                @Nullable ImmediateItemProvider background
+                @NotNull Layer global,
+                @NotNull Layer @NotNull [] bySlot,
+                @Nullable ItemProvider background
         ) {
-            this.visualizerProvider = visualizerProvider;
-            this.visualizerProvidersBySlot = visualizerProvidersBySlot;
+            this.global = global;
+            this.bySlot = bySlot;
             this.background = background;
         }
 
         @NotNull
-        @SuppressWarnings("unchecked")
         private static State empty(int size) {
-            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[] visualizerProvidersBySlot =
-                    (Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[]) new Function<?, ?>[size];
-            return new State(null, visualizerProvidersBySlot, null);
+            Layer[] bySlot = new Layer[size];
+            Arrays.fill(bySlot, Layer.NONE);
+            return new State(Layer.NONE, bySlot, null);
         }
     }
 

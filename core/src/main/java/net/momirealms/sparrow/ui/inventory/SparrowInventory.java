@@ -17,6 +17,7 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.VisualBinding;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -251,7 +252,7 @@ public abstract class SparrowInventory {
     /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
-     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ImmediateItemProvider) 容器背景} 和 Pane 背景.
+     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
      * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
      * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
@@ -298,6 +299,51 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 设置容器全局异步视觉映射.
+     * <p>映射本身在渲染线程求值, 只挑出这一槽用哪个提供器, 重活放进返回的提供器里;
+     * 返回 {@code null} 表示放行到下一层. 异步结果未完成前显示该槽真实内容,
+     * 槽位内容变化会作废尚未完成的计算与已完成的结果. 同一层的同步映射会被取代.
+     *
+     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
+     */
+    public void setVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
+        this.visual.visualizerAsync(visualizerAsync);
+    }
+
+    /**
+     * 设置容器全局异步视觉映射, 并指定未完成时显示的占位物品.
+     *
+     * @param visualizerAsync 新的全局异步视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位物品
+     */
+    public void setVisualizerAsync(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @NotNull ItemStack placeholder) {
+        this.visual.visualizerAsync(visualizerAsync, placeholder);
+    }
+
+    /**
+     * 设置一个槽位的异步视觉映射, 未完成时显示该槽真实内容.
+     *
+     * @param slot 槽位序号
+     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setVisualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync) {
+        this.visual.visualizerAsync(slot, visualizerAsync);
+    }
+
+    /**
+     * 设置一个槽位的异步视觉映射, 并指定未完成时显示的占位物品.
+     *
+     * @param slot 槽位序号
+     * @param visualizerAsync 新的逐槽异步视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位物品
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    public void setVisualizerAsync(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerAsync, @NotNull ItemStack placeholder) {
+        this.visual.visualizerAsync(slot, visualizerAsync, placeholder);
+    }
+
+    /**
      * 使用直接返回 ItemStack 的映射替换一个槽位的逐槽视觉映射.
      * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
      *
@@ -326,7 +372,7 @@ public abstract class SparrowInventory {
      *
      * @param background 空槽占位背景, {@code null} 表示清除背景
      */
-    public void setBackground(@Nullable ImmediateItemProvider background) {
+    public void setBackground(@Nullable ItemProvider background) {
         this.visual.background(background);
     }
 
@@ -345,7 +391,7 @@ public abstract class SparrowInventory {
      * @return 空槽占位背景; 没有设置过时为 {@code null}
      */
     @Nullable
-    public ImmediateItemProvider getBackground() {
+    public ItemProvider getBackground() {
         return this.visual.background();
     }
 
@@ -360,7 +406,23 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    public ImmediateItemProvider visualize(int slot, @Nullable ItemStack actual) {
+    public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
+        VisualBinding bound = this.visual.visualize(slot, actual);
+        return bound == null ? null : bound.provider();
+    }
+
+    /**
+     * 与 {@link #visualize(int, ItemStack)} 求值同一层级,
+     * 但连同来源身份与占位一并给出, 供渲染层装配.
+     *
+     * @param slot 槽位序号
+     * @param actual 该槽当前真实内容, 空槽为 {@code null}
+     * @return 求值结果; 所有层都缺席或放行时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    @ApiStatus.Internal
+    public VisualBinding visualBinding(int slot, @Nullable ItemStack actual) {
         return this.visual.visualize(slot, actual);
     }
 

@@ -28,7 +28,7 @@ public final class RenderCell {
     private final AtomicLong inFlightToken = new AtomicLong(); // 0 = 空闲, ABANDONED = 已作废, 否则为在异步渲染任务的代数
     private volatile long generation = 1L;          // 当前 Provider 的代数
     private volatile @Nullable Completed displayed; // 最近完成值
-    private @Nullable ItemProvider activeProvider;  // 当前异步 Provider, 用引用比较发现它换没换
+    private @Nullable Object activeSourceKey;       // 当前来源的身份
 
     public RenderCell(@NotNull RenderContext context, @NotNull Runnable invalidator, @NotNull String failureMessage) {
         this.context = Objects.requireNonNull(context, "context");
@@ -51,14 +51,14 @@ public final class RenderCell {
                 this.retireSource();
                 yield value;
             }
-            case Intent.Projected(var provider, var placeholder, var lastResort) -> {
+            case Intent.Projected(var sourceKey, var provider, var placeholder, var lastResort) -> {
                 if (provider instanceof ImmediateItemProvider immediate) {
                     this.retireSource();
                     yield immediate.provideImmediately(this.context);
                 }
-                if (provider != this.activeProvider) {
-                    // Provider 换了, 旧任务与旧值一并作废, 新 Provider 重新起算
-                    this.activeProvider = provider;
+                // 来源换了, 旧任务与旧值一并作废, 新来源重新起算
+                if (sourceKey != this.activeSourceKey) {
+                    this.activeSourceKey = sourceKey;
                     this.generation++;
                     this.inFlightToken.set(ABANDONED);
                     this.recomputeRequested.set(true);
@@ -159,8 +159,8 @@ public final class RenderCell {
 
     // 本轮不做异步投影, 作废在飞任务与它归属的 Provider.
     private void retireSource() {
-        if (this.activeProvider != null) {
-            this.activeProvider = null;
+        if (this.activeSourceKey != null) {
+            this.activeSourceKey = null;
             this.generation++;
             this.inFlightToken.set(ABANDONED);
         }
@@ -171,7 +171,7 @@ public final class RenderCell {
      * 仅允许所属消费方的实体调度调用.
      */
     public void reset() {
-        this.activeProvider = null;
+        this.activeSourceKey = null;
         this.generation++;
         this.inFlightToken.set(ABANDONED);
         this.recomputeRequested.set(true);
@@ -181,7 +181,7 @@ public final class RenderCell {
      * 作废本 RenderCell, 关闭后不得再调用 {@link #render(Intent)}.
      */
     public void retire() {
-        this.activeProvider = null;
+        this.activeSourceKey = null;
         this.generation++;
         this.inFlightToken.set(ABANDONED);
         this.displayed = null;
@@ -194,19 +194,36 @@ public final class RenderCell {
 
         /**
          * 经投影渲染 Provider.
+         * <p>{@code sourceKey} 与 {@code provider} 分开: 前者回答"还是不是同一个来源",
+         * 后者只是本轮的调用入口. 消费方每轮新建 {@code provider} 不会被当成来源变化,
+         * 因此像视觉映射那样每次求值都产出新实例的装配方式也不会反复重算.
          *
+         * @param sourceKey 来源身份, 消费方必须为同一来源稳定地给出同一个对象; 换了对象即视为换了来源
          * @param provider 本轮使用的 Provider
          * @param placeholder 首次成功结果前使用的占位提供器, {@code null} 表示没有
          * @param lastResort 没有占位提供器时的兜底内容
          */
         record Projected(
+                @NotNull Object sourceKey,
                 @NotNull ItemProvider provider,
                 @Nullable ImmediateItemProvider placeholder,
                 @NotNull ItemStack lastResort
         ) implements Intent {
             public Projected {
+                Objects.requireNonNull(sourceKey, "sourceKey");
                 Objects.requireNonNull(provider, "provider");
                 Objects.requireNonNull(lastResort, "lastResort");
+            }
+
+            /**
+             * 以 Provider 自身作为来源身份创建 Projected.
+             */
+            public Projected(
+                    @NotNull ItemProvider provider,
+                    @Nullable ImmediateItemProvider placeholder,
+                    @NotNull ItemStack lastResort
+            ) {
+                this(provider, provider, placeholder, lastResort);
             }
         }
 

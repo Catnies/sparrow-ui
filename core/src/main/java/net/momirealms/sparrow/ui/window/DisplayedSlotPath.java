@@ -8,8 +8,10 @@ import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.item.provider.VisualBinding;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
@@ -306,7 +308,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                     // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
                     for (int i = 0; i < event.slotChanges().size(); i++) {
                         if (event.slotChanges().get(i).slot() == link.slot()) {
-                            this.onDirty(Invalidation.SOURCE);
+                            this.onDirty(Invalidation.CONTENT);
                             return;
                         }
                     }
@@ -393,20 +395,27 @@ final class DisplayedSlotPath implements AutoCloseable {
             SparrowInventory inventory = state.inventoryLink.inventory();
             int slot = state.inventoryLink.slot();
             ItemStack itemStack = inventory.itemAt(slot);
-            ItemProvider visual = inventory.visualize(slot, itemStack);
-            if (visual != null) {
-                return this.renderCell.render(new RenderCell.Intent.Projected(visual, null, ItemUtils.emptyIfNull(itemStack)));
+            ItemStack actual = ItemUtils.emptyIfNull(itemStack);
+            VisualBinding visual = inventory.visualBinding(slot, itemStack);
+            if (visual == null) {
+                return this.renderCell.render(new RenderCell.Intent.Direct(actual));
             }
-            return this.renderCell.render(new RenderCell.Intent.Direct(ItemUtils.emptyIfNull(itemStack)));
+            // 同步映射当场算出内容就把异步映射交给投影, 未完成时显示占位或该槽真实内容
+            if (visual.provider() instanceof ImmediateItemProvider immediate) {
+                return this.renderCell.render(new RenderCell.Intent.Direct(immediate.provideImmediately(this.renderContext)));
+            }
+            return this.renderCell.render(new RenderCell.Intent.Projected(
+                    visual.sourceKey(), visual.provider(), visual.placeholder(), actual));
         }
         // Item
         if (state.item != null) {
             return this.renderCell.render(new RenderCell.Intent.Projected(state.item.getItemProvider(), state.item.getPlaceholder(), ItemStack.empty()));
         }
-        // Empty
-        return state.background == null
-                ? this.renderCell.render(new RenderCell.Intent.Direct(ItemStack.empty()))
-                : this.renderCell.render(new RenderCell.Intent.Projected(state.background, null, ItemStack.empty()));
+        // Background
+        if (state.background != null) {
+            return this.renderCell.render(new RenderCell.Intent.Projected(state.background, null, ItemStack.empty()));
+        }
+        return this.renderCell.render(new RenderCell.Intent.Direct(ItemStack.empty()));
     }
 
     /**
@@ -416,9 +425,12 @@ final class DisplayedSlotPath implements AutoCloseable {
      * @param invalidation 本次通知的来路
      */
     private void onDirty(@NotNull Invalidation invalidation) {
-        // 完成回执送来的是已经算好的结果, 不是新的来源失效, 不必再要求重算
-        if (invalidation != Invalidation.COMPLETION) {
-            this.renderCell.dirty();
+        switch (invalidation) {
+            // 内容变了, 基于旧内容算出的异步视觉一并作废.
+            case CONTENT -> this.renderCell.reset();
+            // 完成通知送来的是已经算好的结果, 不是数据变化, 不必再要求重算
+            case COMPLETION -> { }
+            default -> this.renderCell.dirty();
         }
         boolean structural = invalidation == Invalidation.STRUCTURE;
         while (true) {
@@ -591,8 +603,9 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     private enum Invalidation {
         STRUCTURE,  // Pane 槽位变了, 路径结构可能不同, 要重新解析
-        SOURCE,     // 终点的 Item 或 Inventory 变了, 重新渲染就够
-        COMPLETION  // 投影单元的完成回执, 只消费已经算好的结果
+        SOURCE,     // 终点的 Item 或 Inventory 的视觉配置变了, 重新渲染就够
+        CONTENT,    // 终点 Inventory 槽位的内容变了, 基于旧内容算出的异步视觉一并作废
+        COMPLETION  // RenderCell 的完成通知, 只消费已经算好的结果
     }
 
     /**

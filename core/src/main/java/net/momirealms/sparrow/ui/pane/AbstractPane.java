@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.pane;
 
-import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Observer;
+import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
@@ -12,11 +12,7 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 
 /**
