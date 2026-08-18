@@ -59,7 +59,7 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
      */
     @Nullable
     ResolvedVisual visualize(@NotNull ItemStack actual) {
-        return this.layer.visualize(actual.isEmpty() ? null : actual.clone());
+        return this.layer.visualize(actual.isEmpty() ? null : actual);
     }
 
     @Override

@@ -23,6 +23,7 @@ public interface InventoryVisual extends Visual {
      * <p>映射本身在渲染线程求值, 只负责挑出这一槽要用哪个提供器, 重活放进返回的提供器里.
      * 返回 {@code null} 表示本层放行. 提供器给出结果之前显示 {@code placeholder};
      * 没有给占位就显示该槽真实内容. 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     * <p><strong>映射收到的是容器内部的物品实例, 不是副本, 一律不得修改</strong>.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示移除这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示真实内容

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.ClickSemantics;
+import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
@@ -401,7 +402,8 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (state.inventoryLink != null) {
             SparrowInventory inventory = state.inventoryLink.inventory();
             int slot = state.inventoryLink.slot();
-            ItemStack itemStack = inventory.itemAt(slot);
+            // 单次读, 能不复制就不复制, 读出来的内容一路交给视觉映射与渲染结果, 全程只读.
+            ItemStack itemStack = inventory instanceof ReferencingInventory ? inventory.itemAt(slot) : inventory.unsafeItemAt(slot);
             ItemStack actual = ItemUtils.emptyIfNull(itemStack);
             ResolvedVisual visual = inventory.resolvedVisual(slot, itemStack);
             if (visual == null) {

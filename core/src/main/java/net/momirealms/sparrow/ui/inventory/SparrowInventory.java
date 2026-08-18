@@ -377,7 +377,7 @@ public abstract class SparrowInventory {
 
     /**
      * 返回一个槽位生效的视觉层级结果, 从高到低逐层询问, 逐槽映射 -> 全局映射 -> 空槽的占位背景.
-     * <p>{@code actual} 由调用方提供, 应当是该槽当前内容的副本, 渲染层用它避免重复读取.
+     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
      *
      * @param slot 槽位序号
      * @param actual 该槽当前真实内容, 空槽为 {@code null}
