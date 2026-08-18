@@ -664,9 +664,9 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         }
 
         private void closeRenderCells() {
-            this.resultRenderCell.retire();
-            this.secondInputRenderCell.retire();
-            this.firstInputRenderCell.retire();
+            this.resultRenderCell.close();
+            this.secondInputRenderCell.close();
+            this.firstInputRenderCell.close();
         }
 
         /**

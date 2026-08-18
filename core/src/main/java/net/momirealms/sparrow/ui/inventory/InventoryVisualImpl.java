@@ -5,7 +5,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.visual.AbstractVisual;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.visual.VisualBinding;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.visual.InventoryVisual;
 import org.bukkit.inventory.ItemStack;
@@ -130,10 +130,10 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
      * @return 求值结果; 所有层都缺席或放行时为 null, 表示按真实内容显示
      */
     @Nullable
-    VisualBinding visualize(int slot, @Nullable ItemStack actual) {
+    ResolvedVisual visualize(int slot, @Nullable ItemStack actual) {
         State current = this.state;
         Objects.checkIndex(slot, current.bySlot.length);
-        VisualBinding bound = current.bySlot[slot].visualize(actual);
+        ResolvedVisual bound = current.bySlot[slot].visualize(actual);
         if (bound != null) {
             return bound;
         }
@@ -141,7 +141,7 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
         if (bound != null) {
             return bound;
         }
-        return actual == null && current.background != null ? VisualBinding.of(current.background) : null;
+        return actual == null && current.background != null ? ResolvedVisual.of(current.background) : null;
     }
 
     @NotNull
@@ -168,14 +168,14 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
 
         // 求值这一层, 放行时返回 null.
         @Nullable
-        private VisualBinding visualize(@Nullable ItemStack actual) {
+        private ResolvedVisual visualize(@Nullable ItemStack actual) {
             if (this.async != null) {
                 ItemProvider mapped = this.async.apply(actual);
-                return mapped == null ? null : new VisualBinding(this, mapped, this.asyncPlaceholder);
+                return mapped == null ? null : new ResolvedVisual(this, mapped, this.asyncPlaceholder);
             }
             if (this.sync != null) {
                 ImmediateItemProvider mapped = this.sync.apply(actual);
-                return mapped == null ? null : VisualBinding.of(mapped);
+                return mapped == null ? null : ResolvedVisual.of(mapped);
             }
             return null;
         }

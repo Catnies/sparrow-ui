@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.visual.AbstractVisual;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.visual.VisualBinding;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -75,7 +75,7 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
      * @return 求值结果; 没有配置或放行时为 {@code null}, 表示按菜单实际光标显示
      */
     @Nullable
-    VisualBinding visualize(@NotNull ItemStack actual) {
+    ResolvedVisual visualize(@NotNull ItemStack actual) {
         return this.layer.visualize(actual.isEmpty() ? null : actual.clone());
     }
 
@@ -98,14 +98,14 @@ final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
             @Nullable ImmediateItemProvider asyncPlaceholder
     ) {
         @Nullable
-        private VisualBinding visualize(@Nullable ItemStack actual) {
+        private ResolvedVisual visualize(@Nullable ItemStack actual) {
             if (this.async != null) {
                 ItemProvider mapped = this.async.apply(actual);
-                return mapped == null ? null : new VisualBinding(this, mapped, this.asyncPlaceholder);
+                return mapped == null ? null : new ResolvedVisual(this, mapped, this.asyncPlaceholder);
             }
             if (this.sync != null) {
                 ImmediateItemProvider mapped = this.sync.apply(actual);
-                return mapped == null ? null : VisualBinding.of(mapped);
+                return mapped == null ? null : ResolvedVisual.of(mapped);
             }
             return null;
         }

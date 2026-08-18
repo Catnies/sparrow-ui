@@ -11,7 +11,7 @@ import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.visual.VisualBinding;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
@@ -19,6 +19,7 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -158,6 +159,9 @@ final class DisplayedSlotPath implements AutoCloseable {
 
         boolean interactionChanged = previous != null
                 && (previous.frozen != next.frozen || !Objects.equals(previous.inventoryLink, next.inventoryLink));
+        // 来源身份只担保这一层配置没换, 不担保看的还是同一个终点: 翻页把槽位改指到另一个 Inventory 槽,
+        // 配置对象却是同一个, 所以终点换了要自己作废上一个终点算出来的结果.
+        boolean leafChanged = previous != null && !Objects.equals(previous.leafElement, next.leafElement);
         // 沿用深度和新旧层数三者相等, 才说明经过的 Pane 一个没换; 终点 Inventory 也没换的话,
         // Window 那份刷新名单就还是对的. 只换 Item 终点的路径(投影刷新就是这样)不必惊动它.
         boolean refreshTargetsStale = previous == null
@@ -172,6 +176,9 @@ final class DisplayedSlotPath implements AutoCloseable {
             }
         } finally {
             this.current = next;
+            if (leafChanged) {
+                this.renderCell.reset();
+            }
             if (this.window instanceof AbstractWindow<?> abstractWindow) {
                 if (refreshTargetsStale) {
                     abstractWindow.invalidateRefreshTargets();
@@ -295,7 +302,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 next.item = item;
                 next.itemAttachment = item.attach(this.window, ignore -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(Invalidation.SOURCE);
+                        this.onDirty(Invalidation.LEAF);
                     }
                 });
             }
@@ -315,7 +322,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 });
                 next.visualSubscription = link.inventory().attachVisualDirty(link.slot(), () -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(Invalidation.SOURCE);
+                        this.onDirty(Invalidation.LEAF);
                     }
                 });
             }
@@ -396,7 +403,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             int slot = state.inventoryLink.slot();
             ItemStack itemStack = inventory.itemAt(slot);
             ItemStack actual = ItemUtils.emptyIfNull(itemStack);
-            VisualBinding visual = inventory.visualBinding(slot, itemStack);
+            ResolvedVisual visual = inventory.visualBinding(slot, itemStack);
             if (visual == null) {
                 return this.renderCell.render(new RenderCell.Intent.Direct(actual));
             }
@@ -538,7 +545,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      *
      * @return Inventory 连接, 没有时为 null
      */
-    @org.jetbrains.annotations.Nullable
+    @Nullable
     Element.InventoryLink inventoryLink() {
         return this.currentState().inventoryLink;
     }
@@ -588,7 +595,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (this.phase.getAndSet(Phase.CLOSED) == Phase.CLOSED) {
             return;
         }
-        this.renderCell.retire();
+        this.renderCell.close();
         PathState previous = this.current;
         this.current = null;
         if (previous != null) {
@@ -603,7 +610,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     private enum Invalidation {
         STRUCTURE,  // Pane 槽位变了, 路径结构可能不同, 要重新解析
-        SOURCE,     // 终点的 Item 或 Inventory 的视觉配置变了, 重新渲染就够
+        LEAF,     // 终点的 Item 或 Inventory 的视觉配置变了, 重新渲染就够
         CONTENT,    // 终点 Inventory 槽位的内容变了, 基于旧内容算出的异步视觉一并作废
         COMPLETION  // RenderCell 的完成通知, 只消费已经算好的结果
     }

@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 @ApiStatus.Internal
-public final class RenderCell {
+public final class RenderCell implements AutoCloseable {
     private static final long ABANDONED = -1L;
 
     private final RenderContext context;
@@ -28,7 +28,7 @@ public final class RenderCell {
     private final AtomicBoolean resetRequested = new AtomicBoolean();   // 任意线程提交的作废请求, 由渲染消费
     private final AtomicLong inFlightToken = new AtomicLong(); // 0 = 空闲, ABANDONED = 已作废, 否则为在异步渲染任务的代数
     private volatile long generation = 1L;          // 当前 Provider 的代数
-    private volatile @Nullable Completed displayed; // 最近完成值
+    private volatile @Nullable Completed lastCompleted; // 最近完成值
     private @Nullable Object activeSourceKey;       // 当前来源的身份
 
     public RenderCell(@NotNull RenderContext context, @NotNull Runnable invalidator, @NotNull String failureMessage) {
@@ -56,12 +56,12 @@ public final class RenderCell {
         // 执行渲染
         return switch (intent) {
             case Intent.Direct(var value) -> {
-                this.retireSource();
+                this.clearSource();
                 yield value;
             }
             case Intent.Projected(var sourceKey, var provider, var placeholder, var lastResort) -> {
                 if (provider instanceof ImmediateItemProvider immediate) {
-                    this.retireSource();
+                    this.clearSource();
                     yield Objects.requireNonNull(immediate.provideImmediately(this.context), "rendered item");
                 }
                 // 换了来源, 旧任务与旧值一并作废, 新来源重新起算.
@@ -76,7 +76,7 @@ public final class RenderCell {
                 if (this.inFlightToken.get() != generation && this.recomputeRequested.getAndSet(false)) {
                     this.submit(provider, generation);
                 }
-                Completed completed = this.displayed;
+                Completed completed = this.lastCompleted;
                 if (completed != null && completed.generation == generation) {
                     yield completed.item;
                 }
@@ -116,7 +116,7 @@ public final class RenderCell {
     private void completeNow(long generation, CompletableFuture<? extends ItemStack> future) {
         try {
             ItemStack item = Objects.requireNonNull(future.join(), "computed item");
-            this.displayed = new Completed(generation, item);
+            this.lastCompleted = new Completed(generation, item);
         } catch (Throwable throwable) {
             SparrowUI.getInstance().handleException(this.failureMessage, ThrowableUtils.unwrapCompletion(throwable));
         } finally {
@@ -125,9 +125,9 @@ public final class RenderCell {
     }
 
     // 异步完成的写回, 在完成计算的线程上执行.
-    private void completeLater(long token, @Nullable ItemStack item, @Nullable Throwable throwable) {
+    private void completeLater(long generation, @Nullable ItemStack item, @Nullable Throwable throwable) {
         // 任务已被作废 (Provider 换了/重开/关闭/迟到)
-        if (!this.inFlightToken.compareAndSet(token, 0L)) {
+        if (!this.inFlightToken.compareAndSet(generation, 0L)) {
             return;
         }
         if (throwable != null) {
@@ -145,7 +145,7 @@ public final class RenderCell {
             return;
         }
         // 值先于通知: 消费方看到脏槽位重新渲染时必能读到新值
-        this.displayed = new Completed(token, item);
+        this.lastCompleted = new Completed(generation, item);
         this.onDirty();
     }
 
@@ -166,7 +166,7 @@ public final class RenderCell {
     }
 
     // 作废在飞任务与归属的 Provider.
-    private void retireSource() {
+    private void clearSource() {
         if (this.activeSourceKey != null) {
             this.activeSourceKey = null;
             this.generation++;
@@ -188,11 +188,12 @@ public final class RenderCell {
     /**
      * 作废本 RenderCell, 关闭后不得再调用 {@link #render(Intent)}.
      */
-    public void retire() {
+    @Override
+    public void close() {
         this.activeSourceKey = null;
         this.generation++;
         this.inFlightToken.set(ABANDONED);
-        this.displayed = null;
+        this.lastCompleted = null;
     }
 
     /**

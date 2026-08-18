@@ -17,7 +17,7 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.visual.VisualBinding;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -408,7 +408,7 @@ public abstract class SparrowInventory {
      */
     @Nullable
     public ItemProvider visualize(int slot, @Nullable ItemStack actual) {
-        VisualBinding bound = this.visual.visualize(slot, actual);
+        ResolvedVisual bound = this.visual.visualize(slot, actual);
         return bound == null ? null : bound.provider();
     }
 
@@ -423,7 +423,7 @@ public abstract class SparrowInventory {
      */
     @Nullable
     @ApiStatus.Internal
-    public VisualBinding visualBinding(int slot, @Nullable ItemStack actual) {
+    public ResolvedVisual visualBinding(int slot, @Nullable ItemStack actual) {
         return this.visual.visualize(slot, actual);
     }
 

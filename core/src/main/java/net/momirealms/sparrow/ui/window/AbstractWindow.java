@@ -19,7 +19,7 @@ import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.visual.VisualBinding;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
@@ -146,7 +146,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final CursorVisualImpl cursorVisual;        // 光标视觉配置
     private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final RenderCell cursorRenderCell;          // 光标异步视觉的投影, 跨打开代际经 reset 复用
-    private final AtomicBoolean cursorReady = new AtomicBoolean(); // 光标异步视觉的完成通知, 不等同于光标本身变化
+    private final AtomicBoolean cursorCompletionPending = new AtomicBoolean(); // 光标异步视觉的完成通知, 不等同于光标本身变化
     private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照; 仅玩家实体线程访问
 
     // tick 任务刷新目标
@@ -204,7 +204,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
         this.cursorRenderCell = new RenderCell(
                 this.cursorRenderContext,
-                () -> this.cursorReady.set(true),
+                () -> this.cursorCompletionPending.set(true),
                 "Failed to render asynchronous Window cursor"
         );
     }
@@ -670,7 +670,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 初始化本次打开的 generation 相关状态
         this.generation = generation;
         this.cursorRenderCell.reset();
-        this.cursorReady.set(false);
+        this.cursorCompletionPending.set(false);
         this.windowTick = 0;
         this.cursorDirty = true;
         this.forceFull = true;
@@ -1313,7 +1313,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 视觉配置换了要重算; 完成通知只是把算好的结果刷出去, 不构成新的重算要求
         boolean cursorVisualDirty = this.cursorVisual.takeDirty();
         if (cursorVisualDirty) this.cursorRenderCell.dirty();
-        this.cursorDirty |= cursorVisualDirty || this.cursorReady.getAndSet(false);
+        this.cursorDirty |= cursorVisualDirty || this.cursorCompletionPending.getAndSet(false);
         this.forceReopen |= forceReopen;
 
         // 先消费跨线程写入的失效集合, 再在实体线程生成本轮 Window 槽位渲染结果
@@ -1432,7 +1432,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 this.cursorRenderCell.reset();
             }
             // 光标映射展示, 没有映射时按菜单实际光标显示
-            VisualBinding visual = this.cursorVisual.visualize(actual);
+            ResolvedVisual visual = this.cursorVisual.visualize(actual);
             RenderCell.Intent intent;
             if (visual == null) {
                 intent = new RenderCell.Intent.Direct(actual);
@@ -1507,7 +1507,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.open = false;
         this.generation++;
         this.cursorRenderCell.reset();
-        this.cursorReady.set(false);
+        this.cursorCompletionPending.set(false);
         this.clickInterpreter.reset();
         Arrays.fill(this.bundleSelections, null);
 

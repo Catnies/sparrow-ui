@@ -16,12 +16,12 @@ import java.util.Objects;
  * @param placeholder 异步提供器首次成功结果前显示的占位, {@code null} 表示回退到调用方给的内容
  */
 @ApiStatus.Internal
-public record VisualBinding(
+public record ResolvedVisual(
         @NotNull Object sourceKey,
         @NotNull ItemProvider provider,
         @Nullable ImmediateItemProvider placeholder
 ) {
-    public VisualBinding {
+    public ResolvedVisual {
         Objects.requireNonNull(sourceKey, "sourceKey");
         Objects.requireNonNull(provider, "provider");
     }
@@ -33,7 +33,7 @@ public record VisualBinding(
      * @return 视觉映射结果
      */
     @NotNull
-    public static VisualBinding of(@NotNull ItemProvider provider) {
-        return new VisualBinding(provider, provider, null);
+    public static ResolvedVisual of(@NotNull ItemProvider provider) {
+        return new ResolvedVisual(provider, provider, null);
     }
 }

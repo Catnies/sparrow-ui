@@ -39,7 +39,7 @@ public final class ItemBuilder {
     private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
     private final List<Function<? super Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
-    private boolean updateOnClick; // 点击成功后是否主动重新渲染
+    private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
      * 配置在渲染线程立即返回 ItemStack 的同步 renderer.

@@ -21,7 +21,7 @@ public interface ItemProvider {
      * @return 本次渲染最终结果的 Future
      */
     @NotNull
-    CompletableFuture<? extends ItemStack> provide(RenderContext context);
+    CompletableFuture<? extends ItemStack> provide(@NotNull RenderContext context);
 
     /**
      * 创建在调用线程立即完成的同步提供器.
