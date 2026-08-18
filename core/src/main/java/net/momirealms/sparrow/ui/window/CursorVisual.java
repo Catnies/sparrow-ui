@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.Visual;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -20,14 +21,14 @@ public interface CursorVisual extends Visual {
      * @return 光标视觉 Provider 映射
      */
     @NotNull
-    Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider();
+    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider();
 
     /**
      * 请求替换光标视觉 Provider 映射.
      *
      * @param visualizerProvider 新的光标视觉 Provider 映射
      */
-    void visualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider);
+    void visualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider);
 
     /**
      * 使用直接返回 ItemStack 的映射请求替换光标视觉映射.
@@ -35,7 +36,7 @@ public interface CursorVisual extends Visual {
      *
      * @param visualizer 新的光标物品映射
      */
-    default void visualizer(@NotNull Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+    default void visualizerItem(@NotNull Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
         Objects.requireNonNull(visualizer, "visualizer");
         this.visualizerProvider(actual -> {
             ItemStack visual = visualizer.apply(actual);

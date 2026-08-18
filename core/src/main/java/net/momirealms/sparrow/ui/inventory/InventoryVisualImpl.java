@@ -3,7 +3,7 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.AbstractVisual;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -32,21 +32,14 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
         this.state = State.empty(size);
     }
 
-    @Override
-    public void dirty() {
-        this.dirtyRoutes.dirtyAll();
-    }
-
     @Nullable
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
+    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider() {
         return this.state.visualizerProvider;
     }
 
     @Override
-    public void visualizerProvider(
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider
-    ) {
+    public void visualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
         synchronized (this.stateLock) {
             State current = this.state;
             this.state = new State(visualizerProvider, current.visualizerProvidersBySlot, current.background);
@@ -56,20 +49,17 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
 
     @Nullable
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int slot) {
+    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider(int slot) {
         Objects.checkIndex(slot, this.state.visualizerProvidersBySlot.length);
         return this.state.visualizerProvidersBySlot[slot];
     }
 
     @Override
-    public void visualizerProvider(
-            int slot,
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider
-    ) {
+    public void visualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider) {
         Objects.checkIndex(slot, this.state.visualizerProvidersBySlot.length);
         synchronized (this.stateLock) {
             State current = this.state;
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizerProvidersBySlot =
+            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[] visualizerProvidersBySlot =
                     current.visualizerProvidersBySlot.clone();
             visualizerProvidersBySlot[slot] = visualizerProvider;
             this.state = new State(current.visualizerProvider, visualizerProvidersBySlot, current.background);
@@ -79,12 +69,12 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
 
     @Nullable
     @Override
-    public ItemProvider background() {
+    public ImmediateItemProvider background() {
         return this.state.background;
     }
 
     @Override
-    public void background(@Nullable ItemProvider background) {
+    public void background(@Nullable ImmediateItemProvider background) {
         synchronized (this.stateLock) {
             State current = this.state;
             this.state = new State(current.visualizerProvider, current.visualizerProvidersBySlot, background);
@@ -93,19 +83,19 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
     }
 
     @Nullable
-    ItemProvider visualize(int slot, @Nullable ItemStack actual) {
+    ImmediateItemProvider visualize(int slot, @Nullable ItemStack actual) {
         State current = this.state;
         Objects.checkIndex(slot, current.visualizerProvidersBySlot.length);
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> slotVisualizerProvider =
+        @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> slotVisualizerProvider =
                 current.visualizerProvidersBySlot[slot];
         if (slotVisualizerProvider != null) {
-            ItemProvider mapped = slotVisualizerProvider.apply(actual);
+            ImmediateItemProvider mapped = slotVisualizerProvider.apply(actual);
             if (mapped != null) {
                 return mapped;
             }
         }
         if (current.visualizerProvider != null) {
-            ItemProvider mapped = current.visualizerProvider.apply(actual);
+            ImmediateItemProvider mapped = current.visualizerProvider.apply(actual);
             if (mapped != null) {
                 return mapped;
             }
@@ -118,15 +108,20 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
         return this.dirtyRoutes.attach(slot, invalidator);
     }
 
+    @Override
+    public void dirty() {
+        this.dirtyRoutes.dirtyAll();
+    }
+
     private static final class State {
-        @Nullable private final Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider;
-        @Nullable private final Function<@Nullable ItemStack, @Nullable ItemProvider> @NotNull [] visualizerProvidersBySlot;
-        @Nullable private final ItemProvider background;
+        @Nullable private final Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider;
+        @Nullable private final Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> @NotNull [] visualizerProvidersBySlot;
+        @Nullable private final ImmediateItemProvider background;
 
         private State(
-                @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
-                @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> @NotNull [] visualizerProvidersBySlot,
-                @Nullable ItemProvider background
+                @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider,
+                @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> @NotNull [] visualizerProvidersBySlot,
+                @Nullable ImmediateItemProvider background
         ) {
             this.visualizerProvider = visualizerProvider;
             this.visualizerProvidersBySlot = visualizerProvidersBySlot;
@@ -136,8 +131,8 @@ final class InventoryVisualImpl extends AbstractVisual implements InventoryVisua
         @NotNull
         @SuppressWarnings("unchecked")
         private static State empty(int size) {
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider>[] visualizerProvidersBySlot =
-                    (Function<@Nullable ItemStack, @Nullable ItemProvider>[]) new Function<?, ?>[size];
+            @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[] visualizerProvidersBySlot =
+                    (Function<@Nullable ItemStack, @Nullable ImmediateItemProvider>[]) new Function<?, ?>[size];
             return new State(null, visualizerProvidersBySlot, null);
         }
     }

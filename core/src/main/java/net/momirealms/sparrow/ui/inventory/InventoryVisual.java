@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory;
 
 import net.momirealms.sparrow.ui.Visual;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -19,14 +20,14 @@ public interface InventoryVisual extends Visual {
      * @return 全局视觉 Provider 映射; 没有设置过时为 {@code null}
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider();
+    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider();
 
     /**
      * 替换全局视觉 Provider 映射并标脏全部 Inventory 槽位.
      *
      * @param visualizerProvider 新的全局视觉 Provider 映射, {@code null} 表示移除这一层
      */
-    void visualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider);
+    void visualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider);
 
     /**
      * 使用直接返回 ItemStack 的映射替换全局视觉映射并标脏全部 Inventory 槽位.
@@ -46,7 +47,7 @@ public interface InventoryVisual extends Visual {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int slot);
+    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider(int slot);
 
     /**
      * 替换一个 Inventory 槽位的视觉 Provider 映射并只标脏该槽位.
@@ -55,7 +56,7 @@ public interface InventoryVisual extends Visual {
      * @param visualizerProvider 新的逐槽视觉 Provider 映射, {@code null} 表示移除这一层
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    void visualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider);
+    void visualizerProvider(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> visualizerProvider);
 
     /**
      * 使用直接返回 ItemStack 的映射替换一个 Inventory 槽位的视觉映射并只标脏该槽位.
@@ -75,14 +76,14 @@ public interface InventoryVisual extends Visual {
      * @return 空槽背景; 没有设置过时为 {@code null}
      */
     @Nullable
-    ItemProvider background();
+    ImmediateItemProvider background();
 
     /**
      * 替换空槽背景并标脏全部 Inventory 槽位.
      *
      * @param background 空槽背景, {@code null} 表示清除
      */
-    void background(@Nullable ItemProvider background);
+    void background(@Nullable ImmediateItemProvider background);
 
     /**
      * 使用 ItemStack 替换空槽背景并标脏全部 Inventory 槽位.
@@ -94,9 +95,7 @@ public interface InventoryVisual extends Visual {
     }
 
     @Nullable
-    private static Function<@Nullable ItemStack, @Nullable ItemProvider> providerVisualizer(
-            @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer
-    ) {
+    private static Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> providerVisualizer(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
         if (visualizer == null) {
             return null;
         }

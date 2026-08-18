@@ -21,6 +21,7 @@ import net.momirealms.sparrow.ui.inventory.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.InteractionEdits;
 import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
@@ -80,70 +81,85 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
-            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider
+            @NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider
     ) {
     }
 
+    // 系统常量
     private static final int INCOMING_PER_TICK = 128;               // 每 tick 最多处理的入站输入数, 防止单个玩家占满实体线程
     private static final int CURSOR_AUDIT_INTERVAL = 20;            // 光标复核周期(tick), 定期纠正客户端的光标预测
     private static final long PING_TIMEOUT_MILLIS = 30_000;         // 窗口状态 Ping 的超时时间, 超时未收到 Pong 就丢弃
     private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());   // 空的 BitSet 脏位槽.
 
-    // 传入的值和选项
+    // 身份与固定配置, 构造后不变
     private final WindowManager manager;
     private final Player viewer;
     private final WindowLayout layout;
-    private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
-    private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
-    private final CursorVisualImpl cursorVisual;        // 光标视觉配置
-    private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
-    private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
-    private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
-    private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
-    private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
-    private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 Pane 冻结按或合成
-    private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
     private final @Nullable Object data;                // 随窗携带的用户对象
     private final WindowSession.Kind sessionKind;       // 成为链根时新会话的类型
     private final List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers; // 成为链根时装进新会话的结束处理器
+    private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
+
+    // 用户处理器
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
     private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;   // 容器外点击处理器
     private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;         // 窗口状态确认处理器
 
-    // 运行时的状态和缓存
-    private volatile Component title;   // 最近一次已应用的标题快照
-    private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
+    // 生命周期
     private volatile boolean open;      // Window 是否处于打开状态
+    private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
+    private volatile @Nullable AbstractWindowSession session; // 所属会话, 不在任何链上时为 null
+    private @Nullable M menuHandle;     // 当前菜单句柄, 关闭时为 null; 仅玩家实体线程访问
+    private @Nullable ScheduledTask tickTask; // 周期 tick 任务; 仅玩家实体线程访问
+    private long windowTick;            // 本次打开以来的 tick 计数; 仅玩家实体线程访问
+
+    // 行为开关
     private volatile boolean closeable; // 是否接受客户端主动关闭
     private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
-    private volatile @Nullable AbstractWindowSession session; // 所属会话, 不在任何链上时为 null
     private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
-    private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
-    private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
-    private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
 
-    // 仅允许在玩家实体线程访问的状态和缓存
-    private @Nullable M menuHandle;                 // 当前菜单句柄, 关闭时为 null
+    // 标题
+    private volatile Component title;   // 最近一次已应用的标题快照
+    private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
+    private @Nullable Component sentTitle; // 最近一次成功进入发送流程的标题; 仅玩家实体线程访问
+    private boolean titleDirty;         // 标题是否待重开; 仅玩家实体线程访问
+
+    // 槽位渲染与同步
+    private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
+    private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
+    private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
+    private final BitSet renderedBeforeEvent = new BitSet(); // 本 tick 已在 Bukkit 事件前渲染, 仍待最终同步的槽位
     private @Nullable DisplayedSlotPath[] paths;    // 每个 Window 槽位的显示路径
     private @Nullable ItemStack[] localSlots;       // 最近一次渲染的 Window 槽位内容
-    private @Nullable ScheduledTask tickTask;       // 周期 tick 任务
-    private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照
-    private @Nullable Component sentTitle;          // 最近一次成功进入发送流程的标题
+    private boolean forceFull;      // 下一次同步是否强制全量
+    private boolean menuDirty;      // 菜单是否有槽位内容之外的待同步状态
+    private boolean forceReopen;    // 即使标题相同也必须重开菜单
+
+    // 光标
+    private boolean cursorDirty;    // 光标是否需要重新核对
+    private final CursorVisualImpl cursorVisual;        // 光标视觉配置与 visualize 记忆
+    private final RenderContext cursorRenderContext;    // 光标可视化器的渲染上下文
+    private @Nullable MenuHandle.CursorSnapshot localCursor; // 最近一次同步的光标快照; 仅玩家实体线程访问
+
+    // tick 任务刷新目标
     private @Nullable List<SparrowInventory> refreshInventories; // 每 tick 要刷新的 Inventory, null 表示要重新收集
     private @Nullable Pane[] refreshPanes;          // 收集刷新目标时路径上出现过的 Pane, 已去重
     private @Nullable Object[] refreshDeclarations; // 与 refreshPanes 同下标, 收集当时各自的 participatingSequences(), 只比较引用
     private @Nullable InventorySequence[] refreshSequences; // 收集刷新目标时路径上出现过的序列, 已去重
     private @Nullable Object[] refreshSequenceMembers;      // 与 refreshSequences 同下标, 收集当时各自的成员名单, 只比较引用
-    private BitSet dirtySlots;      // 活动脏槽位缓冲, 任意线程的通知都可以写入
-    private BitSet spareDirtySlots; // 备用脏槽位缓冲, 与活动缓冲交换复用
-    private final BitSet renderedBeforeEvent = new BitSet(); // 本 tick 已在 Bukkit 事件前渲染, 仍待最终同步的槽位
-    private long windowTick;        // 本次打开以来的 tick 计数
-    private boolean cursorDirty;    // 光标是否需要重新核对
-    private boolean forceFull;      // 下一次同步是否强制全量
-    private boolean menuDirty;      // 菜单是否有槽位内容之外的待同步状态
-    private boolean titleDirty;     // 标题是否待重开
-    private boolean forceReopen;    // 即使标题相同也必须重开菜单
+
+    // 点击与交互
+    private final ClickInterpreter clickInterpreter = new ClickInterpreter();       // 把协议点击包解释成点击或拖拽结果
+    private final ClickSemantics.Context semanticsContext = new SemanticsContext(); // 点击语义引擎的目标解析与玩家侧 IO
+    private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
+    private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
+    private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 Pane 冻结按或合成
+
+    // 窗口状态与 Ping/Pong 确认
+    private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
+    private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
+    private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
 
     /**
      * 根据设置创建 Window.
@@ -525,15 +541,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.cursorVisual;
     }
 
-    @Override
-    public void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider) {
-        this.cursorVisual.visualizerProvider(cursorVisualizerProvider);
-    }
-
     @NotNull
     @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider() {
+    public Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getCursorVisualizerProvider() {
         return this.cursorVisual.visualizerProvider();
+    }
+
+    @Override
+    public void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider) {
+        this.cursorVisual.visualizerProvider(cursorVisualizerProvider);
     }
 
     @Override
@@ -1393,14 +1409,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
         ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
         try {
-            ItemProvider visualizerProvider = this.cursorVisual.visualizerProvider().apply(
-                    actual.isEmpty() ? null : actual.clone()
-            );
-            if (visualizerProvider == null) {
-                return new MenuHandle.CursorSnapshot(actual, actual.clone());
-            }
-            ItemStack visual = ItemUtils.copyOrEmpty(visualizerProvider.provide(this.cursorRenderContext));
-            return new MenuHandle.CursorSnapshot(actual, visual);
+            // 光标映射展示, 没有映射时按菜单实际光标显示
+            ImmediateItemProvider visual = this.cursorVisual.visualize(actual);
+            ItemStack rendered = visual != null
+                    ? ItemUtils.copyOrEmpty(visual.provideImmediately(this.cursorRenderContext))
+                    : actual;
+            return new MenuHandle.CursorSnapshot(actual, rendered);
         } catch (Throwable throwable) {
             this.manager.report("Failed to render Window cursor visualizer", throwable);
             return new MenuHandle.CursorSnapshot(actual, actual.clone());
@@ -1449,15 +1463,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 该路径不再次主动关闭容器.
      *
      * @param reason Bukkit 容器关闭原因
-     * @return 是否关闭了一个打开的 Window
      */
-    boolean closeAfterInventoryEvent(InventoryCloseEvent.Reason reason) {
-        if (!this.open) return false;
-
+    void closeAfterInventoryEvent(InventoryCloseEvent.Reason reason) {
+        if (!this.open) return;
         Throwable failure = this.teardownOnEntity(null);
         this.fireCloseHandlers(reason);
         ThrowableUtils.throwIfUnchecked(failure);
-        return true;
     }
 
     // 关闭本次打开的菜单, 并清理菜单, tick 任务和显示路径.

@@ -1,13 +1,13 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
-import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
+import net.momirealms.sparrow.ui.pane.Element;
+import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.util.HandlerList;
+import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
@@ -43,7 +43,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
-    private Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider = ignoredCursor -> null;
+    private Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider = ignoredCursor -> null;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {
@@ -210,7 +210,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @NotNull
     @Override
-    public final B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizer) {
+    public final B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizer) {
         this.cursorVisualizerProvider = cursorVisualizer;
         return this.self();
     }

@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.Element;
+import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -431,14 +432,20 @@ public interface Window {
     CursorVisual cursorVisual();
 
     /**
+     * 当前返回 ItemProvider 的光标显示转换器.
+     *
+     * @return 光标 ItemProvider 显示转换器
+     */
+    @NotNull
+    Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> getCursorVisualizerProvider();
+
+    /**
      * 设置返回 ItemProvider 的光标显示转换器.
      * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
      *
      * @param cursorVisualizerProvider 光标 ItemProvider 显示转换器
      */
-    void setCursorVisualizerProvider(
-            @NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider
-    );
+    void setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider);
 
     /**
      * 使用直接返回 ItemStack 的映射设置光标显示转换器.
@@ -447,16 +454,8 @@ public interface Window {
      * @param cursorVisualizer 光标物品显示转换器
      */
     default void setCursorVisualizerItem(@NotNull Function<@Nullable ItemStack, @Nullable ItemStack> cursorVisualizer) {
-        this.cursorVisual().visualizer(cursorVisualizer);
+        this.cursorVisual().visualizerItem(cursorVisualizer);
     }
-
-    /**
-     * 当前返回 ItemProvider 的光标显示转换器.
-     *
-     * @return 光标 ItemProvider 显示转换器
-     */
-    @NotNull
-    Function<@Nullable ItemStack, @Nullable ItemProvider> getCursorVisualizerProvider();
 
     /**
      * 通知 Window 对指定槽位的显示内容进行更新.
@@ -763,7 +762,7 @@ public interface Window {
          * @return 此 Builder
          */
         @NotNull
-        B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider);
+        B setCursorVisualizerProvider(@NotNull Function<@Nullable ItemStack, @Nullable ImmediateItemProvider> cursorVisualizerProvider);
 
         /**
          * 使用直接返回 ItemStack 的映射设置光标显示转换器.
