@@ -11,7 +11,7 @@ import java.util.function.Function;
 @ApiStatus.Internal
 public record VisualLayer(
         @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer, // null 表示这一层没有配置, 求值时直接放行
-        @Nullable ImmediateItemProvider placeholder // null 表示没有占位
+        @Nullable ImmediateItemProvider placeholder                                 // null 表示没有占位
 ) {
     public static final VisualLayer NONE = new VisualLayer(null, null);
 
