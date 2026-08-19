@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -16,8 +17,8 @@ import java.util.function.Consumer;
  * 两者都不丢弃任何成员, 步入过的 Window 全部保留到会话结束.
  */
 final class WindowSessionTree extends AbstractWindowSession {
-    private @Nullable Node root;   // 第一次步入的成员成为树根
-    private @Nullable Node cursor; // 当前位置, 恒指向当前窗
+    private final IdentityHashMap<AbstractWindow<?>, AbstractWindow<?>> parents = new IdentityHashMap<>(8); // 成员到父窗, 根窗为 null
+    private @Nullable AbstractWindow<?> cursor; // 当前位置, 恒指向当前窗
 
     WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
         super(manager, viewer, endHandlers);
@@ -31,44 +32,36 @@ final class WindowSessionTree extends AbstractWindowSession {
 
     @Override
     void stepInto(@NotNull AbstractWindow<?> next) {
-        Node existing = this.root == null ? null : findNode(this.root, next);
-        if (existing != null) {
-            this.cursor = existing;
-            return;
+        // 已经在树上的成员只移动位置, 它的父不改写
+        if (!this.parents.containsKey(next)) {
+            this.parents.put(next, this.cursor);
         }
-
-        Node node = new Node(next, this.cursor);
-        if (this.cursor == null) {
-            this.root = node;
-        } else {
-            this.cursor.children.add(node);
-        }
-        this.cursor = node;
+        this.cursor = next;
     }
 
     @Override
     void stepBack() {
-        this.cursor = this.cursor == null ? null : this.cursor.parent;
+        this.cursor = this.previousWindow();
     }
 
     @Nullable
     @Override
     AbstractWindow<?> currentWindow() {
-        return this.cursor == null ? null : this.cursor.window;
+        return this.cursor;
     }
 
     @Nullable
     @Override
     AbstractWindow<?> previousWindow() {
-        return this.cursor == null || this.cursor.parent == null ? null : this.cursor.parent.window;
+        return this.cursor == null ? null : this.parents.get(this.cursor);
     }
 
     @NotNull
     @Override
     List<Window> currentPath() {
         ArrayList<Window> path = new ArrayList<>();
-        for (Node node = this.cursor; node != null; node = node.parent) {
-            path.add(node.window);
+        for (AbstractWindow<?> window = this.cursor; window != null; window = this.parents.get(window)) {
+            path.add(window);
         }
         Collections.reverse(path);
         return path;
@@ -76,45 +69,10 @@ final class WindowSessionTree extends AbstractWindowSession {
 
     @Override
     void releaseMembers() {
-        if (this.root != null) {
-            releaseSubtree(this.root);
+        for (AbstractWindow<?> member : this.parents.keySet()) {
+            member.session(null);
         }
-        this.root = null;
+        this.parents.clear();
         this.cursor = null;
-    }
-
-    // 在子树中查找持有给定 Window 的节点.
-    @Nullable
-    private static Node findNode(@NotNull Node node, @NotNull AbstractWindow<?> window) {
-        if (node.window == window) {
-            return node;
-        }
-        for (int index = 0; index < node.children.size(); index++) {
-            Node found = findNode(node.children.get(index), window);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
-    }
-
-    // 解除子树全部成员的会话归属.
-    private static void releaseSubtree(@NotNull Node node) {
-        node.window.session(null);
-        for (int index = 0; index < node.children.size(); index++) {
-            releaseSubtree(node.children.get(index));
-        }
-    }
-
-    // 树上的一次步入, 窗与它的上一扇的关系.
-    private static final class Node {
-        private final AbstractWindow<?> window;
-        private final @Nullable Node parent;
-        private final List<Node> children = new ArrayList<>();
-
-        private Node(AbstractWindow<?> window, @Nullable Node parent) {
-            this.window = window;
-            this.parent = parent;
-        }
     }
 }
