@@ -67,6 +67,7 @@ final class ConfiguredItem implements ObservableItem {
 
     @Override
     public void handleClick(ItemClick click) {
+        // 守卫全部通过才执行处理器, 点击成功后按需主动失效
         if (!this.passes(this.clickGuards, click)) return;
         this.clickHandler.accept(this, click);
         if (this.updateOnClick) {
@@ -86,6 +87,7 @@ final class ConfiguredItem implements ObservableItem {
         this.bundleHandler.accept(this, select);
     }
 
+    // 按添加顺序执行守卫, 首个拒绝者执行善后回调并宣告不通过.
     private <C extends ItemInteraction> boolean passes(@NotNull List<GuardEntry<C>> guards, @NotNull C interaction) {
         for (int index = 0; index < guards.size(); index++) {
             GuardEntry<C> entry = guards.get(index);

@@ -45,7 +45,7 @@ public interface ItemAttachment extends AutoCloseable {
         private final Item item;
         private final Observer<? super Item> observer;
         private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>(); // 挂载线程写入, 关闭线程读取.
-        private final AtomicBoolean closed = new AtomicBoolean();
+        private final AtomicBoolean closed = new AtomicBoolean(); // 一次性关闭哨兵, 关闭后依赖失效不再转发
 
         private Tracking(Item item, Observer<? super Item> observer) {
             this.item = item;
@@ -71,15 +71,14 @@ public interface ItemAttachment extends AutoCloseable {
         ) {
             for (int index = 0; index < dependencies.size(); index++) {
                 Signal<?> signal = dependencies.get(index).apply(viewer);
-                this.track(signal.onDirty(this::fire));
+                this.track(signal.onDirty(this::dirty));
             }
         }
 
         /**
          * 依赖失效, 标脏本次挂载对应的显示路径.
-         * 弱条目在下次派发时才被剔除, 因此已关闭的挂载可能仍被调用一次.
          */
-        private void fire() {
+        private void dirty() {
             if (this.closed.get()) return;
             this.observer.onUpdate(this.item);
         }
@@ -89,6 +88,7 @@ public interface ItemAttachment extends AutoCloseable {
             if (!this.closed.compareAndSet(false, true)) {
                 return;
             }
+            // 逐个关闭订阅, 单个失败不阻断其余清理, 最后统一抛出
             RuntimeException failure = null;
             for (Subscription subscription : this.subscriptions) {
                 try {

@@ -22,7 +22,7 @@ import java.util.function.Function;
 public abstract class AbstractItem implements ObservableItem {
     private final ItemProvider itemProvider;
     private final ImmediateItemProvider placeholder;
-    private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>();
+    private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 失效广播派发器, notifyWindows 经它送达所有观察者
     private final CopyOnWriteArrayList<Function<? super Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
@@ -43,23 +43,11 @@ public abstract class AbstractItem implements ObservableItem {
         }
     }
 
-    /**
-     * 声明渲染读取了哪些按玩家分区的数据源, 它们失效时重新渲染这个 Item.
-     * <p><strong>只应在子类构造器里调用.</strong>
-     *
-     * @param signal 按玩家分区的数据源
-     */
     protected final void dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
         Objects.requireNonNull(signal, "signal");
         this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
     }
 
-    /**
-     * 声明渲染读取了按任意维度分区的数据源, 分区 key 由查看者导出.
-     *
-     * @param signal 分区数据源
-     * @param keyOf 从查看者导出分区 key, 在挂载时执行
-     */
     protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
         Objects.requireNonNull(signal, "signal");
         Objects.requireNonNull(keyOf, "keyOf");
@@ -105,11 +93,13 @@ public abstract class AbstractItem implements ObservableItem {
         Objects.requireNonNull(window, "window");
         Objects.requireNonNull(observer, "observer");
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
+        // 登记观察者并订阅依赖, 任一步失败都关闭挂载回滚
         try {
             attachment.track(this.observers.subscribe(observer));
             attachment.subscribeDependencies(this.dependencies, window.viewer());
             return attachment;
         } catch (RuntimeException | Error throwable) {
+            // 回滚失败不能盖掉挂载失败的原因
             try {
                 attachment.close();
             } catch (RuntimeException | Error closeFailure) {

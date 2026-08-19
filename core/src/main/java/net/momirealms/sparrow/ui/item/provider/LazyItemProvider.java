@@ -34,7 +34,6 @@ public interface LazyItemProvider {
                         try {
                             future.complete(supplier.get());
                         } catch (Throwable throwable) {
-                            // 解析异常不能丢给调度器, 统一走 future 的异常通道
                             future.completeExceptionally(throwable);
                         }
                     }

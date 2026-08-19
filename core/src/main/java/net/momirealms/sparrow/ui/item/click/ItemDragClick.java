@@ -11,11 +11,8 @@ import java.util.List;
 /**
  * 一次拖拽手势经过某个 Item 时的上下文.
  * <p>只有手势本身成立才会派发: 光标为空, 或非创造模式的中键拖拽, 都不会到达 Item.
- * 语义引擎是否接管途中的 Inventory 槽位, 分配是否被放入规则全部过滤, Bukkit 拖拽事件是否被取消, 都不影响派发.
- * <p>同一次手势给经过的每一个 Item 槽位各派发一次; 同一个 Item 实例挂在多个被拖过的槽位上时
- * 会被调用多次, 每次的 {@link #windowSlot()} 不同, {@link #path()} 是同一份.
- * <p>{@code path} 是手势发生那一刻的结构快照. 处理器在第一站改动 Pane 结构不会让后续站点的
- * {@link Stop#kind()} 跟着变.
+ * <p>同一次手势给经过的每一个 Item 槽位各派发一次; 同一个 Item 实例挂在多个被拖过的槽位上时会被调用多次, 每次的 {@link #windowSlot()} 不同, {@link #path()} 是同一份.
+ * <p>{@code path} 是手势发生那一刻的结构快照. 处理器在第一站改动 Pane 结构不会让后续站点的 {@link Stop#kind()} 跟着变.
  *
  * @param clickType 拖拽按键: LEFT 均分, RIGHT 每格一个, MIDDLE 创造模式整堆
  * @param player 拖拽玩家

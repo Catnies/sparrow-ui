@@ -12,34 +12,18 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 public final class StaticItem implements Item {
-    private final ItemProvider itemProvider; // 显示提供器
+    private final ItemProvider itemProvider;
     private final BiConsumer<? super Item, ? super ItemClick> clickHandler; // null 表示不处理点击
     private final BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler; // null 表示不处理 Bundle 选择
 
-    /**
-     * 创建以固定物品堆显示, 无交互处理器的静态 Item.
-     *
-     * @param itemStack 固定显示的物品堆
-     */
     public StaticItem(@NotNull ItemStack itemStack) {
         this(ItemProvider.constant(itemStack), null);
     }
 
-    /**
-     * 创建只持有显示来源, 无交互处理器的静态 Item.
-     *
-     * @param itemProvider 显示提供器
-     */
     public StaticItem(@NotNull ItemProvider itemProvider) {
         this(itemProvider, null);
     }
 
-    /**
-     * 创建带点击处理器, 无 Bundle 选择处理器的静态 Item.
-     *
-     * @param itemProvider 显示提供器
-     * @param clickHandler 点击处理器, 可为 {@code null}
-     */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
             @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler
@@ -47,13 +31,6 @@ public final class StaticItem implements Item {
         this(itemProvider, clickHandler, null);
     }
 
-    /**
-     * 创建带完整交互处理器的静态 Item.
-     *
-     * @param itemProvider 显示提供器
-     * @param clickHandler 点击处理器, 可为 {@code null}
-     * @param bundleSelectHandler Bundle 选择处理器, 可为 {@code null}
-     */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
             @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler,

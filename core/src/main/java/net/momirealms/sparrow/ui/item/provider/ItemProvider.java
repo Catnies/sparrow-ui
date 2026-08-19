@@ -15,7 +15,7 @@ public interface ItemProvider {
     /**
      * 发起本次要显示物品的计算.
      * <p><strong>不得改动 Window、Pane、Inventory, 也不得额外请求刷新或同步.</strong>
-     * <p>Future 及其成功结果都不得为 {@code null}; 空槽使用 {@link ItemStack#empty()}.
+     * <p>Future 及其成功结果都不得为 {@code null}.
      *
      * @param context 当前渲染上下文
      * @return 本次渲染最终结果的 Future

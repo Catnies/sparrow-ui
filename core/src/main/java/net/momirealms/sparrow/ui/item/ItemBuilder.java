@@ -62,7 +62,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置 Future-first ItemProvider. 未完成的 Future 暂时显示最近一次成功结果或空物品.
+     * 配置 ItemProvider, 未完成的 Future 暂时显示最近一次成功结果或空物品.
      *
      * @param itemProvider 显示提供器
      * @return 此构建器
@@ -73,7 +73,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置 Future-first ItemProvider 及其首次成功结果前显示的占位物品.
+     * 配置 ItemProvider 及其首次成功结果前显示的占位物品.
      *
      * @param itemProvider 显示提供器
      * @param placeholder 首次成功结果前显示的占位物品
@@ -84,7 +84,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置 Future-first ItemProvider 及其首次成功结果前使用的占位提供器.
+     * 配置ItemProvider 及其首次成功结果前使用的占位提供器.
      *
      * @param itemProvider 显示提供器
      * @param placeholder 首次成功结果前使用的占位提供器
@@ -427,6 +427,7 @@ public final class ItemBuilder {
 
             @Override
             public DisplaySource create(Runnable invalidator) {
+                // 固定来源没有解析阶段, 失效回调用不上
                 return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
             }
         }
@@ -467,16 +468,8 @@ public final class ItemBuilder {
             private final ImmediateItemProvider placeholder; // 占位提供器, 解析出的显示来源首次成功前继续使用
             private final AtomicReference<LazyItemProvider> pendingProvider; // 挂起的提供器, 取出后置 null 保证只解析一次
             private final Runnable invalidator;                         // 解析完成后通知 Window 失效的回调
-
             private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 解析完成后替换
 
-            /**
-             * 创建懒加载显示来源, 解析完成前渲染占位内容.
-             *
-             * @param placeholder 解析完成前的占位提供器
-             * @param lazyProvider 懒加载显示提供器
-             * @param invalidator 解析完成后通知 Window 失效的回调
-             */
             LazyDisplaySource(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider, Runnable invalidator) {
                 this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
                 this.currentProvider = placeholder;

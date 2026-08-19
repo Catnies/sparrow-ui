@@ -6,9 +6,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * 在调用线程当场算出结果的 {@link ItemProvider}.
- */
 @FunctionalInterface
 public interface ImmediateItemProvider extends ItemProvider {
 
