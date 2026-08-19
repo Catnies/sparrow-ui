@@ -19,29 +19,21 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
-import javax.imageio.stream.MemoryCacheImageInputStream;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 /**
- * 使用制图台三个原生槽位展示远程图片轮播和预览形态切换.
+ * 使用制图台三个原生槽位展示插件资源图片轮播和预览形态切换.
  *
  * <p>本示例把一次打开分为两个明确阶段:
  * <ol>
- *     <li>通过 JDK HttpClient 异步下载三张 128x128 图片, 并只缓存在内存中.</li>
+ *     <li>在异步线程读取插件资源中的三张 128x128 图片, 并只缓存在内存中.</li>
  *     <li>回到目标玩家的实体线程构建 Window, 再由 {@link Window#open()} 完成打开.</li>
  * </ol>
  *
@@ -50,24 +42,18 @@ import java.util.concurrent.CompletionException;
  */
 public final class CartographyCarouselMenu {
     private static final int MAP_SIZE = CartographyWindow.MAP_SIZE; // 完整地图画布的边长
-    private static final int MAX_IMAGE_BYTES = 1024 * 1024;         // 单张远程图片允许占用的最大响应字节数
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10); // 每张图片从请求到完整响应的超时
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
     private static final List<SlideSource> SLIDE_SOURCES = List.of(
             new SlideSource(
-                    "奶龙",
-                    URI.create("https://i0.hdslb.com/bfs/bangumi/image/b13bdf2f38681f3420ddbde03fe3092642424b9b.png@128w_128h_1c.jpg")
+                    "Kipfel-1",
+                    "cartography_images/kipfel_1.png"
             ),
             new SlideSource(
-                    "永雏塔菲",
-                    URI.create("https://i1.hdslb.com/bfs/face/5ddddba98f0265265662a8f7d5383e528a98412b.jpg@128w_128h_1c.jpg")
+                    "Kipfel-2",
+                    "cartography_images/kipfel_2.png"
             ),
             new SlideSource(
-                    "千早爱音",
-                    URI.create("https://i0.hdslb.com/bfs/new_dyn/8b3ac308f638c610d7de3d2c2df82d16169208916.jpg@128w_128h_1c.jpg")
+                    "DeepSeek",
+                    "cartography_images/deepseek_1.png"
             )
     ); // 固定顺序同时决定初始图片和前后翻页顺序
     private static final List<ViewOption> VIEW_OPTIONS = List.of(
@@ -76,7 +62,7 @@ public final class CartographyCarouselMenu {
             new ViewOption(CartographyWindow.View.DUPLICATE, "复制预览", Material.MAP, "模拟使用空地图复制当前地图。"),
             new ViewOption(CartographyWindow.View.LOCK, "锁定预览", Material.GLASS_PANE, "模拟使用玻璃板锁定当前地图。")
     ); // 展示顺序与按钮循环顺序保持一致
-    private static CompletableFuture<List<Slide>> slideCache; // 首次成功下载后由后续菜单会话共享
+    private static CompletableFuture<List<Slide>> slideCache; // 首次成功读取后由后续菜单会话共享
 
     private final List<Slide> slides;                 // 当前菜单会话使用的不可变图片快照
     private final MutableSignal<Integer> slideIndex; // 当前显示图片在 slides 中的下标
@@ -284,104 +270,67 @@ public final class CartographyCarouselMenu {
     }
 
     /**
-     * 返回共享图片缓存. 上一次下载失败时允许下一次命令重新请求全部图片.
+     * 返回共享图片缓存. 上一次读取失败时允许下一次命令重新读取全部图片.
      *
      * @return 正在加载或已经完成的图片列表
      */
     @NotNull
     private static synchronized CompletableFuture<List<Slide>> loadSlides() {
         if (slideCache == null || slideCache.isCompletedExceptionally()) {
-            slideCache = CartographyCarouselMenu.downloadSlides();
+            slideCache = CompletableFuture.supplyAsync(CartographyCarouselMenu::readSlides);
         }
         return slideCache;
     }
 
     /**
-     * 并行下载全部固定图片, 全部成功后按声明顺序组成不可变列表.
+     * 按声明顺序读取全部固定图片, 全部成功后组成不可变列表.
      *
-     * @return 三张远程图片的异步加载结果
+     * @return 三张插件资源图片
+     * @throws UncheckedIOException 任一资源缺失、无法解析或尺寸不符合要求时抛出
      */
     @NotNull
-    private static CompletableFuture<List<Slide>> downloadSlides() {
-        List<CompletableFuture<Slide>> downloads = new ArrayList<>(SLIDE_SOURCES.size());
+    private static List<Slide> readSlides() {
+        List<Slide> slides = new ArrayList<>(SLIDE_SOURCES.size());
         for (int index = 0; index < SLIDE_SOURCES.size(); index++) {
-            SlideSource source = SLIDE_SOURCES.get(index);
-            HttpRequest request = HttpRequest.newBuilder(source.uri())
-                    .timeout(REQUEST_TIMEOUT)
-                    .header("Accept", "image/png,image/jpeg")
-                    .header("User-Agent", "SparrowUI-Example/1.0")
-                    .GET()
-                    .build();
-            downloads.add(HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
-                    .thenApply(response -> CartographyCarouselMenu.decodeSlide(source, response)));
+            slides.add(CartographyCarouselMenu.readSlide(SLIDE_SOURCES.get(index)));
         }
-
-        CompletableFuture<?>[] pending = new CompletableFuture<?>[downloads.size()];
-        for (int index = 0; index < downloads.size(); index++) {
-            pending[index] = downloads.get(index);
-        }
-        return CompletableFuture.allOf(pending).thenApply(ignoredResult -> {
-            List<Slide> slides = new ArrayList<>(downloads.size());
-            for (int index = 0; index < downloads.size(); index++) {
-                slides.add(downloads.get(index).join());
-            }
-            return List.copyOf(slides);
-        });
+        return List.copyOf(slides);
     }
 
     /**
-     * 校验一项 HTTP 响应并通过内存缓存流解析图片.
+     * 从插件资源中读取一张图片并校验尺寸.
      *
-     * @param source 图片名称与远程地址
-     * @param response HTTP 字节响应
+     * @param source 图片名称与资源路径
      * @return 已确认恰好为 128x128 的图片
-     * @throws CompletionException HTTP 状态、内容类型、响应大小或图片格式不符合要求时抛出
+     * @throws UncheckedIOException 资源缺失、图片格式不受支持或尺寸不符合要求时抛出
      */
     @NotNull
-    private static Slide decodeSlide(@NotNull SlideSource source, @NotNull HttpResponse<byte[]> response) {
-        if (response.statusCode() != 200) {
-            throw new CompletionException(new IOException("Image request for " + source.title() + " returned HTTP " + response.statusCode()));
-        }
-        String contentType = response.headers().firstValue("Content-Type").orElse("");
-        if (!contentType.regionMatches(true, 0, "image/", 0, "image/".length())) {
-            throw new CompletionException(new IOException("Image request for " + source.title() + " returned " + contentType));
-        }
-        byte[] bytes = response.body();
-        if (bytes.length > MAX_IMAGE_BYTES) {
-            throw new CompletionException(new IOException("Image response for " + source.title() + " exceeds " + MAX_IMAGE_BYTES + " bytes"));
-        }
-
+    private static Slide readSlide(@NotNull SlideSource source) {
         BufferedImage image;
-        try (ByteArrayInputStream input = new ByteArrayInputStream(bytes);
-             ImageInputStream imageInput = new MemoryCacheImageInputStream(input)) {
-            // ImageIO.read(ImageInputStream) 会自行关闭传入流, 直接使用 Reader 让关闭权留在本方法
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(imageInput);
-            if (!readers.hasNext()) {
-                throw new CompletionException(new IOException("Image response for " + source.title() + " is not supported by ImageIO"));
+        try (InputStream input = SparrowExample.INSTANCE.getResource(source.path())) {
+            if (input == null) {
+                throw new FileNotFoundException("Resource " + source.path() + " for " + source.title() + " is missing");
             }
-            ImageReader reader = readers.next();
-            try {
-                reader.setInput(imageInput, true, true);
-                image = reader.read(0);
-            } finally {
-                reader.dispose();
-            }
+            image = ImageIO.read(input);
         } catch (IOException exception) {
-            throw new CompletionException(new IOException("Failed to decode image for " + source.title(), exception));
+            throw new UncheckedIOException(new IOException("Failed to decode image for " + source.title(), exception));
+        }
+        if (image == null) {
+            throw new UncheckedIOException(new IOException("Image for " + source.title() + " is not supported by ImageIO"));
         }
         if (image.getWidth() != MAP_SIZE || image.getHeight() != MAP_SIZE) {
-            throw new CompletionException(new IOException("Image for " + source.title() + " must be 128x128, got " + image.getWidth() + "x" + image.getHeight()));
+            throw new UncheckedIOException(new IOException("Image for " + source.title() + " must be 128x128, got " + image.getWidth() + "x" + image.getHeight()));
         }
         return new Slide(source.title(), image);
     }
 
     /**
-     * 保存下载前就能确定的图片名称与远程地址.
+     * 保存读取前就能确定的图片名称与插件资源路径.
      *
      * @param title 菜单中展示的图片名称
-     * @param uri 可直接返回图片内容的 HTTPS 地址
+     * @param path 插件 jar 内的资源路径
      */
-    private record SlideSource(@NotNull String title, @NotNull URI uri) {
+    private record SlideSource(@NotNull String title, @NotNull String path) {
     }
 
     /**
