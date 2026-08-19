@@ -15,6 +15,12 @@ public record VisualLayer(
 ) {
     public static final VisualLayer NONE = new VisualLayer(null, null);
 
+    public VisualLayer {
+        if (visualizer == null) {
+            placeholder = null;
+        }
+    }
+
     // 求值这一层, 没有配置或映射放行时返回 null, 命中时产出带占位的结果.
     @Nullable
     public ResolvedVisual visualize(@Nullable ItemStack actual) {
@@ -30,7 +36,8 @@ public record VisualLayer(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer,
             @Nullable ImmediateItemProvider placeholder
     ) {
-        return this.visualizer == visualizer && this.placeholder == placeholder;
+        if (this.visualizer != visualizer) return false;
+        return visualizer == null || this.placeholder == placeholder;
     }
 
     // 把直接产出 ItemStack 的映射包成视觉映射, 入参为 null 时原样返回.
