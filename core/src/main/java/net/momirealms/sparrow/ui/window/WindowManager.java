@@ -482,24 +482,14 @@ public final class WindowManager implements Listener {
         if (!this.shutdown.compareAndSet(false, true)) {
             return;
         }
-        // 先结束会话再逐个关闭 Window, 关闭流程因此不会再进入会话决策
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
-            AbstractWindowSession session = window.sessionImpl();
-            if (session == null) {
+            PlayerCommandLane lane = this.lanes.get(window.viewer().getUniqueId());
+            // 通道已经注销或已经属于重连后的新 Player, 这扇窗只能由本次 shutdown 直接收尾
+            if (lane == null || !lane.belongsTo(window.viewer())) {
+                this.shutdownNow(window);
                 continue;
             }
-            try {
-                session.endNow(InventoryCloseEvent.Reason.PLUGIN, false);
-            } catch (RuntimeException | Error throwable) {
-                this.report("Failed to end Window session during shutdown", throwable);
-            }
-        }
-        for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
-            try {
-                this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
-            } catch (RuntimeException | Error throwable) {
-                this.report("Failed to close Window during shutdown", throwable);
-            }
+            lane.terminate(() -> this.shutdownNow(window));
         }
         this.active.clear();
         for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {
@@ -512,6 +502,23 @@ public final class WindowManager implements Listener {
             } catch (Exception exception) {
                 this.report("Failed to close Window menu backend", exception);
             }
+        }
+    }
+
+    // 在玩家的命令通道内收尾一扇活动窗: 先结束会话再关闭 Window, 关闭流程因此不会再进入会话决策.
+    private void shutdownNow(AbstractWindow<?> window) {
+        AbstractWindowSession session = window.sessionImpl();
+        if (session != null) {
+            try {
+                session.endNow(InventoryCloseEvent.Reason.PLUGIN, false);
+            } catch (RuntimeException | Error throwable) {
+                this.report("Failed to end Window session during shutdown", throwable);
+            }
+        }
+        try {
+            this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
+        } catch (RuntimeException | Error throwable) {
+            this.report("Failed to close Window during shutdown", throwable);
         }
     }
 

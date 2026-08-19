@@ -12,6 +12,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -27,7 +28,7 @@ abstract class AbstractWindowSession implements WindowSession {
     private final SignalBindings signalBindings = new SignalBindings(); // 本会话持有的 Signal 绑定
 
     private volatile List<Window> chainSnapshot = List.of(); // 最近一次已应用的当前路径快照
-    private volatile boolean active = true;
+    private final AtomicBoolean active = new AtomicBoolean(true); // 会话是否尚未结束
 
     AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
         this.manager = manager;
@@ -71,9 +72,7 @@ abstract class AbstractWindowSession implements WindowSession {
      * @return 打开并推进完成时返回 true
      */
     final boolean navigateNow(@NotNull AbstractWindow<?> next) {
-        if (!this.active) {
-            return false;
-        }
+        if (!this.active.get()) return false;
         if (!this.manager.openInSession(next, this)) {
             return false;
         }
@@ -90,9 +89,7 @@ abstract class AbstractWindowSession implements WindowSession {
      * @return 发生了返回时返回 true
      */
     final boolean backNow() {
-        if (!this.active) {
-            return false;
-        }
+        if (!this.active.get()) return false;
         AbstractWindow<?> source = this.previousWindow();
         if (source == null || !this.manager.openInSession(source, this)) {
             return false;
@@ -106,7 +103,7 @@ abstract class AbstractWindowSession implements WindowSession {
     @NotNull
     @Override
     public CompletableFuture<EndResult> end() {
-        boolean wasActive = this.active;
+        boolean wasActive = this.active.get();
         return this.manager.submit(
                 this.viewer,
                 () -> this.endNow(InventoryCloseEvent.Reason.PLUGIN, true),
@@ -167,12 +164,9 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     // 把会话迁移到已结束状态, 之后所有导航都不再接管; 本次调用完成迁移时返回 true.
+    // 结束可能同时来自会话自身, 关闭去向决策与 shutdown, 迁移必须原子, 释放成员与结束处理器才恰好跑一次.
     private boolean deactivate() {
-        if (!this.active) {
-            return false;
-        }
-        this.active = false;
-        return true;
+        return this.active.compareAndSet(true, false);
     }
 
     // 运行结束处理器.
@@ -285,6 +279,6 @@ abstract class AbstractWindowSession implements WindowSession {
 
     @Override
     public boolean active() {
-        return this.active;
+        return this.active.get();
     }
 }

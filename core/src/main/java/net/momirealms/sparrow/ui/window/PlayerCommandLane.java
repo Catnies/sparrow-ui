@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ final class PlayerCommandLane {
     private boolean scheduled; // 是否已有实体调度任务待运行, 仅在锁内访问
     private boolean draining;  // 是否有 drain 正在执行, 仅在锁内访问
     private boolean retired;   // 通道是否已注销, 注销后新命令直接走注销路径
+    private @Nullable Runnable terminal; // 关停时交给正在 drain 的线程执行的收尾命令, 仅在锁内访问
 
     PlayerCommandLane(Player player, WindowScheduler scheduler, Consumer<PlayerCommandLane> retiredHandler) {
         this.player = player;
@@ -131,6 +133,45 @@ final class PlayerCommandLane {
     }
 
     /**
+     * 关停通道并交出最后一条收尾命令, 之后不再接收新命令.
+     * <p>通道空闲时由当前线程接管执行权后直接执行收尾, 正在别处 drain 时把收尾交给那条线程在退出前执行,
+     * 两条走向都保证收尾不与通道里的命令并发. 通道已注销时不再收尾, 那时注销路径已经接手.
+     * <p>本方法不触发注销回调, 通道自身的登记由调用方注销.
+     *
+     * @param teardown 收尾命令
+     */
+    void terminate(@NotNull Runnable teardown) {
+        List<Command<?>> pending;
+        synchronized (this) {
+            if (this.retired) {
+                return;
+            }
+            this.retired = true;
+            this.scheduled = false;
+            if (this.draining) {
+                // 正在执行命令的那条线程才是这名玩家的执行者, 收尾排在它后面
+                this.terminal = teardown;
+                return;
+            }
+            this.draining = true;
+            pending = this.takePending();
+        }
+        this.runTerminal(teardown);
+        this.completeRetired(pending);
+    }
+
+    // 执行收尾命令并交还 drain 权.
+    private void runTerminal(@NotNull Runnable teardown) {
+        try {
+            teardown.run();
+        } finally {
+            synchronized (this) {
+                this.draining = false;
+            }
+        }
+    }
+
+    /**
      * 在异步线程按注销路径完成给定命令.
      *
      * @param pending 要完成的命令
@@ -188,18 +229,24 @@ final class PlayerCommandLane {
 
     /**
      * 依次执行已入队命令, 并在注销竞态中把剩余命令转交给 retired 完成器.
+     * <p>关停留下的收尾命令由本方法在交还 drain 权前执行.
      */
     private void drain() {
         while (true) {
             Command<?> command;
+            Runnable terminal;
             List<Command<?>> retiredCommands = List.of();
             synchronized (this) {
-                // 注销竞态: 收走剩余命令并释放 drain 权, 交给注销路径完成
+                // 注销竞态, 收走剩余命令并释放 drain 权, 交给注销路径完成
                 if (this.retired) {
                     retiredCommands = this.takePending();
-                    this.draining = false;
+                    terminal = this.terminal;
+                    this.terminal = null;
+                    // 收尾命令要在 drain 权内执行, 那时由 runTerminal 交还
+                    this.draining = terminal != null;
                     command = null;
                 } else {
+                    terminal = null;
                     command = this.commands.pollFirst();
                     if (command == null) {
                         this.draining = false;
@@ -207,13 +254,15 @@ final class PlayerCommandLane {
                 }
             }
 
+            if (terminal != null) {
+                this.runTerminal(terminal);
+            }
             if (!retiredCommands.isEmpty()) {
                 this.completeRetired(retiredCommands);
             }
-            if (command == null) {
-                return;
+            if (command != null) {
+                command.run();
             }
-            command.run();
         }
     }
 
