@@ -2,22 +2,13 @@ package net.momirealms.sparrow.ui.pane;
 
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 表示 Pane 的宽度和高度, 并负责槽位编号与坐标之间的转换.
- *
- * @param width 非负宽度
- * @param height 非负高度
- */
 public record PaneSize(int width, int height) {
 
-    /**
-     * 检查宽高为非负数, 且槽位总数没有超出 int 范围.
-     */
     public PaneSize {
         if (width < 0 || height < 0) {
             throw new IllegalArgumentException("Pane dimensions must be non-negative: " + width + "x" + height);
         }
-        Math.multiplyExact(width, height);
+        int ignore = Math.multiplyExact(width, height);
     }
 
     /**

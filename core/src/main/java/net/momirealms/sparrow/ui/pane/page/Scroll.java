@@ -28,9 +28,6 @@ import java.util.List;
  * <p>它与翻页的区别在于相邻两屏是重叠的: 滚一次只换一线, 因此能停的位置是
  * {@code 0} 到 {@link #maxLine()}, 而不是内容线数. 内容不足一屏时哪边都滚不动.
  *
- * <p>线偏移在两处夹取: 滚动和跳线按当时的 {@link #maxLine()} 夹, 于是滚到底再点一下不会把越界的线号攒进状态里;
- * {@link #line()} 每次读取时再夹一次, 于是内容变少之后不会停在一屏空白上. 越界一律夹到最近的一端, 不报错.
- *
  * @param <T> 序列里一条数据的类型
  */
 public final class Scroll<T> {
@@ -91,7 +88,7 @@ public final class Scroll<T> {
 
     /**
      * 横向滚动声明, 按列高把序列铺开, 一次显示 {@code columns} 列.
-     * <p>内容的第 n 条落在列主序的第 n 个位置上: 先填满第一列再填第二列.
+     * <p>内容的第 n 条落在列主序的第 n 个位置上, 先填满第一列再填第二列.
      * Builder 上的 {@code addIngredient} 会照这个顺序喂槽位, 手动投影时槽位序列要自己转成列主序.
      *
      * @param source 完整序列
@@ -131,7 +128,7 @@ public final class Scroll<T> {
 
     /**
      * 返回当前这一屏实际显示了多少条.
-     * <p>它不等于一屏最多放多少条, 滚到底那一屏装不满时返回实际排上去的条数, 没有内容时是 0.
+     * <p>滚到底那一屏装不满时返回实际排上去的条数, 没有内容时是 0.
      *
      * @return 当前这一屏的条数
      */
@@ -142,7 +139,6 @@ public final class Scroll<T> {
 
     /**
      * 相对当前位置滚若干线, 负数往回.
-     * <p>想一次滚一屏就传可见线数.
      *
      * @param step 滚几线
      */
@@ -163,7 +159,6 @@ public final class Scroll<T> {
 
     /**
      * 返回当前这一屏从第几线开始, 从 0 开始.
-     * <p>读到的线偏移已经按当前 {@link #maxLine()} 夹过, 因此它始终指向一屏真的有内容的位置.
      *
      * @return 当前线偏移
      */
@@ -185,7 +180,6 @@ public final class Scroll<T> {
 
     /**
      * 返回能滚到的最大线偏移, 内容不足一屏时是 0.
-     * <p>按钮该不该变灰问它: {@code line} 等于 0 就回不去了, 等于 {@code maxLine} 就滚不动了.
      *
      * @return 最大线偏移
      */
@@ -196,7 +190,6 @@ public final class Scroll<T> {
 
     /**
      * 返回滚动方向.
-     * <p>Builder 用它决定槽位顺序: 横着滚的内容要落在列主序的槽位上.
      *
      * @return 滚动方向
      */
@@ -222,9 +215,6 @@ public final class Scroll<T> {
         return window;
     }
 
-    /**
-     * 滚动方向
-     */
     public enum Orientation {
         VERTICAL,   // 竖向
         HORIZONTAL  // 横向

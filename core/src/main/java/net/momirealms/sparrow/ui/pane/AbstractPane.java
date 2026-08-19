@@ -17,12 +17,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * 保存 Pane 的槽位元素, 背景, 冻结状态和逐槽订阅.
- *
- * <p>所有状态读写都在 Pane 锁内完成, 订阅回调统一在锁外发布,
- * 避免观察者回调用户代码时发生死锁.
- */
 abstract non-sealed class AbstractPane implements Pane {
     private final Structure structure;      // 槽位布局
     private final Element[] elements;   // 每个槽位当前保存的元素
@@ -31,8 +25,7 @@ abstract non-sealed class AbstractPane implements Pane {
     private final PaneVisualImpl visual;    // 视觉配置, 空槽背景与逐槽显示路径失效订阅
 
     private boolean frozen;             // 是否禁止玩家交互
-    // 额外参与的 Inventory 序列, 写时整体替换为新的不可变快照, 读不加锁
-    @Nullable private volatile InventorySequence ownSequence;                  // 逐个声明的 Inventory 都放在这条序列里
+    @Nullable private volatile InventorySequence ownSequence;                  // 额外参与的 Inventory 序列, 写时整体替换为新的不可变快照, 读不加锁
     private volatile Set<InventorySequence> declaredSequences = Set.of();      // 整条声明进来的, 可以摘掉
     private volatile Set<InventorySequence> participatingSequences = Set.of(); // 上面两者的并集, 按声明顺序, 只在声明变化时重建
 
@@ -292,8 +285,7 @@ abstract non-sealed class AbstractPane implements Pane {
 
     /**
      * 返回本 Pane 自己那条序列, 逐个声明的 Inventory 都存在里面.
-     * <p>第一次逐个声明时才创建, 创建时就进参与集, 之后再也出不去 —— 于是"逐个声明了哪些"与
-     * "实际参与的有哪些"不会互相打架. 已经退役的成员随它一起被剔除.
+     * <p>第一次逐个声明时才创建, 创建时就进参与集.
      *
      * @return 本 Pane 自己那条序列
      */
@@ -426,7 +418,7 @@ abstract non-sealed class AbstractPane implements Pane {
         return snapshots;
     }
 
-    //  发布一个槽位的订阅快照, 回调失败时抛出合并后的异常.
+    // 发布一个槽位的订阅快照, 回调失败时抛出合并后的异常.
     private void publish(SlotObserver[] observers) {
         RuntimeException failure = this.notify(observers, null);
         if (failure != null) {
@@ -450,13 +442,7 @@ abstract non-sealed class AbstractPane implements Pane {
         }
     }
 
-    /**
-     * 通知快照中仍然有效的观察者, 并合并回调抛出的异常.
-     *
-     * @param observers 一个槽位的订阅快照, 可为 null
-     * @param failure 已收集的第一个异常, 可为 null
-     * @return 合并后的第一个异常, 没有异常时返回 null
-     */
+    // 通知快照中仍然有效的观察者, 并合并回调抛出的异常.
     private RuntimeException notify(SlotObserver[] observers, RuntimeException failure) {
         if (observers == null) {
             return failure;
@@ -488,14 +474,6 @@ abstract non-sealed class AbstractPane implements Pane {
         private volatile SlotObserver next;     // 更早加入的订阅
         private volatile boolean active = true; // 订阅是否仍在链上
 
-        /**
-         * 创建订阅节点并链接到原有链头之前.
-         *
-         * @param owner 所属 Pane
-         * @param slot 订阅的槽位编号
-         * @param observer 更新观察者
-         * @param next 原链头节点, 可为 null
-         */
         private SlotObserver(
                 AbstractPane owner,
                 int slot,

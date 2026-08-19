@@ -10,12 +10,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 描述 Pane 每个槽位使用的标志符.
- * <p>例如 {@code "ABB"} 表示一行三个槽位, 第一个槽位标记为 {@code A},
- * 后两个标记为 {@code B}. Builder 可以根据标志符一次填充多个槽位.
- * <p>Structure 只保存尺寸, 标志符和槽位位置, 创建后内容不会改变, 可以在多个 Pane 之间共用.
- */
 public final class Structure {
     private final PaneSize size;          // Pane 尺寸
     private final String[] identifiers;  // 内部编号到标志符文本
@@ -128,26 +122,6 @@ public final class Structure {
     }
 
     /**
-     * 布局的 Pane 尺寸.
-     *
-     * @return Pane 尺寸
-     */
-    @NotNull
-    public PaneSize size() {
-        return this.size;
-    }
-
-    /**
-     * 模板中是否出现过指定标志符.
-     *
-     * @param identifier 标志符
-     * @return 标志符存在时为 true
-     */
-    public boolean contains(@NotNull String identifier) {
-        return this.identifierIndexes.containsKey(identifier);
-    }
-
-    /**
      * 指定槽位的标志符, 没有标志符时返回 null.
      *
      * @param slot 槽位编号
@@ -216,22 +190,22 @@ public final class Structure {
         return pattern == SlotPatterns.ROW_MAJOR ? candidates : candidates.transform(pattern);
     }
 
-    /**
-     * 布局中不同标志符的数量.
-     *
-     * @return 标志符数量
-     */
+
+    @NotNull
+    public PaneSize size() {
+        return this.size;
+    }
+
+    public boolean contains(@NotNull String identifier) {
+        return this.identifierIndexes.containsKey(identifier);
+    }
+
+    // 布局中不同标志符的数量.
     int identifierCount() {
         return this.identifiers.length;
     }
 
-    /**
-     * 标志符的内部编号.
-     *
-     * @param identifier 标志符
-     * @return 内部编号
-     * @throws IllegalArgumentException 标志符为空或未在模板中出现时抛出
-     */
+    // 标志符的内部编号; 为空或未在模板中出现时抛 IllegalArgumentException.
     int identifierIndex(String identifier) {
         if (identifier.isEmpty()) {
             throw new IllegalArgumentException("identifier must not be empty");
@@ -243,32 +217,17 @@ public final class Structure {
         return index;
     }
 
-    /**
-     * 按内部编号返回标志符文本.
-     *
-     * @param index 内部编号
-     * @return 标志符文本
-     */
+    // 按内部编号返回标志符文本.
     String identifier(int index) {
         return this.identifiers[index];
     }
 
-    /**
-     * 按内部编号返回预先选好的槽位.
-     *
-     * @param identifierIndex 内部编号
-     * @return 槽位选择
-     */
+    // 按内部编号返回预先选好的槽位.
     SlotSequence slots(int identifierIndex) {
         return this.slotsByIdentifier[identifierIndex];
     }
 
-    /**
-     * 槽位在模板中的原始列号, 用于错误定位.
-     *
-     * @param slot 槽位编号
-     * @return 原始列号
-     */
+    // 槽位在模板中的原始列号, 用于错误定位.
     int sourceColumn(int slot) {
         return this.sourceColumns[slot];
     }
@@ -368,12 +327,7 @@ public final class Structure {
             return logicalColumn;
         }
 
-        /**
-         * 标志符的内部编号, 首次出现时登记新编号.
-         *
-         * @param identifier 标志符文本
-         * @return 内部编号
-         */
+        // 标志符的内部编号, 首次出现时登记新编号.
         private int identifier(String identifier) {
             Integer existing = this.identifierIndexes.get(identifier);
             if (existing != null) {
@@ -387,14 +341,7 @@ public final class Structure {
             return index;
         }
 
-        /**
-         * 把暂存的一行写入槽位映射.
-         *
-         * @param row 暂存的行解析结果
-         * @param offset 该行第一个槽位的编号
-         * @param identifierBySlot 槽位到标志符编号的映射
-         * @param sourceColumns 槽位到原始列号的映射
-         */
+        // 把暂存的一行写入槽位映射.
         private void commit(
                 ParsedRow row,
                 int offset,
@@ -414,15 +361,7 @@ public final class Structure {
             }
         }
 
-        /**
-         * 把单个标志符写入槽位映射, 并记录到该标志符的槽位列表.
-         *
-         * @param identifier 标志符内部编号
-         * @param slot 槽位编号
-         * @param sourceColumn 模板原始列号
-         * @param identifierBySlot 槽位到标志符编号的映射
-         * @param sourceColumns 槽位到原始列号的映射
-         */
+        // 把单个标志符写入槽位映射, 并记录到该标志符的槽位列表.
         private void commit(
                 int identifier,
                 int slot,
@@ -435,14 +374,7 @@ public final class Structure {
             this.slotsByIdentifier.get(identifier).add(slot);
         }
 
-        /**
-         * 把解析结果整理成不可变的 Structure.
-         *
-         * @param size Pane 尺寸
-         * @param identifierBySlot 槽位到标志符编号的映射
-         * @param sourceColumns 槽位到原始列号的映射
-         * @return 创建完成的布局
-         */
+        // 把解析结果整理成不可变的 Structure.
         private Structure finish(PaneSize size, int[] identifierBySlot, int[] sourceColumns) {
             String[] identifiers = this.identifiers.toArray(String[]::new);
             // 每个标志符的槽位列表整理成预先选好的 SlotSequence
@@ -473,15 +405,7 @@ public final class Structure {
         }
     }
 
-    /**
-     * 读取一个 Unicode 字符, 并拒绝不完整的 surrogate pair.
-     *
-     * @param source 模板文本
-     * @param index 读取位置
-     * @param rowIndex 行号, 用于错误定位
-     * @return Unicode code point
-     * @throws IllegalArgumentException 存在不成对的 surrogate 时抛出
-     */
+    // 读取一个 Unicode 字符, 拒绝不成对的 surrogate.
     private static int checkedCodePointAt(String source, int index, int rowIndex) {
         char first = source.charAt(index);
         // 高 surrogate 后必须紧跟低 surrogate, 否则模板只包含半个字符
@@ -496,14 +420,7 @@ public final class Structure {
         return Character.codePointAt(source, index);
     }
 
-    /**
-     * 构造带行号和列号的模板语法错误.
-     *
-     * @param rowIndex 行号, 从 0 开始
-     * @param sourceColumn 原始列号, 从 1 开始
-     * @param message 错误描述
-     * @return 语法错误异常
-     */
+    // 构造带行号(从 0)和列号(从 1)的模板语法错误.
     private static IllegalArgumentException syntaxError(int rowIndex, int sourceColumn, String message) {
         return new IllegalArgumentException(message + " at row " + (rowIndex + 1) + ", source column " + sourceColumn);
     }

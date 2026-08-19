@@ -5,11 +5,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Arrays;
 import java.util.function.IntConsumer;
 
-/**
- * 表示从一个 Pane 中按顺序选中的一组槽位.
- * <p>它用来批量填充指定槽位, 也可作为分页, 滚动和标签页 Pane 的内容位置.
- * 同一槽位不会重复出现, 创建后槽位和顺序都不会改变.
- */
 public final class SlotSequence {
     private final PaneSize paneSize;  // 槽位所属的 Pane 尺寸
     private final int[] slots;      // 按选择顺序排列的槽位编号, 不重复
@@ -85,11 +80,7 @@ public final class SlotSequence {
      * @throws IndexOutOfBoundsException 范围超出 Pane 时抛出
      */
     @NotNull
-    public static SlotSequence range(
-            @NotNull PaneSize paneSize,
-            int startInclusive,
-            int endExclusive
-    ) {
+    public static SlotSequence range(@NotNull PaneSize paneSize, int startInclusive, int endExclusive) {
         if (startInclusive < 0 || endExclusive < startInclusive || endExclusive > paneSize.area()) {
             throw new IndexOutOfBoundsException(
                     "range [" + startInclusive + ", " + endExclusive + ") is outside " + paneSize
@@ -151,13 +142,7 @@ public final class SlotSequence {
      * @throws IndexOutOfBoundsException 矩形超出 Pane 范围时抛出
      */
     @NotNull
-    public static SlotSequence rectangle(
-            @NotNull PaneSize paneSize,
-            int x,
-            int y,
-            int width,
-            int height
-    ) {
+    public static SlotSequence rectangle(@NotNull PaneSize paneSize, int x, int y, int width, int height) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("rectangle dimensions must be positive");
         }
@@ -215,7 +200,6 @@ public final class SlotSequence {
 
     /**
      * 按原有顺序合并多个槽位选择.
-     *
      * <p>所有选择必须属于相同尺寸的 Pane, 且不能包含重复槽位.</p>
      *
      * @param sequences 要合并的槽位选择
@@ -254,96 +238,43 @@ public final class SlotSequence {
         return new SlotSequence(size, slots);
     }
 
-    /**
-     * 返回这些槽位所属的 Pane 尺寸.
-     *
-     * @return Pane 尺寸
-     */
     @NotNull
     public PaneSize paneSize() {
         return this.paneSize;
     }
 
-    /**
-     * 返回选中的槽位数量.
-     *
-     * @return 槽位数量
-     */
     public int length() {
         return this.slots.length;
     }
 
-    /**
-     * 返回是否没有选中任何槽位.
-     *
-     * @return 没有槽位时为 true
-     */
     public boolean isEmpty() {
         return this.slots.length == 0;
     }
 
-    /**
-     * 返回指定序号处的槽位编号.
-     *
-     * @param occurrence 槽位在选择中的序号
-     * @return 槽位编号
-     */
     public int slotAt(int occurrence) {
         return this.slots[occurrence];
     }
 
-    /**
-     * 返回指定序号槽位的 x 坐标.
-     *
-     * @param occurrence 槽位在选择中的序号
-     * @return x 坐标
-     */
     public int xAt(int occurrence) {
         return this.slots[occurrence] % this.paneSize.width();
     }
 
-    /**
-     * 返回指定序号槽位的 y 坐标.
-     *
-     * @param occurrence 槽位在选择中的序号
-     * @return y 坐标
-     */
     public int yAt(int occurrence) {
         return this.slots[occurrence] / this.paneSize.width();
     }
 
-    /**
-     * 返回选中槽位中最小的 x 坐标, 空选择返回 -1.
-     *
-     * @return 最小 x 坐标, 空选择为 -1
-     */
     public int minX() {
         return this.minX;
     }
 
-    /**
-     * 返回选中槽位中最小的 y 坐标, 空选择返回 -1.
-     *
-     * @return 最小 y 坐标, 空选择为 -1
-     */
     public int minY() {
         return this.minY;
     }
 
-    /**
-     * 按选择顺序复制所有槽位编号.
-     *
-     * @return 槽位编号数组副本
-     */
     public int @NotNull [] toArray() {
         return this.slots.clone();
     }
 
-    /**
-     * 按选择顺序遍历所有槽位.
-     *
-     * @param action 接收槽位编号的操作
-     */
     public void forEach(@NotNull IntConsumer action) {
         for (int slot : this.slots) {
             action.accept(slot);
@@ -352,7 +283,6 @@ public final class SlotSequence {
 
     /**
      * 使用 Pattern 重新选择或排列当前槽位.
-     *
      * <p>Pattern 只能使用当前已选槽位, 不能输出越界, 未选中或重复槽位.</p>
      *
      * @param pattern 槽位选择方式
@@ -377,11 +307,6 @@ public final class SlotSequence {
         return collector.finish();
     }
 
-    /**
-     * 直接返回内部槽位数组而不复制. 调用方只能读取, 不得修改.
-     *
-     * @return 内部槽位数组
-     */
     int[] unsafeSlots() {
         return this.slots;
     }
@@ -396,11 +321,7 @@ public final class SlotSequence {
         private int size; // 已输出的槽位数量
         private boolean active = true; // 输出通道是否仍然可用
 
-        /**
-         * 为一次 Pattern 输出创建收集器, 并把候选槽位标记为未输出.
-         *
-         * @param candidates 候选槽位
-         */
+        // 为一次 Pattern 输出创建收集器, 并把候选槽位标记为未输出.
         private PatternCollector(SlotSequence candidates) {
             this.candidates = candidates;
             this.states = new byte[candidates.paneSize.area()];
@@ -410,14 +331,7 @@ public final class SlotSequence {
             }
         }
 
-        /**
-         * 接收 Pattern 输出的一个槽位, 并校验它合法且未重复.
-         *
-         * @param slot 输出的槽位编号
-         * @throws IllegalStateException 输出通道已关闭时抛出
-         * @throws IndexOutOfBoundsException 槽位超出 Pane 范围时抛出
-         * @throws IllegalArgumentException 槽位不是候选或重复输出时抛出
-         */
+        // 接收 Pattern 输出的一个槽位, 校验它合法且未重复.
         @Override
         public void accept(int slot) {
             // 依次校验: 通道活性, 范围, 候选资格, 重复输出
@@ -439,16 +353,12 @@ public final class SlotSequence {
             this.result[this.size++] = slot;
         }
 
-        /**
-         * 关闭输出通道, 之后的输出会抛出异常.
-         */
+        // 关闭输出通道, 之后的输出会抛出异常.
         private void deactivate() {
             this.active = false;
         }
 
-        /**
-         * 按从上到下, 每行从左到右的顺序输出未输出过的候选槽位.
-         */
+        // 按从上到下, 每行从左到右的顺序输出未输出过的候选槽位.
         private void emitRowMajor() {
             for (int slot = 0; slot < this.states.length; slot++) {
                 if (this.states[slot] == 1) {
@@ -457,9 +367,7 @@ public final class SlotSequence {
             }
         }
 
-        /**
-         * 按从左到右, 每列从上到下的顺序输出未输出过的候选槽位.
-         */
+        // 按从左到右, 每列从上到下的顺序输出未输出过的候选槽位.
         private void emitColumnMajor() {
             PaneSize size = this.candidates.paneSize;
             for (int x = 0; x < size.width(); x++) {
@@ -472,11 +380,7 @@ public final class SlotSequence {
             }
         }
 
-        /**
-         * 用收集到的槽位构建新的选择.
-         *
-         * @return 新的槽位选择
-         */
+        // 用收集到的槽位构建新的选择.
         private SlotSequence finish() {
             // 输出与候选完全一致时直接复用候选实例, 避免等价对象
             if (this.size == this.candidates.slots.length

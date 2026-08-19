@@ -14,14 +14,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
- * 把一个 {@link Signal} 给出的序列持续写进某个 Pane 的一段槽位.
- * <p>由 {@link Pane#project} 或 Builder 上的 {@code addIngredient} 创建, 本类型只作为停止投影的句柄交给使用方.
- * <p>序列的第 n 项写进选中槽位的第 n 个; 序列比区域短时余下的槽位清空, 比区域长时多出来的部分直接不要.
- * <p>每次写入前都拿算出来的元素与 Pane 当前的内容比一次 {@code equals}, 只有真的不一样才写.
- * 因此外部代码改过投影区域里的槽位, 下一次求值会把它改回序列给出的样子.
+ * 把一个 {@link Signal} 给出的序列持续写进某个 Pane 的一段槽位, 本类型只作为停止投影的句柄交给使用方.
  */
 public final class SlotProjection implements AutoCloseable {
-    // 默认在 Paper 全局异步调度器上求值, 因此序列的派生函数和 {@code toElement} 都只能读那些在异步域访问安全的数据;
     private static final Executor ASYNC = command -> Bukkit.getAsyncScheduler().runNow(
             SparrowUI.getInstance().getPlugin(),
             ignoredTask -> command.run()
@@ -56,16 +51,6 @@ public final class SlotProjection implements AutoCloseable {
         return attach(pane, slots, source, toElement, ASYNC);
     }
 
-    /**
-     * 把序列投影到选中槽位, 在指定执行器上求值.
-     *
-     * @param pane 接收写入的 Pane
-     * @param slots 本投影负责的槽位, 必须属于该 Pane
-     * @param source 序列来源
-     * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
-     * @param executor 执行求值的执行器
-     * @return 投影, 可用来提前停止
-     */
     @NotNull
     static <T> SlotProjection attach(
             @NotNull Pane pane,
@@ -97,15 +82,6 @@ public final class SlotProjection implements AutoCloseable {
         return attachElements(pane, slots, source, ASYNC);
     }
 
-    /**
-     * 把已经是 Element 的序列投影到选中槽位, 在指定执行器上求值.
-     *
-     * @param pane 接收写入的 Pane
-     * @param slots 本投影负责的槽位, 必须属于该 Pane
-     * @param source 序列来源
-     * @param executor 执行求值的执行器
-     * @return 投影, 可用来提前停止
-     */
     @NotNull
     static SlotProjection attachElements(
             @NotNull Pane pane,
@@ -116,24 +92,13 @@ public final class SlotProjection implements AutoCloseable {
         return create(pane, slots, source, value -> (Element) value, executor);
     }
 
-    // 默认求值执行器: Paper 全局异步调度器.
+    // 给 Builder 用的默认执行器入口.
     static Executor defaultExecutor() {
         return ASYNC;
     }
 
-    // 给 Builder 用的入口: 类型参数已经在声明处擦除过了.
-    static SlotProjection attachErased(
-            Pane pane,
-            SlotSequence slots,
-            Signal<? extends List<?>> source,
-            Function<Object, ? extends Element> toElement,
-            Executor executor
-    ) {
-        return create(pane, slots, source, toElement, executor);
-    }
-
     // 建好投影并跑完第一轮.
-    private static SlotProjection create(
+    static SlotProjection create(
             Pane pane,
             SlotSequence slots,
             Signal<? extends List<?>> source,
@@ -165,7 +130,7 @@ public final class SlotProjection implements AutoCloseable {
         this.binding = pane.bind(source, ignoredHost -> this.onSourceDirty());
     }
 
-    // 序列失效, 没有求值在飞就排一轮, 已经在飞就记下跑完再来一轮.
+    // 序列失效, 没有求值在进行就排一轮, 已经在进行就记下跑完再来一轮.
     private void onSourceDirty() {
         while (true) {
             Phase current = this.phase.get();
@@ -190,7 +155,7 @@ public final class SlotProjection implements AutoCloseable {
 
     // 跑一轮求值, 跑的期间攒下的失效在结束时再排一轮.
     private void runRound() {
-        // 从这里往后到来的失效都要另起一轮: 本轮读到的序列已经是这一刻的了
+        // 从这里往后到来的失效都要另起一轮, 本轮读到的序列已经是这一刻的了
         this.phase.set(Phase.SCHEDULED);
         try {
             this.evaluateReporting();
@@ -226,10 +191,7 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    /**
-     * 取出当前序列, 与 Pane 现有内容逐槽比对, 只写真正不一样的槽位.
-     * <p>用迭代器而不是下标取值: 序列由使用方给出, 按下标访问的代价未知.
-     */
+    // 取出当前序列, 与 Pane 现有内容逐槽比对, 只写真正不一样的槽位.
     private void evaluate() {
         if (this.closed) return;
         Iterator<?> values = this.source.get().iterator();
@@ -245,11 +207,6 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    /**
-     * 返回投影是否已经停止.
-     *
-     * @return 已经停止时为 true
-     */
     public boolean isClosed() {
         return this.closed;
     }

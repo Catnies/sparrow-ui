@@ -199,13 +199,6 @@ public sealed interface Pane permits AbstractPane {
     @NotNull
     Element element(int slot);
 
-    /**
-     * 按坐标返回槽位元素.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @return 槽位元素
-     */
     @NotNull
     default Element element(int x, int y) {
         return this.element(this.size().indexOf(x, y));
@@ -250,13 +243,6 @@ public sealed interface Pane permits AbstractPane {
         return this.element(slot) instanceof Element.Item(var item) ? item : null;
     }
 
-    /**
-     * 按坐标返回槽位中的 Item, 该槽位不是 Item 时返回 null.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @return Item, 或 null
-     */
     @Nullable
     default Item item(int x, int y) {
         return this.item(this.size().indexOf(x, y));
@@ -273,13 +259,6 @@ public sealed interface Pane permits AbstractPane {
         return this.structure().identifierAt(slot);
     }
 
-    /**
-     * 按坐标返回槽位的 Structure 标志符.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @return 标志符, 或 null
-     */
     @Nullable
     default String identifierAt(int x, int y) {
         return this.structure().identifierAt(this.size().indexOf(x, y));
@@ -296,14 +275,6 @@ public sealed interface Pane permits AbstractPane {
         return identifier.equals(this.identifierAt(slot));
     }
 
-    /**
-     * 返回坐标对应槽位是否使用指定 Structure 标志符.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @param identifier 标志符
-     * @return 标志符相同时为 true
-     */
     default boolean isTagged(int x, int y, @NotNull String identifier) {
         return this.isTagged(this.size().indexOf(x, y), identifier);
     }
@@ -339,13 +310,6 @@ public sealed interface Pane permits AbstractPane {
      */
     void setElement(int slot, @NotNull Element element);
 
-    /**
-     * 按坐标替换槽位元素.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @param element 新元素
-     */
     default void setElement(int x, int y, @NotNull Element element) {
         this.setElement(this.size().indexOf(x, y), element);
     }
@@ -360,29 +324,16 @@ public sealed interface Pane permits AbstractPane {
         this.setElements(this.slots(identifier), ElementSupplier.fixed(element), true);
     }
 
-    /**
-     * 把同一单字符标志的所有槽位替换为同一元素.
-     *
-     * @param identifier 单字符标志
-     * @param element 新元素
-     */
     default void setElement(char identifier, @NotNull Element element) {
         this.setElement(String.valueOf(identifier), element);
     }
 
-    /**
-     * 为同一标志符的每个槽位生成新元素.
-     *
-     * @param identifier 标志符
-     * @param supplier 元素生成器
-     */
     default void setElement(@NotNull String identifier, @NotNull ElementSupplier supplier) {
         this.setElements(this.slots(identifier), supplier, true);
     }
 
     /**
      * 为选中槽位生成元素, 全部生成成功后再一次写入 Pane.
-     *
      * <p>{@code replaceExisting} 为 false 时只填充空槽位. Supplier 失败时 Pane 保持不变.</p>
      *
      * @param slots 要写入的槽位选择
@@ -401,13 +352,6 @@ public sealed interface Pane permits AbstractPane {
         this.setElement(slot, new Element.Item(item));
     }
 
-    /**
-     * 按坐标设置槽位显示的 Item.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @param item Item
-     */
     default void setItem(int x, int y, @NotNull Item item) {
         this.setItem(this.size().indexOf(x, y), item);
     }
@@ -422,12 +366,6 @@ public sealed interface Pane permits AbstractPane {
         this.setElement(identifier, new Element.Item(item));
     }
 
-    /**
-     * 为同一标志符的每个槽位创建 Item.
-     *
-     * @param identifier 标志符
-     * @param supplier Item 来源
-     */
     default void setItem(@NotNull String identifier, @NotNull Supplier<? extends Item> supplier) {
         this.setElements(this.slots(identifier), ElementSupplier.items(supplier), true);
     }
@@ -453,12 +391,6 @@ public sealed interface Pane permits AbstractPane {
         this.setPane(identifier, pane, 0, 0);
     }
 
-    /**
-     * 按二维形状把同一单字符标志的槽位连接到子 Pane.
-     *
-     * @param identifier 单字符标志
-     * @param pane 子 Pane
-     */
     default void setPane(char identifier, @NotNull Pane pane) {
         this.setPane(String.valueOf(identifier), pane);
     }
@@ -509,32 +441,12 @@ public sealed interface Pane permits AbstractPane {
         this.dirty(SlotSequence.of(this.size(), slot));
     }
 
-    /**
-     * 按坐标标记槽位需要重新显示.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     */
     default void dirty(int x, int y) {
         this.dirty(this.size().indexOf(x, y));
     }
 
-    /**
-     * 标记同一标志符的所有槽位需要重新显示.
-     *
-     * @param identifier 标志符
-     */
     default void dirty(@NotNull String identifier) {
         this.dirty(this.slots(identifier));
-    }
-
-    /**
-     * 用同一元素覆盖所有槽位.
-     *
-     * @param element 槽位元素
-     */
-    default void fillElement(@NotNull Element element) {
-        this.fillElement(element, true);
     }
 
     /**
@@ -551,13 +463,8 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 用同一 Item 覆盖所有槽位.
-     *
-     * @param item Item
-     */
-    default void fill(@NotNull Item item) {
-        this.fill(item, true);
+    default void fillElement(@NotNull Element element) {
+        this.fillElement(element, true);
     }
 
     /**
@@ -570,15 +477,8 @@ public sealed interface Pane permits AbstractPane {
         this.fillElement(new Element.Item(item), replaceExisting);
     }
 
-    /**
-     * 用同一 Item 覆盖指定槽位范围.
-     *
-     * @param startInclusive 起始槽位, 包含
-     * @param endExclusive 结束槽位, 不包含
-     * @param item Item
-     */
-    default void fill(int startInclusive, int endExclusive, @NotNull Item item) {
-        this.fill(startInclusive, endExclusive, item, true);
+    default void fill(@NotNull Item item) {
+        this.fill(item, true);
     }
 
     /**
@@ -597,14 +497,8 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 用同一 Item 覆盖一整行.
-     *
-     * @param row 行号
-     * @param item Item
-     */
-    default void fillRow(int row, @NotNull Item item) {
-        this.fillRow(row, item, true);
+    default void fill(int startInclusive, int endExclusive, @NotNull Item item) {
+        this.fill(startInclusive, endExclusive, item, true);
     }
 
     /**
@@ -622,14 +516,8 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 用同一 Item 覆盖一整列.
-     *
-     * @param column 列号
-     * @param item Item
-     */
-    default void fillColumn(int column, @NotNull Item item) {
-        this.fillColumn(column, item, true);
+    default void fillRow(int row, @NotNull Item item) {
+        this.fillRow(row, item, true);
     }
 
     /**
@@ -647,13 +535,8 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 用同一 Item 覆盖 Pane 边框.
-     *
-     * @param item Item
-     */
-    default void fillBorders(@NotNull Item item) {
-        this.fillBorders(item, true);
+    default void fillColumn(int column, @NotNull Item item) {
+        this.fillColumn(column, item, true);
     }
 
     /**
@@ -670,6 +553,10 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
+    default void fillBorders(@NotNull Item item) {
+        this.fillBorders(item, true);
+    }
+
     /**
      * 用同一 Item 填充一个矩形范围.
      *
@@ -680,14 +567,7 @@ public sealed interface Pane permits AbstractPane {
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
      */
-    default void fillRectangle(
-            int x,
-            int y,
-            int width,
-            int height,
-            @NotNull Item item,
-            boolean replaceExisting
-    ) {
+    default void fillRectangle(int x, int y, int width, int height, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
                 SlotSequence.rectangle(this.size(), x, y, width, height),
                 ElementSupplier.fixed(new Element.Item(item)),
@@ -695,15 +575,6 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 用同一 Item 覆盖一个矩形范围.
-     *
-     * @param x 矩形左上角 x 坐标
-     * @param y 矩形左上角 y 坐标
-     * @param width 矩形宽度
-     * @param height 矩形高度
-     * @param item Item
-     */
     default void fillRectangle(int x, int y, int width, int height, @NotNull Item item) {
         this.fillRectangle(x, y, width, height, item, true);
     }
@@ -724,13 +595,6 @@ public sealed interface Pane permits AbstractPane {
         );
     }
 
-    /**
-     * 按子 Pane 尺寸把一个矩形范围连接到子 Pane.
-     *
-     * @param x 矩形左上角 x 坐标
-     * @param y 矩形左上角 y 坐标
-     * @param child 子 Pane
-     */
     default void fillRectangle(int x, int y, @NotNull Pane child) {
         this.fillRectangle(x, y, child, true);
     }
@@ -757,9 +621,6 @@ public sealed interface Pane permits AbstractPane {
     /**
      * 设置 Pane 全局视觉映射. 映射盖在经过本 Pane 的显示路径上, 命中时路径终点不再参与显示;
      * 输入是路径终点的同步可读内容, 约定见 {@link PaneVisual}. 返回 {@code null} 表示放行, 交给下一层.
-     * <p>映射只改变 Window 中的展示结果, 不影响槽位元素, 事务与点击语义.
-     * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
-     * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
@@ -768,8 +629,8 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 设置 Pane 全局视觉映射, 并指定提供器给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     * 设置 Pane 全局视觉映射, 并指定 Provider 给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同, Provider 当场算得出结果时首帧就是真值, 用不到占位.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
@@ -815,7 +676,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 替换一个 Pane 槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
+     * 替换一个 Pane 槽位的逐槽视觉映射, 并指定 Provider 给出结果前显示的占位.
      * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
      *
      * @param slot Pane 槽位
@@ -829,7 +690,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 使用直接返回 ItemStack 的映射替换一个 Pane 槽位的逐槽视觉映射.
-     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     * 映射返回 {@code null} 表示放行, 返回空 ItemStack 表示覆盖为空视觉.
      *
      * @param slot Pane 槽位
      * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
@@ -882,8 +743,8 @@ public sealed interface Pane permits AbstractPane {
      * 声明一个额外参与本 Pane 所在 Window 的 Inventory.
      * <p>它的槽位一个都不必被展示: 快速转移与双击收集寻找目标时照样会看到它.
      * 用来表达"这块面板背后还连着别的容器", 例如分页仓库当前只展示第一页, 却希望 Shift 点击能落进其余几页.
-     * <p><strong>必须同时打开该 Inventory 的 {@link SparrowInventory#includeObscuredSlots(boolean)}</strong>.
-     * <p>声明只在本 Pane 处于当前显示路径上时生效.
+     * <p><strong>必须同时打开该 Inventory 的 {@link SparrowInventory#includeObscuredSlots(boolean)}.</strong>
+     * <p><strong>声明只在本 Pane 处于当前显示路径上时生效.</strong>
      *
      * @param inventory 要额外带进参与集的 Inventory
      */
@@ -938,8 +799,8 @@ public sealed interface Pane permits AbstractPane {
      *
      * @return 按声明顺序排列的不可变快照
      */
-    @ApiStatus.Internal
     @NotNull
+    @ApiStatus.Internal
     Set<InventorySequence> participatingSequences();
 
     /**
@@ -954,9 +815,8 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
-     * 当 Signal 被标脏时, 会触发传入的回调函数.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
-     * <p>绑定由本对象持有, 本对象被回收时一并消失,{@code callback} 捕获的对象随本对象一起释放.
+     * <p>绑定由本对象持有, 本对象被回收时一并消失, {@code callback} 捕获的对象随本对象一起释放.
      *
      * @param signal 数据源
      * @param callback 失效回调
@@ -966,7 +826,7 @@ public sealed interface Pane permits AbstractPane {
     Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Pane> callback);
 
     /**
-     * 让选中槽位的内容一直跟随一个序列: 序列的第 n 项写进选中槽位的第 n 个.
+     * 让选中槽位的内容一直跟随一个序列展示,序列的第 n 项写进选中槽位的第 n 个.
      * <p>创建时就地求值一次, 之后每次序列失效都在 Paper 全局异步调度器上重算,
      * 因此序列的派生函数与 {@code toElement} 都只能读那些在异步域访问安全的数据.
      *
@@ -1038,11 +898,6 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 通过 Structure 标志符填充槽位, 并创建 Pane.
-     *
-     * <p>同一 Builder 可以重复构建 Pane. {@link #copy()} 返回可独立修改的副本.</p>
-     *
-     * @param <G> 构建结果类型
-     * @param <B> 精确的 Builder 自类型
      */
     interface Builder<G extends Pane, B extends Builder<G, B>> {
 
@@ -1162,10 +1017,7 @@ public sealed interface Pane permits AbstractPane {
          * @return 当前 Builder
          */
         @NotNull
-        B addIngredientElementSupplier(
-                @NotNull String identifier,
-                @NotNull Supplier<? extends Element> elementSupplier
-        );
+        B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends Element> elementSupplier);
 
         /**
          * 把同一标志符的槽位按出现顺序循环连接到 Inventory.
@@ -1181,7 +1033,7 @@ public sealed interface Pane permits AbstractPane {
 
         /**
          * 把单字符标志的槽位按出现顺序循环连接到 Inventory.
-         * 出现次数超过 Inventory 尺寸时从槽位 0 重新开始; 零尺寸 Inventory 生成空槽位.
+         * 出现次数超过 Inventory 尺寸时从槽位 0 重新开始, 零尺寸 Inventory 生成空槽位.
          *
          * @param identifier 单字符标志
          * @param inventory 连接的 Inventory
@@ -1191,7 +1043,7 @@ public sealed interface Pane permits AbstractPane {
         B addIngredient(char identifier, @NotNull SparrowInventory inventory);
 
         /**
-         * 让同一标志符的槽位一直跟随一个序列: 序列的第 n 项写进该标志符第 n 次出现的槽位.
+         * 让同一标志符的槽位一直跟随一个序列, 序列的第 n 项写进该标志符第 n 次出现的槽位.
          * <p>序列本身已经是 Element 时, 用 {@code addModifier(pane -> pane.projectElements(pane.slots(identifier), ...))}.
          *
          * @param identifier 标志符

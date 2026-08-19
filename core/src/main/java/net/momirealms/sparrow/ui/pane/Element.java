@@ -90,25 +90,13 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
             this.slot = pane.size().checkSlot(slot);
         }
 
-        /**
-         * 创建到子 Pane 槽位的连接, 跳过边界检查.
-         *
-         * @param pane 子 Pane
-         * @param slot 子 Pane 槽位编号, 调用方必须保证已校验
-         * @param trusted 仅用于区分签名, 无实际含义
-         */
+        // 创建到子 Pane 槽位的连接, 跳过边界检查, 调用方必须保证 slot 已校验.
         private PaneLink(Pane pane, int slot, boolean trusted) {
             this.pane = pane;
             this.slot = slot;
         }
 
-        /**
-         * 创建到子 Pane 槽位的连接, 跳过重复边界检查.
-         *
-         * @param pane 子 Pane
-         * @param slot 已校验的子 Pane 槽位编号
-         * @return Pane 连接元素
-         */
+        // 创建到子 Pane 槽位的连接, 跳过重复边界检查.
         static PaneLink trusted(Pane pane, int slot) {
             return new PaneLink(pane, slot, true);
         }
@@ -122,12 +110,6 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
             return this.slot;
         }
 
-        /**
-         * 指向同一个子 Pane 的同一个槽位就相等.
-         *
-         * @param object 比较对象
-         * @return 指向同一处时为 true
-         */
         @Override
         public boolean equals(Object object) {
             return object instanceof PaneLink other && this.pane == other.pane && this.slot == other.slot;
@@ -140,7 +122,7 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
     }
 
     /**
-     * 把当前 Pane 槽位连接到 Inventory 的指定槽位: 显示该槽的当前内容, 内容随 Inventory 事务刷新.
+     * 把当前 Pane 槽位连接到 Inventory 的指定槽位.
      *
      * @param inventory 库存
      * @param slot 库存槽位编号

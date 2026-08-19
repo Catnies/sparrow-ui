@@ -18,11 +18,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/**
- * Pane Builder 的通用实现.
- * <p>它记录每个 Structure 标志符要填充的内容, 并统一处理背景,
- * 冻结状态, 构建后修改和失败位置诊断.
- */
 abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
     private final Structure structure; // Pane 布局
     private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
@@ -34,11 +29,6 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private ItemProvider background; // 空槽位背景, 可为 null
     private boolean frozen;          // 是否禁止玩家交互
 
-    /**
-     * 基于布局创建 Builder.
-     *
-     * @param structure Pane 布局
-     */
     AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
         this.ingredients = new ElementSupplier[structure.identifierCount()];
@@ -48,11 +38,6 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         this.linkedInventories = new LinkedHashSet<>();
     }
 
-    /**
-     * 复制已有 Builder 的全部绑定与配置.
-     *
-     * @param source 来源 Builder
-     */
     AbstractPaneBuilder(AbstractPaneBuilder<G, B> source) {
         this.structure = source.structure;
         this.ingredients = source.ingredients.clone();
@@ -320,7 +305,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Tab<?> tab) {
         Objects.requireNonNull(tab, "tab");
-        // 标志符先在这里解析.
+        // 标志符在这里就解析, 用未知标志符立刻失败而不是拖到 build
         int identifierIndex = this.structure.identifierIndex(identifier);
         // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份
         this.tabIngredients[identifierIndex] = tab;
@@ -444,7 +429,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             if (projection.pattern() != null) {
                 projected = projected.transform(projection.pattern());
             }
-            SlotProjection.attachErased(
+            SlotProjection.create(
                     pane,
                     projected,
                     projection.source(),
@@ -480,13 +465,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             boolean frozen
     );
 
-    /**
-     * 将标志符转换为内部编号并保存绑定.
-     *
-     * @param identifier 标志符
-     * @param supplier 元素生成器
-     * @return 当前 Builder
-     */
+    // 将标志符转换为内部编号并保存绑定.
     private B bindIngredient(String identifier, ElementSupplier supplier) {
         int identifierIndex = this.structure.identifierIndex(identifier);
         this.ingredients[identifierIndex] = supplier;
@@ -496,16 +475,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         return this.self();
     }
 
-    /**
-     * 将标志符转换为内部编号并保存投影声明.
-     *
-     * @param identifier 标志符
-     * @param source 序列来源
-     * @param toElement 元素转换函数, 类型参数已擦除
-     * @param executor 执行求值的执行器
-     * @param pattern 槽位顺序变换, {@code null} 表示保持标志符原序
-     * @return 当前 Builder
-     */
+    // 将标志符转换为内部编号并保存投影声明.
     private B bindProjection(
             String identifier,
             Signal<? extends List<?>> source,
@@ -516,7 +486,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(toElement, "toElement");
         Objects.requireNonNull(executor, "executor");
-        // 标志符先在这里解析.
+        // 标志符在这里就解析, 用未知标志符立刻失败而不是拖到 build
         int identifierIndex = this.structure.identifierIndex(identifier);
         // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容和标签组
         this.projections[identifierIndex] = new ProjectionIngredient(source, toElement, executor, pattern);
@@ -525,15 +495,8 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         return this.self();
     }
 
-    /**
-     * 让一片槽位跟随标签组当前选中的子 Pane, 切换标签时整片重铺.
-     * <p>绑定挂在宿主 Pane 上, 宿主经这条绑定持有铺放, 也随宿主一起结束.
-     * 铺放是纯结构操作, 在切换标签的调用线程上同步完成.
-     *
-     * @param pane 接收铺放的宿主 Pane
-     * @param slots 标签组负责的槽位
-     * @param tab 标签组
-     */
+    // 让一片槽位跟随标签组当前选中的子 Pane, 切换标签时整片重铺.
+    // 绑定挂在宿主 Pane 上, 宿主经这条绑定持有铺放, 也随宿主一起结束; 铺放是纯结构操作, 在切换标签的调用线程上同步完成.
     private static void attachTab(AbstractPane pane, SlotSequence slots, Tab<?> tab) {
         Signal<Pane> selected = tab.pane();
         pane.bind(selected, host -> layTab(host, slots, selected.get()));
@@ -541,14 +504,8 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         layTab(pane, slots, selected.get());
     }
 
-    /**
-     * 把选中的子 Pane 铺进区域: 区域保持二维形状按相对坐标连接过去.
-     * <p>子 Pane 盖不住的槽位补空; 内容没变的槽位不写, 因此切到已经选中的标签零写入.
-     *
-     * @param host 接收铺放的宿主 Pane
-     * @param slots 本次要铺的槽位
-     * @param selected 当前选中的子 Pane
-     */
+    // 把选中的子 Pane 铺进区域: 区域保持二维形状按相对坐标连接过去.
+    // 子 Pane 盖不住的槽位补空; 内容没变的槽位不写, 因此切到已经选中的标签零写入.
     private static void layTab(Pane host, SlotSequence slots, Pane selected) {
         PaneSize childSize = selected.size();
         int length = slots.length();
@@ -565,15 +522,8 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         }
     }
 
-    /**
-     * 一条投影声明: 跟随哪个序列, 怎么把序列里的一条数据变成 Element, 以及在哪里求值.
-     * <p>它保存在与 {@code ingredients} 同下标的位置上, 因此是哪个标志符由下标决定.
-     *
-     * @param source 序列来源
-     * @param toElement 元素转换函数, 类型参数已擦除
-     * @param executor 执行求值的执行器
-     * @param pattern 槽位顺序变换, {@code null} 表示保持标志符原序
-     */
+    // 一条投影声明: 跟随哪个序列, 怎么把序列里的一条数据变成 Element, 以及在哪里求值.
+    // 它保存在与 ingredients 同下标的位置上, 因此是哪个标志符由下标决定.
     private record ProjectionIngredient(
             Signal<? extends List<?>> source,
             Function<Object, ? extends Element> toElement,
@@ -582,14 +532,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     ) {
     }
 
-    /**
-     * 在 Supplier 异常中加入标志符, 行, 列和槽位编号, 便于定位模板问题.
-     *
-     * @param identifierIndex 标志符内部编号
-     * @param slot 失败槽位编号
-     * @param cause 原始异常
-     * @return 带位置信息的构建失败异常
-     */
+    // 在 Supplier 异常中加入标志符, 行, 列和槽位编号, 便于定位模板问题.
     private IllegalStateException instantiationFailure(int identifierIndex, int slot, RuntimeException cause) {
         int width = this.structure.size().width();
         int row = slot / width;

@@ -6,10 +6,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Supplier;
 
-/**
- * 为一组已选槽位逐个创建槽位元素.
- * <p>用于给 Structure 中同一个标志符出现的所有槽位填充内容.
- */
 @FunctionalInterface
 public interface ElementSupplier {
 
@@ -57,8 +53,8 @@ public interface ElementSupplier {
     }
 
     /**
-     * 把库存按 ingredient 出现顺序循环铺入: 第 n 次出现(从 0 开始)的槽位连接库存槽
-     * {@code n % inventory.size()}. 零尺寸库存生成空槽位.
+     * 把 Inventory 按 ingredient 出现顺序循环铺入, 第 n 次出现(从 0 开始)的槽位连接库存槽
+     * {@code n % inventory.size()}. 零尺寸 Inventory 生成空槽位.
      *
      * @param inventory 要铺入的库存
      * @return 逐槽连接库存的元素来源
