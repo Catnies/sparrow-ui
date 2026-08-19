@@ -25,6 +25,14 @@ public record VisualLayer(
         return mapped == null ? null : new ResolvedVisual(this, mapped, this.placeholder);
     }
 
+    // 判断是否和当前配置一致, 用来跳过不改变任何东西的重设.
+    public boolean isSameVisualizerSamePlaceholder(
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer,
+            @Nullable ImmediateItemProvider placeholder
+    ) {
+        return this.visualizer == visualizer && this.placeholder == placeholder;
+    }
+
     // 把直接产出 ItemStack 的映射包成视觉映射, 入参为 null 时原样返回.
     @Nullable
     public static Function<@Nullable ItemStack, @Nullable ItemProvider> itemVisualizer(

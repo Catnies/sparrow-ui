@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.visual;
 
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,4 +27,18 @@ public interface InventoryVisual extends SlotVisual {
     default void backgroundItem(@NotNull ItemStack background) {
         this.background(ItemProvider.constant(background));
     }
+
+    /**
+     * 求值一个槽位的两层视觉映射, 都放行且该槽为空时回退到空槽背景.
+     * <p>背景是"这一格没内容时显示什么"的替补, 只在内容所在的宿主生效, 因此覆盖别人的宿主用
+     * {@link #visualize(int, ItemStack)}.
+     *
+     * @param slot Inventory 槽位
+     * @param actual 该槽当前内容, 空槽为 {@code null}
+     * @return 求值结果, 两层都放行且没有可用背景时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    @ApiStatus.Internal
+    ResolvedVisual visualizeWithBackground(int slot, @Nullable ItemStack actual);
 }

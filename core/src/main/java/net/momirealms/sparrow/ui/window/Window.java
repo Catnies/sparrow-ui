@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.window;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
-import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.visual.WindowVisual;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
@@ -16,7 +15,6 @@ import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -437,31 +435,6 @@ public interface Window {
     WindowVisual visual();
 
     /**
-     * 求值一个 Window 槽位的两层视觉映射.
-     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
-     *
-     * @param windowSlot Window 槽位
-     * @param actual 路径终点的同步可读内容, 没有内容为 {@code null}
-     * @return 求值结果, 两层都缺席或放行时为 {@code null}
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    @ApiStatus.Internal
-    ResolvedVisual resolvedOverlay(int windowSlot, @Nullable ItemStack actual);
-
-    /**
-     * 把显示路径附着到一个精确槽位的视觉失效路由.
-     * <p>失效可能从任意线程发出; 回调不会在路由内部的同步区间执行.
-     *
-     * @param windowSlot 路径服务的 Window 槽位
-     * @param invalidator 路径失效动作
-     * @return 附着凭证, 关闭后不再接收失效
-     */
-    @NotNull
-    @ApiStatus.Internal
-    Subscription attachVisualDirty(int windowSlot, @NotNull Runnable invalidator);
-
-    /**
      * 返回当前的全局视觉映射.
      *
      * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按路径终点显示
@@ -487,7 +460,7 @@ public interface Window {
      * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
-     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
      */
     default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
         this.visual().setVisualizerProvider(visualizerProvider, placeholder);
@@ -535,7 +508,7 @@ public interface Window {
      *
      * @param windowSlot Window 槽位
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
-     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     default void setVisualizerProvider(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
@@ -915,7 +888,7 @@ public interface Window {
          * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
          *
          * @param visualizerProvider 全局视觉映射, {@code null} 表示不设置这一层
-         * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+         * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
          * @return 此 Builder
          */
         @NotNull

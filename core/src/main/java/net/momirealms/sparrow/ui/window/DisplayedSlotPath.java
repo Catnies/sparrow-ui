@@ -58,7 +58,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 () -> this.onDirty(Invalidation.COMPLETION),
                 throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Window slot " + windowSlot, throwable)
         );
-        this.windowVisualSubscription = window.attachVisualDirty(windowSlot, () -> this.onDirty(Invalidation.LEAF));
+        this.windowVisualSubscription = window.visual().attach(windowSlot, () -> this.onDirty(Invalidation.RENDER));
 
         try {
             this.resolve();
@@ -238,7 +238,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 从指定层开始跟随 PaneLink, 订阅沿途每个 Pane 槽位与它的视觉失效路由, 以及最终 Item.
+     * 从指定层开始跟随 PaneLink, 订阅沿途每个 Pane 槽位与它的视觉失效通知, 以及最终 Item.
      * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
      *
      * @param next 正在准备的新路径, 已经沿用了 {@code from} 之前的层
@@ -271,11 +271,11 @@ final class DisplayedSlotPath implements AutoCloseable {
             // 订阅这一层 Pane 的槽位: 槽位内容变了会要求重新解析路径.
             // 这一层将来被丢弃时会把 discarded 置起来 —— 取消订阅和派发通知可能同时发生,
             // 那一刻挤进来的通知要当作没收到.
-            // 视觉失效路由先挂, 它只弱持有回执, 之后的订阅失败时它随本次解析的引用一起被回收.
+            // 视觉失效订阅先挂, 它只弱持有回执, 之后的订阅失败时它随本次解析的引用一起被回收.
             AtomicBoolean discarded = new AtomicBoolean();
-            Subscription visualSubscription = pane.attachVisualDirty(paneSlot, () -> {
+            Subscription visualSubscription = pane.visual().attach(paneSlot, () -> {
                 if (!discarded.get()) {
-                    this.onDirty(Invalidation.LEAF);
+                    this.onDirty(Invalidation.RENDER);
                 }
             });
             PaneSlotAttachment attachment = pane.attach(paneSlot, ignoredInvalidation -> {
@@ -311,7 +311,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 next.item = item;
                 next.itemAttachment = item.attach(this.window, ignore -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(Invalidation.LEAF);
+                        this.onDirty(Invalidation.RENDER);
                     }
                 });
             }
@@ -329,9 +329,9 @@ final class DisplayedSlotPath implements AutoCloseable {
                         }
                     }
                 });
-                next.inventoryVisualSubscription = link.inventory().attachVisualDirty(link.slot(), () -> {
+                next.inventoryVisualSubscription = link.inventory().visual().attach(link.slot(), () -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(Invalidation.LEAF);
+                        this.onDirty(Invalidation.RENDER);
                     }
                 });
             }
@@ -409,43 +409,45 @@ final class DisplayedSlotPath implements AutoCloseable {
             itemStack = inventory instanceof ReferencingInventory ? inventory.itemAt(slot) : inventory.unsafeItemAt(slot);
         }
         // Window 槽位层最先试探: 它只属于本查看者, 有权盖住整条路径
-        ResolvedVisual windowOverlay = this.window.resolvedOverlay(this.windowSlot, itemStack);
-        if (windowOverlay != null) {
-            ItemStack lastResort = state.inventoryLink != null ? ItemUtils.emptyIfNull(itemStack) : ItemStack.empty();
-            return this.renderCell.render(new RenderCell.Intent.Projected(windowOverlay.sourceKey(), windowOverlay.provider(), windowOverlay.placeholder(), lastResort));
+        ResolvedVisual windowVisual = this.window.visual().visualize(this.windowSlot, itemStack);
+        if (windowVisual != null) {
+            return this.renderProjected(windowVisual, itemStack);
         }
         // 沿途每层 Pane 的视觉映射自根向叶试探, 越靠外的层越优先
         for (int index = 0; index < state.depth; index++) {
-            ResolvedVisual visual = state.panes[index].resolvedOverlay(state.paneSlots[index], itemStack);
-            if (visual != null) {
-                // 异步未完成时终点连接 Inventory 显示该槽真实内容, 其余终点显示空
-                ItemStack lastResort = state.inventoryLink != null ? ItemUtils.emptyIfNull(itemStack) : ItemStack.empty();
-                return this.renderCell.render(new RenderCell.Intent.Projected(visual.sourceKey(), visual.provider(), visual.placeholder(), lastResort));
+            ResolvedVisual paneVisual = state.panes[index].visual().visualize(state.paneSlots[index], itemStack);
+            if (paneVisual != null) {
+                return this.renderProjected(paneVisual, itemStack);
             }
         }
         // InventoryLink
         if (state.inventoryLink != null) {
-            ItemStack actual = ItemUtils.emptyIfNull(itemStack);
-            ResolvedVisual visual = state.inventoryLink.inventory().resolvedVisual(state.inventoryLink.slot(), itemStack);
-            if (visual == null) {
-                return this.renderCell.render(new RenderCell.Intent.Direct(actual));
-            }
+            ResolvedVisual visual = state.inventoryLink.inventory().visual()
+                    .visualizeWithBackground(state.inventoryLink.slot(), itemStack);
             // 当场算得出的提供器由渲染格自己短路, 算不出的走投影, 未完成时显示占位或该槽真实内容
-            return this.renderCell.render(new RenderCell.Intent.Projected(
-                    visual.sourceKey(), visual.provider(), visual.placeholder(), actual));
+            return visual != null
+                    ? this.renderProjected(visual, itemStack)
+                    : this.renderCell.render(new RenderCell.Intent.Direct(ItemUtils.emptyIfNull(itemStack)));
         }
         // Item
         if (state.item != null) {
-            return this.renderCell.render(new RenderCell.Intent.Projected(state.item.getItemProvider(), state.item.getPlaceholder(), ItemStack.empty()));
+            return this.renderCell.render(new RenderCell.Intent.Projected(state.item.getItemProvider(), state.item.getPlaceholder(), null));
         }
         // 终点为空槽位元素: 回退到沿途最深层的 Pane 背景
         for (int index = state.depth - 1; index >= 0; index--) {
-            ItemProvider background = state.panes[index].background();
+            ItemProvider background = state.panes[index].visual().background();
             if (background != null) {
-                return this.renderCell.render(new RenderCell.Intent.Projected(background, null, ItemStack.empty()));
+                return this.renderCell.render(new RenderCell.Intent.Projected(background, null, null));
             }
         }
         return this.renderCell.render(new RenderCell.Intent.Direct(ItemStack.empty()));
+    }
+
+    // 把命中的视觉层交给渲染格投影; 兜底内容就是终点的同步可读内容, 没有内容的终点交 null, 渲染格按空物品处理.
+    @NotNull
+    private ItemStack renderProjected(@NotNull ResolvedVisual visual, @Nullable ItemStack itemStack) {
+        return this.renderCell.render(new RenderCell.Intent.Projected(
+                visual.sourceKey(), visual.provider(), visual.placeholder(), itemStack));
     }
 
     /**
@@ -634,7 +636,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      */
     private enum Invalidation {
         STRUCTURE,  // Pane 槽位变了, 路径结构可能不同, 要重新解析
-        LEAF,     // 终点的 Item, 沿途 Pane 或 Inventory 的视觉配置变了, 重新渲染就够
+        RENDER,     // 终点的 Item, 沿途 Pane 或 Inventory 的视觉配置变了, 重新渲染就够
         CONTENT,    // 终点 Inventory 槽位的内容变了, 基于旧内容算出的异步视觉一并作废
         COMPLETION  // RenderCell 的完成通知, 只消费已经算好的结果
     }

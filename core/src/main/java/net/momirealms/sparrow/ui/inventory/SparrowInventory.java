@@ -17,7 +17,6 @@ import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -70,7 +69,7 @@ public abstract class SparrowInventory {
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
     private final SignalBindings signalBindings = new SignalBindings();                   // 本 Inventory 持有的 Signal 绑定
-    private final InventoryVisualImpl visual; // 视觉配置, Signal 绑定与逐槽显示路径失效路由
+    private final InventoryVisualImpl visual; // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
 
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
     @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
@@ -264,7 +263,7 @@ public abstract class SparrowInventory {
     /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
      * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
-     * 非空槽按真实内容显示, 空槽依次回退 {@link #setBackground(ItemProvider) 容器背景} 和 Pane 背景.
+     * 非空槽按真实内容显示, 空槽回退 {@link #setBackground(ItemProvider) 容器背景}.
      * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
      * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
@@ -362,7 +361,7 @@ public abstract class SparrowInventory {
      *
      * @param background 空槽占位背景
      */
-    public void setBackground(@NotNull ItemStack background) {
+    public void setBackgroundItem(@NotNull ItemStack background) {
         this.visual.backgroundItem(background);
     }
 
@@ -374,21 +373,6 @@ public abstract class SparrowInventory {
     @Nullable
     public ItemProvider getBackground() {
         return this.visual.background();
-    }
-
-    /**
-     * 返回一个槽位生效的视觉层级结果, 从高到低逐层询问, 逐槽映射 -> 全局映射 -> 空槽的占位背景.
-     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
-     *
-     * @param slot 槽位序号
-     * @param actual 该槽当前真实内容, 空槽为 {@code null}
-     * @return 求值结果, 含展示用的提供器, 来源身份与占位, 所有层都放行时为 {@code null}, 表示按真实内容显示
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @Nullable
-    @ApiStatus.Internal
-    public ResolvedVisual resolvedVisual(int slot, @Nullable ItemStack actual) {
-        return this.visual.visualize(slot, actual);
     }
 
     /**
@@ -1299,22 +1283,6 @@ public abstract class SparrowInventory {
     public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super SparrowInventory> callback) {
         Objects.requireNonNull(callback, "callback");
         return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
-    }
-
-    /**
-     * 把显示路径附着到一个精确槽位的视觉失效路由.
-     * <p>失效可能从任意线程发出; 回调不会在路由内部的同步区间执行.
-     *
-     * @param slot 路径显示的 Inventory 槽位
-     * @param invalidator 路径失效动作
-     * @return 附着凭证, 关闭后不再接收失效
-     */
-    @NotNull
-    @ApiStatus.Internal
-    public final Subscription attachVisualDirty(int slot, @NotNull Runnable invalidator) {
-        Objects.checkIndex(slot, this.size());
-        Objects.requireNonNull(invalidator, "invalidator");
-        return this.visual.attach(slot, invalidator);
     }
 
     /**

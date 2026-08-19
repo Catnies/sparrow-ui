@@ -12,48 +12,40 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
-final class VisualDirtyRoutes {
-    private final AtomicReferenceArray<CopyOnWriteArrayList<RouteReference>> routesBySlot;
+final class VisualDirtyAttachments {
+    private final AtomicReferenceArray<CopyOnWriteArrayList<AttachmentReference>> attachmentsBySlot;
     private final ReferenceQueue<Attachment> deadAttachments = new ReferenceQueue<>();
 
-    VisualDirtyRoutes(int size) {
-        this.routesBySlot = new AtomicReferenceArray<>(size);
+    VisualDirtyAttachments(int size) {
+        this.attachmentsBySlot = new AtomicReferenceArray<>(size);
     }
 
+    // 按槽位保存视觉失效订阅, 回执只被弱持有.
     @NotNull
     Subscription attach(int slot, @NotNull Runnable invalidator) {
         this.reapDeadAttachments();
-        CopyOnWriteArrayList<RouteReference> routes = this.routes(slot);
+        CopyOnWriteArrayList<AttachmentReference> attachments = this.attachments(slot);
         Attachment attachment = new Attachment(invalidator);
-        RouteReference reference = new RouteReference(attachment, routes, this.deadAttachments);
+        AttachmentReference reference = new AttachmentReference(attachment, attachments, this.deadAttachments);
         attachment.reference = reference;
-        routes.add(reference);
+        attachments.add(reference);
         return attachment;
     }
 
     void dirty(int slot) {
         this.reapDeadAttachments();
-        CopyOnWriteArrayList<RouteReference> routes = this.routesBySlot.get(slot);
-        Object[] snapshot = routes == null || routes.isEmpty() ? null : routes.toArray();
-        RuntimeException failure = publish(snapshot, null);
+        RuntimeException failure = publish(this.attachmentsBySlot.get(slot), null);
         if (failure != null) {
             throw failure;
         }
     }
 
+    // 逐槽直接发布, 不先攒一份全量快照: 两者都不保证与 attach 的原子性, 而 COW 列表遍历本身已是快照.
     void dirtyAll() {
         this.reapDeadAttachments();
-        // 先快照全部槽位再统一发布
-        Object[][] snapshots = new Object[this.routesBySlot.length()][];
-        for (int slot = 0; slot < snapshots.length; slot++) {
-            CopyOnWriteArrayList<RouteReference> routes = this.routesBySlot.get(slot);
-            if (routes != null && !routes.isEmpty()) {
-                snapshots[slot] = routes.toArray();
-            }
-        }
         RuntimeException failure = null;
-        for (int slot = 0; slot < snapshots.length; slot++) {
-            failure = publish(snapshots[slot], failure);
+        for (int slot = 0; slot < this.attachmentsBySlot.length(); slot++) {
+            failure = publish(this.attachmentsBySlot.get(slot), failure);
         }
         if (failure != null) {
             throw failure;
@@ -61,34 +53,35 @@ final class VisualDirtyRoutes {
     }
 
     @NotNull
-    private CopyOnWriteArrayList<RouteReference> routes(int slot) {
-        CopyOnWriteArrayList<RouteReference> routes = this.routesBySlot.get(slot);
-        if (routes != null) {
-            return routes;
+    private CopyOnWriteArrayList<AttachmentReference> attachments(int slot) {
+        CopyOnWriteArrayList<AttachmentReference> attachments = this.attachmentsBySlot.get(slot);
+        if (attachments != null) {
+            return attachments;
         }
-        CopyOnWriteArrayList<RouteReference> created = new CopyOnWriteArrayList<>();
-        if (this.routesBySlot.compareAndSet(slot, null, created)) {
+        CopyOnWriteArrayList<AttachmentReference> created = new CopyOnWriteArrayList<>();
+        if (this.attachmentsBySlot.compareAndSet(slot, null, created)) {
             return created;
         }
-        return this.routesBySlot.get(slot);
+        return this.attachmentsBySlot.get(slot);
     }
 
     private void reapDeadAttachments() {
-        // 清理已被回收 attachment 的路由记录
         Reference<? extends Attachment> reference;
         while ((reference = this.deadAttachments.poll()) != null) {
-            ((RouteReference) reference).remove();
+            ((AttachmentReference) reference).remove();
         }
     }
 
-    // 失败不中断其余通知, 合并后返回给调用方抛出
     @Nullable
-    private static RuntimeException publish(Object @Nullable [] snapshot, @Nullable RuntimeException failure) {
-        if (snapshot == null) {
+    private static RuntimeException publish(
+            @Nullable CopyOnWriteArrayList<AttachmentReference> attachments,
+            @Nullable RuntimeException failure
+    ) {
+        if (attachments == null || attachments.isEmpty()) {
             return failure;
         }
-        for (int index = 0; index < snapshot.length; index++) {
-            RouteReference reference = (RouteReference) snapshot[index];
+        // COW 列表的迭代器就是这一刻的快照, 发布期间的增删不影响本轮
+        for (AttachmentReference reference : attachments) {
             Attachment attachment = reference.get();
             if (attachment == null) {
                 reference.remove();
@@ -109,7 +102,7 @@ final class VisualDirtyRoutes {
 
     private static final class Attachment implements Subscription {
         private final AtomicReference<Runnable> invalidator;
-        @Nullable private volatile RouteReference reference;
+        @Nullable private volatile AttachmentReference reference;
 
         private Attachment(@NotNull Runnable invalidator) {
             this.invalidator = new AtomicReference<>(invalidator);
@@ -125,7 +118,7 @@ final class VisualDirtyRoutes {
             if (this.invalidator.getAndSet(null) == null) {
                 return;
             }
-            RouteReference reference = this.reference;
+            AttachmentReference reference = this.reference;
             this.reference = null;
             if (reference != null) {
                 reference.remove();
@@ -133,12 +126,12 @@ final class VisualDirtyRoutes {
         }
     }
 
-    private static final class RouteReference extends WeakReference<Attachment> {
-        private final WeakReference<CopyOnWriteArrayList<RouteReference>> owner;
+    private static final class AttachmentReference extends WeakReference<Attachment> {
+        private final WeakReference<CopyOnWriteArrayList<AttachmentReference>> owner;
 
-        private RouteReference(
+        private AttachmentReference(
                 @NotNull Attachment attachment,
-                @NotNull CopyOnWriteArrayList<RouteReference> owner,
+                @NotNull CopyOnWriteArrayList<AttachmentReference> owner,
                 @NotNull ReferenceQueue<Attachment> queue
         ) {
             super(attachment, queue);
@@ -146,7 +139,7 @@ final class VisualDirtyRoutes {
         }
 
         private void remove() {
-            CopyOnWriteArrayList<RouteReference> entries = this.owner.get();
+            CopyOnWriteArrayList<AttachmentReference> entries = this.owner.get();
             if (entries != null) {
                 entries.remove(this);
             }

@@ -11,9 +11,6 @@ import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.visual.PaneVisual;
 import net.momirealms.sparrow.ui.visual.PaneVisualImpl;
-import net.momirealms.sparrow.ui.visual.ResolvedVisual;
-import org.bukkit.inventory.ItemStack;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -31,7 +28,7 @@ abstract non-sealed class AbstractPane implements Pane {
     private final Element[] elements;   // 每个槽位当前保存的元素
     private final SlotObserver[] observers; // 每个槽位对应一条订阅链的头节点
     private final SignalBindings signalBindings = new SignalBindings(); // 持有的 Signal 绑定
-    private final PaneVisualImpl visual;    // 视觉配置, 空槽背景与逐槽显示路径失效路由
+    private final PaneVisualImpl visual;    // 视觉配置, 空槽背景与逐槽显示路径失效订阅
 
     private boolean frozen;             // 是否禁止玩家交互
     // 额外参与的 Inventory 序列, 写时整体替换为新的不可变快照, 读不加锁
@@ -202,22 +199,6 @@ abstract non-sealed class AbstractPane implements Pane {
     @NotNull
     public final PaneVisual visual() {
         return this.visual;
-    }
-
-    @Override
-    @Nullable
-    @ApiStatus.Internal
-    public final ResolvedVisual resolvedOverlay(int slot, @Nullable ItemStack actual) {
-        return this.visual.visualizeOverlay(slot, actual);
-    }
-
-    @Override
-    @NotNull
-    @ApiStatus.Internal
-    public final Subscription attachVisualDirty(int slot, @NotNull Runnable invalidator) {
-        Objects.checkIndex(slot, this.elements.length);
-        Objects.requireNonNull(invalidator, "invalidator");
-        return this.visual.attach(slot, invalidator);
     }
 
     @Override

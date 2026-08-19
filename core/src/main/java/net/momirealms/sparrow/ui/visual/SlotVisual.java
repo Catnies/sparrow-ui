@@ -1,8 +1,11 @@
 package net.momirealms.sparrow.ui.visual;
 
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Function;
@@ -83,4 +86,31 @@ public interface SlotVisual extends Visual {
     default void setVisualizerItem(int slot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
         this.setVisualizerProvider(slot, VisualLayer.itemVisualizer(visualizer));
     }
+
+    /**
+     * 求值一个槽位的两层视觉映射.
+     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
+     *
+     * @param slot 宿主槽位
+     * @param actual 该显示位当前的同步可读内容, 没有内容为 {@code null}
+     * @return 求值结果, 两层都缺席或放行时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号超出宿主范围时
+     */
+    @Nullable
+    @ApiStatus.Internal
+    ResolvedVisual visualize(int slot, @Nullable ItemStack actual);
+
+    /**
+     * 挂一条这个槽位的视觉失效订阅.
+     * <p>失效可能从任意线程发出, 回调不在订阅表的同步区间执行;
+     * 订阅表只弱持有回执, 调用方丢掉回执即等于退订.
+     *
+     * @param slot 宿主槽位
+     * @param invalidator 该槽视觉配置变化时要跑的通知
+     * @return 可用于提前退订的回执
+     * @throws IndexOutOfBoundsException 当槽号超出宿主范围时
+     */
+    @NotNull
+    @ApiStatus.Internal
+    Subscription attach(int slot, @NotNull Runnable invalidator);
 }

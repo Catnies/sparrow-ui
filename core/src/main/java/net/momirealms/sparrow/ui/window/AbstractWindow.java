@@ -148,7 +148,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private boolean forceReopen;    // 即使标题相同也必须重开菜单
 
     // 槽位视觉
-    private final WindowVisualImpl windowVisual;        // Window 槽位视觉配置与逐槽显示路径失效路由
+    private final WindowVisualImpl windowVisual;        // Window 槽位视觉配置与逐槽显示路径失效订阅
 
     // 光标
     private boolean cursorDirty;    // 光标是否需要重新核对
@@ -562,20 +562,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     public WindowVisual visual() {
         return this.windowVisual;
-    }
-
-    @Nullable
-    @Override
-    public ResolvedVisual resolvedOverlay(int windowSlot, @Nullable ItemStack actual) {
-        return this.windowVisual.visualizeOverlay(windowSlot, actual);
-    }
-
-    @Override
-    @NotNull
-    public Subscription attachVisualDirty(int windowSlot, @NotNull Runnable invalidator) {
-        Objects.checkIndex(windowSlot, this.layout.size());
-        Objects.requireNonNull(invalidator, "invalidator");
-        return this.windowVisual.attach(windowSlot, invalidator);
     }
 
     @Override

@@ -92,12 +92,13 @@ public final class RenderCell implements AutoCloseable {
         this.recomputeRequested.set(true);
     }
 
-    // 占位提供器当场算出内容, 没有占位时用消费方的兜底内容.
+    // 占位提供器当场算出内容, 没有占位就用消费方的兜底内容, 兜底也没有就返回空物品.
     @NotNull
-    private ItemStack renderPlaceholder(@Nullable ImmediateItemProvider placeholder, @NotNull ItemStack lastResort) {
-        return placeholder != null
-                ? Objects.requireNonNull(placeholder.provideImmediately(this.context), "placeholder item")
-                : lastResort;
+    private ItemStack renderPlaceholder(@Nullable ImmediateItemProvider placeholder, @Nullable ItemStack lastResort) {
+        if (placeholder != null) {
+            return Objects.requireNonNull(placeholder.provideImmediately(this.context), "placeholder item");
+        }
+        return lastResort != null ? lastResort : ItemStack.empty();
     }
 
     private void submit(ItemProvider provider, long generation) {
@@ -223,18 +224,17 @@ public final class RenderCell implements AutoCloseable {
          * @param sourceKey 来源身份, 消费方必须为同一来源稳定地给出同一个对象; 换了对象即视为换了来源
          * @param provider 本轮使用的 Provider
          * @param placeholder 首次成功结果前使用的占位提供器, {@code null} 表示没有
-         * @param lastResort 没有占位提供器时的兜底内容
+         * @param lastResort 没有占位提供器时的兜底内容, {@code null} 表示空物品
          */
         record Projected(
                 @NotNull Object sourceKey,
                 @NotNull ItemProvider provider,
                 @Nullable ImmediateItemProvider placeholder,
-                @NotNull ItemStack lastResort
+                @Nullable ItemStack lastResort
         ) implements Intent {
             public Projected {
                 Objects.requireNonNull(sourceKey, "sourceKey");
                 Objects.requireNonNull(provider, "provider");
-                Objects.requireNonNull(lastResort, "lastResort");
             }
 
             /**
@@ -243,7 +243,7 @@ public final class RenderCell implements AutoCloseable {
             public Projected(
                     @NotNull ItemProvider provider,
                     @Nullable ImmediateItemProvider placeholder,
-                    @NotNull ItemStack lastResort
+                    @Nullable ItemStack lastResort
             ) {
                 this(provider, provider, placeholder, lastResort);
             }
