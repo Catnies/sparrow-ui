@@ -45,10 +45,10 @@ abstract class AbstractWindowSession implements WindowSession {
      */
     @NotNull
     static AbstractWindowSession create(@NotNull WindowManager manager, @NotNull AbstractWindow<?> root) {
-        AbstractWindowSession session = switch (root.sessionKind()) {
-            case STACK -> new WindowSessionStack(manager, root.viewer(), root.sessionEndHandlers());
-            case RETAINED_STACK -> new WindowSessionRetainedStack(manager, root.viewer(), root.sessionEndHandlers());
-            case TREE -> new WindowSessionTree(manager, root.viewer(), root.sessionEndHandlers());
+        AbstractWindowSession session = switch (root.rootSessionKind()) {
+            case STACK -> new WindowSessionStack(manager, root.viewer(), root.rootSessionEndHandlers());
+            case RETAINED_STACK -> new WindowSessionRetainedStack(manager, root.viewer(), root.rootSessionEndHandlers());
+            case TREE -> new WindowSessionTree(manager, root.viewer(), root.rootSessionEndHandlers());
         };
         session.commitOpen(root, false);
         return session;

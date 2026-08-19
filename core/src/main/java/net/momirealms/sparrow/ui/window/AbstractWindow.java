@@ -73,8 +73,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param outsideClickHandlers 容器外点击处理器
      * @param backOnPlayerClose 玩家主动关闭时是否返回来源窗口
      * @param data 随 Window 携带的用户对象
-     * @param sessionKind 本窗成为链根时新会话的类型
-     * @param sessionEndHandlers 本窗成为链根时装进新会话的结束处理器
+     * @param rootSessionKind 本窗成为链根时新会话的类型
+     * @param rootSessionEndHandlers 本窗成为链根时装进新会话的结束处理器
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
      * @param windowVisualLayer Window 槽位视觉配置的初始全局层
@@ -88,8 +88,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<WindowOutsideClick>> outsideClickHandlers,
             boolean backOnPlayerClose,
             @Nullable Object data,
-            @NotNull WindowSession.Kind sessionKind,
-            @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
+            @NotNull WindowSession.Kind rootSessionKind,
+            @NotNull List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
             @NotNull VisualLayer windowVisualLayer,
@@ -108,8 +108,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final Player viewer;
     private final WindowLayout layout;
     private final @Nullable Object data;                // 随窗携带的用户对象
-    private final WindowSession.Kind sessionKind;       // 成为链根时新会话的类型
-    private final List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers; // 成为链根时装进新会话的结束处理器
+    private final WindowSession.Kind rootSessionKind;       // 成为链根时新会话的类型
+    private final List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
     private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
 
     // 用户处理器
@@ -200,8 +200,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.outsideClickHandlers = new HandlerList<>(settings.outsideClickHandlers());
         this.backOnPlayerClose = settings.backOnPlayerClose();
         this.data = settings.data();
-        this.sessionKind = settings.sessionKind();
-        this.sessionEndHandlers = settings.sessionEndHandlers();
+        this.rootSessionKind = settings.rootSessionKind();
+        this.rootSessionEndHandlers = settings.rootSessionEndHandlers();
         this.serverWindowState = settings.windowState();
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.dirtySlots = new BitSet(layout.size());
@@ -366,14 +366,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 本窗成为链根时新会话的类型.
     @NotNull
-    WindowSession.Kind sessionKind() {
-        return this.sessionKind;
+    WindowSession.Kind rootSessionKind() {
+        return this.rootSessionKind;
     }
 
     // 本窗成为链根时装进新会话的结束处理器.
     @NotNull
-    List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers() {
-        return this.sessionEndHandlers;
+    List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers() {
+        return this.rootSessionEndHandlers;
     }
 
     @Override

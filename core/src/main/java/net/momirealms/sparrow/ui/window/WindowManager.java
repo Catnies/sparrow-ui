@@ -88,10 +88,10 @@ public final class WindowManager implements Listener {
      * 先完成新窗口初始化再发布 active 映射, 随后才关闭被替换的旧窗口.
      *
      * @param window 要打开的 Window
-     * @param navigating 发起本次打开的会话, 会话外打开为 null
+     * @param transitionSession 发起本次打开的会话, 会话外打开为 null
      * @param back 会话内打开时, 本次打开是否为回到上一扇
      */
-    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession navigating, boolean back) {
+    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession transitionSession, boolean back) {
         if (this.shutdown.get()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -106,7 +106,7 @@ public final class WindowManager implements Listener {
         // 顶替的是别的当前窗就是会话外打开, 本次导航自己的当前窗属会话内交接, 会话不结束
         AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         AbstractWindowSession displaced = previous == null ? null : previous.sessionImpl();
-        if (displaced == navigating) {
+        if (displaced == transitionSession) {
             displaced = null;
         }
         boolean replaceWindow = previous != null && previous != window;
@@ -134,10 +134,10 @@ public final class WindowManager implements Listener {
             displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
         }
         // 会话状态在 open handler 之前落地, 会话外打开的窗成为新根窗, 会话在此刻诞生, 会话内打开则推进当前位置
-        if (navigating == null) {
+        if (transitionSession == null) {
             window.session(AbstractWindowSession.create(this, window));
         } else {
-            navigating.commitOpen(window, back);
+            transitionSession.commitOpen(window, back);
         }
         window.fireOpenHandlers();
         return Window.OpenResult.OPENED;
@@ -200,8 +200,9 @@ public final class WindowManager implements Listener {
     // 在玩家实体线程解析出发窗所属的会话, 必要时新起一段会话.
     private boolean navigateNow(AbstractWindow<?> source, AbstractWindow<?> next) {
         AbstractWindowSession session = source.sessionImpl();
-        if (session != null && session.currentWindow() == source) {
-            return session.navigateNow(next);
+        // 仍是会话成员却已不在当前位置: 位置早就不在出发窗上, 不再新起一段会话去覆盖它的归属
+        if (session != null) {
+            return session.currentWindow() == source && session.navigateNow(next);
         }
 
         // source 不在任何会话中就让它当根窗; 旧会话在 openNow 里照常按会话外打开结束
