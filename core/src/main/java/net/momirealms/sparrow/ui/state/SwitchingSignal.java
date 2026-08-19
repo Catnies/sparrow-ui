@@ -97,11 +97,24 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
         AbstractSignal<T> source = AbstractSignal.require(this.sourceOf.apply(currentKey));
         // 无下游订阅时不挂转发, 版本改由 get 与 version 的拉取路径推进
         Subscription previous = this.sourceUpstream;
+        Subscription attached = null;
         if (previous != null) {
-            this.sourceUpstream = source.onDirty(this::onUpstreamDirty);
+            attached = source.onDirty(this::onUpstreamDirty);
         }
-        // 取版本快照
-        long sourceVersion = source.version();
+        // 取版本快照. 抛出时整笔换源作废: 新转发当场撤掉, 选中结果与旧转发都维持原状,
+        // 否则逻辑上还选着旧来源, 转发却已经改听新来源, 而换回旧 key 走的是快路径, 不会再重挂.
+        long sourceVersion;
+        try {
+            sourceVersion = source.version();
+        } catch (RuntimeException | Error exception) {
+            if (attached != null) {
+                attached.close();
+            }
+            throw exception;
+        }
+        if (attached != null) {
+            this.sourceUpstream = attached;
+        }
         this.version++;
         this.selected = new Selected<>(currentKey, source, sourceVersion);
         return previous;

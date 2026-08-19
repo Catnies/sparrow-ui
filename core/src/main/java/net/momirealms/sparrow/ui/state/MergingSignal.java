@@ -85,10 +85,22 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
 
         // 无下游订阅时不挂转发, 版本改由 version 的拉取路径推进
         Subscription[] previous = this.memberUpstream;
+        Subscription[] attached = null;
         if (previous != null) {
-            this.memberUpstream = attachAll(members, this::onUpstreamDirty);
+            attached = attachAll(members, this::onUpstreamDirty);
         }
-        long sum = versionSumOf(members);
+        // 版本之和抛出时整笔换成员作废: 新转发当场撤掉, 对齐结果与上一批转发都维持原状,
+        // 否则逻辑上还对着旧成员, 转发却已经改听新成员, 而换回旧成员走的是快路径, 不会再重挂.
+        long sum;
+        try {
+            sum = versionSumOf(members);
+        } catch (RuntimeException | Error exception) {
+            closeAll(attached);
+            throw exception;
+        }
+        if (attached != null) {
+            this.memberUpstream = attached;
+        }
         this.version++;
         this.aligned = new Aligned(members, sourcesVersion, sum);
         return previous;
