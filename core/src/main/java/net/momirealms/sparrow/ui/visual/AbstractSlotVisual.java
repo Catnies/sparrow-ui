@@ -13,23 +13,12 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Function;
 
-/**
- * 全部按槽位组织的视觉宿主共用的实现: 两层视觉映射, 空槽背景, 以及按槽位的失效路由.
- * <p>配置写在一份不可变的 {@link State} 里, 每次修改整体替换, 读取不加锁.
- * 空槽背景这一层由子类的接口决定要不要对外开放; 不开放的宿主它始终缺席, 求值时自然跳过.
- */
 @ApiStatus.Internal
 public abstract class AbstractSlotVisual extends AbstractVisual implements SlotVisual {
     private final Object stateLock = new Object();
-    private final VisualDirtyRoutes dirtyRoutes;
-    private volatile State state;
+    private final VisualDirtyRoutes dirtyRoutes;    // 按槽位的失效路由, 槽位数量建成后固定不变
+    private volatile State state;                   // 配置整体存于不可变 State, 修改即整体替换, 读取无锁
 
-    /**
-     * 建一个没有任何配置的视觉宿主.
-     *
-     * @param signalBindings 宿主持有的 Signal 绑定, 决定 bind 的订阅寿命
-     * @param size 槽位数量, 建成后固定不变
-     */
     protected AbstractSlotVisual(@NotNull SignalBindings signalBindings, int size) {
         super(signalBindings);
         this.dirtyRoutes = new VisualDirtyRoutes(size);
@@ -72,21 +61,13 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         this.dirtyRoutes.dirty(slot);
     }
 
-    /**
-     * 返回当前空槽背景.
-     *
-     * @return 空槽背景; 没有设置过时为 {@code null}
-     */
+    // 空槽背景是否对外由子类接口决定, 不开放的宿主中它始终为 null, 求值自然跳过.
     @Nullable
     public final ItemProvider background() {
         return this.state.background;
     }
 
-    /**
-     * 替换空槽背景并标脏全部槽位. 与当前是同一个背景时不做任何事.
-     *
-     * @param background 空槽背景, {@code null} 表示清除
-     */
+    // 与当前是同一个背景时不做任何事.
     public final void background(@Nullable ItemProvider background) {
         synchronized (this.stateLock) {
             State current = this.state;
@@ -98,13 +79,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         this.dirty();
     }
 
-    /**
-     * 求值这个宿主的全部层: 逐槽层, 全局层, 空槽背景. 上层放行才轮到下层.
-     *
-     * @param slot 宿主槽位
-     * @param actual 该槽当前的同步可读内容, 没有内容为 null
-     * @return 求值结果; 所有层都缺席或放行时为 null
-     */
+    // 逐槽层, 全局层, 空槽背景依次求值(actual 为该槽当前内容, 空为 null), 上层放行才轮到下层.
     @Nullable
     public final ResolvedVisual visualize(int slot, @Nullable ItemStack actual) {
         State current = this.state;
@@ -115,27 +90,13 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         return actual == null && current.background != null ? ResolvedVisual.of(current.background) : null;
     }
 
-    /**
-     * 只求值两层视觉映射, 不含空槽背景.
-     * <p>背景是"这一格没内容时显示什么"的替补, 只在内容所在的那个宿主生效, 因此覆盖别人的宿主用这个入口.
-     *
-     * @param slot 宿主槽位
-     * @param actual 该槽当前的同步可读内容, 没有内容为 null
-     * @return 求值结果; 两层都缺席或放行时为 null
-     */
+    // 只求值两层映射不含背景, 背景只在内容所在宿主生效, 覆盖别人的宿主用这个入口.
     @Nullable
     public final ResolvedVisual visualizeOverlay(int slot, @Nullable ItemStack actual) {
         return overlay(this.state, slot, actual);
     }
 
-    /**
-     * 挂一条这个槽位的视觉失效路由.
-     * <p>路由只弱持有回执, 调用方丢掉回执即等于退订.
-     *
-     * @param slot 宿主槽位
-     * @param invalidator 该槽视觉配置变化时要跑的通知
-     * @return 可用于提前退订的回执
-     */
+    // 挂一条该槽位的失效路由, 路由只弱持有回执, 丢掉回执即退订.
     @NotNull
     public final Subscription attach(int slot, @NotNull Runnable invalidator) {
         return this.dirtyRoutes.attach(slot, invalidator);

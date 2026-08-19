@@ -13,7 +13,7 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
-    private final AtomicBoolean pendingDirty = new AtomicBoolean();
+    private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 置脏请求合并, 渲染线程用 takeDirty() 取走
     private volatile VisualLayer layer;
 
     public CursorVisualImpl(@NotNull SignalBindings signalBindings, @NotNull VisualLayer layer) {
@@ -27,7 +27,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         return this.layer.visualizer();
     }
 
-    // 先换层再置失效位: 两次写都是 volatile 语义, 消费方看到失效位就一定看得到新的层.
+    // 先换层再置失效位, 两次写都是 volatile 语义, 消费方看到失效位就一定看得到新层.
     @Override
     public void setVisualizerProvider(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
@@ -37,12 +37,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         this.dirty();
     }
 
-    /**
-     * 求值光标视觉映射. 喂给映射的输入在此处复制; 空光标以 {@code null} 输入.
-     *
-     * @param actual 菜单实际光标
-     * @return 求值结果; 没有配置或放行时为 {@code null}, 表示按菜单实际光标显示
-     */
+    // 求值光标视觉映射, 空光标按 null 输入, 放行时返回 null 表示按菜单实际光标显示.
     @Nullable
     public ResolvedVisual visualize(@NotNull ItemStack actual) {
         return this.layer.visualize(actual.isEmpty() ? null : actual);

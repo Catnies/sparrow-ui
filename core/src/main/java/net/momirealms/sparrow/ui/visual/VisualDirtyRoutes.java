@@ -12,9 +12,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
-/**
- * 按槽位保存弱 attachment 的视觉失效路由.
- */
 final class VisualDirtyRoutes {
     private final AtomicReferenceArray<CopyOnWriteArrayList<RouteReference>> routesBySlot;
     private final ReferenceQueue<Attachment> deadAttachments = new ReferenceQueue<>();
@@ -46,6 +43,7 @@ final class VisualDirtyRoutes {
 
     void dirtyAll() {
         this.reapDeadAttachments();
+        // 先快照全部槽位再统一发布
         Object[][] snapshots = new Object[this.routesBySlot.length()][];
         for (int slot = 0; slot < snapshots.length; slot++) {
             CopyOnWriteArrayList<RouteReference> routes = this.routesBySlot.get(slot);
@@ -76,12 +74,14 @@ final class VisualDirtyRoutes {
     }
 
     private void reapDeadAttachments() {
+        // 清理已被回收 attachment 的路由记录
         Reference<? extends Attachment> reference;
         while ((reference = this.deadAttachments.poll()) != null) {
             ((RouteReference) reference).remove();
         }
     }
 
+    // 失败不中断其余通知, 合并后返回给调用方抛出
     @Nullable
     private static RuntimeException publish(Object @Nullable [] snapshot, @Nullable RuntimeException failure) {
         if (snapshot == null) {
