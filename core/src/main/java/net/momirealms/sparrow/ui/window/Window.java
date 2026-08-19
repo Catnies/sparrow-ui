@@ -3,7 +3,9 @@ package net.momirealms.sparrow.ui.window;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
+import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
+import net.momirealms.sparrow.ui.visual.WindowVisual;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -14,6 +16,7 @@ import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -424,6 +427,134 @@ public interface Window {
     void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
+     * 返回本 Window 的槽位视觉配置: 两层视觉映射.
+     * <p>同一 Window 始终返回同一个对象; 配置只影响本 Window 的查看者,
+     * 并盖在显示路径的最外层, 先于沿途 Pane 与路径终点求值.
+     *
+     * @return 槽位视觉配置
+     */
+    @NotNull
+    WindowVisual visual();
+
+    /**
+     * 求值一个 Window 槽位的两层视觉映射.
+     * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
+     *
+     * @param windowSlot Window 槽位
+     * @param actual 路径终点的同步可读内容, 没有内容为 {@code null}
+     * @return 求值结果, 两层都缺席或放行时为 {@code null}
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    @ApiStatus.Internal
+    ResolvedVisual resolvedOverlay(int windowSlot, @Nullable ItemStack actual);
+
+    /**
+     * 把显示路径附着到一个精确槽位的视觉失效路由.
+     * <p>失效可能从任意线程发出; 回调不会在路由内部的同步区间执行.
+     *
+     * @param windowSlot 路径服务的 Window 槽位
+     * @param invalidator 路径失效动作
+     * @return 附着凭证, 关闭后不再接收失效
+     */
+    @NotNull
+    @ApiStatus.Internal
+    Subscription attachVisualDirty(int windowSlot, @NotNull Runnable invalidator);
+
+    /**
+     * 返回当前的全局视觉映射.
+     *
+     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按路径终点显示
+     */
+    @Nullable
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
+        return this.visual().visualizerProvider();
+    }
+
+    /**
+     * 设置 Window 全局视觉映射. 映射盖在本 Window 每条显示路径的最外层, 命中时沿途 Pane 与路径终点不再参与显示;
+     * 输入是路径终点的同步可读内容, 约定见 {@link WindowVisual}. 返回 {@code null} 表示放行, 交给下一层.
+     * <p>映射只改变本 Window 中的展示结果, 不影响槽位元素, 事务与点击语义; 光标不归它管.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
+     */
+    default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual().setVisualizerProvider(visualizerProvider);
+    }
+
+    /**
+     * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     *
+     * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     */
+    default void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual().setVisualizerProvider(visualizerProvider, placeholder);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射设置 Window 全局视觉映射.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同.
+     *
+     * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
+     */
+    default void setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual().setVisualizerItem(visualizer);
+    }
+
+    /**
+     * 返回一个 Window 槽位的显式视觉映射; 不含回退到的全局映射.
+     *
+     * @param windowSlot Window 槽位
+     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    @Nullable
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int windowSlot) {
+        return this.visual().visualizerProvider(windowSlot);
+    }
+
+    /**
+     * 替换一个 Window 槽位的逐槽视觉映射, 它是整条显示路径层级最高的一层:
+     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
+     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
+     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
+     *
+     * @param windowSlot Window 槽位
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerProvider(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+        this.visual().setVisualizerProvider(windowSlot, visualizerProvider);
+    }
+
+    /**
+     * 替换一个 Window 槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
+     * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
+     *
+     * @param windowSlot Window 槽位
+     * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
+     * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerProvider(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
+        this.visual().setVisualizerProvider(windowSlot, visualizerProvider, placeholder);
+    }
+
+    /**
+     * 使用直接返回 ItemStack 的映射替换一个 Window 槽位的逐槽视觉映射.
+     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     *
+     * @param windowSlot Window 槽位
+     * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     */
+    default void setVisualizerItem(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+        this.visual().setVisualizerItem(windowSlot, visualizer);
+    }
+
+    /**
      * 返回只控制客户端光标的视觉配置与失效范围.
      * <p>同一 Window 始终返回同一个对象; 标脏不会影响 Window 槽位或请求全量同步.
      *
@@ -767,6 +898,42 @@ public interface Window {
          * @return 此 Builder
          */
         @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
+
+        /**
+         * 设置 Window 全局视觉映射, 提供器给出结果前显示该槽真实内容.
+         * <p>约定与 {@link Window#setVisualizerProvider(Function)} 相同, 打开前即已生效.
+         *
+         * @param visualizerProvider 全局视觉映射, {@code null} 表示不设置这一层
+         * @return 此 Builder
+         */
+        @NotNull
+        default B setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
+            return this.setVisualizerProvider(visualizerProvider, null);
+        }
+
+        /**
+         * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
+         *
+         * @param visualizerProvider 全局视觉映射, {@code null} 表示不设置这一层
+         * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
+         * @return 此 Builder
+         */
+        @NotNull
+        B setVisualizerProvider(
+                @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
+                @Nullable ImmediateItemProvider placeholder
+        );
+
+        /**
+         * 使用直接返回 ItemStack 的映射设置 Window 全局视觉映射.
+         *
+         * @param visualizer 全局物品映射, {@code null} 表示不设置这一层
+         * @return 此 Builder
+         */
+        @NotNull
+        default B setVisualizerItem(@Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
+            return this.setVisualizerProvider(VisualLayer.itemVisualizer(visualizer));
+        }
 
         /**
          * 设置光标视觉映射, 提供器给出结果前显示菜单实际光标.

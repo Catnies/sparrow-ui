@@ -45,6 +45,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
+    private VisualLayer windowVisualLayer = VisualLayer.NONE;
     private VisualLayer cursorVisualLayer = VisualLayer.NONE;
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
@@ -64,6 +65,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.sessionEndHandlers = new ArrayList<>(source.sessionEndHandlers);
         this.windowState = source.windowState;
         this.windowStateChangeHandlers = new ArrayList<>(source.windowStateChangeHandlers);
+        this.windowVisualLayer = source.windowVisualLayer;
         this.cursorVisualLayer = source.cursorVisualLayer;
         this.modifiers = new ArrayList<>(source.modifiers);
     }
@@ -212,6 +214,16 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @NotNull
     @Override
+    public final B setVisualizerProvider(
+            @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
+            @Nullable ImmediateItemProvider placeholder
+    ) {
+        this.windowVisualLayer = new VisualLayer(visualizerProvider, placeholder);
+        return this.self();
+    }
+
+    @Override
+    @NotNull
     public final B setCursorVisualizerProvider(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider,
             @Nullable ImmediateItemProvider placeholder
@@ -295,6 +307,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
                 List.copyOf(this.sessionEndHandlers),
                 this.windowState,
                 List.copyOf(this.windowStateChangeHandlers),
+                this.windowVisualLayer,
                 this.cursorVisualLayer
         );
     }

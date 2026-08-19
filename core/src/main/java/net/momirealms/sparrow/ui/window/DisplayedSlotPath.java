@@ -35,6 +35,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     private final int rootSlot;     // 路径起点在根 Pane 中的槽位
     private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
     private final RenderCell renderCell; // 失效驱动的渲染投影
+    private final Subscription windowVisualSubscription; // 本 Window 槽位视觉配置变化的失效订阅
     private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.RESOLVING);
     private PathState current;  // 当前已解析出的路径
 
@@ -57,6 +58,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 () -> this.onDirty(Invalidation.COMPLETION),
                 throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Window slot " + windowSlot, throwable)
         );
+        this.windowVisualSubscription = window.attachVisualDirty(windowSlot, () -> this.onDirty(Invalidation.LEAF));
 
         try {
             this.resolve();
@@ -385,6 +387,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      * 生成当前槽位应显示的 ItemStack.
      * <p>意图按以下优先级装配:
      * <ol>
+     *   <li>本 Window 的槽位视觉映射: 它只属于本查看者, 盖在整条路径的最外层.
      *   <li>沿途每层 Pane 的视觉映射, 自根向叶: 命中的层盖住路径终点.
      *   <li>若路径终点为 InventoryLink, 显示 Inventory 的槽位映射,
      *       没有映射就显示内容, 最后显示 Inventory 的背景. 没有背景就保持空槽.
@@ -404,6 +407,12 @@ final class DisplayedSlotPath implements AutoCloseable {
             SparrowInventory inventory = state.inventoryLink.inventory();
             int slot = state.inventoryLink.slot();
             itemStack = inventory instanceof ReferencingInventory ? inventory.itemAt(slot) : inventory.unsafeItemAt(slot);
+        }
+        // Window 槽位层最先试探: 它只属于本查看者, 有权盖住整条路径
+        ResolvedVisual windowOverlay = this.window.resolvedOverlay(this.windowSlot, itemStack);
+        if (windowOverlay != null) {
+            ItemStack lastResort = state.inventoryLink != null ? ItemUtils.emptyIfNull(itemStack) : ItemStack.empty();
+            return this.renderCell.render(new RenderCell.Intent.Projected(windowOverlay.sourceKey(), windowOverlay.provider(), windowOverlay.placeholder(), lastResort));
         }
         // 沿途每层 Pane 的视觉映射自根向叶试探, 越靠外的层越优先
         for (int index = 0; index < state.depth; index++) {
@@ -610,6 +619,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             return;
         }
         this.renderCell.close();
+        this.windowVisualSubscription.close();
         PathState previous = this.current;
         this.current = null;
         if (previous != null) {

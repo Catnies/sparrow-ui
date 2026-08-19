@@ -34,6 +34,8 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.UnmodifiableBitSet;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
+import net.momirealms.sparrow.ui.visual.WindowVisual;
+import net.momirealms.sparrow.ui.visual.WindowVisualImpl;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -74,6 +76,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * @param sessionEndHandlers 本窗成为链根时装进新会话的结束处理器
      * @param windowState 初始服务器 Window 状态
      * @param windowStateChangeHandlers 客户端状态确认处理器
+     * @param windowVisualLayer Window 槽位视觉配置的初始全局层
      * @param cursorVisualLayer 光标视觉配置的初始层
      */
     record Settings(
@@ -88,6 +91,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
+            @NotNull VisualLayer windowVisualLayer,
             @NotNull VisualLayer cursorVisualLayer
     ) {
     }
@@ -142,6 +146,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private boolean forceFull;      // 下一次同步是否强制全量
     private boolean menuDirty;      // 菜单是否有槽位内容之外的待同步状态
     private boolean forceReopen;    // 即使标题相同也必须重开菜单
+
+    // 槽位视觉
+    private final WindowVisualImpl windowVisual;        // Window 槽位视觉配置与逐槽显示路径失效路由
 
     // 光标
     private boolean cursorDirty;    // 光标是否需要重新核对
@@ -198,6 +205,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
+        this.windowVisual = new WindowVisualImpl(this.signalBindings, layout.size());
+        // 此刻还没有任何显示路径附着, 写入 Builder 的初始全局层不会通知到任何人
+        VisualLayer windowVisualLayer = settings.windowVisualLayer();
+        if (windowVisualLayer != VisualLayer.NONE) {
+            this.windowVisual.setVisualizerProvider(windowVisualLayer.visualizer(), windowVisualLayer.placeholder());
+        }
         this.cursorRenderContext = RenderContext.cursor(this);
         this.cursorVisual = new CursorVisualImpl(this.signalBindings, settings.cursorVisualLayer());
         this.cursorRenderCell = new RenderCell(
@@ -545,7 +558,26 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
+    @Override
     @NotNull
+    public WindowVisual visual() {
+        return this.windowVisual;
+    }
+
+    @Nullable
+    @Override
+    public ResolvedVisual resolvedOverlay(int windowSlot, @Nullable ItemStack actual) {
+        return this.windowVisual.visualizeOverlay(windowSlot, actual);
+    }
+
+    @Override
+    @NotNull
+    public Subscription attachVisualDirty(int windowSlot, @NotNull Runnable invalidator) {
+        Objects.checkIndex(windowSlot, this.layout.size());
+        Objects.requireNonNull(invalidator, "invalidator");
+        return this.windowVisual.attach(windowSlot, invalidator);
+    }
+
     @Override
     public CursorVisual cursorVisual() {
         return this.cursorVisual;
