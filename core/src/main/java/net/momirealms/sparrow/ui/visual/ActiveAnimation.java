@@ -1,6 +1,10 @@
 package net.momirealms.sparrow.ui.visual;
 
+import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
@@ -30,10 +34,12 @@ final class ActiveAnimation implements AnimationHandle {
 
     private final WeakReference<AbstractSlotVisual> host;
     private final AnimationDefinition animationDefinition;
-    final int[] slots;               // 播放开始时从描述读出的槽位, 摘除时逐槽标脏
+    final int[] slots;               // 播放开始时从描述读出的槽位, 帧推进与摘除时逐槽标脏
     private final int[] orderBySlot; // 宿主槽位 -> orderIndex, -1 表示不参与
     private final long startTick;
-    private FinishReason finishReason;              // 有值即已结束, 由锁保护
+    private final long totalTicks;                  // 播放开始时从描述读定的总时长, 负数表示无限
+    private volatile Subscription clock;            // 帧推进的时钟订阅句柄, 结束时提前解绑
+    private volatile FinishReason finishReason;     // 有值即已结束, 写入由锁保护
     private List<Consumer<FinishReason>> callbacks; // 等待结束的回调, 由锁保护, 结束时与终态一起整批取走并置 null, 之后注册的改为当场触发
 
     public ActiveAnimation(@NotNull AbstractSlotVisual host, @NotNull AnimationDefinition animationDefinition, int @NotNull [] slots, int @NotNull [] orderBySlot, long startTick) {
@@ -42,6 +48,7 @@ final class ActiveAnimation implements AnimationHandle {
         this.slots = slots;
         this.orderBySlot = orderBySlot;
         this.startTick = startTick;
+        this.totalTicks = animationDefinition.totalTicks();
     }
 
     // 求值一个槽位此刻的显示, 槽位不参与或帧放行时返回 null.
@@ -51,6 +58,34 @@ final class ActiveAnimation implements AnimationHandle {
         if (orderIndex < 0) return null;
         ItemProvider frame = this.animationDefinition.frame(orderIndex, slot, nowTick - this.startTick, actual);
         return frame == null ? null : new ResolvedVisual(this, frame, null);
+    }
+
+    // 播放入场后挂上帧推进时钟, 订阅由宿主的 SignalBindings 持有, 宿主消亡即随之停摆.
+    void startClock(@NotNull SignalBindings bindings, @NotNull Signal<Long> clock) {
+        Subscription subscription = bindings.add(clock.onDirty(this::onTick));
+        this.clock = subscription;
+        // 挂钟与并发终结(如关窗)竞争时, 晚到的一方负责把钟收掉
+        if (this.finishReason != null) {
+            subscription.close();
+        }
+    }
+
+    // 周期时钟回调, 到点自然结束, 未到点推进帧显示.
+    // 宿主已被回收时自我解绑, 不再钉住 tick 源.
+    private void onTick() {
+        AbstractSlotVisual host = this.host.get();
+        if (host == null || this.finishReason != null) {
+            Subscription clock = this.clock;
+            if (clock != null) {
+                clock.close();
+            }
+            return;
+        }
+        if (this.totalTicks >= 0 && Signals.ticking().get() - this.startTick >= this.totalTicks) {
+            this.finish(FinishReason.COMPLETED);
+            return;
+        }
+        host.dirtyAnimated(this.slots);
     }
 
     @Override
@@ -67,7 +102,11 @@ final class ActiveAnimation implements AnimationHandle {
             pending = this.callbacks;
             this.callbacks = null;
         }
-        // 先摘层再回调, 回调运行时被盖的槽位已经恢复显示
+        // 先停钟摘层再回调, 回调运行时被盖的槽位已经恢复显示
+        Subscription clock = this.clock;
+        if (clock != null) {
+            clock.close();
+        }
         AbstractSlotVisual host = this.host.get();
         if (host != null) {
             host.removeAnimation(this);

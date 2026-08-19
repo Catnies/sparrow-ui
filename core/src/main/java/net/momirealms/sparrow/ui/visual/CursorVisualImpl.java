@@ -33,6 +33,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
             @Nullable ImmediateItemProvider placeholder
     ) {
+        if (this.layer.isSameVisualizerSamePlaceholder(visualizerProvider, placeholder)) return;
         this.layer = new VisualLayer(visualizerProvider, placeholder);
         this.dirty();
     }

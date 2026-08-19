@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
@@ -76,6 +77,8 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         if (slots.length == 0) {
             return ActiveAnimation.FINISHED_EMPTY;
         }
+        // 先解析时钟, 把非法周期挡在入场之前
+        Signal<Long> clock = Signals.everyTicks(animationDefinition.periodTicks());
         // 预排宿主槽位到 orderIndex 的查找表, 求值热路径按它 O(1) 判定参与
         int[] orderBySlot = new int[size];
         Arrays.fill(orderBySlot, -1);
@@ -95,9 +98,8 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             this.state = new State(current.global, current.bySlot, animations);
         }
         // 入场即盖住参与的槽位
-        for (int index = 0; index < slots.length; index++) {
-            this.dirtyAttachments.dirty(slots[index]);
-        }
+        this.dirtyAnimated(slots);
+        playing.startClock(this.signalBindings(), clock);
         return playing;
     }
 
@@ -117,7 +119,20 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             }
             this.state = new State(current.global, current.bySlot, animations);
         }
-        int[] slots = animation.slots;
+        this.dirtyAnimated(animation.slots);
+    }
+
+    // 以给定原因结束全部在播动画, 由宿主的生命周期终点调用.
+    @ApiStatus.Internal
+    public final void finishAnimations(@NotNull AnimationHandle.FinishReason reason) {
+        ActiveAnimation[] animations = this.state.animations;
+        for (int index = 0; index < animations.length; index++) {
+            animations[index].finish(reason);
+        }
+    }
+
+    // 帧推进与摘层共用的逐槽标脏, 走与配置写入相同的失效路由.
+    final void dirtyAnimated(int @NotNull [] slots) {
         for (int index = 0; index < slots.length; index++) {
             this.dirtyAttachments.dirty(slots[index]);
         }

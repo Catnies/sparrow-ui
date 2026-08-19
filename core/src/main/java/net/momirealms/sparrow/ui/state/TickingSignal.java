@@ -16,6 +16,7 @@ import java.util.function.LongConsumer;
 final class TickingSignal extends AbstractSignal<Long> {
     private final Ticker ticker;
     private Ticker.Handle handle;
+    private long epochBase; // 本段调度启动时的冻结值, 回调的段内计数叠在它之上, 值因此跨停表续走不回退
     private volatile Versioned<Long> state = new Versioned<>(0L, 0L);
     private final Map<Long, PeriodicRef> periodic = new HashMap<>();                     // 周期 -> 降频视图, 只弱持有
     private final ReferenceQueue<Signal<Long>> releasedViews = new ReferenceQueue<>();   // 视图已被回收的槽
@@ -36,6 +37,7 @@ final class TickingSignal extends AbstractSignal<Long> {
 
     @Override
     protected void onActive() {
+        this.epochBase = this.state.value();
         this.handle = this.ticker.start(this::onTick);
     }
 
@@ -46,11 +48,10 @@ final class TickingSignal extends AbstractSignal<Long> {
     }
 
     private void onTick(long tick) {
+        long total = this.epochBase + tick;
         Versioned<Long> current = this.state;
-        if (current.value() == tick) {
-            return;
-        }
-        this.state = new Versioned<>(tick, current.version() + 1);
+        if (current.value() == total) return;
+        this.state = new Versioned<>(total, current.version() + 1);
         this.notifyDirty();
     }
 

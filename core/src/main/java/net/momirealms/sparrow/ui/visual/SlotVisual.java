@@ -71,12 +71,13 @@ public interface SlotVisual extends Visual {
     /**
      * 播放一个动画, 参与的槽位在播放期间优先显示动画给出的帧, 盖过本宿主的逐槽与全局映射,
      * 结束或取消后自动恢复. 同时播放多个动画时后开始的优先, 帧放行处露出更早开始的动画.
+     * <p>帧按描述的周期随服务器 tick 推进, 时长走完自动结束, 没有观看者不暂停时间轴.
      * <p>空槽位序列的播放立即以 {@link AnimationHandle.FinishReason#COMPLETED} 结束.
      *
      * @param animationDefinition 动画描述, 槽位使用本宿主的坐标系
      * @return 这次播放的控制句柄
      * @throws IndexOutOfBoundsException 当动画槽位超出宿主范围时
-     * @throws IllegalArgumentException 当动画槽位重复时
+     * @throws IllegalArgumentException 当动画槽位重复或周期不是正数时
      */
     @NotNull
     AnimationHandle play(@NotNull AnimationDefinition animationDefinition);

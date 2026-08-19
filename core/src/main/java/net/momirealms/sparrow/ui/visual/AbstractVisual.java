@@ -19,4 +19,9 @@ public abstract class AbstractVisual implements Visual {
     public final Subscription bind(@NotNull Signal<?> signal) {
         return this.signalBindings.add(signal.onDirty(this::dirty));
     }
+
+    @NotNull
+    final SignalBindings signalBindings() {
+        return this.signalBindings;
+    }
 }

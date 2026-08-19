@@ -36,6 +36,7 @@ import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
 import net.momirealms.sparrow.ui.visual.WindowVisual;
 import net.momirealms.sparrow.ui.visual.WindowVisualImpl;
+import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -1575,6 +1576,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             } catch (Throwable throwable) {
                 failure = ThrowableUtils.combine(failure, throwable);
             }
+        }
+        try {
+            this.windowVisual.finishAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
+        } catch (Throwable throwable) {
+            failure = ThrowableUtils.combine(failure, throwable);
         }
         return closePaths(previousPaths, failure);
     }
