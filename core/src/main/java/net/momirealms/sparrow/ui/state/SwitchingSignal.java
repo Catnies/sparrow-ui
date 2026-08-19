@@ -107,8 +107,11 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
         return previous;
     }
 
-    // key 或选中的来源失效: 重选一次, 真的变了才向下游通知.
+    // key 或选中的来源失效时重选一次, 真的变了才向下游通知.
     private void onUpstreamDirty() {
+        // 死条目本来靠派发时投递失败剔除, 而本节点会把没换成员的失效全部截断.
+        // 在这里补一次清理, 避免下游走光之后还会一直挂在集合与成员上重新对齐.
+        this.reapDeadEntries();
         Subscription previous;
         boolean shouldNotify = false;
         synchronized (this.switchLock) {
