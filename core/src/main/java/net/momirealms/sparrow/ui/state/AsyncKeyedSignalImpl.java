@@ -31,6 +31,7 @@ final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSi
         return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key));
     }
 
+    // 分区被取用时推动首载, 只有第一次真正生效.
     @Override
     void afterPartitionAccess(AsyncSignalImpl<T> partition) {
         partition.scheduleInitialLoad();

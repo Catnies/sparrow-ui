@@ -13,11 +13,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
-/**
- * Signal 抽象实现骨架.
- *
- * @param <T> 值类型
- */
 abstract sealed class AbstractSignal<T> implements Signal<T> permits
         MutableSignalImpl,
         MappedSignal,
@@ -203,7 +198,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 订阅条目, 本 signal 只弱引用绑定节点, 凭证一丢订阅就消亡.
+     * 订阅条目, 本 signal 只弱引用绑定节点, 凭证一丢订阅就死亡.
      */
     private final class Entry implements Subscription {
         private final AtomicBoolean closed = new AtomicBoolean();
@@ -245,7 +240,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      * 弱订阅的凭证, 强持有用户回调.
      * <p>本 signal 只弱引用它, 所以订阅的存活完全由持有本节点的一方决定. 它强持有条目,
      * 而条目是本 signal 的内部类, 因此持有本节点等于持有整条上游.
-     * <p>关闭后 {@link #detach()} 会同时丢掉回调与条目, 于是回调捕获的对象和整条上游都当场可回收.
      */
     private static final class BindingNode implements Subscription, Runnable {
         @Nullable private volatile Runnable callback;   // 关闭后置 null
@@ -293,7 +287,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 
     /**
      * 对 {@link BindingNode} 的弱引用, 目标以 {@link Runnable} 形态存放.
-     * 携带所属条目, 节点被回收后可以直接从引用队列定位并关闭该条目.
      */
     private static final class NodeReference extends WeakReference<Runnable> {
         private final Subscription entry;

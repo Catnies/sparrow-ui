@@ -8,19 +8,13 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class Signals {
-    private static volatile TickingSignal ticking;
+    private static volatile TickingSignal ticking; // 懒初始化的全局唯一实例
 
     private Signals() {
     }
 
     /**
      * 服务器 tick 源, 每 tick 失效一次, 值是<strong>本 signal 有订阅者以来经过的 tick 数</strong>.
-     * <p>无订阅期间调度任务会停摆, 值也随之冻结, 因此计数只反映"刷新过多少次", 不能用来推算世界时间.
-     *
-     * <pre>{@code
-     * Signal<Long> day = Signals.ticking().mapDistinct(tick -> tick / 24000L);
-     * Signal<Season> season = day.mapDistinct(Season::ofDay);
-     * }</pre>
      *
      * @return tick 源
      */
@@ -41,7 +35,6 @@ public final class Signals {
     /**
      * 按周期降频的 tick 源, 每 {@code periodTicks} 个 tick 失效一次, 值为已经过去的周期数.
      * <p>相同周期共享同一个派生节点, 因此所有用同一周期的绑定会在同一 tick 一起失效, 天然合并;
-     * 共享只在有人持有时成立, 最后一个持有方消失后节点连同缓存一起回收.
      *
      * @param periodTicks 正数 tick 周期
      * @return 降频后的 tick 源
@@ -59,7 +52,7 @@ public final class Signals {
 
     /**
      * 按 key 在分区之间切换, 值取自 {@code key} 当前选中的那个分区.
-     * <p>{@code key} 换了或选中的分区失效都向下游失效; {@code key} 重算后仍是同一个 key 时什么都不发生.
+     * <p>{@code key} 换了或选中的分区失效都向下游失效, {@code key} 重算后仍是同一个 key 时什么都不发生.
      * <p>某个 key 第一次被选中时才取它的分区, 因此异步分区源的首载也发生在这一刻.
      * <p>选中的分区句柄由返回的 signal 强持有, 换 key 时释放.
      *
@@ -118,9 +111,8 @@ public final class Signals {
     /**
      * 组合集合的成员, 集合换了成员, 或任何一个成员失效, 返回的 signal 都失效.
      * <p>成员数量可以随时变化, 这是它与 {@link Signal#combine} 的区别.
-     * <p>返回值是一个只增不减的计数, 数字本身没有含义, 只用来承载失效.
-     * <p>集合每次变化都必须给出一个与旧值不判等的新集合: 原地改掉同一个集合再写回去, 上游会认为值没变,
-     * 连失效都不会发出来. 集合的迭代顺序还要稳定, 否则同一批成员会被当成换过了.
+     * <p>集合每次变化都必须给出一个与旧值不判等的新集合, 原地改集合再写回去, 上游会认为值没变.
+     * 集合的迭代顺序还要稳定, 否则同一批成员会被当成换过了.
      *
      * <pre>{@code
      * MutableSignal<List<SparrowInventory>> chests = Signal.of(List.of(left, right));

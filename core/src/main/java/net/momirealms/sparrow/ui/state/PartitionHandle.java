@@ -29,7 +29,7 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
     }
 
     /**
-     * <p>版本由句柄自己维护并单调递增, <strong>不能透传分区版本</strong>.
+     * 版本由句柄自己维护并单调递增, <strong>不能透传分区版本</strong>.
      */
     @Override
     long version() {
@@ -47,8 +47,7 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
 
     /**
      * 建立分区到本句柄的转发, 换挂时自己关掉上一条.
-     * <p>只允许在 owner 中该 key 的 compute 内调用, 从而与驱逐互相串行;
-     * {@link #isAttachedTo} 的语义依赖这一点.
+     * <p>只允许在 owner 中该 key 的 compute 内调用, 从而与驱逐互相串行.
      */
     void attach(AbstractSignal<T> partition) {
         Subscription previous;
@@ -58,7 +57,11 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
             }
             previous = this.forward;
             // 这里使用弱订阅, 不能让分区反过来钉住本对象.
-            this.forward = partition.onDirty(this::onPartitionDirty);
+            this.forward = partition.onDirty(() -> {
+                // 当分区标脏时, 句柄也推进一次版本.
+                this.version.incrementAndGet();
+                this.notifyDirty();
+            });
             this.version.incrementAndGet();
             // attached 是挂载完全完成的发布标志, 必须在转发建立与版本推进之后最后写入.
             this.attached = partition;
@@ -68,15 +71,11 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
         }
     }
 
-    /**
-     * 分区被删除时调用, 同样只允许在该 key 的 compute 内.
-     *
-     * @param evicted 需要被删除的分区
-     */
+    // 分区被删除时调用, 同样只允许在该 key 的 compute 内.
     void onPartitionEvicted(AbstractSignal<T> evicted) {
         Subscription previous;
         synchronized (this.attachLock) {
-            // 只有被删除的是当前挂着的那一个才删除
+            // 只有被驱逐的正是当前挂着的分区时才摘除
             if (this.attached != evicted) return;
             previous = this.forward;
             this.attached = null;
@@ -86,13 +85,5 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
         if (previous != null) {
             previous.close();
         }
-    }
-
-    /**
-     * 当分区标脏时, 句柄也推进一次版本.
-     */
-    private void onPartitionDirty() {
-        this.version.incrementAndGet();
-        this.notifyDirty();
     }
 }

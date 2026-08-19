@@ -10,10 +10,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<T> {
-    private static final int UNLOADED = 0;
-    private static final int IDLE = 1;
-    private static final int LOADING = 2;
-    private static final int LOADING_DIRTY = 3;
+    private static final int UNLOADED = 0;      // 尚未调度过任何加载
+    private static final int IDLE = 1;          // 没有进行中的加载
+    private static final int LOADING = 2;       // 一轮加载进行中
+    private static final int LOADING_DIRTY = 3; // 加载中又登记了失效, 本轮完成后补跑一轮
     private static final int MAX_SCHEDULE_ATTEMPTS = 2;     // 首次提交, 外加为并发登记的失效补一次.
 
     private final Executor executor;
@@ -68,10 +68,8 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
     }
 
-    /**
-     * 提交加载任务, 执行器拒绝任务时按当前状态回滚,
-     * 极窄窗口内并发登记的失效可能丢失, 下一次 dirty() 会恢复.
-     */
+    // 提交加载任务, 执行器拒绝任务时按当前状态回滚,
+    // 极窄窗口内并发登记的失效可能丢失, 下一次 dirty() 会恢复.
     private void scheduleLoad(int rollbackState) {
         RuntimeException failure = null;
         for (int attempt = 0; attempt < MAX_SCHEDULE_ATTEMPTS; attempt++) {

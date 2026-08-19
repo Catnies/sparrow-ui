@@ -11,8 +11,6 @@ import java.util.Objects;
 
 /**
  * KeyedSignal 抽象实现骨架.
- * <p>每个 key 一个 {@link KeyState}, 分区与句柄弱引用同住其中.
- * KeyState 字段的写入全部收在该 key 的 compute 内, 挂载与删除互相串行.
  *
  * @param <K> 分区 key 类型
  * @param <T> 值类型
@@ -37,9 +35,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
      */
     abstract void dirtyPartition(P partition);
 
-    /**
-     * 取出或新建一个 Key 对应的分区.
-     */
+    // 取出或新建一个 Key 对应的分区.
     final P partition(@NotNull K key) {
         Objects.requireNonNull(key, "key");
         this.purgeDeadHandles();
@@ -204,9 +200,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         });
     }
 
-    /**
-     * 当前已激活的分区数.
-     */
+    // 当前已激活的分区数.
     final int partitionCount() {
         int[] count = new int[1];
         this.store.forEachValue(state -> {
@@ -217,9 +211,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         return count[0];
     }
 
-    /**
-     * 当前仍存活的 {@link PartitionHandle} 数.
-     */
+    // 当前仍存活的 {@link PartitionHandle} 数.
     final int handleCount() {
         this.purgeDeadHandles();
         int[] count = new int[1];
@@ -238,7 +230,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
 
     /**
      * 一个 key 名下的全部状态, 持有分区与句柄弱引用.
-     * <p>两个字段的写入操作都收在该 key 的 compute 内;.
+     * <p>两个字段的写入操作都收在该 key 的 compute 内.
      */
     static final class KeyState<K, T, P extends AbstractSignal<T>> {
         volatile P partition;                       // 当前分区, null 表示未建或已删

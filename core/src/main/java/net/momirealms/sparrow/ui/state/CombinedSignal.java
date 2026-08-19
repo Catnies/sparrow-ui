@@ -41,6 +41,7 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
         return this.versionSum();
     }
 
+    // 来源固定且各自版本只增不减, 和没变就一定谁都没失效过.
     private long versionSum() {
         long sum = 0L;
         for (int i = 0; i < this.sources.length; i++) {

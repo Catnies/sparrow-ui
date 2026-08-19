@@ -18,7 +18,7 @@ final class TickingSignal extends AbstractSignal<Long> {
     private Ticker.Handle handle;
     private volatile Versioned<Long> state = new Versioned<>(0L, 0L);
     private final Map<Long, PeriodicRef> periodic = new HashMap<>();                     // 周期 -> 降频视图, 只弱持有
-    private final ReferenceQueue<Signal<Long>> releasedViews = new ReferenceQueue<>();  // 视图已被回收的槽
+    private final ReferenceQueue<Signal<Long>> releasedViews = new ReferenceQueue<>();   // 视图已被回收的槽
 
     TickingSignal(Ticker ticker) {
         this.ticker = ticker;
@@ -57,7 +57,6 @@ final class TickingSignal extends AbstractSignal<Long> {
     /**
      * 取本 tick 源上的降频视图, 每 {@code periodTicks} 个 tick 失效一次.
      * <p>同周期共享一个节点, 每 tick 的重算次数因此只跟周期种类走, 而不跟绑定数量走.
-     * <p>缓存只弱持有视图: 视图本身由使用方强持有, 最后一个使用方消失后它连同缓存槽一起回收.
      */
     @NotNull
     Signal<Long> every(long periodTicks) {
@@ -99,9 +98,7 @@ final class TickingSignal extends AbstractSignal<Long> {
         };
     }
 
-    /**
-     * 调度抽象, 默认实现用 Paper 全局区域调度器.
-     */
+    // 调度抽象, 默认实现用 Paper 全局区域调度器.
     interface Ticker {
 
         // 启动每 tick 回调, 返回可取消的任务句柄.
@@ -114,9 +111,7 @@ final class TickingSignal extends AbstractSignal<Long> {
         }
     }
 
-    /**
-     * 对降频视图的弱引用, 携带所在周期, 视图被回收后可以直接从引用队列定位并清掉缓存槽.
-     */
+    // 对降频视图的弱引用, 携带所在周期, 视图被回收后可以直接从引用队列定位并清掉缓存槽.
     private static final class PeriodicRef extends WeakReference<Signal<Long>> {
         private final long period;
 

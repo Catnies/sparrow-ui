@@ -40,7 +40,7 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
     }
 
     /**
-     * <p>版本由本节点自己维护并单调递增: 前后两个来源各有各的计数, 直接透传会来回跳.
+     * 版本由本节点自己维护并单调递增: 前后两个来源各有各的计数, 直接透传会来回跳.
      */
     @Override
     long version() {
@@ -170,7 +170,7 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
         previousSource.close();
     }
 
-    // 一次选中结果: key, 它对应的来源, 以及记下这一次时该来源的版本.
+    // 一次选中结果, 以及记下这一次时 source 的版本.
     private record Selected<K, T>(K key, AbstractSignal<T> source, long sourceVersion) {
     }
 }

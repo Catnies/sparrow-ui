@@ -50,7 +50,7 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
      * 同步分区实现, 携带 stale 标记 + 惰性重算的可写源节点.
      */
     static final class SyncPartition<K, T> extends AbstractSignal<T> {
-        // 装载被并发失效连续打断时的重试上限, 触顶后返回最后一次装载结果并保持 stale,
+        // 装载被并发失效连续打断时的重试上限, 触顶后返回最后一次装载结果并保持 stale.
         private static final int MAX_LOAD_ATTEMPTS = 8;
 
         private final K key;

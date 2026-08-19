@@ -6,6 +6,7 @@ import java.util.UUID;
 
 /**
  * {@link PlayerKeyedSignal} 的实现, 委托通用 KeyedSignal.
+ * <p>创建时登记到 {@link PlayerSignalRegistry}, 由它在玩家退出时清除分区.
  *
  * @param <T> 值类型
  */

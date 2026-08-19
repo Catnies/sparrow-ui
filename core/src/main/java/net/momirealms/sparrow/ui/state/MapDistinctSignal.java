@@ -6,7 +6,7 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * 派生分支: 有下游订阅时, 上游失效立即重算判等, 值不变则吞掉失效.
+ * 派生节点, 有下游订阅时, 上游失效立即重算判等, 值不变则吞掉失效.
  * 无下游订阅时不挂上游监听, 一切由拉取路径驱动, 行为退化为惰性 map.
  *
  * @param <S> 上游值类型

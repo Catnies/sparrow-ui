@@ -4,12 +4,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.UnaryOperator;
 
-/**
- * 可写的分区响应式数据源.
- *
- * @param <K> 分区 key 类型
- * @param <T> 值类型, 允许为 {@code null}
- */
 public interface MutableKeyedSignal<K, T> extends KeyedSignal<K, T> {
 
     /**

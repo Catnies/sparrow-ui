@@ -86,7 +86,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     }
 
     /**
-     * 组合两个来源, 任一来源失效即失效, 值在拉取时以两个来源的快照重算.
+     * 组合来源, 任一来源失效即失效, 值在拉取时以两个来源的快照重算.
      *
      * @param combiner 纯函数, 可在任意线程被执行
      * @return 组合 signal
@@ -100,9 +100,6 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
         });
     }
 
-    /**
-     * 组合三个来源, 语义同 {@link #combine(Signal, Signal, BiFunction)}.
-     */
     @NotNull
     static <A, B, C, R> Signal<R> combine(@NotNull Signal<A> a, @NotNull Signal<B> b, @NotNull Signal<C> c, @NotNull TriFunction<? super A, ? super B, ? super C, ? extends R> combiner) {
         Objects.requireNonNull(combiner, "combiner");
