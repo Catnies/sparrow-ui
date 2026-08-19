@@ -14,6 +14,7 @@ import org.bukkit.inventory.MenuType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.BitSet;
 
 /**
@@ -36,7 +37,7 @@ final class ProtocolInventoryView implements InventoryView {
     private final BitSet touchedSlots = new BitSet();      // 本 tick 写过的槽位, 留给最终同步纠正客户端
     private final BitSet eventTouchedSlots = new BitSet(); // 最近一次事件写过的槽位, 由 resetForEvent 清空
     private Component title = Component.empty();
-    private ItemStack cursor = ItemStack.empty();
+    private ItemStack cursor = ItemUtils.EMPTY;
     private boolean cursorTouched;      // 本 tick 是否写过光标, 留给最终同步纠正客户端
     private boolean eventCursorTouched; // 最近一次事件是否写过光标, 由 resetForEvent 清空
 
@@ -90,9 +91,7 @@ final class ProtocolInventoryView implements InventoryView {
         this.inventoryType = inventoryType;
         this.menuType = menuType;
         this.lowerItems = new ItemStack[PLAYER_INVENTORY_SLOTS];
-        for (int index = 0; index < this.lowerItems.length; index++) {
-            this.lowerItems[index] = ItemStack.empty();
-        }
+        Arrays.fill(this.lowerItems, ItemUtils.EMPTY);
     }
 
     /**

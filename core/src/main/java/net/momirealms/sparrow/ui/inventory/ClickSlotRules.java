@@ -111,7 +111,7 @@ final class ClickSlotRules {
     @NotNull
     private static ItemStack remainderOf(ItemStack cursor, int taken) {
         int left = cursor.getAmount() - taken;
-        return left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty();
+        return left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY;
     }
 
     // 槽位与光标的点击结果. placementInput 是这次真正被放进槽位的物品, 只有从收纳袋里掏东西时才与

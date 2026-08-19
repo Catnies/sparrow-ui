@@ -440,7 +440,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 return this.renderCell.render(new RenderCell.Intent.Projected(background, null, null));
             }
         }
-        return this.renderCell.render(new RenderCell.Intent.Direct(ItemStack.empty()));
+        return this.renderCell.render(new RenderCell.Intent.Direct(ItemUtils.EMPTY));
     }
 
     // 把命中的视觉层交给渲染格投影; 兜底内容就是终点的同步可读内容, 没有内容的终点交 null, 渲染格按空物品处理.

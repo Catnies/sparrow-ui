@@ -611,7 +611,7 @@ final class ClickPlanner {
             newCursor = cursor.clone();
         } else {
             int left = cursor.getAmount() - placedTotal;
-            newCursor = left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty();
+            newCursor = left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY;
         }
         ClickCandidate candidate = ClickCandidate.plan(InventoryAction.NOTHING, reason)
                 .scopes(scopes)

@@ -541,9 +541,9 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private final RenderCell resultRenderCell;
         private final Runnable invalidator;
 
-        private ItemStack firstInput = ItemStack.empty();
-        private ItemStack secondInput = ItemStack.empty();
-        private ItemStack result = ItemStack.empty();
+        private ItemStack firstInput = ItemUtils.EMPTY;
+        private ItemStack secondInput = ItemUtils.EMPTY;
+        private ItemStack result = ItemUtils.EMPTY;
         private boolean closed;
 
         private TradeBinding(

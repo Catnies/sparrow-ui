@@ -15,11 +15,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashSet;
 
 public final class ItemUtils {
+    public static final ItemStack EMPTY = ItemStack.empty();
 
     private ItemUtils() {
     }
 
-    // 返回物品的副本, null 或空物品返回 Bukkit 空物品常量.
+    // 返回物品的副本, null 或空物品返回新的空物品; 调用方拥有返回值, 因此不能交出共享的 EMPTY.
     @NotNull
     public static ItemStack copyOrEmpty(@Nullable ItemStack itemStack) {
         return isNullOrEmpty(itemStack) ? ItemStack.empty() : itemStack.clone();
@@ -54,10 +55,10 @@ public final class ItemUtils {
         return isNullOrEmpty(itemStack) ? null : itemStack;
     }
 
-    // 把 null 归一为 Bukkit 空物品常量, 其余物品原样返回.
+    // 把 null 归一为共享空物品, 其余物品原样返回; 返回值一律只读, 调用方不拥有它.
     @NotNull
     public static ItemStack emptyIfNull(@Nullable ItemStack itemStack) {
-        return itemStack == null ? ItemStack.empty() : itemStack;
+        return itemStack == null ? EMPTY : itemStack;
     }
 
     // 返回物品数量, null 或空物品视为 0.

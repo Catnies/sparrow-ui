@@ -110,7 +110,7 @@ final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickSlotRules.Outcome(bundleAfter, cursorAfter.isEmpty() ? ItemStack.empty() : cursorAfter);
+        return new ClickSlotRules.Outcome(bundleAfter, cursorAfter.isEmpty() ? ItemUtils.EMPTY : cursorAfter);
     }
 
     // 空手右键槽位 Bundle: 取出选中(或第一件)整组物品上光标.

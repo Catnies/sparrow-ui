@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -98,7 +99,7 @@ public final class RenderCell implements AutoCloseable {
         if (placeholder != null) {
             return Objects.requireNonNull(placeholder.provideImmediately(this.context), "placeholder item");
         }
-        return lastResort != null ? lastResort : ItemStack.empty();
+        return lastResort != null ? lastResort : ItemUtils.EMPTY;
     }
 
     private void submit(ItemProvider provider, long generation) {

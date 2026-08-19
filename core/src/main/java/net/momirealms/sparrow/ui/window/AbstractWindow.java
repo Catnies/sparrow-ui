@@ -1423,7 +1423,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     localSlots[windowSlot] = rendered;
                 } catch (Throwable throwable) {
                     this.manager.report("Failed to render Window slot " + windowSlot, throwable);
-                    localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemStack.empty() : localSlots[windowSlot];
+                    localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemUtils.EMPTY : localSlots[windowSlot];
                 }
             }
         }
@@ -1796,7 +1796,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         @NotNull
         public ItemStack cursor() {
             M menu = AbstractWindow.this.menuHandle;
-            return menu != null ? menu.cursor() : ItemStack.empty();
+            return menu != null ? menu.cursor() : ItemUtils.EMPTY;
         }
 
         @Override

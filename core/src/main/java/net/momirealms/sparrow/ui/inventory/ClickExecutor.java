@@ -131,11 +131,11 @@ final class ClickExecutor {
             return;
         }
         if (clickType == ClickType.WINDOW_BORDER_LEFT) {
-            context.cursor(ItemStack.empty());
+            context.cursor(ItemUtils.EMPTY);
             context.drop(cursor.clone());
         } else {
             int left = cursor.getAmount() - 1;
-            context.cursor(left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemStack.empty());
+            context.cursor(left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY);
             context.drop(ItemUtils.copyWithAmount(cursor, 1));
         }
     }

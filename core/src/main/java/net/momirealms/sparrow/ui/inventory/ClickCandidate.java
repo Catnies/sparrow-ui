@@ -189,7 +189,7 @@ record ClickCandidate(
                     this.reason,
                     List.copyOf(this.scopes),
                     List.copyOf(this.reads),
-                    expectedCursor != null ? expectedCursor.clone() : ItemStack.empty(),
+                    expectedCursor != null ? expectedCursor.clone() : ItemUtils.EMPTY,
                     expectedCursor != null,
                     ItemUtils.copyOrNull(this.expectedOffhand),
                     this.checkOffhand,

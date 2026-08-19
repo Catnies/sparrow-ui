@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -84,7 +85,7 @@ public abstract class AbstractItem implements ObservableItem {
      */
     @NotNull
     protected ItemStack placeholder(@NotNull RenderContext context) {
-        return ItemStack.empty();
+        return ItemUtils.EMPTY;
     }
 
     @NotNull
