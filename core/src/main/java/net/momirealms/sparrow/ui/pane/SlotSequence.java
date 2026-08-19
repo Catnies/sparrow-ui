@@ -45,6 +45,14 @@ public final class SlotSequence {
     @NotNull
     public static SlotSequence of(@NotNull PaneSize paneSize, int... slots) {
         int[] copy = slots.clone();
+        // 不足两个槽位不可能重复, 只查范围, 不为查重白开一张面积位图
+        if (copy.length < 2) {
+            for (int slot : copy) {
+                paneSize.checkSlot(slot);
+            }
+            return new SlotSequence(paneSize, copy);
+        }
+
         // 校验范围并拒绝重复槽位
         boolean[] seen = new boolean[paneSize.area()];
         for (int slot : copy) {
