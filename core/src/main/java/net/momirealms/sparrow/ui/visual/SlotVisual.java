@@ -3,6 +3,8 @@ package net.momirealms.sparrow.ui.visual;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
+import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -67,7 +69,20 @@ public interface SlotVisual extends Visual {
     }
 
     /**
-     * 求值一个槽位的两层视觉映射.
+     * 播放一个动画, 参与的槽位在播放期间优先显示动画给出的帧, 盖过本宿主的逐槽与全局映射,
+     * 结束或取消后自动恢复. 同时播放多个动画时后开始的优先, 帧放行处露出更早开始的动画.
+     * <p>空槽位序列的播放立即以 {@link AnimationHandle.FinishReason#COMPLETED} 结束.
+     *
+     * @param animationDefinition 动画描述, 槽位使用本宿主的坐标系
+     * @return 这次播放的控制句柄
+     * @throws IndexOutOfBoundsException 当动画槽位超出宿主范围时
+     * @throws IllegalArgumentException 当动画槽位重复时
+     */
+    @NotNull
+    AnimationHandle play(@NotNull AnimationDefinition animationDefinition);
+
+    /**
+     * 求值一个槽位的显示, 播放中的动画最优先, 其后是逐槽与全局两层视觉映射.
      * <p>{@code actual} 由调用方提供, 渲染层用它避免重复读取, 映射按约定只读.
      */
     @Nullable
