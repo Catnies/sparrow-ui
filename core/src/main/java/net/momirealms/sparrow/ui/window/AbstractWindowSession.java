@@ -50,18 +50,24 @@ abstract class AbstractWindowSession implements WindowSession {
             case RETAINED_STACK -> new WindowSessionRetainedStack(manager, root.viewer(), root.sessionEndHandlers());
             case TREE -> new WindowSessionTree(manager, root.viewer(), root.sessionEndHandlers());
         };
-        session.adoptRoot(root);
+        session.commitOpen(root, false);
         return session;
     }
 
     /**
-     * 把已经打开的根窗收为第一个成员.
+     * 把打开成功的 Window 落地为当前位置.
+     * <p>由 {@link WindowManager} 在目标窗的 open handler 之前调用, handler 因此总能读到指向本窗的会话.
      *
-     * @param root 已经打开的根窗
+     * @param opened 已经打开的目标 Window
+     * @param back 本次打开是回到上一扇
      */
-    void adoptRoot(@NotNull AbstractWindow<?> root) {
-        this.stepInto(root);
-        root.session(this);
+    void commitOpen(@NotNull AbstractWindow<?> opened, boolean back) {
+        if (back) {
+            this.stepBack();
+        } else {
+            this.stepInto(opened);
+            opened.session(this);
+        }
         this.publishSnapshot();
     }
 
@@ -73,14 +79,8 @@ abstract class AbstractWindowSession implements WindowSession {
      */
     final boolean navigateNow(@NotNull AbstractWindow<?> next) {
         if (!this.active.get()) return false;
-        if (!this.manager.openInSession(next, this)) {
-            return false;
-        }
-
-        this.stepInto(next);
-        next.session(this);
-        this.publishSnapshot();
-        return true;
+        // 推进当前位置由 openNow 在 open handler 之前完成, 打开失败时当前位置原样不动
+        return this.manager.openInSession(next, this, false);
     }
 
     /**
@@ -91,13 +91,7 @@ abstract class AbstractWindowSession implements WindowSession {
     final boolean backNow() {
         if (!this.active.get()) return false;
         AbstractWindow<?> source = this.previousWindow();
-        if (source == null || !this.manager.openInSession(source, this)) {
-            return false;
-        }
-
-        this.stepBack();
-        this.publishSnapshot();
-        return true;
+        return source != null && this.manager.openInSession(source, this, true);
     }
 
     @NotNull

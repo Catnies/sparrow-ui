@@ -260,9 +260,10 @@ final class PlayerCommandLane {
             if (!retiredCommands.isEmpty()) {
                 this.completeRetired(retiredCommands);
             }
-            if (command != null) {
-                command.run();
+            if (command == null) {
+                return;
             }
+            command.run();
         }
     }
 

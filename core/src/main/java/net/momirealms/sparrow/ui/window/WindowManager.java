@@ -29,9 +29,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
-/**
- * 保存每名玩家当前活动的 Window, 并串行执行该玩家的生命周期命令.
- */
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;
     private final WindowScheduler scheduler;
@@ -81,7 +78,7 @@ public final class WindowManager implements Listener {
     CompletableFuture<Window.OpenResult> open(AbstractWindow<?> window) {
         return this.submit(
                 window,
-                () -> this.openNow(window, null),
+                () -> this.openNow(window, null, false),
                 () -> Window.OpenResult.VIEWER_UNAVAILABLE
         );
     }
@@ -92,8 +89,9 @@ public final class WindowManager implements Listener {
      *
      * @param window 要打开的 Window
      * @param navigating 发起本次打开的会话, 会话外打开为 null
+     * @param back 会话内打开时, 本次打开是否为回到上一扇
      */
-    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession navigating) {
+    private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession navigating, boolean back) {
         if (this.shutdown.get()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -135,9 +133,11 @@ public final class WindowManager implements Listener {
         if (displaced != null) {
             displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
         }
-        // 会话外打开的窗成为新根窗, 会话在此刻诞生
+        // 会话状态在 open handler 之前落地, 会话外打开的窗成为新根窗, 会话在此刻诞生, 会话内打开则推进当前位置
         if (navigating == null) {
             window.session(AbstractWindowSession.create(this, window));
+        } else {
+            navigating.commitOpen(window, back);
         }
         window.fireOpenHandlers();
         return Window.OpenResult.OPENED;
@@ -148,10 +148,11 @@ public final class WindowManager implements Listener {
      *
      * @param window 要打开的 Window
      * @param session 发起本次打开的会话
+     * @param back 本次打开是回到上一扇, 而不是步入下一扇
      * @return 打开流程执行成功时返回 true
      */
-    boolean openInSession(AbstractWindow<?> window, AbstractWindowSession session) {
-        return this.openNow(window, session) == Window.OpenResult.OPENED;
+    boolean openInSession(AbstractWindow<?> window, AbstractWindowSession session, boolean back) {
+        return this.openNow(window, session, back) == Window.OpenResult.OPENED;
     }
 
     /**
