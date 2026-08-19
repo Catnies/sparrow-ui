@@ -103,6 +103,8 @@ public interface Window {
     /**
      * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #navigate(Window)}.
      * <p>构建在哪个线程完成由调用方决定, 方法只负责把打开送进玩家的实体线程.
+     * <p>发起本次调用时本 Window 所在的位置会被记下. 构建结果到达时本 Window 已经关闭, 被顶替,
+     * 或者不再是所在会话的当前窗, 本次导航就此作罢, 以 null 完成, 原会话与玩家正在看的菜单都不改变.
      *
      * @param next 构建中的下一扇 Window
      * @return 打开后的 Window; 打不开时以 null 完成

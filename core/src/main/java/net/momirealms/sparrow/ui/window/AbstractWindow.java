@@ -50,6 +50,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -1463,10 +1464,22 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     @Override
     public CompletableFuture<Window> navigate(@NotNull Window next) {
+        return this.manager.navigate(this, this.requireSameViewer(next));
+    }
+
+    @NotNull
+    @Override
+    public CompletableFuture<Window> navigate(@NotNull CompletionStage<? extends Window> next) {
+        return this.manager.navigateLater(this, next);
+    }
+
+    // 校验下一扇 Window 与本窗属于同一名玩家, 并取出实现视图.
+    @NotNull
+    AbstractWindow<?> requireSameViewer(@NotNull Window next) {
         if (next.viewer() != this.viewer) {
             throw new IllegalArgumentException("next Window belongs to another viewer");
         }
-        return this.manager.navigate(this, (AbstractWindow<?>) next);
+        return (AbstractWindow<?>) next;
     }
 
     @NotNull

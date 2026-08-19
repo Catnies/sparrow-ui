@@ -115,28 +115,19 @@ final class PlayerCommandLane {
     }
 
     /**
-     * 注销命令通道并按 retired 路径完成所有尚未执行的命令.
+     * 注销命令通道: 之后不再接收新命令, 注销回调与尚未执行的命令都按 retired 路径收尾.
+     * <p>注销可以来自任意线程(过期通道被重连后的新 Player 顶掉时尤其如此), 因此收尾同样走 {@link #terminate}
+     * 的执行权交接, 不会落在正在执行的命令中间.
      */
     void retire() {
-        List<Command<?>> pending;
-        synchronized (this) {
-            // 重复注销直接忽略
-            if (this.retired) {
-                return;
-            }
-            this.retired = true;
-            this.scheduled = false;
-            pending = this.takePending();
-        }
-        this.retiredHandler.accept(this);
-        this.completeRetired(pending);
+        this.terminate(() -> this.retiredHandler.accept(this));
     }
 
     /**
      * 关停通道并交出最后一条收尾命令, 之后不再接收新命令.
      * <p>通道空闲时由当前线程接管执行权后直接执行收尾, 正在别处 drain 时把收尾交给那条线程在退出前执行,
-     * 两条走向都保证收尾不与通道里的命令并发. 通道已注销时不再收尾, 那时注销路径已经接手.
-     * <p>本方法不触发注销回调, 通道自身的登记由调用方注销.
+     * 两条走向都保证收尾不与通道里的命令并发. 通道已经关停时不再收尾, 先到的那次已经接手.
+     * <p>本方法不触发注销回调, 需要它的调用方自己放进 teardown.
      *
      * @param teardown 收尾命令
      */

@@ -172,6 +172,31 @@ public final class WindowManager implements Listener {
         );
     }
 
+    /**
+     * 等待一扇还在构建中的 Window 完成, 再从出发窗打开它.
+     * <p>发起时先记下出发窗当时的挂载. 构建结果到达时出发窗已经关闭, 被顶替, 或者不再是所在会话的当前窗,
+     * 本次导航就此作罢: 不打开任何窗口, 原会话与玩家正在看的菜单都不改变.
+     *
+     * @param source 上一扇 Window
+     * @param next 构建中的下一扇 Window
+     * @return 打开后的 Window; 打不开或出发窗已经离开原位置时以 null 完成
+     */
+    @NotNull
+    CompletableFuture<Window> navigateLater(AbstractWindow<?> source, CompletionStage<? extends Window> next) {
+        AbstractWindowSession mount = source.sessionImpl();
+        return next.<Window>thenCompose(window -> {
+            AbstractWindow<?> target = source.requireSameViewer(window);
+            return this.submit(
+                    target.viewer(),
+                    // 检查出发窗是否还停在发起导航时的位置, 会话归属没换过, 并且仍是那段会话的当前窗.
+                    () -> (source.sessionImpl() == mount && (mount == null || mount.currentWindow() == source)) && this.navigateNow(source, target)
+                            ? target
+                            : null,
+                    () -> null
+            );
+        }).toCompletableFuture();
+    }
+
     // 在玩家实体线程解析出发窗所属的会话, 必要时新起一段会话.
     private boolean navigateNow(AbstractWindow<?> source, AbstractWindow<?> next) {
         AbstractWindowSession session = source.sessionImpl();
