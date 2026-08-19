@@ -959,11 +959,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         List<Integer> windowSlots = drag.slots();
-        List<ItemDragClick.Stop> path = new ArrayList<>(windowSlots.size());
-        for (int index = 0; index < windowSlots.size(); index++) {
+        ItemDragClick.Stop[] stops = new ItemDragClick.Stop[windowSlots.size()];
+        for (int index = 0; index < stops.length; index++) {
             int windowSlot = windowSlots.get(index);
-            path.add(new ItemDragClick.Stop(windowSlot, this.requirePath(windowSlot).kind()));
+            stops[index] = new ItemDragClick.Stop(windowSlot, this.requirePath(windowSlot).kind());
         }
+        // 路径先定型成不可变列表, 逐站构造 ItemDragClick 时 List.copyOf 原样返回它, 不再每个 Item 复制一遍整条路径
+        List<ItemDragClick.Stop> path = List.of(stops);
         for (int index = 0; index < path.size(); index++) {
             ItemDragClick.Stop stop = path.get(index);
             if (stop.kind() != ItemDragClick.Kind.ITEM) {

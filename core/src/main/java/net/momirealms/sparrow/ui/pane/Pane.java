@@ -804,7 +804,7 @@ public sealed interface Pane permits AbstractPane {
     Set<InventorySequence> participatingSequences();
 
     /**
-     * 订阅一个槽位的更新, 并返回订阅时的元素, 背景和冻结状态.
+     * 订阅一个槽位的更新, 并返回订阅时的元素和冻结状态.
      *
      * @param slot 槽位编号
      * @param observer 槽位更新观察者
