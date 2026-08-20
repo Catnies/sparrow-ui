@@ -1,10 +1,8 @@
 package net.momirealms.sparrow.ui.state;
 
-import net.momirealms.sparrow.ui.util.ConcurrentUUID2ReferenceChainedHashTable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -35,14 +33,6 @@ interface KeyStateStore<K, S> {
     @NotNull
     static <K, S> KeyStateStore<K, S> generic() {
         return new GenericStore<>();
-    }
-
-    /**
-     * UUID key 的特化存储, 由内联 key 的 {@link ConcurrentUUID2ReferenceChainedHashTable} 承载.
-     */
-    @NotNull
-    static <S> KeyStateStore<UUID, S> uuid() {
-        return new UuidStore<>();
     }
 
     final class GenericStore<K, S> implements KeyStateStore<K, S> {
@@ -76,36 +66,6 @@ interface KeyStateStore<K, S> {
             for (S state : this.map.values()) {
                 action.accept(state);
             }
-        }
-    }
-
-    final class UuidStore<S> implements KeyStateStore<UUID, S> {
-        private final ConcurrentUUID2ReferenceChainedHashTable<S> table = new ConcurrentUUID2ReferenceChainedHashTable<>();
-
-        @Override
-        @Nullable
-        public S get(@NotNull UUID key) {
-            return this.table.get(key);
-        }
-
-        @Override
-        public S compute(@NotNull UUID key, @NotNull BiFunction<? super UUID, ? super S, ? extends S> remapping) {
-            return this.table.compute(key, remapping);
-        }
-
-        @Override
-        public S computeIfPresent(@NotNull UUID key, @NotNull BiFunction<? super UUID, ? super S, ? extends S> remapping) {
-            return this.table.computeIfPresent(key, remapping);
-        }
-
-        @Override
-        public void forEachKey(@NotNull Consumer<? super UUID> action) {
-            this.table.forEachKey(action);
-        }
-
-        @Override
-        public void forEachValue(@NotNull Consumer<? super S> action) {
-            this.table.forEachValue(action);
         }
     }
 }
