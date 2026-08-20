@@ -328,7 +328,8 @@ final class DisplayedSlotPath implements AutoCloseable {
                 });
                 next.inventoryVisualSubscription = link.inventory().visual().attach(link.slot(), () -> {
                     if (!next.resourcesClosed) {
-                        this.onDirty(Invalidation.RENDER);
+                        // 退役同时把内容清空, 那是内容变化不是视觉变化, 基于退役前内容算出的结果, 连同在飞的那次计算, 都必须作废.
+                        this.onDirty(link.inventory().retired() ? Invalidation.CONTENT : Invalidation.RENDER);
                     }
                 });
             }
