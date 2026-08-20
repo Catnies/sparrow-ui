@@ -90,7 +90,7 @@ public final class Page<T> {
                     pages.dirty(index);
                     pageCount.dirty();
                 },
-                pages::at
+                pages::get
         );
     }
 
@@ -113,7 +113,7 @@ public final class Page<T> {
     /**
      * 异步装载翻页声明, 每页各是一个分区, 翻到哪一页才加载读取哪一页.
      * <p>分区源用 {@link KeyedSignal#async} 建出来时, 未装载完成的页显示占位值, 装载完成后自己刷新.
-     * 想提前把下一页装上就读一次 {@code pages.at(index + 1)}; 想让某一页重新装载就 {@code pages.dirty(index)}.
+     * 想提前把下一页装上就读一次 {@code pages.get(index + 1)}; 想让某一页重新装载就 {@code pages.dirty(index)}.
      *
      * @param pages 每页一个分区的数据源
      * @param pageCount 总页数, 小于 1 时按 1 处理
