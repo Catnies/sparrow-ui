@@ -10,6 +10,7 @@ import net.momirealms.sparrow.ui.example.menu.cartographycarousel.CartographyCar
 import net.momirealms.sparrow.ui.example.menu.searchcapture.SearchCaptureCommand;
 import net.momirealms.sparrow.ui.example.menu.searchpage.SearchPageCommand;
 import net.momirealms.sparrow.ui.example.menu.skilltree.SkillTreeCommand;
+import net.momirealms.sparrow.ui.example.menu.advancedanimation.AdvancedAnimationCommand;
 import net.momirealms.sparrow.ui.example.menu.stoneappraisal.StoneAppraisalCommand;
 import org.jetbrains.annotations.NotNull;
 
@@ -36,6 +37,7 @@ public final class SparrowCommand {
                         .then(CartographyCarouselCommand.node())
                         .then(AnimationCarouselCommand.node())
                         .then(StoneAppraisalCommand.node())
+                        .then(AdvancedAnimationCommand.node())
                 )
                 .build();
     }
