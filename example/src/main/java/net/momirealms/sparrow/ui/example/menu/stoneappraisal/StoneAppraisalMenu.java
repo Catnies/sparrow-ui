@@ -156,7 +156,7 @@ public final class StoneAppraisalMenu {
     /**
      * 输入槽变动后排一次开转检查.
      *
-     * <p>事务通知里不适合再改库存, 因此排到玩家自己的实体线程再动手, 那里也正是点击的落点.
+     * <p>事务通知里不适合再改 Inventory, 因此排到玩家自己的实体线程再动手, 那里也正是点击的落点.
      */
     private void scheduleSpin() {
         if (this.spinning != null) {

@@ -41,11 +41,11 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
     }
 
     /**
-     * 创建连接到库存槽位的元素.
+     * 创建连接到 Inventory 槽位的元素.
      *
-     * @param inventory 库存
-     * @param slot 库存槽位编号
-     * @return 库存连接元素
+     * @param inventory Inventory
+     * @param slot Inventory 槽位编号
+     * @return Inventory 连接元素
      */
     @NotNull
     static InventoryLink inventory(@NotNull SparrowInventory inventory, int slot) {
@@ -124,8 +124,8 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
     /**
      * 把当前 Pane 槽位连接到 Inventory 的指定槽位.
      *
-     * @param inventory 库存
-     * @param slot 库存槽位编号
+     * @param inventory Inventory
+     * @param slot Inventory 槽位编号
      */
     record InventoryLink(@NotNull SparrowInventory inventory, int slot) implements Element {
 

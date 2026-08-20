@@ -53,11 +53,11 @@ public interface ElementSupplier {
     }
 
     /**
-     * 把 Inventory 按 ingredient 出现顺序循环铺入, 第 n 次出现(从 0 开始)的槽位连接库存槽
+     * 把 Inventory 按 ingredient 出现顺序循环铺入, 第 n 次出现(从 0 开始)的槽位连接 Inventory 槽
      * {@code n % inventory.size()}. 零尺寸 Inventory 生成空槽位.
      *
-     * @param inventory 要铺入的库存
-     * @return 逐槽连接库存的元素来源
+     * @param inventory 要铺入的 Inventory
+     * @return 逐槽连接 Inventory 的元素来源
      */
     @NotNull
     static ElementSupplier inventory(@NotNull SparrowInventory inventory) {

@@ -19,8 +19,7 @@ import java.util.BitSet;
 
 /**
  * 为 Bukkit 事件提供专用的 InventoryView, 但不把事件对该 InventoryView 的写入直接应用到玩家物品栏.
- *
- * <p>顶部库存和底部槽位数组共同组成 Bukkit 事件状态副本. 事件可以观察与协议包一致的内容,
+ * <p>顶部 Inventory 和底部槽位数组共同组成 Bukkit 事件状态副本. 事件可以观察与协议包一致的内容,
  * 但任何写入都只修改这份副本; 最终服务端渲染结果仍由 Window 决定.</p>
  */
 @SuppressWarnings("UnstableApiUsage")
@@ -46,7 +45,7 @@ final class ProtocolInventoryView implements InventoryView {
      *
      * @param player InventoryView 所属玩家
      * @param upperSize 顶部槽位数量
-     * @param inventoryType Bukkit 库存类型
+     * @param inventoryType Bukkit Inventory 类型
      * @param menuType Bukkit 菜单类型
      */
     ProtocolInventoryView(Player player, int upperSize, InventoryType inventoryType, MenuType menuType) {
@@ -56,14 +55,14 @@ final class ProtocolInventoryView implements InventoryView {
     /**
      * 创建下部玩家物品栏位于指定协议槽位(raw slot)的 Bukkit 事件用的 InventoryView.
      *
-     * <p>顶部库存中位于 {@code lowerStart} 之前的槽位先出现, 随后是固定的 36 个玩家槽位,
-     * 顶部库存的剩余槽位位于协议末尾. 普通菜单的 {@code upperSize == lowerStart},
+     * <p>顶部 Inventory 中位于 {@code lowerStart} 之前的槽位先出现, 随后是固定的 36 个玩家槽位,
+     * 顶部 Inventory 的剩余槽位位于协议末尾. 普通菜单的 {@code upperSize == lowerStart},
      * Crafter 则用末尾的顶部槽位表示结果槽.</p>
      *
      * @param player InventoryView 所属玩家
-     * @param upperSize Bukkit 顶部库存槽位数量
+     * @param upperSize Bukkit 顶部 Inventory 槽位数量
      * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
-     * @param inventoryType Bukkit 库存类型
+     * @param inventoryType Bukkit Inventory 类型
      * @param menuType Bukkit 菜单类型
      */
     ProtocolInventoryView(Player player, int upperSize, int lowerStart, InventoryType inventoryType, MenuType menuType) {
@@ -71,12 +70,12 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 创建使用给定 Bukkit 顶部库存保存事件状态的 InventoryView.
+     * 创建使用给定 Bukkit 顶部 Inventory 保存事件状态的 InventoryView.
      *
      * @param player InventoryView 所属玩家
-     * @param upper 保存 Bukkit 事件状态的顶部库存
+     * @param upper 保存 Bukkit 事件状态的顶部 Inventory
      * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
-     * @param inventoryType Bukkit 库存类型
+     * @param inventoryType Bukkit Inventory 类型
      * @param menuType Bukkit 菜单类型
      */
     ProtocolInventoryView(Player player, Inventory upper, int lowerStart, InventoryType inventoryType, MenuType menuType) {
@@ -260,7 +259,7 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     /**
-     * 只更新 Bukkit 事件状态副本; 底部库存的写入绝不落到玩家 Bukkit Inventory.
+     * 只更新 Bukkit 事件状态副本; 底部 Inventory 的写入绝不落到玩家 Bukkit Inventory.
      */
     @Override
     public void setItem(int rawSlot, @Nullable ItemStack item) {
