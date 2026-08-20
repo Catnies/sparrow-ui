@@ -17,7 +17,7 @@ final class ActiveTitleAnimation extends ActivePlayback<AbstractWindow<?>> {
     }
 
     @Nullable
-    Component frame(long nowTick) {
+    Component frameAt(long nowTick) {
         return this.animationDefinition.frame(nowTick - this.startTick());
     }
 

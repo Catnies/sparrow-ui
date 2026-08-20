@@ -144,6 +144,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     // 标题动画
     private final Object titleAnimationLock = new Object(); // 只保护标题动画通道数组替换, 失效投递一律出了锁再做
     private volatile ActiveTitleAnimation[] titleAnimations = ActiveTitleAnimation.NONE; // 播放中的标题动画, 按开始序排列, 求值时从末尾往前看
+    private AnimationHandle.FinishReason titleAnimationsFinishing; // 通道正在以这个原因整体终结, 非 null 期间新播放不入场; 由 titleAnimationLock 保护
 
     // 槽位渲染与同步
     private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
@@ -268,6 +269,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     void notifyUpdateTitle(Component title) {
         this.title = title;
+        this.recomputeTitleDirty();
+    }
+
+    // 按有效标题重算是否欠客户端一次重开, 配置标题写入与标题动画的帧推进、摘层共用这一条判定.
+    private void recomputeTitleDirty() {
         if (this.open) {
             this.titleDirty = !Objects.equals(this.sentTitle, this.effectiveTitle());
         }
@@ -306,11 +312,20 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 起播时刻对齐到本周期的共享节拍, 与槽位动画同理, 不对齐的话首帧会被拉长最多一个周期
         long startTick = Signals.ticking().get() / periodTicks * periodTicks;
         ActiveTitleAnimation playing = new ActiveTitleAnimation(this, animationDefinition, startTick);
+        AnimationHandle.FinishReason finishing;
         synchronized (this.titleAnimationLock) {
-            ActiveTitleAnimation[] current = this.titleAnimations;
-            ActiveTitleAnimation[] animations = Arrays.copyOf(current, current.length + 1);
-            animations[current.length] = playing;
-            this.titleAnimations = animations;
+            finishing = this.titleAnimationsFinishing;
+            if (finishing == null) {
+                ActiveTitleAnimation[] current = this.titleAnimations;
+                ActiveTitleAnimation[] animations = Arrays.copyOf(current, current.length + 1);
+                animations[current.length] = playing;
+                this.titleAnimations = animations;
+            }
+        }
+        // 通道正在整体终结时不再放新播放进场, 当场以同一原因结束, 句柄的结束回调照常恰好触发一次
+        if (finishing != null) {
+            playing.finish(finishing);
+            return playing;
         }
         // 入场即盖住配置标题
         this.notifyTitleAnimationChanged();
@@ -327,11 +342,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     // 标题动画的帧推进与摘层共用的失效投递: 排到实体线程重算标题是否待重开.
     // titleDirty 仅实体线程访问, 时钟回调只许经这里投递, 不得直写.
     void notifyTitleAnimationChanged() {
-        this.submit(() -> {
-            if (this.open) {
-                this.titleDirty = !Objects.equals(this.sentTitle, this.effectiveTitle());
-            }
-        }, "Failed to update Window title animation");
+        this.submit(this::recomputeTitleDirty, "Failed to update Window title animation");
     }
 
     // 有效标题为标题动画通道自新向旧第一个非 null 帧, 全放行则为配置标题.
@@ -340,7 +351,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (animations.length > 0) {
             long nowTick = Signals.ticking().get();
             for (int index = animations.length - 1; index >= 0; index--) {
-                Component frame = animations[index].frame(nowTick);
+                Component frame;
+                try {
+                    frame = animations[index].frameAt(nowTick);
+                } catch (RuntimeException exception) {
+                    this.report("Failed to evaluate Window title animation frame", exception);
+                    continue;
+                }
                 if (frame != null) {
                     return frame;
                 }
@@ -349,15 +366,28 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.title;
     }
 
-    // 以给定原因结束全部在播标题动画, 某个结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
+    // 以给定原因结束全部在播标题动画, 返回时通道一定是空的.
+    // 终结期间入场的播放当场以同一原因结束而不进通道, 否则结束回调里的链式续播会让通道死灰复燃.
+    // 某个结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
     private void finishTitleAnimations(@NotNull AnimationHandle.FinishReason reason) {
-        ActiveTitleAnimation[] animations = this.titleAnimations;
+        ActiveTitleAnimation[] animations;
+        synchronized (this.titleAnimationLock) {
+            this.titleAnimationsFinishing = reason;
+            animations = this.titleAnimations;
+            this.titleAnimations = ActiveTitleAnimation.NONE;
+        }
         RuntimeException failure = null;
-        for (int index = 0; index < animations.length; index++) {
-            try {
-                animations[index].finish(reason);
-            } catch (RuntimeException exception) {
-                failure = ThrowableUtils.combine(failure, exception);
+        try {
+            for (int index = 0; index < animations.length; index++) {
+                try {
+                    animations[index].finish(reason);
+                } catch (RuntimeException exception) {
+                    failure = ThrowableUtils.combine(failure, exception);
+                }
+            }
+        } finally {
+            synchronized (this.titleAnimationLock) {
+                this.titleAnimationsFinishing = null;
             }
         }
         if (failure != null) {
