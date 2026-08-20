@@ -76,7 +76,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         int size = this.state.bySlot.length;
         int[] slots = animationDefinition.slots();
         if (slots.length == 0) {
-            return ActiveAnimation.FINISHED_EMPTY;
+            return ActiveSlotAnimation.FINISHED_EMPTY;
         }
         // 先解析时钟, 把非法周期挡在入场之前
         long periodTicks = animationDefinition.periodTicks();
@@ -95,10 +95,10 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         // 起播时刻对齐到本周期的共享节拍, 帧推进的失效只在节拍上发出, 时间原点不对齐的话
         // 每次换帧都要等到下一个节拍才被看见, 首帧会被拉长最多一个周期
         long startTick = Signals.ticking().get() / periodTicks * periodTicks;
-        ActiveAnimation playing = new ActiveAnimation(this, animationDefinition, slots, orderBySlot, startTick);
+        ActiveSlotAnimation playing = new ActiveSlotAnimation(this, animationDefinition, slots, orderBySlot, startTick);
         synchronized (this.stateLock) {
             State current = this.state;
-            ActiveAnimation[] animations = Arrays.copyOf(current.animations, current.animations.length + 1);
+            ActiveSlotAnimation[] animations = Arrays.copyOf(current.animations, current.animations.length + 1);
             animations[current.animations.length] = playing;
             this.state = new State(current.global, current.bySlot, animations);
         }
@@ -115,16 +115,16 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     }
 
     // 摘除一次播放并恢复它盖住的槽位, 已经不在场时静默返回.
-    final void removeAnimation(@NotNull ActiveAnimation animation) {
+    final void removeAnimation(@NotNull ActiveSlotAnimation animation) {
         synchronized (this.stateLock) {
             State current = this.state;
             int index = indexOf(current.animations, animation);
             if (index < 0) return;
-            ActiveAnimation[] animations;
+            ActiveSlotAnimation[] animations;
             if (current.animations.length == 1) {
-                animations = ActiveAnimation.NONE;
+                animations = ActiveSlotAnimation.NONE;
             } else {
-                animations = new ActiveAnimation[current.animations.length - 1];
+                animations = new ActiveSlotAnimation[current.animations.length - 1];
                 System.arraycopy(current.animations, 0, animations, 0, index);
                 System.arraycopy(current.animations, index + 1, animations, index, current.animations.length - index - 1);
             }
@@ -137,7 +137,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     // 某个动画的结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
     @ApiStatus.Internal
     public final void finishAnimations(@NotNull AnimationHandle.FinishReason reason) {
-        ActiveAnimation[] animations = this.state.animations;
+        ActiveSlotAnimation[] animations = this.state.animations;
         RuntimeException failure = null;
         for (int index = 0; index < animations.length; index++) {
             try {
@@ -158,7 +158,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         }
     }
 
-    private static int indexOf(ActiveAnimation @NotNull [] animations, @NotNull ActiveAnimation animation) {
+    private static int indexOf(ActiveSlotAnimation @NotNull [] animations, @NotNull ActiveSlotAnimation animation) {
         for (int index = 0; index < animations.length; index++) {
             if (animations[index] == animation) {
                 return index;
@@ -173,7 +173,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         State current = this.state;
         Objects.checkIndex(slot, current.bySlot.length);
         // 播放中的动画最优先, 后开始的盖住先开始的, 帧放行时逐层下落
-        ActiveAnimation[] animations = current.animations;
+        ActiveSlotAnimation[] animations = current.animations;
         if (animations.length > 0) {
             long nowTick = Signals.ticking().get();
             for (int index = animations.length - 1; index >= 0; index--) {
@@ -202,9 +202,9 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     private static final class State {
         @NotNull private final VisualLayer global;
         @NotNull private final VisualLayer @NotNull [] bySlot;
-        @NotNull private final ActiveAnimation @NotNull [] animations; // 按开始序排列, 求值时从末尾往前看
+        @NotNull private final ActiveSlotAnimation @NotNull [] animations; // 按开始序排列, 求值时从末尾往前看
 
-        private State(@NotNull VisualLayer global, @NotNull VisualLayer @NotNull [] bySlot, @NotNull ActiveAnimation @NotNull [] animations) {
+        private State(@NotNull VisualLayer global, @NotNull VisualLayer @NotNull [] bySlot, @NotNull ActiveSlotAnimation @NotNull [] animations) {
             this.global = global;
             this.bySlot = bySlot;
             this.animations = animations;
@@ -214,7 +214,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         private static State empty(int size) {
             VisualLayer[] bySlot = new VisualLayer[size];
             Arrays.fill(bySlot, VisualLayer.NONE);
-            return new State(VisualLayer.NONE, bySlot, ActiveAnimation.NONE);
+            return new State(VisualLayer.NONE, bySlot, ActiveSlotAnimation.NONE);
         }
     }
 }

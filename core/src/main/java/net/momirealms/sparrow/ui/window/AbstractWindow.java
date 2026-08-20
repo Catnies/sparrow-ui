@@ -27,6 +27,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsPr
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
@@ -37,6 +38,7 @@ import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
 import net.momirealms.sparrow.ui.visual.WindowVisual;
 import net.momirealms.sparrow.ui.visual.WindowVisualImpl;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
+import net.momirealms.sparrow.ui.visual.animation.TitleAnimationDefinition;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
@@ -138,6 +140,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
     private @Nullable Component sentTitle; // 最近一次成功进入发送流程的标题; 仅玩家实体线程访问
     private boolean titleDirty;         // 标题是否待重开; 仅玩家实体线程访问
+
+    // 标题动画
+    private final Object titleAnimationLock = new Object(); // 只保护标题动画通道数组替换, 失效投递一律出了锁再做
+    private volatile ActiveTitleAnimation[] titleAnimations = ActiveTitleAnimation.NONE; // 播放中的标题动画, 按开始序排列, 求值时从末尾往前看
 
     // 槽位渲染与同步
     private final Object dirtyLock = new Object();      // 保护脏槽位双缓冲的锁
@@ -256,14 +262,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 更新本地标题快照.
+     * 更新本地配置标题快照.
      *
      * @param title 新标题
      */
     void notifyUpdateTitle(Component title) {
         this.title = title;
         if (this.open) {
-            this.titleDirty = !Objects.equals(this.sentTitle, title);
+            this.titleDirty = !Objects.equals(this.sentTitle, this.effectiveTitle());
         }
     }
 
@@ -289,6 +295,102 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public Component title() {
         return this.title;
+    }
+
+    @NotNull
+    @Override
+    public AnimationHandle playTitleAnimation(@NotNull TitleAnimationDefinition animationDefinition) {
+        // 先解析时钟, 把非法周期挡在入场之前
+        long periodTicks = animationDefinition.periodTicks();
+        Signal<Long> clock = Signals.everyTicks(periodTicks);
+        // 起播时刻对齐到本周期的共享节拍, 与槽位动画同理, 不对齐的话首帧会被拉长最多一个周期
+        long startTick = Signals.ticking().get() / periodTicks * periodTicks;
+        ActiveTitleAnimation playing = new ActiveTitleAnimation(this, animationDefinition, startTick);
+        synchronized (this.titleAnimationLock) {
+            ActiveTitleAnimation[] current = this.titleAnimations;
+            ActiveTitleAnimation[] animations = Arrays.copyOf(current, current.length + 1);
+            animations[current.length] = playing;
+            this.titleAnimations = animations;
+        }
+        // 入场即盖住配置标题
+        this.notifyTitleAnimationChanged();
+        try {
+            playing.startClock(this.signalBindings, clock);
+        } catch (RuntimeException exception) {
+            // 挂钟失败的这一次播放既不会推进也没有句柄能取消它, 摘掉它再把失败交出去
+            this.removeTitleAnimation(playing);
+            throw exception;
+        }
+        return playing;
+    }
+
+    // 标题动画的帧推进与摘层共用的失效投递: 排到实体线程重算标题是否待重开.
+    // titleDirty 仅实体线程访问, 时钟回调只许经这里投递, 不得直写.
+    void notifyTitleAnimationChanged() {
+        this.submit(() -> {
+            if (this.open) {
+                this.titleDirty = !Objects.equals(this.sentTitle, this.effectiveTitle());
+            }
+        }, "Failed to update Window title animation");
+    }
+
+    // 有效标题为标题动画通道自新向旧第一个非 null 帧, 全放行则为配置标题.
+    private Component effectiveTitle() {
+        ActiveTitleAnimation[] animations = this.titleAnimations;
+        if (animations.length > 0) {
+            long nowTick = Signals.ticking().get();
+            for (int index = animations.length - 1; index >= 0; index--) {
+                Component frame = animations[index].frame(nowTick);
+                if (frame != null) {
+                    return frame;
+                }
+            }
+        }
+        return this.title;
+    }
+
+    // 以给定原因结束全部在播标题动画, 某个结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
+    private void finishTitleAnimations(@NotNull AnimationHandle.FinishReason reason) {
+        ActiveTitleAnimation[] animations = this.titleAnimations;
+        RuntimeException failure = null;
+        for (int index = 0; index < animations.length; index++) {
+            try {
+                animations[index].finish(reason);
+            } catch (RuntimeException exception) {
+                failure = ThrowableUtils.combine(failure, exception);
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    // 摘除一次标题播放并让配置标题或更早的播放在下一次同步时露出, 已经不在场时静默返回.
+    void removeTitleAnimation(@NotNull ActiveTitleAnimation animation) {
+        synchronized (this.titleAnimationLock) {
+            ActiveTitleAnimation[] current = this.titleAnimations;
+            int index = indexOf(current, animation);
+            if (index < 0) return;
+            ActiveTitleAnimation[] animations;
+            if (current.length == 1) {
+                animations = ActiveTitleAnimation.NONE;
+            } else {
+                animations = new ActiveTitleAnimation[current.length - 1];
+                System.arraycopy(current, 0, animations, 0, index);
+                System.arraycopy(current, index + 1, animations, index, current.length - index - 1);
+            }
+            this.titleAnimations = animations;
+        }
+        this.notifyTitleAnimationChanged();
+    }
+
+    private static int indexOf(ActiveTitleAnimation @NotNull [] animations, @NotNull ActiveTitleAnimation animation) {
+        for (int index = 0; index < animations.length; index++) {
+            if (animations[index] == animation) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     @Override
@@ -738,7 +840,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             menuHandle.prepareOpen(replacingWindow);
             this.cursorVisual.takeDirty();
             MenuHandle.CursorSnapshot localCursor = this.renderCursor(menuHandle.cursor());
-            Component title = this.title;
+            Component title = this.effectiveTitle();
             menuHandle.open(title, this.protocolSlots(localSlots), localCursor);
 
             this.menuHandle = menuHandle;
@@ -1418,7 +1520,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 cursor = this.renderCursor(menu.cursor());
             }
             if (reopen) {
-                Component title = this.title;
+                Component title = this.effectiveTitle();
                 menu.reopenWithTitle(title, protocolSlots, cursor);
                 this.sentTitle = title;
             } else {
@@ -1630,6 +1732,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         try {
             this.windowVisual.finishAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
+        } catch (Throwable throwable) {
+            failure = ThrowableUtils.combine(failure, throwable);
+        }
+        try {
+            this.finishTitleAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
         } catch (Throwable throwable) {
             failure = ThrowableUtils.combine(failure, throwable);
         }

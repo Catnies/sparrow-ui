@@ -5,6 +5,8 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.visual.WindowVisual;
+import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
+import net.momirealms.sparrow.ui.visual.animation.TitleAnimationDefinition;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -208,6 +210,22 @@ public interface Window {
      * @return 当前标题
      */
     @NotNull Component title();
+
+    /**
+     * 播放一次标题动画. 播放期间的标题帧盖住配置标题({@link #setTitle}/{@link #setTitleSupplier}),
+     * 帧返回 {@code null} 时放行显示配置标题, 播放结束后配置标题原样露出;
+     * 同窗多次播放按开始序后来者优先, 后开始的帧放行时逐层下落到更早开始的播放.
+     * <p><strong>每一拍真正的标题变化都是一次同容器编号的菜单重开加全量内容重发</strong>,
+     * 所以容器现在展示的内容越复杂, 方法越贵.
+     * <p>可在任意线程调用, 也可以在窗口打开前调用, 时间轴照走, 打开时的首帧就是当前动画帧.
+     * 窗口关闭时在播的标题动画以 {@link AnimationHandle.FinishReason#WINDOW_CLOSED} 结束.
+     *
+     * @param animation 标题动画描述
+     * @return 这次播放的句柄
+     * @throws IllegalArgumentException 当动画周期不是正数时
+     */
+    @NotNull
+    AnimationHandle playTitleAnimation(@NotNull TitleAnimationDefinition animation);
 
     /**
      * 设置是否接受客户端主动关闭.

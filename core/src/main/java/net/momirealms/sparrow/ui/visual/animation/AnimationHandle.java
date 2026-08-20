@@ -7,7 +7,7 @@ import java.util.function.Consumer;
 public interface AnimationHandle {
 
     /**
-     * 取消这次动画播放并立即恢复被盖住的槽位显示.
+     * 取消这次动画播放并立即恢复被盖住的显示.
      */
     void cancel();
 
