@@ -166,7 +166,7 @@ final class DisplayedSlotPath implements AutoCloseable {
                 && (previous.frozen != next.frozen || !Objects.equals(previous.inventoryLink, next.inventoryLink));
         // 来源身份只担保这一层配置没换, 不担保看的还是同一个终点: 翻页把槽位改指到另一个 Inventory 槽,
         // 配置对象却是同一个, 所以终点换了要自己作废上一个终点算出来的结果.
-        boolean leafChanged = previous != null && !Objects.equals(previous.leafElement, next.leafElement);
+        boolean leafChanged = previous != null && !sameLeaf(previous.leafElement, next.leafElement);
         // 沿用深度和新旧层数三者相等, 才说明经过的 Pane 一个没换; 终点 Inventory 也没换的话,
         // Window 那份刷新名单就还是对的. 只换 Item 终点的路径(投影刷新就是这样)不必惊动它.
         boolean refreshTargetsStale = previous == null
@@ -236,7 +236,15 @@ final class DisplayedSlotPath implements AutoCloseable {
     private boolean leafUnchanged(@NotNull PathState previous) {
         int leafDepth = previous.depth - 1;
         Element element = previous.panes[leafDepth].element(previous.paneSlots[leafDepth]);
-        return Objects.equals(element, previous.leafElement);
+        return sameLeaf(element, previous.leafElement);
+    }
+
+    // 判断两个终点元素指的是不是同一个终点.
+    private static boolean sameLeaf(@Nullable Element left, @Nullable Element right) {
+        if (left instanceof Element.Item(var leftItem) && right instanceof Element.Item(var rightItem)) {
+            return leftItem == rightItem;
+        }
+        return Objects.equals(left, right);
     }
 
     /**
