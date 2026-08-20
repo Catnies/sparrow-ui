@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.cartographycarousel;
+package net.momirealms.sparrow.ui.example.menu.cartographygallery;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -40,7 +40,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>制图台左侧 raw slot 0 和 1 分别切换上一张与下一张图片, 右侧 raw slot 2
  * 在 {@link CartographyWindow.View} 的四种预览形态之间循环.
  */
-public final class CartographyCarouselMenu {
+public final class CartographyGalleryMenu {
     private static final int MAP_SIZE = CartographyWindow.MAP_SIZE; // 完整地图画布的边长
     private static final List<SlideSource> SLIDE_SOURCES = List.of(
             new SlideSource(
@@ -77,8 +77,8 @@ public final class CartographyCarouselMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return CartographyCarouselMenu.loadSlides()
-                .thenCompose(slides -> CartographyCarouselMenu.openOnViewerThread(viewer, slides));
+        return CartographyGalleryMenu.loadSlides()
+                .thenCompose(slides -> CartographyGalleryMenu.openOnViewerThread(viewer, slides));
     }
 
     /**
@@ -87,7 +87,7 @@ public final class CartographyCarouselMenu {
      * @param viewer 要查看菜单的玩家
      * @param slides 已完成远程解析的图片快照
      */
-    private CartographyCarouselMenu(@NotNull Player viewer, @NotNull List<Slide> slides) {
+    private CartographyGalleryMenu(@NotNull Player viewer, @NotNull List<Slide> slides) {
         this.slides = List.copyOf(slides);
         this.slideIndex = Signal.of(0);
         this.viewIndex = Signal.of(0);
@@ -104,7 +104,7 @@ public final class CartographyCarouselMenu {
 
         // 默认下栏连接玩家背包, 因此整个构建过程必须留在玩家实体线程
         this.window = CartographyWindow.builder()
-                .setTitle(Component.text("制图台轮播图", NamedTextColor.DARK_AQUA))
+                .setTitle(Component.text("制图台画廊", NamedTextColor.DARK_AQUA))
                 .setInputPane(inputPane)
                 .setResultPane(resultPane)
                 .setMap(this.slides.get(0).image())
@@ -250,7 +250,7 @@ public final class CartographyCarouselMenu {
                 SparrowExample.INSTANCE,
                 ignoredTask -> {
                     try {
-                        CartographyCarouselMenu menu = new CartographyCarouselMenu(viewer, slides);
+                        CartographyGalleryMenu menu = new CartographyGalleryMenu(viewer, slides);
                         menu.window.open().whenComplete((openResult, throwable) -> {
                             if (throwable == null) {
                                 result.complete(openResult);
@@ -277,7 +277,7 @@ public final class CartographyCarouselMenu {
     @NotNull
     private static synchronized CompletableFuture<List<Slide>> loadSlides() {
         if (slideCache == null || slideCache.isCompletedExceptionally()) {
-            slideCache = CompletableFuture.supplyAsync(CartographyCarouselMenu::readSlides);
+            slideCache = CompletableFuture.supplyAsync(CartographyGalleryMenu::readSlides);
         }
         return slideCache;
     }
@@ -292,7 +292,7 @@ public final class CartographyCarouselMenu {
     private static List<Slide> readSlides() {
         List<Slide> slides = new ArrayList<>(SLIDE_SOURCES.size());
         for (int index = 0; index < SLIDE_SOURCES.size(); index++) {
-            slides.add(CartographyCarouselMenu.readSlide(SLIDE_SOURCES.get(index)));
+            slides.add(CartographyGalleryMenu.readSlide(SLIDE_SOURCES.get(index)));
         }
         return List.copyOf(slides);
     }

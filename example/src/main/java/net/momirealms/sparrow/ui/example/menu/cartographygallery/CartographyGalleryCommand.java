@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.cartographycarousel;
+package net.momirealms.sparrow.ui.example.menu.cartographygallery;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -15,29 +15,37 @@ import net.momirealms.sparrow.ui.example.SparrowExample;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
 import java.util.logging.Level;
 
 /**
- * 注册制图台轮播图示例的 Paper Brigadier 子命令.
+ * 注册制图台画廊示例的 Paper Brigadier 子命令.
  */
-public final class CartographyCarouselCommand {
+public final class CartographyGalleryCommand {
+    private static final String NAME = "cartographygallery";
+    private static final String CHINESE_NAME = "制图台画廊";
     private static final String TARGET_ARGUMENT = "target"; // 单玩家选择器参数名
-    private static final Component OPEN_FAILED_MESSAGE = Component.text("制图台轮播图菜单打开失败，请查看服务端日志。", NamedTextColor.RED)
+    private static final Component OPEN_FAILED_MESSAGE = Component.text("制图台画廊菜单打开失败，请查看服务端日志。", NamedTextColor.RED)
             .decoration(TextDecoration.ITALIC, false); // 异步打开失败后发送给仍在线的目标玩家
 
-    private CartographyCarouselCommand() {
+    private CartographyGalleryCommand() {
     }
 
     /**
-     * 创建 {@code /sparrowui open cartographycarousel <target>} 命令节点.
+     * 创建 {@code /sparrowui open cartographygallery <target>} 命令节点.
      *
      * @return 可挂载到 open 节点下的命令
      */
     @NotNull
-    public static LiteralArgumentBuilder<CommandSourceStack> node() {
-        return Commands.literal("cartographycarousel")
+    public static List<LiteralArgumentBuilder<CommandSourceStack>> nodes() {
+        return List.of(node(NAME), node(CHINESE_NAME));
+    }
+
+    @NotNull
+    private static LiteralArgumentBuilder<CommandSourceStack> node(@NotNull String name) {
+        return Commands.literal(name)
                 .then(Commands.argument(TARGET_ARGUMENT, ArgumentTypes.player())
-                        .executes(CartographyCarouselCommand::open));
+                        .executes(CartographyGalleryCommand::open));
     }
 
     /**
@@ -51,7 +59,7 @@ public final class CartographyCarouselCommand {
         PlayerSelectorArgumentResolver resolver = context.getArgument(TARGET_ARGUMENT, PlayerSelectorArgumentResolver.class);
         Player target = resolver.resolve(context.getSource()).getFirst();
         String targetName = target.getName();
-        CartographyCarouselMenu.open(target).whenComplete((ignoredResult, throwable) -> {
+        CartographyGalleryMenu.open(target).whenComplete((ignoredResult, throwable) -> {
             if (throwable == null) {
                 return;
             }

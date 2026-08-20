@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.searchcapture;
+package net.momirealms.sparrow.ui.example.menu.anvilprompt;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 会话里负责捕捉搜索词的那一扇: 只借铁砧的文本框, 不做任何合成.
  *
- * <p>它由 {@link SearchCaptureMenu} 的搜索按钮打开, 因此列表那扇窗成了它的上一扇. 离开有两条路:
+ * <p>它由 {@link AnvilPromptMenu} 的搜索按钮打开, 因此列表那扇窗成了它的上一扇. 离开有两条路:
  * <ul>
  *     <li>点结果槽的确认按钮: 把攒下的草稿交给列表筛一次, 再 {@link Window#back()} 回去;</li>
  *     <li>直接按 ESC: 原样返回, 列表那边的筛选词一个字都不动. 本窗在 Builder 上开了
@@ -30,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  * </ul>
  *
  * <p>输入阶段只往 {@link #draft} 里攒文本, 一次筛选都不做. 这是这个示例特意要演示的分工:
- * 列表那边的一次 {@link SearchCaptureMenu#query(String)} 要重扫整份 Material 清单, 重算分页,
+ * 列表那边的一次 {@link AnvilPromptMenu#query(String)} 要重扫整份 Material 清单, 重算分页,
  * 再刷新整整三行投影, 跟着击键跑就是每敲一个字白做一遍; 攒草稿只是写一个字段, 顺带让本窗
  * 单独一格重画. 昂贵的活留到玩家确认时做一次.
  *
@@ -38,8 +38,8 @@ import java.util.concurrent.CompletableFuture;
  * 所以下次点搜索按钮进来的是一扇全新构建的铁砧, 草稿从当时生效的筛选词重新起头:
  * {@link #appliedOnEntry} 每次都重新捕捉一遍, 玩家可以直接从这一行看出自己进的不是上一次那扇窗.
  */
-final class SearchCaptureAnvil {
-    private final SearchCaptureMenu browser;   // 上一扇携带的浏览菜单本体
+final class AnvilPromptInput {
+    private final AnvilPromptMenu browser;   // 上一扇携带的浏览菜单本体
     private final String appliedOnEntry;       // 进入本窗时生效的筛选词
     private final MutableSignal<String> draft; // 客户端最近一次提交的文本, 只驱动结果槽那一格
     private final AnvilWindow window;
@@ -53,8 +53,8 @@ final class SearchCaptureAnvil {
     @NotNull
     static CompletableFuture<Window> openFrom(@NotNull Window source) {
         // 手上就有那扇窗, 直接从它的 data 槽取出菜单本体, 不需要另外传引用
-        SearchCaptureMenu browser = source.data(SearchCaptureMenu.class);
-        return source.navigate(new SearchCaptureAnvil(source.viewer(), browser).window);
+        AnvilPromptMenu browser = source.data(AnvilPromptMenu.class);
+        return source.navigate(new AnvilPromptInput(source.viewer(), browser).window);
     }
 
     /**
@@ -63,7 +63,7 @@ final class SearchCaptureAnvil {
      * @param viewer 要查看菜单的玩家
      * @param browser 上一扇携带的浏览菜单本体
      */
-    private SearchCaptureAnvil(@NotNull Player viewer, @NotNull SearchCaptureMenu browser) {
+    private AnvilPromptInput(@NotNull Player viewer, @NotNull AnvilPromptMenu browser) {
         this.browser = browser;
         this.appliedOnEntry = browser.query();
         // 草稿从当前生效的筛选词起头: 一个字都没输就确认, 等于什么都没改

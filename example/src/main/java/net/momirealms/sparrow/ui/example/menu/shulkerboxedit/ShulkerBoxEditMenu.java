@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.shulkerbox;
+package net.momirealms.sparrow.ui.example.menu.shulkerboxedit;
 
 import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
@@ -28,7 +28,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>玩家直接点击上栏时先核对物品身份；拖拽、快捷转移等真正产生内容变化的操作，
  * 还会在事务 Pre 阶段核对一次。事务提交后立即把完整内容写回原潜影盒。
  */
-public final class ShulkerBoxMenu {
+public final class ShulkerBoxEditMenu {
     private static final Component INVALIDATED_MESSAGE = Component
             .text("潜影盒已被移动或替换，菜单已关闭。", NamedTextColor.RED)
             .decoration(TextDecoration.ITALIC, false);
@@ -43,10 +43,10 @@ public final class ShulkerBoxMenu {
 
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer, int sourceSlot) {
-        return new ShulkerBoxMenu(viewer, sourceSlot).window.open();
+        return new ShulkerBoxEditMenu(viewer, sourceSlot).window.open();
     }
 
-    private ShulkerBoxMenu(@NotNull Player viewer, int sourceSlot) {
+    private ShulkerBoxEditMenu(@NotNull Player viewer, int sourceSlot) {
         this.viewer = viewer;
         this.playerInventory = ((CraftPlayer) viewer).getHandle().getInventory();
         this.sourceSlot = sourceSlot;

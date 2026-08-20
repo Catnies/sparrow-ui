@@ -39,7 +39,7 @@ import java.util.logging.Level;
  * </ul>
  *
  * <p>本示例的类别页没有开 {@code backOnPlayerClose}, 所以在类别页按 ESC 是结束整段浏览;
- * 想让 ESC 只回上一扇, 看 {@link net.momirealms.sparrow.ui.example.menu.searchcapture.SearchCaptureAnvil}.
+ * 想让 ESC 只回上一扇, 看 {@link net.momirealms.sparrow.ui.example.menu.anvilprompt.AnvilPromptInput}.
  */
 public final class SkillTreeMenu {
     private static final Item FILLER = Item.simple(filler()); // 空位背景
@@ -76,7 +76,7 @@ public final class SkillTreeMenu {
             this.profiles.put(category, SkillProfile.load(viewer, category));
         }
         this.window = NormalWindow.builder()
-                .setTitle(Component.text("个人技能", NamedTextColor.DARK_AQUA))
+                .setTitle(Component.text("技能树", NamedTextColor.DARK_AQUA))
                 .setUpperPane(this.buildOverviewPane())
                 // 本窗经 open() 直接打开, 因此这条根声明生效: 整段浏览按树来记
                 .setSessionKind(WindowSession.Kind.TREE)

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.animationcarousel;
+package net.momirealms.sparrow.ui.example.menu.animationpresets;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -55,7 +55,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *         所以关窗时显式取消; 无限循环的那种尤其需要.</li>
  * </ol>
  */
-public final class AnimationCarouselMenu {
+public final class AnimationPresetsMenu {
     private static final PaneSize STAGE_SIZE = new PaneSize(9, 6); // 舞台就是上方那个 6 行大箱子
     private static final int NOTHING_PLAYING = -1;                 // playingIndex 的空值
     private static final Item STAGE_FILLER = Item.simple(named(Material.LIGHT_BLUE_STAINED_GLASS_PANE, Component.text("舞台", NamedTextColor.AQUA)));
@@ -155,7 +155,7 @@ public final class AnimationCarouselMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new AnimationCarouselMenu(viewer).window.open())
+        return Scheduling.async(SparrowExample.INSTANCE, () -> new AnimationPresetsMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -164,11 +164,11 @@ public final class AnimationCarouselMenu {
      *
      * @param viewer 要查看菜单的玩家
      */
-    private AnimationCarouselMenu(@NotNull Player viewer) {
+    private AnimationPresetsMenu(@NotNull Player viewer) {
         this.playingIndex = Signal.of(NOTHING_PLAYING);
         this.stage = Pane.filled(STAGE_SIZE.width(), STAGE_SIZE.height(), STAGE_FILLER);
         this.window = NormalWindow.builder()
-                .setTitle(Component.text("动画轮播展示"))
+                .setTitle(Component.text("预设动画"))
                 .setUpperPane(this.stage)
                 .setLowerPane(this.buildControlPane())
                 // 动画播在 Pane 上, 共享宿主不随窗口关闭而终结, 收尾得自己做

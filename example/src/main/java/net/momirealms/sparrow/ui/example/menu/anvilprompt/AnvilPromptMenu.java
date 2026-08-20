@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.searchcapture;
+package net.momirealms.sparrow.ui.example.menu.anvilprompt;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -32,11 +32,11 @@ import java.util.concurrent.CompletableFuture;
 /**
  * 演示一段由两扇 Window 组成的会话: 浏览列表在这里, 输入搜索词去铁砧那边捕捉.
  *
- * <p>这是 {@link net.momirealms.sparrow.ui.example.menu.searchpage.SearchPageMenu} 的另一种拆法.
+ * <p>这是 {@link net.momirealms.sparrow.ui.example.menu.livesearch.LiveSearchMenu} 的另一种拆法.
  * 那个示例把铁砧本身当作唯一的菜单, 输入框和结果同处一屏; 这个示例把两件事分成两扇窗:
  * <ol>
  *     <li>本菜单是根窗: 上三行显示当前页的 Material, 第四行放翻页, 搜索, 状态和关闭.</li>
- *     <li>点搜索按钮时 {@link SearchCaptureAnvil} 作为下一扇打开, 玩家在铁砧文本框里输入.</li>
+ *     <li>点搜索按钮时 {@link AnvilPromptInput} 作为下一扇打开, 玩家在铁砧文本框里输入.</li>
  *     <li>铁砧上点确认才把输入交回来筛一次, 按 ESC 则原样返回; 两条路都回到本菜单原实例,
  *         页码和搜索词都还在.</li>
  * </ol>
@@ -50,7 +50,7 @@ import java.util.concurrent.CompletableFuture;
  *     <li>{@link Window.Builder#setData}: 把本对象挂在根窗上, 铁砧那边靠它找回搜索状态.</li>
  * </ul>
  */
-public final class SearchCaptureMenu {
+public final class AnvilPromptMenu {
     private static final int PAGE_SIZE = 27; // 上三行的可展示槽位数
 
     /**
@@ -76,7 +76,7 @@ public final class SearchCaptureMenu {
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
         // 菜单对象, Pane 和 Window 都在异步线程构建, open 再把打开送进玩家的实体线程
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new SearchCaptureMenu(viewer).window.open())
+        return Scheduling.async(SparrowExample.INSTANCE, () -> new AnvilPromptMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -85,15 +85,15 @@ public final class SearchCaptureMenu {
      *
      * @param viewer 要查看菜单的玩家
      */
-    private SearchCaptureMenu(@NotNull Player viewer) {
+    private AnvilPromptMenu(@NotNull Player viewer) {
         // input 是搜索数据流的起点, 变化后会重新得到整份筛选结果
         this.input = Signal.of("");
-        Signal<List<MaterialEntry>> results = this.input.mapDistinct(SearchCaptureMenu::filterMaterials);
+        Signal<List<MaterialEntry>> results = this.input.mapDistinct(AnvilPromptMenu::filterMaterials);
         // 结果数量和分页器共同消费同一份筛选结果, 避免维护两套容易失配的状态
         this.resultCount = results.map(List::size);
         this.pages = Page.of(results, PAGE_SIZE);
         this.window = NormalWindow.builder()
-                .setTitle(Component.text("Material 浏览"))
+                .setTitle(Component.text("铁砧取词"))
                 .setUpperPane(this.buildBrowserPane())
                 // 本窗经 open() 直接打开, 因此下面三项根声明都会生效
                 .setSessionKind(WindowSession.Kind.STACK)
@@ -211,7 +211,7 @@ public final class SearchCaptureMenu {
                         return;
                     }
                     // 本窗成为上一扇, 铁砧成为当前窗, 两者同属一段会话
-                    SearchCaptureAnvil.openFrom(click.window());
+                    AnvilPromptInput.openFrom(click.window());
                 })
                 .build();
     }

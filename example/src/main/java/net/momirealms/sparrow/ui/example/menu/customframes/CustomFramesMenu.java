@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.advancedanimation;
+package net.momirealms.sparrow.ui.example.menu.customframes;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -46,7 +46,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <strong>叠加是动画通道自带的, 不需要这个示例做任何合成</strong>. 54 个中心各有一份常量描述,
  * 点击时直接取用, 不在点击现场拼描述.
  */
-public final class AdvancedAnimationMenu {
+public final class CustomFramesMenu {
     private static final int WIDTH = 9;
     private static final int HEIGHT = 6;
     private static final int AREA = WIDTH * HEIGHT;
@@ -86,7 +86,7 @@ public final class AdvancedAnimationMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new AdvancedAnimationMenu(viewer).window.open())
+        return Scheduling.async(SparrowExample.INSTANCE, () -> new CustomFramesMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -95,7 +95,7 @@ public final class AdvancedAnimationMenu {
      *
      * @param viewer 要查看菜单的玩家
      */
-    private AdvancedAnimationMenu(@NotNull Player viewer) {
+    private CustomFramesMenu(@NotNull Player viewer) {
         this.viewer = viewer;
         this.mode = Signal.of(MODE_IDLE);
         this.stage = Pane.empty(WIDTH, HEIGHT);
@@ -104,7 +104,7 @@ public final class AdvancedAnimationMenu {
             this.stage.setElement(slot, new Element.Item(this.buildStageItem(slot)));
         }
         this.window = NormalWindow.builder()
-                .setTitle(Component.text("高级动画展示"))
+                .setTitle(Component.text("自定义帧动画"))
                 .setUpperPane(this.stage)
                 .setLowerPane(this.buildControlPane())
                 // 动画播在 Pane 上, 共享宿主不随窗口关闭而终结, 收尾得自己做

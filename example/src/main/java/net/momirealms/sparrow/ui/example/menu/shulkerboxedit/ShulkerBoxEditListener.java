@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.shulkerbox;
+package net.momirealms.sparrow.ui.example.menu.shulkerboxedit;
 
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.player.Inventory;
@@ -15,7 +15,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * 右键主手或副手潜影盒时打开交互菜单。
  */
-public final class ShulkerBoxListener implements Listener {
+public final class ShulkerBoxEditListener implements Listener {
 
     @EventHandler
     private void onRightClick(@NotNull PlayerInteractEvent event) {
@@ -35,6 +35,6 @@ public final class ShulkerBoxListener implements Listener {
         // 双手同时持有潜影盒时只处理主手事件，避免同一次右键打开两次。
         if (hand == EquipmentSlot.OFF_HAND && playerInventory.getSelectedItem().is(ItemTags.SHULKER_BOXES)) return;
 
-        ShulkerBoxMenu.open(player, sourceSlot);
+        ShulkerBoxEditMenu.open(player, sourceSlot);
     }
 }

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.searchpage;
+package net.momirealms.sparrow.ui.example.menu.livesearch;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemLore;
@@ -38,7 +38,7 @@ import java.util.concurrent.CompletableFuture;
  * 避免为每位玩家重复创建同一批原始 {@link ItemStack}. 该清单在本类首次初始化时构建,
  * 早于 {@link #open(Player)} 方法体中的异步任务.
  */
-public final class SearchPageMenu {
+public final class LiveSearchMenu {
     private static final int PAGE_SIZE = 27; // 玩家背包上三行的可展示槽位数
 
     /**
@@ -67,9 +67,9 @@ public final class SearchPageMenu {
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
         // Window.open 返回另一层 Future, thenCompose 会把异步构建和实际打开合并成一次等待
         return Scheduling.async(SparrowExample.INSTANCE, () -> {
-            SearchPageMenu menu = new SearchPageMenu();
+            LiveSearchMenu menu = new LiveSearchMenu();
             AnvilWindow anvilWindow = AnvilWindow.builder()
-                    .setTitle(Component.text("搜索 Material"))
+                    .setTitle(Component.text("实时搜索"))
                     .setUpperPane(menu.buildUpperPane())
                     .setLowerPane(menu.buildLowerPane())
                     .addRenameHandler(menu::updateInput)
@@ -82,10 +82,10 @@ public final class SearchPageMenu {
     /**
      * 创建一次菜单打开所需的独立搜索状态, 让不同玩家的输入和页码互不影响.
      */
-    private SearchPageMenu() {
+    private LiveSearchMenu() {
         // input 是搜索数据流的起点, 变化后会重新得到整份筛选结果
         this.input = Signal.of("");
-        Signal<List<MaterialEntry>> results = this.input.mapDistinct(SearchPageMenu::filterMaterials);
+        Signal<List<MaterialEntry>> results = this.input.mapDistinct(LiveSearchMenu::filterMaterials);
         // 结果数量和分页器共同消费同一份筛选结果, 避免维护两套容易失配的状态
         this.resultCount = results.map(List::size);
         this.pages = Page.of(results, PAGE_SIZE);

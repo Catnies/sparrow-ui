@@ -12,17 +12,25 @@ import net.momirealms.sparrow.ui.example.SparrowExample;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
 import java.util.logging.Level;
 
 public final class SkillTreeCommand {
+    private static final String NAME = "skilltree";
+    private static final String CHINESE_NAME = "技能树";
     private static final String TARGET_ARGUMENT = "target";
 
     private SkillTreeCommand() {
     }
 
     @NotNull
-    public static LiteralArgumentBuilder<CommandSourceStack> node() {
-        return Commands.literal("skilltree")
+    public static List<LiteralArgumentBuilder<CommandSourceStack>> nodes() {
+        return List.of(node(NAME), node(CHINESE_NAME));
+    }
+
+    @NotNull
+    private static LiteralArgumentBuilder<CommandSourceStack> node(@NotNull String name) {
+        return Commands.literal(name)
                 .then(Commands.argument(TARGET_ARGUMENT, ArgumentTypes.player())
                         .executes(SkillTreeCommand::open));
     }
