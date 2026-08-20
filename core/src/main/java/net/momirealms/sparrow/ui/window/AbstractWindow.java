@@ -102,7 +102,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private static final int INCOMING_PER_TICK = 128;               // 每 tick 最多处理的入站输入数, 防止单个玩家占满实体线程
     private static final int CURSOR_AUDIT_INTERVAL = 20;            // 光标复核周期(tick), 定期纠正客户端的光标预测
     private static final long PING_TIMEOUT_MILLIS = 30_000;         // 窗口状态 Ping 的超时时间, 超时未收到 Pong 就丢弃
-    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());   // 空的 BitSet 脏位槽.
+    private static final int STATE_ID_RING = 32768;                 // 原版 state id 取值范围
+    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());   // 空的 BitSet 脏位槽
 
     // 身份与固定配置, 构造后不变
     private final WindowManager manager;
@@ -173,6 +174,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final AtomicLong interactionPathRevision = new AtomicLong(); // InventoryLink 终点或冻结语义的版本
     private final BundleSelectionState[] bundleSelections; // 客户端本地 Bundle 选择, 按协议槽位(raw slot)隔离
     private final boolean[] frozenSlots; // Window 侧的单槽冻结, 覆盖整个路径数组域, 与路径沿途的 Pane 冻结按或合成
+    private final int[] structureBarriers; // 每个协议槽位的交互结构屏障, 客户端 state id 早于它的交互按过时丢弃
+    private final BitSet pendingStructureSlots = new BitSet(); // 结构已变但还没同步给客户端的协议槽位
 
     // 窗口状态与 Ping/Pong 确认
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
@@ -193,6 +196,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.layout = layout;
         this.bundleSelections = new BundleSelectionState[layout.protocolSize()];
         this.frozenSlots = new boolean[layout.size()];
+        this.structureBarriers = new int[layout.protocolSize()];
         this.title = Component.empty();
         this.titleSupplier = settings.titleSupplier();
         this.closeable = settings.closeable();
@@ -743,6 +747,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.localCursor = localCursor;
             this.sentTitle = title;
             this.tickTask = tickTask;
+            Arrays.fill(this.structureBarriers, menuHandle.stateId());
+            this.pendingStructureSlots.clear();
             this.open = true;
             this.cursorDirty = false;
             this.forceFull = false;
@@ -848,8 +854,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      */
     private void handleInteraction(MenuInput.Common.Interaction interaction) {
         M menu = this.menuHandle;
-        // 不属于当前状态的输入: 重置解释器, 强制全量恢复
-        if (menu == null || !menu.accepts(interaction)) {
+        // 不属于当前状态的输入就重置解释器, 强制全量同步
+        if (menu == null || this.isStaleAcrossStructureChange(interaction) || !menu.accepts(interaction)) {
             this.clickInterpreter.reset();
             this.forceFull = true;
             return;
@@ -1160,6 +1166,50 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 && this.interactionPathRevision.get() == interactionPathRevision;
     }
 
+    /**
+     * 记下一个协议槽位的交互结构变了 (叶 Element 变化, InventoryLink 或 Frozen 操作).
+     * <p>这意味着这个槽位如果还有客户端已发出但服务端未收到的包, 一律按过时丢弃.
+     *
+     * @param windowSlot 结构发生变化的 Window 槽位
+     */
+    void notifyInteractionStructureChanged(int windowSlot) {
+        if (windowSlot >= 0 && windowSlot < this.structureBarriers.length) {
+            this.pendingStructureSlots.set(windowSlot);
+        }
+    }
+
+    // 结构变化随本批同步发了出去, 之后到达的交互才算见过新结构.
+    private void commitStructureBarriers(MenuHandle menu) {
+        if (this.pendingStructureSlots.isEmpty()) return;
+        int stateId = menu.stateId();
+        for (
+                int windowSlot = this.pendingStructureSlots.nextSetBit(0);
+                windowSlot >= 0;
+                windowSlot = this.pendingStructureSlots.nextSetBit(windowSlot + 1)
+        ) {
+            this.structureBarriers[windowSlot] = stateId;
+        }
+        this.pendingStructureSlots.clear();
+    }
+
+    /**
+     * 判断一次交互是不是在客户端还没同步最新的元素/状态时点出来的.
+     * <p>客户端视图落后一拍本身不算问题 (原版同样照常处理), 但是如果 "点的那一格在客户端不知情时换过元素/状态"
+     * 才说明这次点击的意图已经落空, 比如玩家看到的还是旧按钮, 但是服务端已经记为新的按钮.
+     *
+     * @param interaction 待判定的交互
+     * @return 交互已经跨过结构变化时返回 true
+     */
+    private boolean isStaleAcrossStructureChange(MenuInput.Common.Interaction interaction) {
+        // 槽号直接来自数据包, 容器外点击是 -999.
+        int windowSlot = interaction.slot();
+        if (windowSlot < 0 || windowSlot >= this.structureBarriers.length) return false;
+        // 结构刚变还没发出去, 客户端手上一定是旧结构
+        if (this.pendingStructureSlots.get(windowSlot)) return true;
+        // state id 是环形计数, 只能按环上的距离判断新旧, 落在后半环即客户端还没见过屏障那一版
+        return ((interaction.stateId() - this.structureBarriers[windowSlot]) & (STATE_ID_RING - 1)) >= STATE_ID_RING / 2;
+    }
+
     // DisplayedSlotPath 在重新解析后发现 InventoryLink 终点或冻结语义改变时调用.
     void notifyInteractionPathChanged() {
         this.interactionPathRevision.incrementAndGet();
@@ -1374,6 +1424,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             } else {
                 menu.synchronize(protocolSlots, dirty, cursor, this.cursorDirty, full);
             }
+            this.commitStructureBarriers(menu);
             this.localCursor = cursor;
             this.cursorDirty = false;
             this.forceFull = false;

@@ -5,17 +5,12 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 从 NMS 包转换出的稳定入站消息.
- *
- * <p>客户端预测以不透明的 {@link MenuPrediction} 随交互传递, 但不能替代服务端状态. Window
- * 只根据操作意图更新自身的渲染结果, Paper 菜单 Adapter 只用预测缩小客户端状态复核范围.</p>
+ * 从 NMS 包转换出的入站操作消息.
+ * <p>客户端预测以不透明的 {@link MenuPrediction} 随交互传递, Window根据操作意图更新自身的渲染结果.</p>
  */
 @ApiStatus.Internal
 public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpecific {
 
-    /**
-     * 所有 Window 都能解释的公共输入.
-     */
     sealed interface Common extends MenuInput permits Common.Interaction, Common.Close, Common.BundleSelection, Common.Pong {
 
         /**
@@ -27,30 +22,14 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
             END
         }
 
-        /**
-         * 携带容器状态编号的玩家交互.
-         */
         sealed interface Interaction extends Common permits Click, DragStep {
 
-            /**
-             * 返回目标容器编号.
-             *
-             * @return 目标容器编号
-             */
             int containerId();
 
-            /**
-             * 返回客户端声称的容器状态编号.
-             *
-             * @return 容器状态编号
-             */
             int stateId();
 
-            /**
-             * 返回客户端声称已经改变的容器预测状态.
-             *
-             * @return 客户端预测状态
-             */
+            int slot();
+
             @NotNull MenuPrediction prediction();
         }
 
@@ -64,14 +43,7 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 其他点击为 {@code -1}
          * @param prediction 客户端声称的预测状态
          */
-        record Click(
-                int containerId,
-                int stateId,
-                int slot,
-                @NotNull ClickType clickType,
-                int hotbarButton,
-                @NotNull MenuPrediction prediction
-        ) implements Interaction {
+        record Click(int containerId, int stateId, int slot, @NotNull ClickType clickType, int hotbarButton, @NotNull MenuPrediction prediction) implements Interaction {
 
             public Click(
                     int containerId,
@@ -94,14 +66,7 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
          * @param phase 手势阶段
          * @param prediction 客户端声称的预测状态
          */
-        record DragStep(
-                int containerId,
-                int stateId,
-                int slot,
-                @NotNull ClickType clickType,
-                @NotNull DragPhase phase,
-                @NotNull MenuPrediction prediction
-        ) implements Interaction {
+        record DragStep(int containerId, int stateId, int slot, @NotNull ClickType clickType, @NotNull DragPhase phase, @NotNull MenuPrediction prediction) implements Interaction {
 
             public DragStep(
                     int containerId,
@@ -115,14 +80,6 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
         }
 
         /**
-         * 客户端请求关闭容器.
-         *
-         * @param containerId 目标容器编号
-         */
-        record Close(int containerId) implements Common {
-        }
-
-        /**
          * 客户端在 bundle 物品中选择了一个内部条目.
          *
          * @param containerId 接收包时所属的容器编号
@@ -132,18 +89,13 @@ public sealed interface MenuInput permits MenuInput.Common, MenuInput.WindowSpec
         record BundleSelection(int containerId, int slot, int selectedIndex) implements Common {
         }
 
-        /**
-         * 客户端对 Window 状态 Ping 的确认.
-         *
-         * @param id Ping 标识
-         */
+        record Close(int containerId) implements Common {
+        }
+
         record Pong(int id) implements Common {
         }
     }
 
-    /**
-     * 只由特定 Window 类型解释的输入.
-     */
     non-sealed interface WindowSpecific extends MenuInput {
 
         /**

@@ -144,8 +144,10 @@ final class DisplayedSlotPath implements AutoCloseable {
         if (previous != null && reusable == previous.depth && this.leafUnchanged(previous)) {
             boolean previousFrozen = previous.frozen;
             this.refreshFrozen(previous);
-            if (previousFrozen != previous.frozen) {
-                this.notifyInteractionPathChanged();
+            // 冻结语义变了: 既作废交互开始后才改变的点击候选, 也挡住客户端还不知情时点出来的交互
+            if (previousFrozen != previous.frozen && this.window instanceof AbstractWindow<?> abstractWindow) {
+                abstractWindow.notifyInteractionPathChanged();
+                abstractWindow.notifyInteractionStructureChanged(this.windowSlot);
             }
             return;
         }
@@ -190,6 +192,10 @@ final class DisplayedSlotPath implements AutoCloseable {
                 }
                 if (interactionChanged) {
                     abstractWindow.notifyInteractionPathChanged();
+                }
+                // 终点身份换了也算结构变化, 玩家看着的那个按钮已经不是现在这个了
+                if (interactionChanged || leafChanged) {
+                    abstractWindow.notifyInteractionStructureChanged(this.windowSlot);
                 }
             }
         }
@@ -561,13 +567,6 @@ final class DisplayedSlotPath implements AutoCloseable {
     // 强制处理还没解析的 Pane 变化, 让 Window 在提交旧的点击候选前看到交互终点或冻结状态的改变.
     void refreshInteractionState() {
         this.currentState();
-    }
-
-    // 交互终点或冻结状态变了, 让 Window 作废那些在交互开始之后才改变的点击候选.
-    private void notifyInteractionPathChanged() {
-        if (this.window instanceof AbstractWindow<?> abstractWindow) {
-            abstractWindow.notifyInteractionPathChanged();
-        }
     }
 
     /**

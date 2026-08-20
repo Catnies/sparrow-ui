@@ -405,13 +405,9 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     @Override
     public boolean accepts(@NotNull MenuInput.Common.Interaction interaction) {
         this.checkCommitted();
-        // 容器编号或 state id 对不上, 说明交互不是发给当前会话的
-        if (interaction.containerId() != this.containerId) {
-            return false;
-        }
-        if (interaction.stateId() != AbstractContainerMenuProxy.INSTANCE.getStateId(this.proxy)) {
-            return false;
-        }
+        // 容器编号对不上, 说明交互根本不是发给这次菜单会话的
+        // state id 过时只说明客户端视图落后了一拍, 不代表这次交互一定无效, 与原版一样客户端预测照收, 之后再复核.
+        if (interaction.containerId() != this.containerId) return false;
         // F 键换副手会被客户端本地预测, 标记副手需要无条件重发
         if (interaction instanceof MenuInput.Common.Click click && click.clickType() == ClickType.SWAP_OFFHAND) {
             this.offHandDirty = true;
@@ -420,7 +416,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
             this.predictedCarried |= prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
         }
-        // 公共校验通过后回调 {@link #handleAcceptedInteraction()} 让子类更新专属状态.
+        // 校验通过后让子类更新状态.
         this.handleAcceptedInteraction();
         return true;
     }
