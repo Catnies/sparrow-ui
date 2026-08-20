@@ -74,16 +74,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return node;
     }
 
-    // 关闭绑定节点已被回收的弱条目.
-    final void reapDeadEntries() {
-        Reference<?> reference;
-        while ((reference = this.deadNodes.poll()) != null) {
-            if (reference instanceof NodeReference dead) {
-                dead.entry.close();
-            }
-        }
-    }
-
     private void unregister(Entry entry) {
         synchronized (this.activationLock) {
             if (this.entries.remove(entry) && this.entries.isEmpty()) {
@@ -92,9 +82,24 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         }
     }
 
+    // 关闭绑定节点已被回收的弱条目.
+    // 派发路径不必调用, deliver() 本来就会就地剔除死条目, 会截断上游失效的节点则要在失效回调入口自己补一次.
+    final void reapDeadEntries() {
+        Reference<?> reference = this.deadNodes.poll();
+        if (reference == null) return;
+        // 一次菜单关闭会让同一个共享 signal 上的一整批条目同时死亡, 逐条摘表就要复制一遍订阅表, 所以整批先只标关闭, 摘表统一交给一次清扫.
+        do {
+            if (reference instanceof NodeReference dead) {
+                dead.entry.markClosed();
+            }
+        } while ((reference = this.deadNodes.poll()) != null);
+        this.sweepClosed();
+    }
+
     // 向所有活的订阅派发一次失效.
     protected final void notifyDirty() {
         if (this.retired) return;
+        boolean reap = false;
         for (Entry entry : this.entries) {
             if (entry.isClosed()) {
                 continue;
@@ -106,7 +111,18 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
                 SparrowUI.getInstance().handleException("Failed to deliver a signal invalidation", exception);
             }
             if (!alive) {
-                entry.close();
+                // 本轮发现的死条目一起摘, 边派发边逐条摘表在订阅多的 signal 上是平方级
+                reap |= entry.markClosed();
+            }
+        }
+        if (reap) this.sweepClosed();
+    }
+
+    // 把已经标关闭的条目一次性摘掉, 有多少条都只复制一遍订阅表.
+    private void sweepClosed() {
+        synchronized (this.activationLock) {
+            if (this.entries.removeIf(Entry::isClosed) && this.entries.isEmpty()) {
+                this.onInactive();
             }
         }
     }
@@ -141,12 +157,14 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
             if (this.retired) return;
             this.retired = true;
         }
+        // 同样整批先标关闭再一次清扫.
         for (Entry entry : this.entries) {
-            try {
-                entry.close();
-            } catch (RuntimeException exception) {
-                SparrowUI.getInstance().handleException("Failed to close a signal subscription", exception);
-            }
+            entry.markClosed();
+        }
+        try {
+            this.sweepClosed();
+        } catch (RuntimeException exception) {
+            SparrowUI.getInstance().handleException("Failed to close a signal subscription", exception);
         }
     }
 
@@ -225,14 +243,22 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 
         @Override
         public void close() {
-            if (this.closed.compareAndSet(false, true)) {
+            if (this.markClosed()) {
                 AbstractSignal.this.unregister(this);
-                // 本条目也可能被 retire 或死条目清理直接关掉, 那些路径不经过 BindingNode.close(),
-                // 所以拆除统一收在这里: 节点还活着就让它丢掉回调与对本 signal 的引用.
-                if (this.node.get() instanceof BindingNode node) {
-                    node.detach();
-                }
             }
+        }
+
+        // 标记关闭并拆掉与绑定节点的相互引用, 但不动订阅表; 返回是否由本次调用完成关闭.
+        private boolean markClosed() {
+            if (!this.closed.compareAndSet(false, true)) {
+                return false;
+            }
+            // 本条目也可能被 retire 或死条目清理直接关掉, 那些路径不经过 BindingNode.close(),
+            // 所以拆除统一收在这里: 节点还活着就让它丢掉回调与对本 signal 的引用.
+            if (this.node.get() instanceof BindingNode node) {
+                node.detach();
+            }
+            return true;
         }
     }
 
@@ -289,9 +315,9 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      * 对 {@link BindingNode} 的弱引用, 目标以 {@link Runnable} 形态存放.
      */
     private static final class NodeReference extends WeakReference<Runnable> {
-        private final Subscription entry;
+        private final AbstractSignal<?>.Entry entry;
 
-        private NodeReference(Runnable node, Subscription entry, ReferenceQueue<? super Runnable> queue) {
+        private NodeReference(Runnable node, AbstractSignal<?>.Entry entry, ReferenceQueue<? super Runnable> queue) {
             super(node, queue);
             this.entry = entry;
         }

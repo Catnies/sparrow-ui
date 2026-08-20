@@ -320,15 +320,10 @@ final class DisplayedSlotPath implements AutoCloseable {
             case Element.InventoryLink link -> {
                 next.inventoryLink = link;
                 next.inventorySubscription = link.inventory().subscribePostUpdate(event -> {
-                    if (next.resourcesClosed) {
-                        return;
-                    }
+                    if (next.resourcesClosed) return;
                     // 事件使用当前订阅 Inventory 的槽位坐标, 只需检查当前路径连接的槽号.
-                    for (int i = 0; i < event.slotChanges().size(); i++) {
-                        if (event.slotChanges().get(i).slot() == link.slot()) {
-                            this.onDirty(Invalidation.CONTENT);
-                            return;
-                        }
+                    if (event.changeAt(link.slot()) != null) {
+                        this.onDirty(Invalidation.CONTENT);
                     }
                 });
                 next.inventoryVisualSubscription = link.inventory().visual().attach(link.slot(), () -> {
