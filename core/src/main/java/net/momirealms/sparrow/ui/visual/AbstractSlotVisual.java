@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
+import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import org.bukkit.inventory.ItemStack;
@@ -78,7 +79,8 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             return ActiveAnimation.FINISHED_EMPTY;
         }
         // 先解析时钟, 把非法周期挡在入场之前
-        Signal<Long> clock = Signals.everyTicks(animationDefinition.periodTicks());
+        long periodTicks = animationDefinition.periodTicks();
+        Signal<Long> clock = Signals.everyTicks(periodTicks);
         // 预排宿主槽位到 orderIndex 的查找表, 求值热路径按它 O(1) 判定参与
         int[] orderBySlot = new int[size];
         Arrays.fill(orderBySlot, -1);
@@ -90,7 +92,10 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             }
             orderBySlot[slot] = index;
         }
-        ActiveAnimation playing = new ActiveAnimation(this, animationDefinition, slots, orderBySlot, Signals.ticking().get());
+        // 起播时刻对齐到本周期的共享节拍, 帧推进的失效只在节拍上发出, 时间原点不对齐的话
+        // 每次换帧都要等到下一个节拍才被看见, 首帧会被拉长最多一个周期
+        long startTick = Signals.ticking().get() / periodTicks * periodTicks;
+        ActiveAnimation playing = new ActiveAnimation(this, animationDefinition, slots, orderBySlot, startTick);
         synchronized (this.stateLock) {
             State current = this.state;
             ActiveAnimation[] animations = Arrays.copyOf(current.animations, current.animations.length + 1);
@@ -99,7 +104,13 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         }
         // 入场即盖住参与的槽位
         this.dirtyAnimated(slots);
-        playing.startClock(this.signalBindings(), clock);
+        try {
+            playing.startClock(this.signalBindings(), clock);
+        } catch (RuntimeException exception) {
+            // 挂钟失败的这一次播放既不会推进也没有句柄能取消它, 摘掉它再把失败交出去
+            this.removeAnimation(playing);
+            throw exception;
+        }
         return playing;
     }
 
@@ -123,11 +134,20 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     }
 
     // 以给定原因结束全部在播动画, 由宿主的生命周期终点调用.
+    // 某个动画的结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
     @ApiStatus.Internal
     public final void finishAnimations(@NotNull AnimationHandle.FinishReason reason) {
         ActiveAnimation[] animations = this.state.animations;
+        RuntimeException failure = null;
         for (int index = 0; index < animations.length; index++) {
-            animations[index].finish(reason);
+            try {
+                animations[index].finish(reason);
+            } catch (RuntimeException exception) {
+                failure = ThrowableUtils.combine(failure, exception);
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 
