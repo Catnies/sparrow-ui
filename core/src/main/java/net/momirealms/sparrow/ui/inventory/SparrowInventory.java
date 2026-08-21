@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
@@ -68,7 +68,7 @@ public abstract class SparrowInventory {
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
-    private final SignalBindings signalBindings = new SignalBindings();                   // 本 Inventory 持有的 Signal 绑定
+    private final Bindings bindings = new Bindings();                   // 本 Inventory 持有的 Signal 绑定
     private final InventoryVisualImpl visual; // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
 
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
@@ -108,7 +108,7 @@ public abstract class SparrowInventory {
         }
         this.state = slots;
         this.naturalOrder = SlotOrder.natural(initial.length);
-        this.visual = new InventoryVisualImpl(this.signalBindings, initial.length);
+        this.visual = new InventoryVisualImpl(this.bindings, initial.length);
         @SuppressWarnings("unchecked")
         @Nullable Predicate<ItemStack>[] placementRulesBySlot = (Predicate<ItemStack>[]) new Predicate<?>[initial.length];
         this.placementRulesBySlot = placementRulesBySlot;
@@ -1282,7 +1282,7 @@ public abstract class SparrowInventory {
     @NotNull
     public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super SparrowInventory> callback) {
         Objects.requireNonNull(callback, "callback");
-        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
+        return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
     /**

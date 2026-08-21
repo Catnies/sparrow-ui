@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.Observer;
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
@@ -21,7 +21,7 @@ abstract non-sealed class AbstractPane implements Pane {
     private final Structure structure;      // 槽位布局
     private final Element[] elements;   // 每个槽位当前保存的元素
     private final SlotObserver[] observers; // 每个槽位对应一条订阅链的头节点
-    private final SignalBindings signalBindings = new SignalBindings(); // 持有的 Signal 绑定
+    private final Bindings bindings = new Bindings(); // 持有的 Signal 绑定
     private final PaneVisualImpl visual;    // 视觉配置, 空槽背景与逐槽显示路径失效订阅
 
     private boolean frozen;             // 是否禁止玩家交互
@@ -32,7 +32,7 @@ abstract non-sealed class AbstractPane implements Pane {
     AbstractPane(Structure structure, Element[] elements, ItemProvider background, boolean frozen) {
         this.structure = structure;
         this.elements = elements;
-        this.visual = new PaneVisualImpl(this.signalBindings, elements.length);
+        this.visual = new PaneVisualImpl(this.bindings, elements.length);
         this.frozen = frozen;
         this.observers = new SlotObserver[elements.length];
         if (background != null) {
@@ -352,7 +352,7 @@ abstract non-sealed class AbstractPane implements Pane {
     @NotNull
     public final Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Pane> callback) {
         Objects.requireNonNull(callback, "callback");
-        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
+        return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
     // 从槽位订阅链中断开指定节点, 并清除它持有的引用.

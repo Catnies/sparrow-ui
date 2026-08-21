@@ -3,7 +3,7 @@ package net.momirealms.sparrow.ui.window;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
@@ -114,7 +114,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final @Nullable Object data;                // 随窗携带的用户对象
     private final WindowSession.Kind rootSessionKind;       // 成为链根时新会话的类型
     private final List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
-    private final SignalBindings signalBindings = new SignalBindings();   // 本 Window 持有的 Signal 绑定
+    private final Bindings bindings = new Bindings();   // 本 Window 持有的 Signal 绑定
 
     // 用户处理器
     private final HandlerList<Runnable> openHandlers;   // 打开处理器
@@ -218,14 +218,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.windowStateChangeHandlers = new HandlerList<>(settings.windowStateChangeHandlers());
         this.dirtySlots = new BitSet(layout.size());
         this.spareDirtySlots = new BitSet(layout.size());
-        this.windowVisual = new WindowVisualImpl(this.signalBindings, layout.size());
+        this.windowVisual = new WindowVisualImpl(this.bindings, layout.size());
         // 此刻还没有任何显示路径附着, 写入 Builder 的初始全局层不会通知到任何人
         VisualLayer windowVisualLayer = settings.windowVisualLayer();
         if (windowVisualLayer != VisualLayer.NONE) {
             this.windowVisual.setVisualizerProvider(windowVisualLayer.visualizer(), windowVisualLayer.placeholder());
         }
         this.cursorRenderContext = RenderContext.cursor(this);
-        this.cursorVisual = new CursorVisualImpl(this.signalBindings, settings.cursorVisualLayer());
+        this.cursorVisual = new CursorVisualImpl(this.bindings, settings.cursorVisualLayer());
         this.cursorRenderCell = new RenderCell(
                 this.cursorRenderContext,
                 () -> this.cursorCompletionPending.set(true),
@@ -330,7 +330,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // 入场即盖住配置标题
         this.notifyTitleAnimationChanged();
         try {
-            playing.startClock(this.signalBindings, clock);
+            playing.startClock(clock);
         } catch (RuntimeException exception) {
             // 挂钟失败的这一次播放既不会推进也没有句柄能取消它, 摘掉它再把失败交出去
             this.removeTitleAnimation(playing);
@@ -569,7 +569,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     public Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback) {
         Objects.requireNonNull(callback, "callback");
-        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
+        return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
     @Override
@@ -850,6 +850,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         boolean menuOpening = false;
 
         try {
+            // 绑定跟随打开期: 上一次关闭时摘掉的声明在这里重新挂上, 首帧渲染前必须就位
+            this.bindings.resumeAll();
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
                 Element.PaneLink link = this.layout.paneAt(windowSlot);
                 paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, link.pane(), link.slot());
@@ -1767,6 +1769,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         try {
             this.finishTitleAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
+        } catch (Throwable throwable) {
+            failure = ThrowableUtils.combine(failure, throwable);
+        }
+        // 绑定只在打开期有效: 摘掉当次订阅, 声明留到下次打开再挂
+        try {
+            this.bindings.suspendAll();
         } catch (Throwable throwable) {
             failure = ThrowableUtils.combine(failure, throwable);
         }

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.HandlerList;
@@ -25,7 +25,7 @@ abstract class AbstractWindowSession implements WindowSession {
     final WindowManager manager;
     private final Player viewer;
     private final HandlerList<Consumer<InventoryCloseEvent.Reason>> endHandlers;
-    private final SignalBindings signalBindings = new SignalBindings(); // 本会话持有的 Signal 绑定
+    private final Bindings bindings = new Bindings(); // 本会话持有的 Signal 绑定
 
     private volatile List<Window> chainSnapshot = List.of(); // 最近一次已应用的当前路径快照
     private final AtomicBoolean active = new AtomicBoolean(true); // 会话是否尚未结束
@@ -221,7 +221,7 @@ abstract class AbstractWindowSession implements WindowSession {
     @NotNull
     @Override
     public Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super WindowSession> callback) {
-        return this.signalBindings.add(signal.onDirty(() -> callback.accept(this)));
+        return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
     @Override

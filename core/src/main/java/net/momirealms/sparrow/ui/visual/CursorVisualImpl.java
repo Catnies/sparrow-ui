@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.visual;
 
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
@@ -16,8 +16,8 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
     private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 置脏请求合并, 渲染线程用 takeDirty() 取走
     private volatile VisualLayer layer;
 
-    public CursorVisualImpl(@NotNull SignalBindings signalBindings, @NotNull VisualLayer layer) {
-        super(signalBindings);
+    public CursorVisualImpl(@NotNull Bindings bindings, @NotNull VisualLayer layer) {
+        super(bindings);
         this.layer = layer;
     }
 

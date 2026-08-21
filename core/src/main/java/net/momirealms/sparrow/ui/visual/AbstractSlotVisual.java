@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.visual;
 
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -24,8 +24,8 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     private final VisualDirtyAttachments dirtyAttachments;  // 按槽位的失效订阅表, 槽位数量建成后固定不变
     private volatile State state;                           // 两层映射与播放中的动画整体存于不可变 State, 修改即整体替换, 读取无锁
 
-    protected AbstractSlotVisual(@NotNull SignalBindings signalBindings, int size) {
-        super(signalBindings);
+    protected AbstractSlotVisual(@NotNull Bindings bindings, int size) {
+        super(bindings);
         this.dirtyAttachments = new VisualDirtyAttachments(size);
         this.state = State.empty(size);
     }
@@ -105,7 +105,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         // 入场即盖住参与的槽位
         this.dirtyAnimated(slots);
         try {
-            playing.startClock(this.signalBindings(), clock);
+            playing.startClock(clock);
         } catch (RuntimeException exception) {
             // 挂钟失败的这一次播放既不会推进也没有句柄能取消它, 摘掉它再把失败交出去
             this.removeAnimation(playing);

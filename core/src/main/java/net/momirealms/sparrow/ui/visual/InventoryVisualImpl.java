@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.visual;
 
-import net.momirealms.sparrow.ui.SignalBindings;
+import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -12,8 +12,8 @@ public final class InventoryVisualImpl extends AbstractSlotVisual implements Inv
     // 背景与两层映射之间没有不变量, 各自独立发布即可, 不必与它们同一次替换
     private volatile @Nullable ItemProvider background;
 
-    public InventoryVisualImpl(@NotNull SignalBindings signalBindings, int size) {
-        super(signalBindings, size);
+    public InventoryVisualImpl(@NotNull Bindings bindings, int size) {
+        super(bindings, size);
     }
 
     @Nullable

@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.visual.animation;
 
-import net.momirealms.sparrow.ui.SignalBindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
@@ -18,7 +17,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
     private final WeakReference<H> host;
     private final long startTick;
     private final long totalTicks;                  // 播放开始时从描述读定的总时长, 负数表示无限
-    private volatile Subscription clock;            // 帧推进的时钟订阅句柄, 结束时提前解绑
+    private volatile Subscription clock;            // 帧推进的时钟订阅凭证, 由播放自己持有, 结束时解绑
     private volatile FinishReason finishReason;     // 有值即已结束, 写入由锁保护
     private List<Consumer<FinishReason>> callbacks; // 等待结束的回调, 由锁保护, 结束时与终态一起整批取走并置 null, 之后注册的改为当场触发
 
@@ -28,9 +27,9 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.totalTicks = totalTicks;
     }
 
-    // 播放入场后挂上帧推进时钟, 订阅由宿主的 SignalBindings 持有, 宿主消亡即随之停摆.
-    public final void startClock(@NotNull SignalBindings bindings, @NotNull Signal<Long> clock) {
-        Subscription subscription = bindings.add(clock.onDirty(this::onTick));
+    // 播放入场后挂上帧推进时钟. 凭证由播放自己持有, 宿主在场时经动画通道强持播放, 宿主消亡后时钟在下一拍自行解绑.
+    public final void startClock(@NotNull Signal<Long> clock) {
+        Subscription subscription = clock.onDirty(this::onTick);
         this.clock = subscription;
         // 挂钟与并发终结(如关窗)竞争时, 晚到的一方负责把钟收掉
         if (this.finishReason != null) {
