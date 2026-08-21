@@ -15,9 +15,6 @@ import org.jetbrains.annotations.Nullable;
 // 纯槽位数学计算在 ClickSlotRules, 这里只放非碰组件不可的部分.
 final class ClickBundleRules {
 
-    private ClickBundleRules() {
-    }
-
     // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.
     @Nullable
     static ClickSlotRules.Outcome computeInsertionIntoCursorBundle(

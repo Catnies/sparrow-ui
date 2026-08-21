@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -201,7 +202,7 @@ public final class ReferencingInventory extends SparrowInventory {
             return;
         }
         this.retired = true;
-        // 作废全部在途规划基准, 之后新建的基准由 PlannedRoot.Live.isStale 一律判定失效.
+        // 推一下 modCount 作废全部在途规划基准; 退役之后新建的基准也会被 Live.isStale 一律判失效.
         this.modCount++;
         this.visual().dirty();
         this.updateContentSignal();
@@ -256,17 +257,13 @@ public final class ReferencingInventory extends SparrowInventory {
     // 逐槽读存储填出一个临时数组当规划内容, 并记下当前 modCount 作为日后判断失效的凭据.
     @Override
     @NotNull
-    PlannedRoot openPlan() {
-        return new PlannedRoot.Live(this, this.readView(), this.modCount);
-    }
-
-    // 当前 modCount, 供本 Inventory 建出的规划基准判断自己有没有失效.
-    long liveModCount() {
-        return this.modCount;
+    @ApiStatus.Internal
+    public PlannedRoot openPlan() {
+        return new Live(this, this.readView(), this.modCount);
     }
 
     // 把本写集落进外部存储, 顺带同步 lastKnown, 免得自己写的东西下一轮被当成外部改动.
-    void liveApply(@NotNull List<SlotChange> deltas) {
+    private void liveApply(@NotNull List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             int externalSlot = this.externalSlots[delta.slot()].slot();
@@ -307,7 +304,7 @@ public final class ReferencingInventory extends SparrowInventory {
         }
         this.modCount++;
         TransactionResult result = InventoryTransactions.commitExternalSync(
-                new TransactionScope(new PlannedRoot.Live(this, this.mapView(raw), this.modCount), deltas)
+                new TransactionScope(new Live(this, this.mapView(raw), this.modCount), deltas)
         );
         // 调用方既然保证了串行访问, 这里就不该冲突; 真冲突了说明调用边界已经被破坏, 交给统一异常处理器上报
         if (!(result instanceof TransactionResult.Committed)) {
@@ -371,5 +368,44 @@ public final class ReferencingInventory extends SparrowInventory {
             reordered[i] = (slots[i] + 9) % 36;
         }
         return reordered;
+    }
+
+    // 内容放在外部存储里时用的规划基准: planned 是新建时逐槽读存储填出来的临时数组, 只用来读内容;
+    // 校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
+    private static final class Live extends PlannedRoot {
+        private final ReferencingInventory owner;
+        private final long modCountAtPlan;
+
+        private Live(@NotNull ReferencingInventory owner, @Nullable ItemStack @NotNull [] planned, long modCountAtPlan) {
+            super(owner, planned);
+            this.owner = owner;
+            this.modCountAtPlan = modCountAtPlan;
+        }
+
+        @Override
+        @Nullable
+        protected StateLock stateLock() {
+            return null;
+        }
+
+        @Override
+        public boolean isStale() {
+            // 已退役的 Inventory 没有任何基准还成立, 事务一律以 Conflicted 收场
+            return this.owner.retired || this.owner.modCount != this.modCountAtPlan;
+        }
+
+        @Override
+        protected @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas) {
+            return null;
+        }
+
+        @Override
+        protected void swapTo(@Nullable ItemStack @Nullable [] nextState) {
+        }
+
+        @Override
+        protected void land(@NotNull List<SlotChange> deltas) {
+            this.owner.liveApply(deltas);
+        }
     }
 }

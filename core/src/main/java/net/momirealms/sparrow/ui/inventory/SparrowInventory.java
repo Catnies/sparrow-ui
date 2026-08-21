@@ -53,7 +53,7 @@ import java.util.function.UnaryOperator;
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
-    static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
+    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
 
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
@@ -1138,11 +1138,6 @@ public abstract class SparrowInventory {
         this.clickEvents.publish(event);
     }
 
-    // 无人监听时派发方可以省下构造事件的开销.
-    boolean hasBundleSelectObservers() {
-        return this.bundleSelectEvents.subscriptionCount() != 0;
-    }
-
     /**
      * 订阅玩家在本 Inventory 连接槽中的 Bundle 选择事件.
      *
@@ -1260,13 +1255,15 @@ public abstract class SparrowInventory {
 
     // 纯读用途的规划基准, 给 simulate 这类零副作用的路径使用.
     @NotNull
-    PlannedRoot openPlan() {
-        return new PlannedRoot.Stm(this, this.currentState());
+    @ApiStatus.Internal
+    public PlannedRoot openPlan() {
+        return new Stm(this, this.state);
     }
 
     // 写路径的规划基准, 读内容之前先走一遍写前准备.
     @NotNull
-    PlannedRoot openPlanForWrite() {
+    @ApiStatus.Internal
+    public PlannedRoot openPlanForWrite() {
         this.prepareWrite();
         return this.openPlan();
     }
@@ -1303,23 +1300,50 @@ public abstract class SparrowInventory {
         }
     }
 
-    long lockOrder() {
-        return this.lockOrder;
-    }
+    // 内容就在自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身, 同时兼任校验依据 ——
+    // 元素发布后不再改动, 换内容就是换数组, 所以比一下引用就知道期间有没有别人提交过.
+    private static final class Stm extends PlannedRoot {
 
-    @NotNull
-    ReentrantLock writeLock() {
-        return this.writeLock;
-    }
+        private Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
+            super(inventory, planned);
+        }
 
-    // 交出状态数组的引用本身: 规划以它为基准, 提交时比对引用有没有被换掉就知道期间有没有别人写过.
-    @Nullable
-    ItemStack @NotNull [] currentState() {
-        return this.state;
-    }
+        @Override
+        @NotNull
+        protected StateLock stateLock() {
+            SparrowInventory inventory = this.inventory();
+            return new StateLock(inventory.writeLock, inventory.lockOrder);
+        }
 
-    // 换上新的状态数组, 只允许在持有写锁时调用.
-    void swapState(@Nullable ItemStack @NotNull [] newState) {
-        this.state = newState;
+        @Override
+        public boolean isStale() {
+            return this.inventory().state != this.planned();
+        }
+
+        @Override
+        protected @Nullable ItemStack @NotNull [] buildNextState(@NotNull List<SlotChange> deltas) {
+            // isStale 刚在同一临界区内通过, planned 与当前状态是同一个数组, 克隆它即克隆当前状态.
+            @Nullable ItemStack[] next = this.planned().clone();
+            for (int i = 0; i < deltas.size(); i++) {
+                SlotChange delta = deltas.get(i);
+                // 等值跳过: 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
+                @Nullable ItemStack after = delta.unsafeAfter();
+                @Nullable ItemStack current = next[delta.slot()];
+                next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;
+            }
+            return next;
+        }
+
+        @Override
+        protected void swapTo(@Nullable ItemStack @Nullable [] nextState) {
+            if (nextState != null) {
+                this.inventory().state = nextState;
+            }
+        }
+
+        @Override
+        protected void land(@NotNull List<SlotChange> deltas) {
+            // 内容就在状态数组里, 上一步换过数组就算落地了, 这里没别的事要做.
+        }
     }
 }

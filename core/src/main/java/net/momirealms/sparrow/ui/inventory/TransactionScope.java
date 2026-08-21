@@ -14,13 +14,8 @@ import java.util.List;
 public record TransactionScope(@NotNull InventoryChange change, @NotNull PlannedRoot basis) {
 
     // 把一次规划算出的槽位变化整理成待提交内容.
-    TransactionScope(@NotNull PlannedRoot basis, @NotNull List<SlotChange> slotChanges) {
+    public TransactionScope(@NotNull PlannedRoot basis, @NotNull List<SlotChange> slotChanges) {
         this(new InventoryChange(basis.inventory(), slotChanges), basis);
-    }
-
-    // 供 Pre 阶段改写已经参与事务的 Inventory: planned 会被重新包一层, 而这种基准的校验依据本来就是数组引用本身, 包装不影响结果.
-    public TransactionScope(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned, @NotNull List<SlotChange> slotChanges) {
-        this(new InventoryChange(inventory, slotChanges), new PlannedRoot.Stm(inventory, planned));
     }
 
     @NotNull
