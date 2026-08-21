@@ -18,7 +18,7 @@ public interface PlayerUpdateReason extends UpdateReason {
     Player player();
 
     /**
-     * 玩家点击触发的Inventory事务.
+     * 玩家点击触发的 Inventory 事务.
      *
      * @param player 发起点击的玩家
      * @param clickType 点击类型
@@ -32,7 +32,7 @@ public interface PlayerUpdateReason extends UpdateReason {
     }
 
     /**
-     * 玩家拖拽分配触发的Inventory事务.
+     * 玩家拖拽分配触发的 Inventory 事务.
      *
      * @param player 发起拖拽的玩家
      * @param clickType 拖拽按键(LEFT 均分, RIGHT 每槽一个, MIDDLE 创造整堆)
@@ -50,7 +50,7 @@ public interface PlayerUpdateReason extends UpdateReason {
     }
 
     /**
-     * 玩家选择Bundle内部物品后触发的Inventory事务.
+     * 玩家选择 Bundle 内部物品后触发的 Inventory 事务.
      *
      * @param player 发起选择的玩家
      * @param bundleSlot Bundle 内槽位; {@code -1} 表示光标已离开

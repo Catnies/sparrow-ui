@@ -13,16 +13,11 @@ import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
-/**
- * 批量与单槽操作的规划算法: 所有槽位数学集中在这里, 在只读内容上产出槽位变更, 不碰任何状态.
- */
+// 批量与单槽操作的规划算法, 槽位数学全集中在这里, 只读内容进, 槽位变更出.
 final class InventoryPlanner {
 
-    private InventoryPlanner() {
-    }
-
     /**
-     * 规划一次单槽放入: 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳.
+     * 规划一次单槽放入, 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳.
      *
      * @param current 该槽当前内容, 空槽为 {@code null}
      * @param input 要放入的物品
@@ -65,8 +60,8 @@ final class InventoryPlanner {
         if (current == null || change == 0) {
             return null;
         }
-        // 减量只受下限 0 约束, 上限钳制绝不作用于减量 —— 否则直接写入的超上限堆
-        // 会在"减 1"时被静默压回上限, 凭空销毁物品. long 算术防止 int 边界溢出.
+        // 减量只受下限 0 约束, 上限钳制绝不能作用在减量上 —— 否则直接写入的超上限堆会在"减 1"时被悄悄压回上限.
+        // 这里走 long 是为了躲开 int 边界溢出.
         long desired = (long) current.getAmount() + change;
         int target;
         if (change < 0) {
@@ -140,8 +135,8 @@ final class InventoryPlanner {
      *
      * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
      * @param matcher 判断某个物品该不该移除; 它是调用方代码, 只许接触物品副本
-     * @param upTo     最多移除的数量
-     * @param order    槽位遍历顺序
+     * @param upTo 最多移除的数量
+     * @param order 槽位遍历顺序
      * @return 移除方案与实际能移除的数量
      */
     @NotNull
@@ -164,8 +159,6 @@ final class InventoryPlanner {
 
     /**
      * 规划一次批量收集: 按给定顺序先收没堆满的"零头"(让满堆保持完整), 凑不够再动满堆.
-     * <p>touched 标记保证同一个槽只会落入其中一遍, 因此 includedSlot 过滤器对每个槽
-     * 最多被调用一次.
      *
      * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
      * @param template 物品样板, 只用来判断"像不像", 它自己的数量不影响结果
@@ -181,6 +174,7 @@ final class InventoryPlanner {
         int taken = 0;
         boolean[] touched = new boolean[snapshot.length];
 
+        // 第一遍只碰零头, 第二遍才动满堆; touched 保证同一个槽只落进其中一遍
         for (int pass = 0; pass < 2 && taken < upTo; pass++) {
             boolean wantFullStacks = pass == 1;
             for (int i = 0; i < order.size() && taken < upTo; i++) {
@@ -193,7 +187,7 @@ final class InventoryPlanner {
                 if (fullStack != wantFullStacks) {
                     continue;
                 }
-                // 匹配槽只会落入一个 pass, 因而过滤器至多调用一次; 调用方可据此认领跨 Inventory 的同一 SlotKey.
+                // 匹配槽只落进一个 pass, 过滤器因此至多被调一次; 调用方可以据此认领跨 Inventory 的同一 SlotKey
                 if (includedSlot != null && !includedSlot.test(slot)) {
                     continue;
                 }
@@ -211,28 +205,18 @@ final class InventoryPlanner {
         return Math.min(slotLimit.applyAsInt(slot), item.getMaxStackSize());
     }
 
-    // 计算从一个堆里取走若干之后槽位剩下的内容, 取光了就是空槽({@code null}).
+    // 从一个堆里取走若干之后槽位剩下的内容, 取光了就是空槽(null).
     @Nullable
     private static ItemStack reduced(ItemStack current, int take) {
         int left = current.getAmount() - take;
         return left > 0 ? ItemUtils.copyWithAmount(current, left) : null;
     }
 
-    /**
-     * 放入规划的结果.
-     *
-     * @param deltas 每个要改动的槽的变更
-     * @param remaining 规划完仍然放不下的数量
-     */
+    // remaining 是规划完仍然放不下的数量.
     record AddPlan(List<SlotChange> deltas, int remaining) {
     }
 
-    /**
-     * 收集与移除规划的结果.
-     *
-     * @param deltas 每个要改动的槽的变更
-     * @param taken 实际能取出的总数量
-     */
+    // taken 是实际能取出的总数量.
     record TakePlan(List<SlotChange> deltas, int taken) {
     }
 }

@@ -17,8 +17,6 @@ import java.util.function.Function;
  * Inventory 在事务提交前发出的更新事件.
  * <p>{@link #slotChanges()} 使用当前订阅 Inventory 的槽位坐标,
  * {@link #rootChanges()} 则保留整笔事务涉及的所有 Inventory 变更.
- * <p>编辑窗口只覆盖当前同步处理器: 处理器返回后事件立即失效,
- * 任何线程再调用 {@link #setAfter} 都会失败.
  */
 public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     // 为尚未参与事务的 Inventory 构造带规划基准的空写集, null 表示事件不支持纳入新的 Inventory, 生产不应该出现 null
@@ -28,16 +26,6 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     private volatile boolean editable;                  // 编辑窗口是否仍然打开
     private volatile boolean cancelled;                 // 是否已经有处理器取消整笔事务
 
-    /**
-     * 创建一个提交前事件.
-     *
-     * @param inventory 当前事件使用其槽位坐标的 Inventory
-     * @param reason 事务触发原因
-     * @param scopes 整笔事务的写集, 每一条都自带该 Inventory 的规划基准
-     * @param editable 事件是否支持在同步处理器内改写候选最终值
-     * @param includedScopes 为新纳入的 Inventory 构造带规划基准空写集的入口; 为 {@code null} 时事件不支持纳入新的 Inventory
-     * @param interaction 触发本笔事务的交互副作用草稿; 为 {@code null} 时事务不是玩家交互触发的
-     */
     @ApiStatus.Internal
     public InventoryPreUpdateEvent(
             @NotNull SparrowInventory inventory,
@@ -85,7 +73,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         this.setRootAfter(Objects.requireNonNull(inventory, "inventory"), rootSlot, after);
     }
 
-    // 在编辑窗口内重写指定 Inventory 槽位的候选最终值, 两个 {@link #setAfter} 重载共用.
+    // 在编辑窗口内重写指定 Inventory 槽位的候选最终值, 两个 setAfter 重载共用.
     private void setRootAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
         this.checkEditable();
 
@@ -122,7 +110,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             updated.add(new SlotChange(rootSlot, planned[rootSlot], after));
         }
 
-        // 用重写后的写集替换事件快照, 当前 Inventory 的槽位变更跟着一起刷新;
+        // 用重写后的写集替换事件快照, 当前 Inventory 的槽位变更跟着一起刷新
         List<TransactionScope> rewritten = new ArrayList<>(scopes);
         rewritten.set(rootIndex, scope.withSlotChanges(updated));
         this.replaceScopes(rewritten);
@@ -199,10 +187,8 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         }
     }
 
-    /**
-     * 关闭编辑窗口, 由事件派发方在处理器返回后调用.
-     * <p>关闭后任何 {@link #setAfter} 调用都会失败, 防止逃逸出去的事件引用继续修改事务.
-     */
+    // 关闭编辑窗口, 派发方在处理器返回后调用;
+    // 之后任何 setAfter 都会失败, 逃逸出去的事件引用就改不动事务了.
     @ApiStatus.Internal
     public void closeEditing() {
         this.editable = false;

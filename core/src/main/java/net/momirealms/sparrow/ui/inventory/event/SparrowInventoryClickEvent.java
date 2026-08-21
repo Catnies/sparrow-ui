@@ -10,16 +10,13 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * 玩家点到某个 Inventory 槽位时, 在 Bukkit 点击事件之后, 事务提交前发出的点击事件.
- * <p>只有被 InventoryLink 直接连接的 Inventory 收得到, 因此监听者拿到的槽位就是自己的坐标,
- * 不必关心这个 Window 长什么样. 取消它会让整次点击零变更.
- * <p>想改动这次点击的结果而不是拦掉它, 用 {@link #edits()}: 写进去的内容与前后两道事件共用同一份草稿.
  */
 public final class SparrowInventoryClickEvent {
-    private final SparrowInventory inventory; // 被点击的 Inventory
-    private final int slot;                    // 被点击的 Slot
+    private final SparrowInventory inventory;  // 被点击的 Inventory
+    private final int slot;                    // 被点击的槽位, 用的是这个 Inventory 自己的坐标
     private final Player player;               // 点击的玩家
     private final ClickType clickType;         // 点击类型
-    private final int hotbarButton;            // {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
+    private final int hotbarButton;            // 数字键点击对应的快捷栏索引, 其余点击为 -1
     private final InventoryAction action;      // 点击的 InventoryAction
     private final InteractionEdits edits;      // 把本次点击的写入合并进候选草稿的句柄
     private volatile boolean cancelled;        // 是否被取消
@@ -84,12 +81,17 @@ public final class SparrowInventoryClickEvent {
     }
 
     /**
-     * 取消这次Inventory点击. 调用后不会进入事务规划.
+     * 取消这次 Inventory 点击, 调用之后它不会进入事务规划.
      */
     public void cancel() {
         this.cancelled = true;
     }
 
+    /**
+     * 这次点击是否已经被取消.
+     *
+     * @return 已经被取消时返回 {@code true}
+     */
     public boolean cancelled() {
         return this.cancelled;
     }

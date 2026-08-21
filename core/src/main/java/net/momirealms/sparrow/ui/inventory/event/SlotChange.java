@@ -119,7 +119,9 @@ public final class SlotChange {
     }
 
     /**
-     * 变更前的物品; 每次调用返回独立副本, 空槽返回 {@code null}.
+     * 变更前的物品, 每次调用返回独立副本.
+     *
+     * @return 变更前物品的副本, 原本为空槽时为 {@code null}
      */
     @Nullable
     public ItemStack before() {
@@ -127,7 +129,9 @@ public final class SlotChange {
     }
 
     /**
-     * 变更后的物品; 每次调用返回独立副本, 清空槽位时返回 {@code null}.
+     * 变更后的物品, 每次调用返回独立副本.
+     *
+     * @return 变更后物品的副本, 清空槽位时为 {@code null}
      */
     @Nullable
     public ItemStack after() {

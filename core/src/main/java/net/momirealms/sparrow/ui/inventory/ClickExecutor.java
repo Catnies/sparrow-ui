@@ -16,16 +16,10 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-/**
- * 点击语义的执行端: 拿 {@link ClickPlanner} 算好的候选, 依次过闸门, 最后提交事务.
- * <p>每次交互构造一个执行器实例: 交互全程共用的现场(Context, 闸门, 覆盖层, 重规划与交互描述)
- * 收为字段, 各阶段方法只传递本阶段特有的参数.
- * <p>候选在每道闸门前后重新校验. Bukkit 闸门之后是唯一的重规划点: 监听器在那里写下的槽位与光标先攒进
- * {@link InteractionOverlay}, 表达的是"这一格现在就是这个值"; 只要有覆盖或候选前提变了, 就按闸门跑完
- * 之后的现场重算一次候选再继续, 与原版"事件之后的现场说了算"一致. 覆盖里没有被新结论消费掉的部分在
- * 结算时追加成最终值, 与结论进同一笔事务. 重规划至多一次, 也不会重新派发 Bukkit 事件.
- * 其余位置的校验失败一律整体放弃.
- */
+// 点击语义的执行端, 拿 ClickPlanner 算好的候选, 依次过闸门, 最后提交事务. 每次交互建一个实例, 全程共用的
+// 现场(Context, 闸门, 覆盖层, 重规划与交互描述)收成字段, 各阶段方法只传自己那一段特有的参数.
+// 候选在每道闸门前后都重新校验. Bukkit 监听器在那里写下的槽位与光标先攒进覆盖层, 与结论进同一笔事务.
+// 重规划至多一次, 也不会重新派发 Bukkit 事件, 其余位置校验失败一律整体放弃.
 final class ClickExecutor {
     private final ClickSemantics.Context context;
     private final ClickSemantics.InteractionGate gate;

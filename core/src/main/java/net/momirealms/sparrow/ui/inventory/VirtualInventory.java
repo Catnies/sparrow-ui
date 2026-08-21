@@ -11,9 +11,9 @@ import java.util.Arrays;
 import java.util.UUID;
 
 /**
- * 自己持有槽位数据的 Inventory 实现.
- * <p>堆叠上限, 遍历顺序与 operationPriority 属于配置: 改配置不产生槽变更, 不走事务也不派发事件,
- * 只影响之后的批量规划; 改配置与进行中的事务交错时, 读到新旧值都属正常(弱一致).
+ * 自己持有槽位数据的 Inventory 实现, 提交时加写锁并整体换掉状态数组, 因此任何线程都可以安全读取.
+ * <p><strong>无锁读与并发校验都建立在"状态数组的元素一经发布就不再被改动"之上</strong>, 提交只换数组不动元素,
+ * 所以比对数组引用就足以发现期间有没有别人写过.
  */
 public final class VirtualInventory extends SparrowInventory {
     private final UUID uuid; // 持久化身份, 序列化时作为主键
@@ -141,9 +141,8 @@ public final class VirtualInventory extends SparrowInventory {
     public synchronized void setMaxStackSize(int slot, int max) {
         if (max < 1)
             throw new IllegalArgumentException("max stack size must be at least 1: " + max);
-        // 配置数组按写时复制方式发布: 改一个槽也复制整组后换引用, 读者无锁安全.
-        // synchronized 用来串行化配置写者: 复制-修改-写回不是原子操作, 两个线程同时改
-        // 会基于同一份旧数组互相覆盖, 配置悄悄丢失
+        // 写时复制发布, 改一个槽也复制整组再换引用, 读者才能无锁读到完整的一份.
+        // synchronized 是给写者排队用的, 复制-修改-写回不是原子的, 两个线程同时改会各自基于旧数组互相覆盖.
         int[] current = this.slotMaxStackSizes;
         int[] next = current != null ? current.clone() : filledWithDefault(this.size());
         next[slot] = max;
@@ -187,7 +186,7 @@ public final class VirtualInventory extends SparrowInventory {
     }
 
     /**
-     * 获取指定类别的批量操作按什么顺序遍历槽位.
+     * 返回指定类别的批量操作按什么顺序遍历槽位, 设置过自定义顺序的用自定义顺序, 否则回退自然顺序.
      *
      * @param category 操作类别
      * @return 遍历顺序
@@ -202,7 +201,6 @@ public final class VirtualInventory extends SparrowInventory {
         };
         return order != null ? order : super.iterationOrder(category);
     }
-
 
     /**
      * 反转指定类别的批量操作当前生效的遍历顺序.

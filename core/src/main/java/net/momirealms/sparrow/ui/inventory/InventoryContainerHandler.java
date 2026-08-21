@@ -119,6 +119,7 @@ final class InventoryContainerHandler implements InvocationHandler {
         return maxStackSize > 0 ? maxStackSize : SparrowInventory.DEFAULT_MAX_STACK_SIZE;
     }
 
+    // 只有自己拿着数据的那一种改得动上限, 引用外部存储的按存储自己的上限走, 这里静默忽略.
     private void maxStackSize(int maxStackSize) {
         if (this.inventory instanceof VirtualInventory virtualInventory) {
             int[] maxStackSizes = new int[virtualInventory.size()];

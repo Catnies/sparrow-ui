@@ -40,25 +40,16 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
- * SparrowUI 所有受事务保护的Inventory的公共抽象, 可以把它理解成一个会自动通知变更的箱子.
+ * SparrowUI 所有受事务保护的 Inventory 的公共抽象, 可以把它理解成一个会自动通知变更的箱子.
  * <p>所有实现都遵守三条约定:
  * <ul>
  *   <li>空槽只用 {@code null} 表示, Inventory 中不会保留 AIR 物品或数量不大于 0 的物品;</li>
  *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
  *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
- * <p>按内容放在哪里, 实现分成两种. {@link VirtualInventory} 这一种自己拿着内部状态数组, 参与事务加锁,
- * 并发校验和状态交换, 读操作读的是当前内部状态版本, 任何线程都可以安全调用.
- * {@link ReferencingInventory} 这一种内容放在外部存储里, 读写都直接落到那个存储, 并发校验改看 modCount,
- * 既不加锁也不交换状态, 访问是否串行由调用方负责.
- * 两种在写操作遇到并发冲突时都返回 {@link TransactionResult.Conflicted} 且不产生修改.
- * <p><strong>自己拿着状态数组的那一种, 无锁读与并发校验都建立在"内部状态数组的元素一经发布就不再被修改"之上</strong>:
- * 提交只换数组不改元素, 因此比对数组引用就足以发现并发写入.
- * ReferencingInventory 靠内容比对发现变更, 外部存储里的物品改了数据, 会在下一次比对时发现, 以 {@link UpdateReason.External} 原因派发 post 事件并同步显示.
- * <p>对象身份约定对两种实现一致: 一笔事务写过的槽位, 提交后一律是新实例; 没写过的槽位与等值写入的槽位,
- * 实例原样不动. 光标, 副手和事件负载都是副本. 跨事务追踪变化请订阅事件, 不要指望缓存的实例跟着槽位变.
- * <p>事务事件使用被订阅 Inventory 自己的槽位编号, 一笔事务对一个订阅最多通知一次.
- * <p>Window 交互事件只属于被 InventoryLink 直接连接的 SparrowInventory 实例.
+ * <p>内容放在哪里决定了用哪种实现: {@link VirtualInventory} 自己拿着状态数组, 任何线程都能安全读写;
+ * {@link ReferencingInventory} 内容在 {@link ExternalStorage} 里, 访问是否串行由调用方负责.
+ * <p><strong>对象身份约定</strong>: 一笔事务写过的槽位, 提交后一律是新实例; 光标, 副手和事件负载都是副本.
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
@@ -69,13 +60,13 @@ public abstract class SparrowInventory {
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
     private final Bindings bindings = new Bindings();                   // 本 Inventory 持有的 Signal 绑定
-    private final InventoryVisualImpl visual; // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
+    private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
 
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
     @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
     @Nullable private volatile Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
 
-    // 三类操作各自挑选目标Inventory时用的优先级, 属于弱一致的配置; 没有设置过时是 0.
+    // 三类操作各自挑选目标 Inventory 时用的优先级, 属于弱一致的配置, 没设置过就是 0.
     private volatile int addOperationPriority;
     private volatile int collectOperationPriority;
     private volatile int otherOperationPriority;
@@ -95,13 +86,8 @@ public abstract class SparrowInventory {
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
-    /**
-     * 以给定数组为初始内容创建 Inventory.
-     *
-     * @param initial 初始槽位内容, 空槽位置为 {@code null}.
-     */
     SparrowInventory(@Nullable ItemStack @NotNull [] initial) {
-        // 构造时复制每个物品, 并把空物品转为 null
+        // 逐个复制入参物品并把空物品折成 null.
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
             slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
@@ -129,7 +115,7 @@ public abstract class SparrowInventory {
      * @return 按槽号排列的物品副本数组, 空槽位置为 {@code null}
      */
     public @Nullable ItemStack @NotNull [] snapshot() {
-        // 先把 volatile 引用抓到局部变量
+        // 先把 volatile 引用抓到局部变量, 免得复制过程中状态数组被换掉.
         @Nullable ItemStack[] snapshot = this.state;
         @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
         for (int i = 0; i < snapshot.length; i++) {
@@ -222,13 +208,10 @@ public abstract class SparrowInventory {
         return this.placementRulesBySlot[slot];
     }
 
-    /**
-     * 捕获当前 Inventory 的放入规则, 返回本次规划使用的槽位过滤器.
-     * <p>{@code item} 会被零拷贝地交给规则, 并在整个过滤器生命周期内跨槽位复用同一个实例;
-     * 调用方与规则都不得修改它.
-     */
+    // 把当前两层放入规则定格成一个槽位过滤器, item 零拷贝跨槽复用同一个实例.
     @NotNull
     IntPredicate placementPredicate(@NotNull ItemStack item) {
+        // 先抓住两层规则的当前版本, 规划途中有人换规则也不会让前后槽位用上不同标准
         @Nullable Predicate<ItemStack> placementRule = this.placementRule;
         @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
         return slot -> {
@@ -529,7 +512,6 @@ public abstract class SparrowInventory {
      */
     @Nullable
     public ItemStack unsafeItemAt(int slot) {
-        // 先把 volatile 引用抓到局部变量
         @Nullable ItemStack[] snapshot = this.state;
         return snapshot[slot];
     }
@@ -767,15 +749,7 @@ public abstract class SparrowInventory {
         return this.forceSetItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
-    /**
-     * 提交一次单槽覆盖写入, {@link #setItem} 与 {@link #forceSetItem} 共用.
-     *
-     * @param reason 变更原因
-     * @param slot 槽号
-     * @param item 新物品, {@code null} 表示清空
-     * @param bypassPre 为 {@code true} 时跳过 pre 观察者
-     * @return 事务结果
-     */
+    // setItem 与 forceSetItem 共用的单槽覆盖写入, 差别只在 bypassPre 是否跳过 pre 观察者.
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
@@ -849,7 +823,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 增减槽内物品数量. 减少时最低到 0, 增加时最高到有效堆叠上限;
+     * 增减槽内物品数量. 减少时最低到 0, 增加时最高到有效堆叠上限.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -868,21 +842,15 @@ public abstract class SparrowInventory {
         return this.commitScoped(reason, basis, List.of(delta));
     }
 
-    /**
-     * 把当前 Inventory 上已规划好的变更作为单 Inventory 事务提交.
-     *
-     * @param reason 变更原因
-     * @param basis 本次规划读到的基准, 提交时用它做并发校验
-     * @param deltas 槽位变更
-     * @return 事务结果
-     */
+    // 把规划好的变更作为只涉及本 Inventory 的一笔事务提交, basis 兼任提交时的并发校验依据.
     private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
         return InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, deltas)), false);
     }
 
     /**
-     * 按 ADD 遍历顺序把物品尽量放进 Inventory , 先合并相似物品堆, 再占用空槽.
+     * 按 ADD 遍历顺序把物品尽量放进 Inventory, 先合并相似物品堆, 再占用空槽.
      * 整个放入过程作为一次事务提交.
+     *
      * @param reason 本次修改的原因
      * @param item 要放入的物品
      * @return 放入结果, 其中 remaining 是没能放入的数量
@@ -1121,10 +1089,7 @@ public abstract class SparrowInventory {
     public void refresh() {
     }
 
-    /**
-     * 为一次写规划做准备, 触发写前同步.
-     * 任何写入口在读取规划内容之前都会经过这里, simulate 等纯读路径不会触发.
-     */
+    // 写入口读取规划内容之前的钩子, ReferencingInventory 在这里同步外部内容; simulate 这类纯读路径不经过.
     void prepareWrite() {
     }
 
@@ -1134,7 +1099,7 @@ public abstract class SparrowInventory {
      * 与 Bukkit 容器绑定的信息(观看者, 持有者, 位置)一律为 "Null", 类型固定为 CHEST.
      *
      * @return CraftInventory
-    */
+     */
     @NotNull
     @ApiStatus.Experimental
     public org.bukkit.inventory.Inventory asBukkitInventory() {
@@ -1152,9 +1117,7 @@ public abstract class SparrowInventory {
         return view;
     }
 
-    /**
-     * 判断当前 Inventory 有没有点击订阅者, 供派发方在无人监听时跳过事件构造.
-     */
+    // 无人监听时派发方可以省下构造事件的开销.
     boolean hasClickObservers() {
         return this.clickEvents.subscriptionCount() != 0;
     }
@@ -1171,16 +1134,11 @@ public abstract class SparrowInventory {
         return this.clickEvents.subscribe(observer);
     }
 
-    /**
-     * 向当前 Inventory 的观察者派发一次点击.
-     */
     void publishClick(@NotNull SparrowInventoryClickEvent event) {
         this.clickEvents.publish(event);
     }
 
-    /**
-     * 判断当前 Inventory 有没有 Bundle 选择事件订阅者, 供派发方在无人监听时跳过事件构造.
-     */
+    // 无人监听时派发方可以省下构造事件的开销.
     boolean hasBundleSelectObservers() {
         return this.bundleSelectEvents.subscriptionCount() != 0;
     }
@@ -1196,9 +1154,6 @@ public abstract class SparrowInventory {
         return this.bundleSelectEvents.subscribe(observer);
     }
 
-    /**
-     * 向当前 Inventory 的观察者派发一次 Bundle 选择.
-     */
     void publishBundleSelect(@NotNull InventoryBundleSelectEvent event) {
         this.bundleSelectEvents.publish(event);
     }
@@ -1257,11 +1212,7 @@ public abstract class SparrowInventory {
         return signal;
     }
 
-    /**
-     * 递增内容修订计数, 让挂在 {@link #contentSignal()} 下面的派生重算.
-     * <p>给退役这类"内容不再是原来那样了, 但没有产生任何槽位变更"的时刻用. 谁都没调用过
-     * {@code contentSignal()} 时什么都不做.
-     */
+    // 手动推一下内容修订计数, 给退役这类"内容不再是原来那样, 却没有任何槽位变更"的时刻用.
     final void updateContentSignal() {
         MutableSignal<Long> signal = this.contentSignal;
         if (signal != null) {
@@ -1285,11 +1236,7 @@ public abstract class SparrowInventory {
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
-    /**
-     * 返回负责保存当前 Inventory 订阅并发送更新事件的对象, 第一次订阅时创建.
-     *
-     * @return 当前 Inventory 用来发送更新事件的对象
-     */
+    // 取出承载事务订阅与事件派发的通道, 第一次订阅时才创建.
     @NotNull
     private InventoryUpdateChannel updateChannel() {
         InventoryUpdateChannel channel = this.updateChannel;
@@ -1305,56 +1252,33 @@ public abstract class SparrowInventory {
         return channel;
     }
 
-    /**
-     * 返回当前 Inventory 已经创建的事务订阅器, 不触发创建.
-     * <p>事务引擎用它找出本笔事务要通知谁: 从未订阅过的 Inventory 不需要为它建一个空订阅器.
-     *
-     * @return 事务订阅器; 从未订阅过时为 {@code null}
-     */
+    // 事务引擎凭它找出本笔事务要通知谁, 从未订阅过的 Inventory 不值得为它建一个空通道, 所以只看不建.
     @Nullable
     InventoryUpdateChannel updateChannelIfPresent() {
         return this.updateChannel;
     }
 
-    /**
-     * 打开纯读用途的规划基准: 给 simulate 这类零副作用的路径使用.
-     *
-     * @return 本次规划读到的状态版本
-     */
+    // 纯读用途的规划基准, 给 simulate 这类零副作用的路径使用.
     @NotNull
     PlannedRoot openPlan() {
         return new PlannedRoot.Stm(this, this.currentState());
     }
 
-    /**
-     * 打开写路径的规划基准: 在读取规划内容之前先做一次写前准备.
-     * (ReferencingInventory 在这个方法完成外部内容同步).
-     *
-     * @return 本次规划读到的状态版本
-     */
+    // 写路径的规划基准, 读内容之前先走一遍写前准备.
     @NotNull
     PlannedRoot openPlanForWrite() {
         this.prepareWrite();
         return this.openPlan();
     }
 
-    /**
-     * 串行派发开启时在提交临界区内领一个票号, 票号顺序即提交顺序.
-     * <p>只有持有写锁的基准才会调用本方法, 因此 {@code nextPostTicket} 不需要额外同步.
-     *
-     * @return 票号; 未开启串行派发时返回 {@code -1}
-     */
+    // 在提交临界区里领一个票号, 领到的先后就是提交的先后; 没开串行派发时返回 -1.
     long takePostTicket() {
+        // 只有持有写锁的基准会走到这里, 所以 nextPostTicket 自增不必再加同步
         if (!this.serialPostDispatch) return -1L;
         return this.nextPostTicket++;
     }
 
-    /**
-     * 阻塞到指定票号轮到自己.
-     * <p>不响应中断: 中途放弃会让排在后面的票永远等不到放行.
-     *
-     * @param ticket 本笔事务领到的票号
-     */
+    // 阻塞到自己的票号被叫到. 这里故意不响应中断: 半路溜走会让排在后面的票永远等不到放行.
     void awaitPostTurn(long ticket) {
         boolean interrupted = false;
         synchronized (this.postGate) {
@@ -1371,10 +1295,7 @@ public abstract class SparrowInventory {
         }
     }
 
-    /**
-     * 放行下一个票号. 必须与 {@link #awaitPostTurn(long)} 在同一个 finally 中配对,
-     * 漏掉一次会让本 Inventory 之后的所有提交线程永久阻塞.
-     */
+    // 叫下一个票号. 必须与 awaitPostTurn 在同一个 finally 里配对, 漏掉一次, 本 Inventory 之后的提交线程就全卡死了.
     void releasePostTurn() {
         synchronized (this.postGate) {
             this.servingPostTicket++;
@@ -1382,41 +1303,22 @@ public abstract class SparrowInventory {
         }
     }
 
-    /**
-     * 本 Inventory 的锁序号, 跨 Inventory 事务按它确定加锁顺序.
-     *
-     * @return 锁序号
-     */
     long lockOrder() {
         return this.lockOrder;
     }
 
-    /**
-     * 本 Inventory 的写锁, 由事务引擎使用.
-     *
-     * @return 写锁
-     */
     @NotNull
     ReentrantLock writeLock() {
         return this.writeLock;
     }
 
-    /**
-     * 返回当前内部状态版本的引用本身:
-     * 规划以它为基准, 提交时比对它有没有被换掉, 以此发现并发冲突.
-     *
-     * @return 当前内部状态版本引用
-     */
+    // 交出状态数组的引用本身: 规划以它为基准, 提交时比对引用有没有被换掉就知道期间有没有别人写过.
     @Nullable
     ItemStack @NotNull [] currentState() {
         return this.state;
     }
 
-    /**
-     * 把当前内部状态版本换成新数组, 只允许在持有写锁时调用.
-     *
-     * @param newState 新的内部状态版本
-     */
+    // 换上新的状态数组, 只允许在持有写锁时调用.
     void swapState(@Nullable ItemStack @NotNull [] newState) {
         this.state = newState;
     }

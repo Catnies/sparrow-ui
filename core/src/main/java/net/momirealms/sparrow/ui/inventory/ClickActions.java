@@ -9,14 +9,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 把槽位与光标的点击结果翻译成 Bukkit 的 {@link InventoryAction}.
- * 纯读取, 不接触规划, 事务与 Window 状态.
- */
 final class ClickActions {
-
-    private ClickActions() {
-    }
 
     // 点到窗口外: 手上没东西就什么也不会发生, 有东西则按左右键决定丢整堆还是丢一个.
     @NotNull
@@ -87,15 +80,8 @@ final class ClickActions {
                 : InventoryAction.SWAP_WITH_CURSOR;
     }
 
-    /**
-     * 判断物品是不是收纳袋. 点击语义里所有的收纳袋判定都走这里.
-     * <p>家族判定走 NMS 物品标签 {@code #minecraft:bundles}, 彩色收纳袋与数据包扩展同样命中,
-     * 袋内数据仍由深层分支按 BUNDLE_CONTENTS 组件读取.
-     * 空槽和空光标必然不是收纳袋, 先挡掉再解析 NMS, 普通空点击不触碰代理.
-     *
-     * @param item 待判定的物品, 空槽传 {@code null}
-     * @return 是收纳袋时返回 {@code true}
-     */
+    // 点击语义里所有的收纳袋判定都走这里: 认的是 NMS 物品标签 #minecraft:bundles, 所以彩色收纳袋和数据包扩展同样命中,
+    // 袋内数据仍由深层分支按 BUNDLE_CONTENTS 组件读. 空槽空光标必然不是袋子, 先挡掉再解析 NMS, 普通空点击就碰不到代理.
     static boolean isBundle(@Nullable ItemStack item) {
         return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
     }

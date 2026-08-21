@@ -59,13 +59,7 @@ final class VirtualInventoryCodec {
     private VirtualInventoryCodec() {
     }
 
-    /**
-     * 把 VirtualInventory 当前槽内容的独立副本编码为字节数组.
-     *
-     * @param inventory 待编码的 VirtualInventory
-     * @return 编码后的字节数组, 布局见类级说明
-     * @throws UncheckedIOException 当底层流写出失败时
-     */
+    // 把 VirtualInventory 这一刻的槽内容编成字节数组.
     static byte @NotNull [] serialize(@NotNull VirtualInventory inventory) {
         UUID uuid = inventory.uuid();
         @Nullable ItemStack[] items = inventory.snapshot();
@@ -98,14 +92,8 @@ final class VirtualInventoryCodec {
         return buffer.toByteArray();
     }
 
-    /**
-     * 从字节数组恢复完整 VirtualInventory, 任何格式畸形都在产出 VirtualInventory 前拒绝.
-     * <p>此入口不限制物品区解压体积或 NBT 堆用量, 调用方负责控制输入来源与资源边界.
-     *
-     * @param bytes 完整的 VirtualInventory 字节数据
-     * @return 恢复出的 VirtualInventory
-     * @throws InventoryDecodeException 当数据被截断或畸形时
-     */
+    // 从字节数组恢复 VirtualInventory, 任何格式畸形都在造出对象之前就拒掉.
+    // 这里不限制物品区的解压体积和 NBT 堆用量, 输入来源与资源边界归调用方管.
     @NotNull
     static VirtualInventory deserialize(byte @NotNull [] bytes) {
         ByteArrayInputStream source = new ByteArrayInputStream(bytes);
@@ -145,17 +133,9 @@ final class VirtualInventoryCodec {
         }
     }
 
-    /**
-     * 使用原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩由 VirtualInventory 信封统一承担.
-     *
-     * @param item 待编码的物品
-     * @return 物品的裸 NBT 字节
-     * @throws UncheckedIOException 当 NBT 写出失败时
-     */
+    // 走原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩交给外面那层信封统一承担, 这里一件也不管.
     private static byte @NotNull [] serializeItem(@NotNull ItemStack item) {
-        // 编码物品为 NBT 标签.
         Object tag = ItemStackProxy.CODEC.encodeStart(REGISTRY_OPS, ItemUtils.getItemStackHandle(item)).getOrThrow();
-        // 写出 NBT 为裸字节.
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         try (DataOutputStream output = new DataOutputStream(buffer)) {
             NbtIoProxy.INSTANCE.write(tag, output);
@@ -165,17 +145,7 @@ final class VirtualInventoryCodec {
         return buffer.toByteArray();
     }
 
-    /**
-     * 按槽位图读取物品区, 物品长度必须落在当前物品区的剩余范围内.
-     *
-     * @param region 解压后的物品区字节
-     * @param mask 非空槽位图
-     * @param size 槽数
-     * @param dataVersion 流写出时的 Minecraft DataVersion
-     * @return 按槽号排列的物品数组, 空槽为 null
-     * @throws InventoryDecodeException 当物品区内容畸形时
-     * @throws IOException 当物品区读取失败时
-     */
+    // 按槽位图逐个读出物品区里的物品, region 是解压后的物品区字节.
     private static @Nullable ItemStack @NotNull [] deserializeItems(byte[] region, byte[] mask, int size, int dataVersion) throws IOException {
         DataInputStream items = new DataInputStream(new ByteArrayInputStream(region));
         @Nullable ItemStack[] slots = new ItemStack[size];
@@ -190,10 +160,9 @@ final class VirtualInventoryCodec {
             if (length < 1 || length > remaining) {
                 throw new InventoryDecodeException("slot " + slot + " declares " + length + " NBT bytes, but only " + remaining + " remain");
             }
-            // 读取该槽的裸 NBT.
             byte[] nbt = new byte[length];
             items.readFully(nbt);
-            // 解码物品, 无法识别的内容统一归为解码失败.
+            // 无法识别的内容一律归为解码失败, 不放半成品出去
             ItemStack decoded;
             try {
                 decoded = VirtualInventoryCodec.deserializeItem(nbt, dataVersion);
@@ -215,18 +184,10 @@ final class VirtualInventoryCodec {
         return slots;
     }
 
-    /**
-     * 读取单个裸 NBT, 必要时通过 DataFixerUpper 升级后再交给原版 ItemStack Codec.
-     *
-     * @param nbt 单个物品的裸 NBT 字节
-     * @param dataVersion 流写出时的 Minecraft DataVersion, 低于当前版本时触发升级
-     * @return 解码出的物品
-     * @throws InventoryDecodeException 当 NBT 根标签后存在尾随字节时
-     * @throws UncheckedIOException 当 NBT 读取失败时
-     */
+    // 读一件物品的裸 NBT, 版本旧的先过 DataFixerUpper 升上来, 再交给原版 ItemStack Codec.
     @NotNull
     private static ItemStack deserializeItem(byte @NotNull [] nbt, int dataVersion) {
-        // 读取裸 NBT, 根标签之后不得有尾随字节.
+        // 根标签之后不得有尾随字节, 有就说明这段数据不干净
         Object tag;
         try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(nbt))) {
             tag = NbtIoProxy.INSTANCE.read(input, NbtAccounterProxy.INSTANCE.unlimitedHeap());
@@ -236,26 +197,20 @@ final class VirtualInventoryCodec {
         } catch (IOException exception) {
             throw new UncheckedIOException("failed to read item NBT", exception);
         }
-        // 升级旧版本数据, 使其与当前 DataVersion 一致.
+        // 把旧版本数据升到当前 DataVersion, 之后 Codec 面对的永远是当版格式
         if (dataVersion < VersionHelper.WORLD_VERSION) {
             Dynamic<Object> outdated = new Dynamic<>(NbtOpsProxy.INSTANCE.getINSTANCE(), tag);
             tag = DataFixersProxy.INSTANCE.getDataFixer()
                     .update(ReferencesProxy.INSTANCE.getITEM_STACK(), outdated, dataVersion, VersionHelper.WORLD_VERSION)
                     .getValue();
         }
-        // 解析为原版物品, 并包装为 Bukkit 物品.
         Object decoded = ItemStackProxy.INSTANCE.getCODEC()
                 .parse(REGISTRY_OPS, tag)
                 .getOrThrow();
         return CraftItemStackProxy.INSTANCE.asCraftMirror(decoded);
     }
 
-    /**
-     * 按槽位是否非空构建位图, 每个字节从低位到高位对应连续八个槽位.
-     *
-     * @param items 要编码的物品副本数组
-     * @return 长度为 {@code ceil(items.length / 8)} 的位图
-     */
+    // 按槽位空不空建位图, 每个字节从低位到高位对应连续八个槽位.
     private static byte @NotNull [] buildMask(@Nullable ItemStack @NotNull [] items) {
         byte[] mask = new byte[Math.ceilDiv(items.length, 8)];
         for (int slot = 0; slot < items.length; slot++) {
@@ -266,13 +221,7 @@ final class VirtualInventoryCodec {
         return mask;
     }
 
-    /**
-     * 尾字节里超出 size 的填充位必须为零, 否则流声明了不存在的槽位.
-     *
-     * @param mask 非空槽位图
-     * @param size 槽数
-     * @throws InventoryDecodeException 当填充位非零时
-     */
+    // 尾字节里超出 size 的填充位必须是零, 不然这条流就在声明一些根本不存在的槽位.
     private static void requireCleanMaskPadding(byte[] mask, int size) {
         int usedBits = size & 7;
         if (usedBits == 0) return;
@@ -282,13 +231,7 @@ final class VirtualInventoryCodec {
         }
     }
 
-    /**
-     * NMS VarInt 只接受 ByteBuf, 保留流式实现可避免在 GZIP 流内引入临时缓冲和复制.
-     *
-     * @param output 目标输出
-     * @param value 待写入的非负整数
-     * @throws IOException 当流写出失败时
-     */
+    // 自己实现 VarInt 而不是借 NMS 的: NMS 那套只吃 ByteBuf, 拿来用就得在 GZIP 流里多一层临时缓冲和复制.
     private static void writeVarInt(DataOutput output, int value) throws IOException {
         int remaining = value;
         while ((remaining & ~0x7F) != 0) {
@@ -298,14 +241,7 @@ final class VirtualInventoryCodec {
         output.writeByte(remaining);
     }
 
-    /**
-     * 五字节封顶, 更长的续位串不是合法 int.
-     *
-     * @param input 源输入
-     * @return 读取到的整数
-     * @throws InventoryDecodeException 当 varint 超过 5 字节时
-     * @throws IOException 当流读取失败时
-     */
+    // 五字节封顶, 更长的续位串已经不是合法 int 了.
     private static int readVarInt(DataInput input) throws IOException {
         int value = 0;
         for (int shift = 0; shift < 35; shift += 7) {

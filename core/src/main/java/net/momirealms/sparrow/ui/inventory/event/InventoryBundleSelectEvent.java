@@ -13,7 +13,7 @@ import org.jetbrains.annotations.NotNull;
  * @param player 发起选择的玩家
  * @param window 发起选择的 Window
  * @param windowSlot Bundle 所在的 Window 协议槽位(raw slot)
- * @param bundleSlot Bundle内部槽位; {@code -1} 表示光标已离开
+ * @param bundleSlot Bundle 内部槽位, {@code -1} 表示光标已离开
  */
 public record InventoryBundleSelectEvent(
         @NotNull SparrowInventory inventory,

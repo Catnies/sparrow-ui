@@ -15,6 +15,10 @@ public final class SlotOrder {
 
     /**
      * 自然顺序: 0, 1, 2, ... size-1.
+     *
+     * @param size 槽位数量
+     * @return 自然顺序
+     * @throws IllegalArgumentException 当尺寸为负数时
      */
     @NotNull
     public static SlotOrder natural(int size) {
@@ -29,8 +33,11 @@ public final class SlotOrder {
     }
 
     /**
-     * 以给定槽号序列建立顺序;
-     * 序列必须是 {@code [0, slots.length)} 的排列.
+     * 以给定槽号序列建立顺序, 序列会被复制一份, 之后改动入参不影响这个顺序.
+     *
+     * @param slots 槽号序列, 必须是 {@code [0, slots.length)} 的一个排列
+     * @return 按该序列访问槽位的顺序
+     * @throws IllegalArgumentException 当槽号越界或出现重复时
      */
     @NotNull
     public static SlotOrder of(int... slots) {
@@ -56,6 +63,10 @@ public final class SlotOrder {
 
     /**
      * 返回第 {@code index} 个被访问的槽号.
+     *
+     * @param index 访问次序, 从 0 开始
+     * @return 该次序上的槽号
+     * @throws IndexOutOfBoundsException 当次序越界时
      */
     public int slotAt(int index) {
         return this.slots[index];
@@ -63,6 +74,8 @@ public final class SlotOrder {
 
     /**
      * 返回访问次序与当前顺序完全相反的新顺序, 当前实例保持不变.
+     *
+     * @return 逆序的新顺序
      */
     @NotNull
     public SlotOrder reversed() {

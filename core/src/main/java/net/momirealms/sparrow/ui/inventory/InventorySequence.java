@@ -12,11 +12,10 @@ import java.util.List;
 /**
  * 一组按顺序参与聚合的 Inventory, 成员可以随时增减.
  * <p>名单变化与成员内容变化汇成 {@link #signal()} 失效.
- * <p>已经 {@linkplain SparrowInventory#retired() 退役} 的成员会在读取名单时被顺手剔除.
  */
 public final class InventorySequence {
     private final MutableSignal<List<SparrowInventory>> members = Signal.of(List.of()); // 当前成员名单, 每次变化换一份新的不可变列表
-    @Nullable private volatile Signal<Long> signal; // 第一次调用 signal() 时创建
+    @Nullable private volatile Signal<Long> signal;                                     // 第一次调用 signal() 时创建
 
     /**
      * 创建包含给定成员的序列, 重复的成员只保留第一次出现.
@@ -102,7 +101,7 @@ public final class InventorySequence {
             synchronized (this) {
                 current = this.signal;
                 if (current == null) {
-                    // 这里读的是名单本身而不是 inventories(), 后者会写回名单, 在 merging 对齐的过程中触发一次它自己的失效回调, 让对齐重入.
+                    // 这里盯的是名单本身而不是 inventories(): 后者会写回名单, 在 merging 对齐的途中触发它自己的失效回调, 让对齐重入.
                     current = Signals.merging(this.members, SparrowInventory::contentSignal);
                     this.signal = current;
                 }
@@ -111,12 +110,7 @@ public final class InventorySequence {
         return current;
     }
 
-    /**
-     * 去掉名单里已经退役的 Inventory.
-     *
-     * @param members 当前名单
-     * @return 剔除后的名单, 一个都不用剔时原样返回传入的名单.
-     */
+    // 剔掉已经退役的成员, 一个都不用剔时原样返回传入的名单, 好让 update 判等相等, 不白发一次失效.
     private static List<SparrowInventory> withoutRetired(List<SparrowInventory> members) {
         @Nullable ArrayList<SparrowInventory> kept = null;
         for (int index = 0; index < members.size(); index++) {

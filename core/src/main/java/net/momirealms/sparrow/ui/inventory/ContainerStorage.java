@@ -19,9 +19,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Set;
 
-/**
- * NMS 容器的外部存储适配: 槽位数量、堆叠上限与读写全部取自 NMS 容器自己.
- */
 abstract class ContainerStorage implements ExternalStorage {
     /**
      * Bukkit 槽号与 {@code getInventory()} 给出的 NMS 容器槽号一一对应的 CraftInventory 实现.
@@ -55,22 +52,12 @@ abstract class ContainerStorage implements ExternalStorage {
     private final int size;         // 被引用区段的槽位数量, 构造时取样
     private final int maxStackSize; // 容器的堆叠上限, 构造时缓存
 
-    /**
-     * 记下两个构造期取样的常量.
-     *
-     * @param size 被引用区段的槽位数量
-     * @param maxStackSize 容器的堆叠上限
-     */
     private ContainerStorage(int size, int maxStackSize) {
         this.size = size;
         this.maxStackSize = maxStackSize;
     }
 
-    /**
-     * 返回这一刻该读写的 NMS 容器.
-     *
-     * @return NMS 容器
-     */
+    // 这一刻该读写的 NMS 容器, 每次访问都问一遍, 因为玩家背包那种会被换掉.
     @NotNull
     abstract Object container();
 
@@ -121,13 +108,7 @@ abstract class ContainerStorage implements ExternalStorage {
         return keyOf(this.container(), slot);
     }
 
-    /**
-     * 定位真正存放这一格的那个容器, 并把槽号换算到它自己的坐标里.
-     *
-     * @param container NMS 容器
-     * @param slot 该容器内的槽位
-     * @return 该槽位的 SlotKey
-     */
+    // 找到真正存放这一格的那个容器, 顺手把槽号换算到它自己的坐标里.
     @NotNull
     private static SlotKey keyOf(Object container, int slot) {
         // CompoundContainer (比如大箱子) 是两个 Container 接起来的, 归属需要具体到被包装的 Container
@@ -143,9 +124,7 @@ abstract class ContainerStorage implements ExternalStorage {
         return new SlotKey(container, slot);
     }
 
-    /**
-     * 容器在构造时就定下来的存储, 用于方块容器、实体容器和自建容器.
-     */
+    // 容器在构造时就定死的存储, 给方块容器, 实体容器和自建容器用.
     static final class Fixed extends ContainerStorage {
         private final Object container; // 构造时解出来的 NMS 容器
 
@@ -165,13 +144,7 @@ abstract class ContainerStorage implements ExternalStorage {
             return alive(this.container);
         }
 
-        /**
-         * 判断一个 NMS 容器背后的东西是不是还在.
-         * <p>方块容器与矿车、船这类实体容器, NMS 那边的容器对象本身就是方块实体或实体, 检查宿主是否移除.
-         *
-         * @param container NMS 容器
-         * @return 还在时返回 true
-         */
+        // 顺着容器问回它所属的方块实体或实体, 看那个宿主还在不在, 问不出宿主的一律当作还可用.
         private static boolean alive(Object container) {
             if (BlockEntityProxy.CLASS.isInstance(container)) {
                 return !BlockEntityProxy.INSTANCE.isRemoved(container);
@@ -196,11 +169,8 @@ abstract class ContainerStorage implements ExternalStorage {
         }
     }
 
-    /**
-     * 玩家背包的存储, 每次访问都重新解析当前的 NMS 背包.
-     * <p>只覆盖存储区段(主背包与快捷栏). 装备槽在 NMS 背包里走另一套槽位映射, 不能按同一组槽号读写,
-     * 因此带装备槽的区段由 {@link BukkitStorage#of} 挡在 Bukkit 通道上.
-     */
+    // 玩家背包的存储, 每次访问都重新解析当前的 NMS 背包. 只覆盖存储区段(主背包与快捷栏) ——
+    // 装备槽在 NMS 背包里走另一套槽位映射, 按同一组槽号读写会错位, 所以带装备槽的区段被 BukkitStorage.of 挡在 Bukkit 通道上.
     static final class OfPlayer extends ContainerStorage {
         private final HumanEntity owner; // 背包主人, 跨死亡重生稳定
 

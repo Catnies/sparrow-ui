@@ -5,10 +5,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 单槽点击的槽位数学: 拿起, 放置, 劈半, 合并与整堆交换.
- * 涉及收纳袋组件的路径交给 {@link ClickBundleRules}.
- */
+// 单槽点击的槽位数学: 拿起, 放置, 劈半, 合并与整堆交换;
 final class ClickSlotRules {
 
     private ClickSlotRules() {
@@ -24,6 +21,7 @@ final class ClickSlotRules {
         if (cursor.isEmpty()) {
             return current == null ? null : new Outcome(null, current);
         }
+        // 收纳袋组件就转给 ClickBundleRules.
         if (current != null && ClickActions.isBundle(cursor)) {
             return ClickBundleRules.computeInsertionIntoCursorBundle(current, cursor);
         }
@@ -57,6 +55,7 @@ final class ClickSlotRules {
             @Nullable ItemStack observedBundle,
             int selectedIndex
     ) {
+        // 收纳袋组件就转给 ClickBundleRules.
         if (current == null && ClickActions.isBundle(cursor)) {
             return ClickBundleRules.computeExtractionFromCursorBundle(cursor, slotLimit);
         }

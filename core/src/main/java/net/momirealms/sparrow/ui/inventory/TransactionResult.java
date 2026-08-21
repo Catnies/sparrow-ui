@@ -8,24 +8,21 @@ import java.util.List;
 public sealed interface TransactionResult {
 
     /**
-     * 事务失败:
-     * 在 pre 阶段被观察者取消.
+     * pre 阶段被观察者取消, 一格都没写.
      */
     enum Cancelled implements TransactionResult {
         INSTANCE
     }
 
     /**
-     * 事务失败:
-     * 提交时发现 Inventory 的规划基准状态引用已经变化, 本次事务整体放弃.
+     * 提交时发现规划基准已经被别的事务换掉, 整笔放弃重来, 一格都没写.
      */
     enum Conflicted implements TransactionResult {
         INSTANCE
     }
 
     /**
-     * 事务成功:
-     * 所有参与的 Inventory 的改动都已生效.
+     * 参与的每个 Inventory 都已经写入成功.
      *
      * @param rootChanges 每个参与的 Inventory 各一个变更组, 按调用方声明的顺序排列
      */
