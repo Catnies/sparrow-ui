@@ -11,10 +11,8 @@ import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 收纳袋(Bundle)的点击规则: 四条路径全部经 NMS BundleContents 代理按原版组件规则计算.
- * 纯槽位数学在 {@link ClickSlotRules}, 这里只放需要碰组件的部分.
- */
+// 收纳袋的点击规则, 四条路径一律交给 NMS BundleContents 代理按原版组件规则算.
+// 纯槽位数学计算在 ClickSlotRules, 这里只放非碰组件不可的部分.
 final class ClickBundleRules {
 
     private ClickBundleRules() {
@@ -68,6 +66,7 @@ final class ClickBundleRules {
         if (placed <= 0) {
             return null;
         }
+        // 槽位吃不下的那部分原样塞回袋子; 塞不回去说明这次取出无法收支平衡, 整条路径作废, 一件都不动
         int remainder = taken.getAmount() - placed;
         if (remainder > 0) {
             ItemStack remainderStack = ItemUtils.copyWithAmount(taken, remainder);
@@ -126,6 +125,7 @@ final class ClickBundleRules {
         if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
             return null;
         }
+        // 只认客户端当时看的就是这只袋子的那次选择, 对不上或没选就退回第一件
         int takeIndex = observedBundle != null
                 && observedBundle.equals(current)
                 && selectedIndex >= 0
@@ -133,9 +133,12 @@ final class ClickBundleRules {
                 ? selectedIndex
                 : 0;
         Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        // 26.1 起改名成 selectedItemIndex, 老版本仍叫 selectedItem
         int previousSelection = VersionHelper.isOrAbove26_1()
                 ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)
                 : BundleContentsProxy.INSTANCE.selectedItem(contents);
+        // toggle 是开关不是赋值, 目标正好已经是当前选中项时, 单独 toggle 一次反而把它关掉了.
+        // 先关掉旧选中再 toggle 目标, 第二次就一定落在"选上", removeOne 才会取到想要的那一件
         if (previousSelection >= 0) {
             BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, previousSelection);
         }

@@ -9,12 +9,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务: 加锁, 校验, 构造新状态,
- * 交换和落地这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
- * <p>{@code planned} 数组只用来读内容(规划读取, 事件 before 采样);
- * 规划依据还成不成立要问 {@link #isStale()} —— 两种实现的判断方式不一样, 调用方不要自己拿数组比对.
- */
+// 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务: 加锁, 校验, 构造新状态, 交换和落地
+// 这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
 abstract sealed class PlannedRoot {
     private final SparrowInventory inventory;
     private final @Nullable ItemStack @NotNull [] planned;
@@ -29,49 +25,33 @@ abstract sealed class PlannedRoot {
         return this.inventory;
     }
 
+    // 规划期看到的内容, 只用来读(规划读取, 事件 before 采样); 依据还成不成立一律问 isStale, 别自己拿数组比对.
     final @Nullable ItemStack @NotNull [] planned() {
         return this.planned;
     }
 
-    /**
-     * 本基准参与提交临界区的方式: 需要加锁的返回锁凭证, 不加锁的返回 {@code null}.
-     */
+    // 本基准怎么参与提交临界区: 要加锁的交出锁凭证, 不加锁的返回 null.
     @Nullable
     abstract StateLock stateLock();
 
-    /**
-     * 本基准是否已经失效. 提交临界区内的乐观校验与候选复核的 ROOT_STATE 检查共用本方法.
-     */
+    // 规划依据是不是已经作废. 提交临界区内的乐观校验和候选复核的 ROOT_STATE 检查都问这一处.
     abstract boolean isStale();
 
-    /**
-     * 在提交临界区内构造应用变更后的新状态; 不需要交换状态的返回 {@code null}.
-     * 只允许在 {@link #isStale()} 刚刚通过的同一临界区内调用.
-     */
+    // 在提交临界区内算出应用变更后的新状态, 不需要换状态的返回 null; 只允许紧接着刚通过的 isStale 调用.
     abstract @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas);
 
-    /**
-     * 在提交临界区内把构造产物设为当前状态; 产物为 {@code null} 时无事发生.
-     */
+    // 在提交临界区内把上一步的产物设为当前状态, 产物为 null 时什么都不做.
     abstract void swapTo(@Nullable ItemStack @Nullable [] nextState);
 
-    /**
-     * 状态提交后, post 事件派发前的落地动作. 是否调用由引擎按事务属性决定(External 同步免回写).
-     *
-     * @param deltas 本写集的槽位变更
-     */
+    // 状态提交后, post 派发前的落地动作; 调不调由引擎按事务属性决定(External 同步就免了回写).
     abstract void land(@NotNull List<SlotChange> deltas);
 
-    /**
-     * 全序加锁凭证: 事务引擎按 {@code order} 升序逐把加锁, 消除跨 Inventory 事务的死锁可能.
-     */
+    // 全序加锁凭证: 引擎按 order 升序逐把加锁, 跨 Inventory 的事务因此不会互相锁死.
     record StateLock(@NotNull ReentrantLock lock, long order) {
     }
 
-    /**
-     * 内容就在 Inventory 自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身,
-     * 它同时也是并发校验的依据 —— 数组元素发布后不再修改, 换内容就是换数组, 比引用就能发现并发提交.
-     */
+    // 内容就在 Inventory 自己状态数组里时用的基准: planned 就是规划那一刻的状态数组本身, 同时兼任校验依据 ——
+    // 元素发布后不再改动, 换内容就是换数组, 所以比一下引用就知道期间有没有别人提交过.
     static final class Stm extends PlannedRoot {
 
         Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
@@ -112,14 +92,12 @@ abstract sealed class PlannedRoot {
 
         @Override
         void land(@NotNull List<SlotChange> deltas) {
-            // 内容就在状态数组里, 上一步换过数组就已经落地了, 这里没有别的事情要做.
+            // 内容就在状态数组里, 上一步换过数组就算落地了, 这里没别的事要做.
         }
     }
 
-    /**
-     * 内容放在外部存储里时用的规划基准: planned 是新建时逐槽读存储填出来的临时数组, 每次规划都重新建一份,
-     * 只用来读内容; 并发校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
-     */
+    // 内容放在外部存储里时用的基准: planned 是新建时逐槽读存储填出来的临时数组, 只用来读内容;
+    // 校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
     static final class Live extends PlannedRoot {
         private final ReferencingInventory owner;
         private final long modCountAtPlan;

@@ -16,16 +16,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
-/**
- * Inventory 事务引擎: 所有 Inventory 写操作最终都汇到这里, 由它保证一笔事务要么全部生效, 要么全部不生效.
- * <p>一笔事务走四步: plan 由调用方先做完(在规划内容上算好每个槽改成什么) → pre 在不持锁的状态下
- * 询问观察者, 任何一个观察者都能取消整笔事务 → commit 在临界区内核对每条规划基准仍然有效
- * (怎么算失效由基准自己定), 核对通过才落定新内容 → post 释放锁后由当前提交线程同步派发.
- * 一笔事务涉及多个 Inventory 时, 按加锁凭证的固定序号依次加锁, 即便多线程同时跑跨 Inventory
- * 事务也不会死锁; 不加锁的那一种靠调用方保证串行访问.
- * <p>事务形状的校验和 Pre 阶段的候选值编辑都由 {@link TransactionDraft} 保存,
- * 事件的准备和派发由 {@link TransactionNotification} 承担.
- */
+// Inventory 事务引擎.
+// 一笔事务大致分为4个部分: plan (规划内容上算好每个槽改成什么)) -> pre (预处理器) -> commit(核对每条规划基准) -> post (后处理器)
+// 涉及多个 Inventory 时按锁凭证的固定序号逐把加锁, 多线程同时跑跨 Inventory 事务也不会死锁, 不加锁的那一种靠调用方串行访问.
 final class InventoryTransactions {
     private static final VersionSource VERSION_SOURCE = new VersionSource(System::currentTimeMillis); // 成功事务的全局逻辑版本源
     private static final ThreadLocal<ArrayDeque<Runnable>> POST_DISPATCH = new ThreadLocal<>(); // 当前线程等待派发的 Post 批次
@@ -97,11 +90,7 @@ final class InventoryTransactions {
         return new Commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false).run();
     }
 
-    /**
-     * 一笔事务的提交过程: 输入与跨相位的过程状态收为字段, 每个相位一个方法, {@link #run()} 按流水线编排.
-     *
-     * @see #run()
-     */
+    // 一笔事务的提交过程, 输入和跨相位的过程状态收成字段, 每个相位一个方法, 由 run 按流水线串起来.
     private static final class Commit {
         private final UpdateReason reason;
         private final TransactionDraft draft;
@@ -157,7 +146,7 @@ final class InventoryTransactions {
             return this.landAndNotify();
         }
 
-        // Inventory 级冻结兜底: 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务, 不发 Pre 也零变更.
+        // Inventory 级冻结兜底, 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务.
         private boolean hasFrozenPlayerTarget() {
             if (!(this.reason instanceof PlayerUpdateReason)) {
                 return false;
@@ -287,13 +276,9 @@ final class InventoryTransactions {
         }
     }
 
-    /**
-     * 在当前线程排队并派发一整笔事务的 Post 批次.
-     * <p>Post 回调里的嵌套事务只负责追加批次, 由最外层调用在当前批次全部结束后继续排空.
-     *
-     * @param batch 一笔事务涉及的全部 Post 通知
-     */
+    // 在当前线程排队并派发一整笔事务的 Post 批次.
     private static void dispatchPostBatch(@NotNull Runnable batch) {
+        // 已经有人在排空了, 说明自己是 Post 回调里的嵌套事务: 只管把批次挂到队尾, 由最外层那次调用接着排空
         ArrayDeque<Runnable> pending = POST_DISPATCH.get();
         if (pending != null) {
             pending.addLast(batch);
@@ -312,17 +297,7 @@ final class InventoryTransactions {
         }
     }
 
-    /**
-     * 找出本笔事务需要通知的 Inventory, 并提前准备好各自的事件.
-     * <p>每个 Inventory 至多拥有一个订阅器, 写集里同一个 Inventory 也至多出现一次, 因此它只处理一次.
-     * PreUpdateEvent 接收者只按原始事务的变更确定; PostUpdateEvent 接收者会先记录,
-     * 等 PreUpdateEvent 完成后再按最终变更决定是否创建事件.
-     *
-     * @param reason 事务触发原因
-     * @param scopes 本轮需要准备通知的写集
-     * @param includePre 是否需要通知提交前订阅者
-     * @return 本轮需要新发送的 Inventory 更新事件
-     */
+    // 挑出本笔事务需要通知的 Inventory, 提前把各自的事件准备好; 从未订阅过的 Inventory 没有通道, 直接略过.
     @NotNull
     private static List<TransactionNotification> prepareUpdates(
             @NotNull UpdateReason reason,
@@ -342,15 +317,8 @@ final class InventoryTransactions {
         return updates;
     }
 
-    /**
-     * 按固定顺序排出本笔事务需要取得的锁凭证, 避免并发事务互相等待.
-     * <p>这个顺序只用于加锁. 写入, 落地与事件中的变化都保持调用方传入的顺序.
-     * 不加锁的基准没有凭证, 在此被自然滤除.
-     *
-     * @param writes 按调用方传入顺序排列的写集
-     * @param reads 只做乐观校验的额外读集
-     * @return 去重并按锁序号排列的锁凭证
-     */
+    // 按固定顺序排出本笔事务要拿的锁凭证, 并发事务因此不会互相等. 这个顺序只管加锁, 写入, 落地和事件里的变化
+    // 仍然是调用方传入的顺序. 不加锁的基准没有凭证, 在这里自然被滤掉.
     @NotNull
     private static List<PlannedRoot.StateLock> collectLocks(List<TransactionScope> writes, List<PlannedRoot> reads) {
         List<PlannedRoot.StateLock> locks = new ArrayList<>(writes.size() + reads.size());
@@ -378,29 +346,17 @@ final class InventoryTransactions {
         }
     }
 
-    /**
-     * 为成功事务生成以系统毫秒时间为基础的当前 JVM / 类加载器生命周期内单调版本.
-     * <p>同一毫秒内的多个事务和系统时钟回拨都会退化为前一版本加一. 因此版本适合比较新旧,
-     * 但不保证等于精确墙上时间, 也不会跨服务重启延续.
-     */
+    // 给成功的事务发版本号, 以系统毫秒时间打底, 在当前 JVM / 类加载器生命周期内严格单调.
+    // 同一毫秒里的多笔事务和系统时钟回拨都退化成"前一个加一", 所以版本只适合比新旧, 既不等于精确墙上时间, 也不跨重启延续.
     static final class VersionSource {
-        private final LongSupplier clock;                    // 提供当前系统毫秒时间, 测试可以替换为可控时钟
+        private final LongSupplier clock;                        // 提供当前系统毫秒时间, 测试可以换成可控时钟
         private final AtomicLong lastVersion = new AtomicLong(); // 已签发的最大版本
 
-        /**
-         * 创建一个使用指定时钟的版本源.
-         *
-         * @param clock 每次取号时提供当前毫秒时间
-         */
         VersionSource(@NotNull LongSupplier clock) {
             this.clock = clock;
         }
 
-        /**
-         * 签发一个严格大于此前所有结果的版本.
-         *
-         * @return 新的进程内逻辑版本
-         */
+        // 签发一个严格大于此前所有结果的版本.
         long next() {
             long currentTime = this.clock.getAsLong();
             return this.lastVersion.updateAndGet(previous -> Math.max(currentTime, previous + 1));

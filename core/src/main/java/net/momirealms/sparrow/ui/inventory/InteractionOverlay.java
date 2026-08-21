@@ -10,9 +10,8 @@ import java.util.Map;
 
 /**
  * Bukkit 交互事件留下的现场覆盖.
- * <p>原版先派发事件再执行点击, 事件写进槽位的内容因此是这次点击的输入; Sparrow 先算候选再派发,
- * 同一次写入落在候选算完之后. 覆盖层负责把两者对齐: Bukkit 闸门期间的写入先攒在这里而不是直接进写集,
- * 重规划时叠在规划基准之上交给规划器, 于是"这一格现在就是这个值, 本次点击在此基础上继续"与原版一致.
+ * <p>原版先派发事件再执行点击, 事件写进槽位的内容因此是这次点击的输入; Sparrow 先算候选再派发.
+ * 覆盖层负责把两者对齐, Bukkit 的写入先攒着而不是直接进写集, 重规划时叠在规划基准之上交给规划器, 使行为与原版对齐.
  * <p>覆盖只改变规划期读到的内容. {@link TransactionScope} 携带的仍是 Inventory 的活数组, 提交前的
  * 并发校验和提交本身都不受影响; 写集记录的 before 也要换回活数组里的真实内容, 否则事件层会看到
  * 容器从来没有过的账.
@@ -31,68 +30,39 @@ final class InteractionOverlay {
         this.cursorIsInput = cursorIsInput;
     }
 
-    /**
-     * 创建一份点击用的空覆盖: 槽位与光标写的都是这次点击的现场.
-     *
-     * @return 空覆盖层
-     */
+    // 点击用的空覆盖, 槽位和光标写的都是这次点击的现场.
     @NotNull
     static InteractionOverlay forClick() {
         return new InteractionOverlay(true);
     }
 
-    /**
-     * 创建一份拖拽用的空覆盖: 槽位写的是现场, 光标写的是分配算完之后的最终值.
-     *
-     * @return 空覆盖层
-     */
+    // 拖拽用的空覆盖, 槽位写的是现场, 光标写的却是分配算完之后的最终值.
     @NotNull
     static InteractionOverlay forDrag() {
         return new InteractionOverlay(false);
     }
 
-    /**
-     * 记下事件认为某个 Inventory 槽位现在的内容.
-     *
-     * @param inventory 被写入的 Inventory
-     * @param slot Inventory 槽位
-     * @param item 这一格现在的内容, {@code null} 表示空
-     */
+    // 记下事件认为某个 Inventory 槽位现在装的是什么, item 为 null 表示这一格是空的.
     void slot(@NotNull SparrowInventory inventory, int slot, @Nullable ItemStack item) {
         IdentityHashMap<SparrowInventory, LinkedHashMap<Integer, ItemStack>> slots = this.slots;
         if (slots == null) {
             slots = this.slots = new IdentityHashMap<>(2);
         }
         slots.computeIfAbsent(inventory, key -> new LinkedHashMap<>(2)).put(slot, item);
-        // 同一次交互里覆盖只在闸门期间增长, 增长后先前叠好的视图就过期了.
+        // 覆盖只会在闸门期间继续长, 一长先前叠好的视图就过期了
         this.views = null;
     }
 
-    /**
-     * 记下事件写给光标的内容.
-     *
-     * @param cursor 事件写下的光标, 空物品表示光标为空
-     */
+    // 记下事件写给光标的内容.
     void cursor(@NotNull ItemStack cursor) {
         this.cursor = cursor;
     }
 
-    /**
-     * 判断这次交互有没有留下任何覆盖.
-     *
-     * @return 一处覆盖都没有时返回 {@code true}
-     */
     boolean isEmpty() {
         return this.slots == null && this.cursor == null;
     }
 
-    /**
-     * 返回叠加覆盖之后的规划内容.
-     * <p>这个 Inventory 没有覆盖时直接返回规划基准本身, 不产生任何复制.
-     *
-     * @param plan 规划基准
-     * @return 供规划器读取的内容数组, 调用方不得写入
-     */
+    // 叠加覆盖之后供规划器读的内容, 调用方不得写入; 这个 Inventory 没被覆盖过就原样返回基准, 一次复制都不做.
     @Nullable ItemStack @NotNull [] viewOf(@NotNull PlannedRoot plan) {
         IdentityHashMap<SparrowInventory, LinkedHashMap<Integer, ItemStack>> slots = this.slots;
         if (slots == null) {
@@ -109,42 +79,23 @@ final class InteractionOverlay {
         return views.computeIfAbsent(plan.planned(), planned -> overlaid(planned, overrides));
     }
 
-    /**
-     * 返回规划器这次应该看到的光标.
-     *
-     * @param actual 菜单的实际光标
-     * @return 点击事件写过光标时返回它写下的内容, 否则返回实际光标
-     */
+    // 规划器这次该看到的光标: 点击事件写过就用它写的, 其余情况用菜单的实际光标.
     @NotNull
     ItemStack cursorOr(@NotNull ItemStack actual) {
         ItemStack cursor = this.cursor;
         return this.cursorIsInput && cursor != null ? cursor : actual;
     }
 
-    /**
-     * 返回事件写下的光标.
-     *
-     * @return 事件没写过光标时返回 {@code null}
-     */
     @Nullable
     ItemStack cursor() {
         return this.cursor;
     }
 
-    /**
-     * 判断事件写下的光标是不是这次交互的输入.
-     *
-     * @return 点击返回 {@code true}, 拖拽返回 {@code false}
-     */
     boolean cursorIsInput() {
         return this.cursorIsInput;
     }
 
-    /**
-     * 逐条交出攒下的槽位覆盖, 供结算阶段判断每一格有没有被新结论消费掉.
-     *
-     * @param consumer 接收 Inventory, 槽位与该格现在的内容
-     */
+    // 逐条交出攒下的槽位覆盖, 结算阶段凭它判断每一格有没有被新结论消费掉.
     void forEachSlot(@NotNull SlotConsumer consumer) {
         IdentityHashMap<SparrowInventory, LinkedHashMap<Integer, ItemStack>> slots = this.slots;
         if (slots == null) {
@@ -170,19 +121,10 @@ final class InteractionOverlay {
         return view;
     }
 
-    /**
-     * 接收一条槽位覆盖.
-     */
     @FunctionalInterface
     interface SlotConsumer {
 
-        /**
-         * 处理一条槽位覆盖.
-         *
-         * @param inventory 被写入的 Inventory
-         * @param slot Inventory 槽位
-         * @param item 这一格现在的内容, {@code null} 表示空
-         */
+        // item 为 null 表示这一格现在是空的.
         void accept(@NotNull SparrowInventory inventory, int slot, @Nullable ItemStack item);
     }
 }

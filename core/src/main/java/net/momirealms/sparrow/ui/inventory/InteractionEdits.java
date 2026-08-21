@@ -11,15 +11,10 @@ import java.util.List;
 
 /**
  * 交互事件把自己的写入合并进当前候选草稿的句柄.
- * <p>同一次交互中的 Bukkit 事件, Sparrow 事件和 Pre 处理器写的是同一份草稿, 上一个监听器留下的结果
- * 就是下一个看到的内容. 写入落进哪份草稿只由写入目标决定, 与调用者是谁无关: 光标这类容器外副作用
- * 进 {@link InteractionDraft}, 容器内容进 {@link TransactionDraft}.
- * <p>Bukkit 闸门期间是例外: 那时句柄挂着一层 {@link InteractionOverlay}, 写入先攒进覆盖层, 表达的是
- * "这一格现在就是这个值", 由随后的重规划当成输入读走 —— 原版本来就是先派发事件再执行点击. 闸门结束后
+ * <p>同一次交互中的 Bukkit 事件, Sparrow 事件和 Pre 处理器写的是同一份草稿, 上一个监听器留下的结果就是下一个看到的内容.
+ * <p>Bukkit 闸门期间是例外, 那时句柄挂着一层 {@link InteractionOverlay}, 写入攒进覆盖层, 表达的是
+ * "这一格现在就是这个值", 由随后的重规划当成输入读走, 原版就是先派发事件再执行点击. 闸门结束后
  * 句柄换回最终值语义, 覆盖层里没有被新结论消费掉的部分在 {@link #settle} 里追加成最终值.
- * <p>两份草稿都可以等到第一次写入才建: 算不出候选的交互和写集为空的候选照样接受写入, 攒下来的内容
- * 自成一笔事务. 只有这个 Window 槽位背后根本没有 Inventory(Item 槽, 空槽, 冻结槽)时写入才会被丢弃,
- * 此时写入方法返回 {@code false}, 由调用方决定是否强制向客户端重发内容.
  */
 @ApiStatus.Internal
 public final class InteractionEdits {
@@ -139,33 +134,18 @@ public final class InteractionEdits {
         }
     }
 
-    /**
-     * 返回本次交互攒下的写集草稿.
-     *
-     * @return 写集草稿; 规划期没有写集, 闸门也没有写过任何槽位时为 {@code null}
-     */
     @Nullable
     TransactionDraft transaction() {
         return this.transaction;
     }
 
-    /**
-     * 返回本次交互攒下的副作用草稿.
-     *
-     * @return 副作用草稿; 没有候选, 闸门也没有写过光标时为 {@code null}
-     */
     @Nullable
     InteractionDraft interaction() {
         return this.interaction;
     }
 
-    /**
-     * 复核光标仍然是第一次写入那一刻的样子.
-     * <p>靠它发现有人在监听器写完之后又直接换掉了菜单实际光标: 草稿写的是提交后的最终值, 两者同时生效时
-     * 后应用的草稿会悄悄盖掉那次改动. 没有候选的交互和不复核光标的候选都用它兜底.
-     *
-     * @return 光标已经被换掉时返回 {@link ClickCandidate.StaleReason#CURSOR}, 仍然成立时返回 {@code null}
-     */
+    // 复核光标还是第一次写入那一刻的样子, 靠它抓住"监听器写完最终值之后又有人直接换掉菜单光标"
+    // 两者同时生效的话, 后应用的草稿会把那次改动悄悄盖掉. 没有候选的交互和不复核光标的候选都拿它兜底.
     @Nullable
     ClickCandidate.StaleReason staleCursor() {
         ItemStack expectedCursor = this.expectedCursor;

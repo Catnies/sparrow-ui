@@ -250,13 +250,8 @@ public abstract class InventoryUpdateEvent {
         return netItems;
     }
 
-    /**
-     * 把一组槽位变更折算成整个 Inventory 的净增减.
-     * <p>同一批物品只是在两个槽位之间搬动时, 一边的流出会抵掉另一边的流入, 因此不计入净变化.
-     *
-     * @param slotChanges 当前 Inventory 自己那一组槽位变更
-     * @return 净变化类型, 以及净增加和净移除的物品
-     */
+    // 把一组槽位变更折算成整个 Inventory 的净增减,
+    // 同一批物品只是在两个槽位之间搬家时, 一边的流出会抵掉另一边的流入, 因此不算净变化.
     @NotNull
     private static NetItems calculateNetItems(@NotNull List<SlotChange> slotChanges) {
         List<NetItem> addedItems = new ArrayList<>();
@@ -285,14 +280,7 @@ public abstract class InventoryUpdateEvent {
         return new NetItems(change, List.copyOf(addedItems), List.copyOf(removedItems));
     }
 
-    /**
-     * 把一次物品流动累加到它所属的方向, 并优先抵消反方向已经记录的相同物品.
-     *
-     * @param sameDirection 本次流动所属方向的累计列表
-     * @param oppositeDirection 反方向的累计列表, 相同物品会在这里被抵消
-     * @param template 用来判断物品是否相似的模板
-     * @param amount 本次流动的数量
-     */
+    // 把一次物品流动记到它自己那个方向上, 但先拿去抵消反方向已经记下的相同物品.
     private static void balance(@NotNull List<NetItem> sameDirection, @NotNull List<NetItem> oppositeDirection, @NotNull ItemStack template, int amount) {
         int remaining = amount;
         // 先与反方向相互抵消: 一进一出的那部分对整个 Inventory 没有净影响.

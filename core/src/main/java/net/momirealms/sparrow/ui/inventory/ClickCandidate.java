@@ -13,10 +13,8 @@ import java.util.Objects;
 
 /**
  * 一次点击或拖拽形成的精确候选: 已经算好的写集, 加上提交前必须复核的前置条件.
- * <p>候选一旦形成就不再重新规划; 每次经过闸门后都用 {@code plannedRoots} 的基准状态引用,
- * 光标, 副手和游戏模式复核一遍, 任一条件变化就整体作废.
- * <p>候选由 {@link #plan} 开出的建造器组装: 每条规划路径只声明自己关心的前置条件,
- * 没声明的一律取"不复核"的默认值.
+ * <p>候选一旦形成就不再重新规划, 每过一道闸门就把这些前置条件复核一遍, 变了任何一条就整体作废.
+ * 每条规划路径只声明自己关心的条件, 没声明的一律取"不复核".
  *
  * @param action 候选对应的 Bukkit 操作
  * @param eventTarget 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
@@ -90,9 +88,7 @@ record ClickCandidate(
         this.afterCommit.run();
     }
 
-    /**
-     * 候选作废的原因.
-     */
+    // 候选作废的原因.
     enum StaleReason {
         CURSOR,     // 菜单实际光标已经不是规划时看到的那一份
         OFFHAND,    // 副手物品已经不是规划时看到的那一份
@@ -100,10 +96,7 @@ record ClickCandidate(
         ROOT_STATE  // 某个 Inventory 的基准状态被另一笔写操作换掉了
     }
 
-    /**
-     * 候选的建造器. 默认值即"不复核": 没有事件目标, 空写集, 空读集,
-     * 不复核光标与副手, 不要求创造模式, 空副作用草稿, 空收尾动作.
-     */
+    // 候选的建造器, 什么都不设就是"什么都不复核".
     static final class Builder {
         private final InventoryAction action;
         private final UpdateReason reason;
@@ -124,15 +117,14 @@ record ClickCandidate(
 
         // 派发 Sparrow 点击事件的目标槽位.
         @NotNull
-        Builder eventTarget(@NotNull ClickSemantics.LinkedSlot eventTarget) {
-            this.eventTarget = eventTarget;
+        Builder scopes(@NotNull List<TransactionScope> scopes) {
+            this.scopes = scopes;
             return this;
         }
 
-        // 候选的写集.
         @NotNull
-        Builder scopes(@NotNull List<TransactionScope> scopes) {
-            this.scopes = scopes;
+        Builder eventTarget(@NotNull ClickSemantics.LinkedSlot eventTarget) {
+            this.eventTarget = eventTarget;
             return this;
         }
 

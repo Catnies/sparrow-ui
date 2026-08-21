@@ -23,16 +23,14 @@ import java.util.Objects;
 import java.util.function.IntPredicate;
 
 /**
- * 点击与拖拽的规划器: 把一次交互算成精确候选, 不派发任何事件, 也不提交事务.
+ * 把一次交互算成精确候选.
  * <p>{@code write} 为 {@code false} 时只用于预估 {@link InventoryAction}, 规划全程走只读快照.
- * <p>规划读到的现场由 {@link InteractionOverlay} 决定: 首次规划时覆盖层是空的, 读的就是 Inventory
- * 的规划基准; Bukkit 闸门之后的重规划则读叠加了事件写入的现场, 与原版"事件之后的现场说了算"一致.
+ * <p>规划读到的现场由 {@link InteractionOverlay} 决定, 首次规划时覆盖层是空的, 读的就是 Inventory
+ * 的规划基准, Bukkit 闸门之后的重规划则读叠加了事件写入的现场.
  */
 final class ClickPlanner {
 
-    private ClickPlanner() {
-    }
-
+    // 把一次单击算成候选. handled 说明这一格归不归引擎管, 与算不算得出候选是两回事.
     @NotNull
     static PreparedClick prepareClick(
             ClickSemantics.Context context,
@@ -144,6 +142,8 @@ final class ClickPlanner {
                 .build();
     }
 
+    // 挑出这次真正落进槽位, 该拿去过放入规则的那件东西. 光标拿着收纳袋右键空槽时, 进槽的是袋子里掏出来的那一件,
+    // 反过来往袋子里塞东西不算放进这一格, 一律返回 null 表示不必过规则.
     @Nullable
     private static ItemStack placementInput(
             ClickType clickType,
@@ -252,6 +252,7 @@ final class ClickPlanner {
                 .build();
     }
 
+    // 交换是整堆搬过去, 接收端一格装不下就不成立, 不会替玩家拆堆.
     private static boolean fitsReceiving(
             ClickSemantics.LinkedSlot target,
             @Nullable ItemStack incoming
@@ -328,11 +329,9 @@ final class ClickPlanner {
     }
 
     /**
-     * 规划一次双击收集, 对齐原版 {@code !carried.isEmpty() && !slot.hasItem()} 的前提.
-     * <p>客户端的双击发的是 PICKUP 与 PICKUP_ALL 两个包: 第一个包拿起被点槽的物品, 第二个包才收集同类.
+     * 规划一次双击收集.
+     * <p>客户端的双击发的是 PICKUP 与 PICKUP_ALL 两个包, 第一个包拿起被点槽的物品, 第二个包才收集同类.
      * 因此收集成立时被点的槽恰好是空的, 而玩家握着物品去双击时第一个包会把物品放回去, 那一格不再为空.
-     * <p>被点的槽要同时满足两个条件: 内容为空, 且玩家看到的也是一格空位. 前者对应原版的槽位内容,
-     * 后者拦住内容为空却铺着背景的槽 —— 玩家眼里那一格有东西, 双击它不该凭空收走别处的物品.
      *
      * @return 被点的槽拿得出收集资格时返回候选, 否则返回 {@code null}
      */
@@ -415,16 +414,9 @@ final class ClickPlanner {
                 .build();
     }
 
-    /**
-     * 规划一次 shift 点击: 按 Pane 优先级依次尝试每个不是源 Inventory 的目标, 跨所有目标累积,
-     * 直到源槽物品全部装完或目标全部试过为止. 这与原版一致 —— 一个目标装不下的剩余部分继续流向下一个目标,
-     * 而不是在第一个有进展的目标处停下.
-     * <p>每个被查询过的目标都进读集, 包括一件都没接下的目标: 目标是否装得下直接决定了后面的物品往哪走,
-     * 一个当时满着的目标之后被清空, 本次分配就不再是应该产生的结果, 整个候选必须作废.
-     * 因此这里的读集已经是最小集合, 不能按"有没有贡献"再收窄.
-     *
-     * @return 至少移动了一件物品时返回候选, 否则返回 {@code null}
-     */
+    // 规划一次 shift 点击, 按优先级挨个试每个不是源 Inventory 的目标, 跨目标累积, 直到源槽物品全部装完或目标试完.
+    // 每个问过的目标都要进读集, 目标装不装得下直接决定了后面的物品往哪走, 一个当时满着的目标之后被清空,
+    // 本次分配就不再是应该产生的结果, 整个候选必须作废. 所以不能按"有没有贡献"再收窄.
     @Nullable
     private static ClickCandidate prepareShift(
             ClickSemantics.Context context,
@@ -507,6 +499,7 @@ final class ClickPlanner {
         return targets;
     }
 
+    // 把一趟拖拽算成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
     @Nullable
     static PreparedDrag prepareDrag(
             ClickSemantics.Context context,
@@ -570,6 +563,7 @@ final class ClickPlanner {
             return null;
         }
 
+        // 左键均分, 右键每格一个, 创造模式中键每格塞满且不消耗光标
         int perSlot = switch (clickType) {
             case LEFT -> cursor.getAmount() / targets.size();
             case RIGHT -> 1;
@@ -675,6 +669,7 @@ final class ClickPlanner {
         return Math.min(link.inventory().slotMaxStackSize(link.slot()), item.getMaxStackSize());
     }
 
+    // handled 说的是这一格归不归点击语义管, 与算不算得出候选无关, 冻结槽归引擎管却永远没有候选.
     record PreparedClick(
             boolean handled,
             @NotNull InventoryAction action,
@@ -682,6 +677,7 @@ final class ClickPlanner {
     ) {
     }
 
+    // newCursor 与 newItems 是给 Bukkit 拖拽事件看的最终分配结果, 与 candidate 出自同一次计算.
     record PreparedDrag(
             @NotNull ClickCandidate candidate,
             @NotNull ItemStack newCursor,
@@ -695,6 +691,7 @@ final class ClickPlanner {
     ) {
     }
 
+    // capacity 是这一格还能再吃下多少件, 已经扣掉了槽里现有的数量.
     private record DragTarget(
             int windowSlot,
             @NotNull ClickSemantics.LinkedSlot link,

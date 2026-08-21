@@ -17,11 +17,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 点击语义的对外入口: 把玩家在 Window 上的一次点击或拖拽, 翻译成 Inventory 上的一笔事务.
- * <p>Window 只负责把解析好的点击交进来, 由这里决定这次交互接管不接管, 会改哪些槽位,
- * 以及沿途该派发哪些事件. 引擎接管不了的槽位(装饰 Item, 空槽)会被交还给 Window 自己分派.
- * <p>调用方通过 {@link Context} 提供 Window 的当前状态, 通过 {@link InteractionGate} 接管事件派发;
- * 不需要事件的调用方直接用不带闸门的重载.
+ * 把玩家在 Window 上的一次点击或拖拽, 翻译成 Inventory 上的一笔事务.
+ * <p>Window 只负责把解析好的点击交进来, 由这里决定这次交互接管不接管, 以及沿途该派发哪些事件.
+ * <p>调用方通过 {@link Context} 提供 Window 的当前状态, 通过 {@link InteractionGate} 接管事件派发.
  */
 public final class ClickSemantics {
 
@@ -53,15 +51,14 @@ public final class ClickSemantics {
      * @return 按当前只读状态预估的 Bukkit 操作
      */
     @NotNull
-    @ApiStatus.Internal
     public static InventoryAction estimateInventoryAction(
             @NotNull Context context,
             @NotNull ClickType clickType,
             int hotbarButton,
             int windowSlot
     ) {
-        // 只取规划器算出的操作类型: write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
-        // 预估跑在任何交互事件之前, 现场上没有覆盖可言.
+        // 只要规划器算出的操作类型: write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
+        // 预估发生在任何交互事件之前, 所以现场上还没有任何覆盖可言.
         return ClickPlanner.prepareClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {}, false, InteractionOverlay.forClick()).action();
     }
 
@@ -72,8 +69,7 @@ public final class ClickSemantics {
      * @param clickType 已解析的点击类型
      * @param hotbarButton NUMBER_KEY 的热键编号, 其他点击传 {@code -1}
      * @param windowSlot 协议槽位(raw slot)
-     * @return 语义已接管返回 {@code true}; 否则表示点的是装饰性 Item 或空槽, 与Inventory无关
-     *
+     * @return 语义已接管返回 {@code true}; 否则表示点的是装饰性 Item 或空槽, 与 Inventory 无关
      */
     public static boolean handleClick(
             @NotNull Context context,
@@ -113,12 +109,7 @@ public final class ClickSemantics {
         return ClickExecutor.handleClick(context, clickType, hotbarButton, windowSlot, observedBundle, selectedIndex, afterCommit, gate);
     }
 
-    /**
-     * 在候选形成后, 事务 Pre 前向被 InventoryLink 直接连接的 Inventory 派发点击事件.
-     *
-     * @param edits 把事件写入合并进本次候选草稿的句柄, 与前一道 Bukkit 事件用的是同一份
-     * @return 事件没有被取消时返回 {@code true}
-     */
+    // 候选形成后, 事务 Pre 之前, 向被 InventoryLink 直接连接的 Inventory 派发点击事件; edits 与前一道 Bukkit 事件共用一份.
     @ApiStatus.Internal
     public static boolean dispatchClickEvent(
             @NotNull SparrowInventory inventory,
@@ -138,9 +129,7 @@ public final class ClickSemantics {
         return !event.cancelled();
     }
 
-    /**
-     * 向被 InventoryLink 直接连接的 Inventory 派发 Bundle 选择事件.
-     */
+    // 向被 InventoryLink 直接连接的 Inventory 派发 Bundle 选择事件.
     @ApiStatus.Internal
     public static void dispatchBundleSelectEvent(@NotNull SparrowInventory inventory, int slot, @NotNull BundleSelectClick select) {
         inventory.publishBundleSelect(
@@ -149,7 +138,7 @@ public final class ClickSemantics {
     }
 
     /**
-     * 处理点到窗口外的点击
+     * 处理点到窗口外的点.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 点击类型(WINDOW_BORDER_LEFT 丢整堆, 其余丢一个)
@@ -171,11 +160,7 @@ public final class ClickSemantics {
         ClickExecutor.handleDrag(context, clickType, windowSlots, InteractionGate.ALLOW_ALL);
     }
 
-    /**
-     * 处理带交互闸门的拖拽. 闸门接收规则过滤和重新分配后的最终光标与槽位候选.
-     *
-     * @param gate 派发事件并复核 Window 状态的交互闸门
-     */
+    // 带交互闸门的拖拽, 闸门拿到的是经过放入规则过滤与重新分配后的最终光标和槽位候选.
     @ApiStatus.Internal
     public static void handleDrag(@NotNull Context context, @NotNull ClickType clickType, @NotNull List<Integer> windowSlots, @NotNull InteractionGate gate) {
         ClickExecutor.handleDrag(context, clickType, windowSlots, gate);
@@ -226,17 +211,17 @@ public final class ClickSemantics {
          * 该位置不是 InventoryLink 或路径经过已冻结 Pane 时返回 {@code null}.
          *
          * @param hotbarButton 热键编号, 0 到 8
-         * @return 连接的Inventory槽, 不可交互时为 {@code null}
+         * @return 连接的 Inventory 槽位, 不可交互时为 {@code null}
          */
         @Nullable
         LinkedSlot hotbarLink(int hotbarButton);
 
         /**
-         * 按显示顺序列出参与本次点击语义的全部Inventory(去重)及各自的可见槽位, 快速转移与双击收集只在可见槽位里找目标;
+         * 按显示顺序列出参与本次点击语义的全部 Inventory(去重)及各自的可见槽位, 快速转移与双击收集只在可见槽位里找目标;
          * 只通过 Pane 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内, 已包含 Inventory 中
          * 未经任何未冻结协议槽展示的槽位不属于可见集.
          *
-         * @return 参与语义的全部Inventory及可见槽位
+         * @return 参与语义的全部 Inventory 及可见槽位
          */
         @NotNull
         List<LinkedInventory> linkedInventories();

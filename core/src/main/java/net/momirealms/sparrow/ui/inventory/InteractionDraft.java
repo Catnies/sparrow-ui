@@ -10,22 +10,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 一次玩家交互的副作用草稿: 保存事务提交后要留在容器外的最终状态.
- * <p>光标, 副手和掉落物不属于任何 Inventory, 没有办法放进按 Inventory 分组的事务写集.
- * 规划阶段先把候选算出的结果写进这里, 事务提交后, Post 事件派发前一次性应用, 因此提交后处理器
- * 已经能读到最终光标.
- * <p>这里保存的都是提交后的最终值. 并发检测使用的规划期原值由框架单独持有, 谁也不能改写:
- * 改了它, 交互要么每次都因为对不上而静默消失, 要么彻底失去发现并发写入的能力.
- * <p><b>草稿只提供改写能力, 不负责守恒.</b> 缩小某个槽位的最终值不会让框架自动把差额还给光标 ——
- * 只有处理器自己知道这次交互的语义. 需要还回去多少, 由处理器算好后写进这里.
- * <p>草稿在事务离开提交前阶段时封笔. 处理器把引用带出同步回调之后再写入会直接失败.
+ * 一次玩家交互的副作用草稿, 记着事务提交后光标, 副手和掉落物该是什么样.
+ * <p>这三样都不属于任何 Inventory, 塞不进按 Inventory 分组的事务写集, 所以单独攒在这里,
+ * 提交之后, Post 派发之前一次性应用, Post 处理器因此读得到最终光标.
+ * <p><strong>草稿只提供改写能力, 不负责守恒</strong>, 把某个槽位的最终值改小, 框架不会自动把差额还给光标 ——
+ * 只有处理器自己知道这次交互的语义, 要还多少由它算好写进来.
+ * <p>草稿在事务离开提交前阶段时封笔, 把引用带出同步回调之后再写入会直接失败.
  */
 public final class InteractionDraft {
-    @Nullable private ItemStack cursor;      // 提交后的光标, null 表示不改动
-    @Nullable private ItemStack offhand;     // 提交后的副手, 是否生效由 offhandTouched 决定
-    private boolean offhandTouched;          // 与"副手要被清空"区分开, null 副手也是一次有效改动
-    @Nullable private List<ItemStack> drops; // 提交后要丢进世界的物品, 没有掉落时保持 null
-    private final Thread interactionThread;  // 规划本次交互的线程, 只有它能改写草稿
+    @Nullable private ItemStack cursor;       // 提交后的光标, null 表示不改动
+    @Nullable private ItemStack offhand;      // 提交后的副手, 是否生效由 offhandTouched 决定
+    private boolean offhandTouched;           // 有它才能把"清空副手"和"不动副手"分开, null 副手也是一次有效改动
+    @Nullable private List<ItemStack> drops;  // 提交后要丢进世界的物品, 没有掉落时保持 null
+    private final Thread interactionThread;   // 规划本次交互的线程, 只有它能改写草稿
     private volatile boolean editable = true; // 编辑窗口是否仍然打开
 
     private InteractionDraft() {
@@ -33,22 +30,13 @@ public final class InteractionDraft {
         this.interactionThread = Thread.currentThread();
     }
 
-    /**
-     * 创建一份不改动任何容器外状态的草稿.
-     *
-     * @return 空草稿
-     */
+    // 一份什么都不改的空草稿.
     @NotNull
     static InteractionDraft empty() {
         return new InteractionDraft();
     }
 
-    /**
-     * 创建一份只覆盖光标的草稿.
-     *
-     * @param cursor 提交后的光标物品
-     * @return 已经记录光标最终值的草稿
-     */
+    // 只覆盖光标的草稿.
     @NotNull
     static InteractionDraft cursorAfter(@NotNull ItemStack cursor) {
         InteractionDraft draft = new InteractionDraft();
@@ -56,12 +44,7 @@ public final class InteractionDraft {
         return draft;
     }
 
-    /**
-     * 创建一份只覆盖副手的草稿.
-     *
-     * @param offhand 提交后的副手物品, {@code null} 表示清空
-     * @return 已经记录副手最终值的草稿
-     */
+    // 只覆盖副手的草稿, offhand 为 null 表示清空副手.
     @NotNull
     static InteractionDraft offhandAfter(@Nullable ItemStack offhand) {
         InteractionDraft draft = new InteractionDraft();
@@ -69,12 +52,7 @@ public final class InteractionDraft {
         return draft;
     }
 
-    /**
-     * 创建一份只记录一件掉落物的草稿.
-     *
-     * @param item 提交后要丢进世界的物品
-     * @return 已经记录掉落物的草稿
-     */
+    // 只记一件掉落物的草稿.
     @NotNull
     static InteractionDraft dropped(@NotNull ItemStack item) {
         InteractionDraft draft = new InteractionDraft();
@@ -152,20 +130,13 @@ public final class InteractionDraft {
         }
     }
 
-    /**
-     * 封笔, 由事务在最终提交条件通过后调用.
-     * <p>封笔后任何写入都会失败, 防止逃逸出去的引用在加锁写入期间改动已经定案的最终值.
-     */
+    // 封笔, 事务在最终提交条件通过后调用, 之后任何写入都会失败, 免得逃逸出去的引用在加锁写入期间改动已经定案的值.
     @ApiStatus.Internal
     public void seal() {
         this.editable = false;
     }
 
-    /**
-     * 把草稿的最终值应用到 Window 侧, 由提交成功的事务在 Post 派发前调用.
-     *
-     * @param context 当前 Window 交互上下文
-     */
+    // 把草稿的最终值应用到 Window 侧, 由提交成功的事务在 Post 派发前调用.
     @ApiStatus.Internal
     public void apply(@NotNull ClickSemantics.Context context) {
         ItemStack cursor = this.cursor;

@@ -10,14 +10,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * 负责一笔事务向某个 Inventory 发送 Pre 和 Post 事件.
- * <p>一笔事务可能同时修改多个 Inventory, 每个需要接收事件的 Inventory 都会有一个
- * {@code TransactionNotification}. 它在事务开始时记住本轮订阅者, 因此 Pre 处理器新增的订阅或槽位修改
- * 不会让本轮 Pre 事件递归派发.
- * <p>Pre 事件会在提交前立即逐个调用. Post 事件则根据所有 Pre 修改后的最终结果创建,
- * 等内容真正写入且各个 Inventory 都完成提交后的工作, 再由本笔事务的提交线程同步发送.
- */
+// 一笔事务向一个 Inventory 发 Pre 与 Post 事件的那一份差事, 一笔事务改几个 Inventory 就有几份.
+// 名单在事务开始时就定死, 所以 Pre 处理器新增的订阅或槽位修改不会把本轮 Pre 事件递归派发一遍.
 final class TransactionNotification {
     private final SparrowInventory inventory; // 接收本组事件的 Inventory
     private final UpdateReason reason;        // 这笔事务为什么发生
@@ -26,14 +20,6 @@ final class TransactionNotification {
 
     private long postTicket = -1L; // 串行派发时在提交临界区内领到的票号, -1 表示不排队
 
-    /**
-     * 记录某个 Inventory 在本次事务中需要通知的人和发送事件所需的信息.
-     *
-     * @param inventory 接收事件的 Inventory
-     * @param reason 这笔事务的触发原因
-     * @param preRecipients 本轮需要调用的 Pre 订阅者
-     * @param postRecipients 本轮可能需要调用的 Post 订阅者
-     */
     TransactionNotification(
             @NotNull SparrowInventory inventory,
             @NotNull UpdateReason reason,
@@ -46,15 +32,7 @@ final class TransactionNotification {
         this.postRecipients = postRecipients;
     }
 
-    /**
-     * 按订阅顺序调用本轮所有 Pre 处理器.
-     * 回调结束后, 该事件也不能再修改事务.
-     *
-     * @param cancelled 上一个 Inventory 通知结束后留下的取消状态
-     * @param draft 目前已经被正常处理器接受的最终提交内容
-     * @param interaction 触发本笔事务的交互副作用草稿, 非玩家交互为 {@code null}
-     * @return 本组 Pre 处理器全部执行后留下的取消状态
-     */
+    // 按订阅顺序跑完本轮 Pre 处理器, 带着上一个 Inventory 传下来的取消状态进, 带着本组跑完的取消状态出.
     boolean publishPre(boolean cancelled, @NotNull TransactionDraft draft, @Nullable InteractionDraft interaction) {
         for (int i = 0; i < this.preRecipients.size(); i++) {
             Observer<? super InventoryPreUpdateEvent> observer = this.preRecipients.get(i).observer();
@@ -87,23 +65,13 @@ final class TransactionNotification {
         return cancelled;
     }
 
-    /**
-     * 本 Inventory 开启串行派发时, 在提交临界区内领一个票号.
-     * <p>没有 Post 接收者就不领: 领了不派发会让票号与放行不配对.
-     */
+    // 开了串行派发就在提交临界区内领个票号; 没有 Post 接收者干脆不领, 领了不派发会让票号和放行对不上.
     void takePostTicket() {
         if (this.postRecipients.isEmpty()) return;
         this.postTicket = this.inventory.takePostTicket();
     }
 
-    /**
-     * 在当前提交线程上向本轮 Post 订阅者发送最终事务结果.
-     * <p>单个观察者抛出的异常会报告给 SparrowUI 后继续派发.
-     * <p>领到票号时先阻塞到本笔事务轮到自己, 由此保证同一 Inventory 的 Post 既不并发也不乱序.
-     *
-     * @param scopes 不会再被 Pre 处理器修改的最终写集
-     * @param version 当前事务的单调逻辑版本
-     */
+    // 在当前提交线程上把最终结果发给本轮 Post 订阅者; 领过票号的先等叫号, 同一 Inventory 的 Post 因此既不并发也不乱序.
     void publishPost(@NotNull List<TransactionScope> scopes, long version) {
         if (this.postRecipients.isEmpty()) return;
         if (this.postTicket < 0L) {
@@ -118,6 +86,7 @@ final class TransactionNotification {
         }
     }
 
+    // 一个观察者炸了不影响其余的, 上报之后接着往下发.
     private void dispatchPost(@NotNull List<TransactionScope> scopes, long version) {
         InventoryPostUpdateEvent event = new InventoryPostUpdateEvent(this.inventory, this.reason, scopes, version);
         for (int i = 0; i < this.postRecipients.size(); i++) {

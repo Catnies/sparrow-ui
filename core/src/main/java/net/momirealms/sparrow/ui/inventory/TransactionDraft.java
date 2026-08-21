@@ -12,29 +12,17 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * 保存 Pre 事件正在讨论的 "最终提交内容".
- * <p>事务刚进入 Pre 阶段时, 这里保存调用方原本想写入的内容. 一个处理器正常返回后,
- * 它通过 {@code setAfter} 留下的修改会成为新的草稿, 下一个处理器看到的就是这份新结果.
- * 如果处理器抛出异常, {@link TransactionNotification} 不会接纳它留下的修改.
- * <p>Pre 处理器可以改动已经参与事务的 Inventory 中任意槽位, 也可以把新的 Inventory
- * 纳入本笔事务, 但不能移除或换位已经参与的 Inventory —— 提交阶段靠这个顺序区分原有参与者和新纳入者.
- * 已经参与的 Inventory 在事务开始规划时看到的内容始终不变, 提交时还要用它判断期间是否插入了
- * 其他写操作; 新纳入的 Inventory 则以纳入那一刻的内容为基准.
- */
+// Pre 事件正在讨论的"最终提交内容". 事务刚进 Pre 时装的是调用方原本想写的东西, 每个处理器正常返回后,
+// 它留下的修改就成了新草稿, 下一个处理器看到的是这份新结果; 处理器抛异常的话, 它那一组修改会被整组丢掉.
+// 处理器可以改已参与 Inventory 的任意槽位, 也可以纳入新的 Inventory, 但不许移除或换位已参与的那些 ——
+// 提交阶段就靠这个顺序区分原有参与者和新纳入者. 已参与者的规划内容自事务开始就锁定, 提交时还要拿它判断
+// 期间有没有别人插队; 新纳入者则以纳入那一刻的内容为基准.
 final class TransactionDraft {
     private List<TransactionScope> scopes;         // 按 Inventory 分组的当前待提交内容, 每一条自带该 Inventory 的规划基准
     // Pre 期间新纳入的 Inventory 的规划基准. 同一笔事务内只发一次, 保证事件与提交阶段用的是同一份.
     private final IdentityHashMap<SparrowInventory, PlannedRoot> includedRoots = new IdentityHashMap<>();
 
-    /**
-     * 校验事务形状并创建 Pre 阶段草稿.
-     * <p>草稿在闸门跑用户代码之前就要建好, 校验因此跟着一起前移: 形状非法的事务在任何监听器
-     * 有机会写入之前就被拒绝, 而不是等它们白忙一场之后才抛出.
-     *
-     * @param scopes 每个 Inventory 原本准备提交的修改
-     * @throws IllegalArgumentException 当事务形状非法时(没有写集, 某个写集没有变更, 槽号越界, 同一个 Inventory 或同一个槽被写两次)
-     */
+    // 草稿要在闸门跑用户代码之前就建好, 校验因此跟着一起前移: 形状非法的事务在任何监听器动手之前就被拒, 不让它们白忙一场.
     TransactionDraft(@NotNull List<TransactionScope> scopes) {
         this.scopes = validate(scopes);
     }
@@ -43,33 +31,19 @@ final class TransactionDraft {
         this.scopes = List.of();
     }
 
-    /**
-     * 创建一份还没有任何写集的草稿, 供规划期算不出写集的交互攒下闸门的写入.
-     * <p>空写集没有形状可以校验, 因此这里不走 {@link #validate}; 第一次 {@link #setAfter}
-     * 之后的每一次改写仍然照常校验.
-     *
-     * @return 空草稿
-     */
+    // 给规划期算不出写集的交互用的空草稿, 闸门的写入先攒进来. 空写集没有形状可校验, 所以这里不走 validate,
+    // 第一次 setAfter 之后的每次改写照常校验.
     @NotNull
     static TransactionDraft empty() {
         return new TransactionDraft();
     }
 
-    /**
-     * 返回当前准备交给提交阶段的修改.
-     *
-     * @return 按 Inventory 分组的待提交内容
-     */
     @NotNull
     List<TransactionScope> scopes() {
         return this.scopes;
     }
 
-    /**
-     * 返回当前准备提交的完整变更, 供事务结果直接使用.
-     *
-     * @return 按参与顺序排列的 Inventory 变更
-     */
+    // 摊成按参与顺序排列的变更列表, 直接交给事务结果用.
     @NotNull
     List<InventoryChange> rootChanges() {
         List<InventoryChange> changes = new ArrayList<>(this.scopes.size());
@@ -79,49 +53,28 @@ final class TransactionDraft {
         return List.copyOf(changes);
     }
 
-    /**
-     * 取得一个尚未参与事务的 Inventory 的规划基准, 供 Pre 事件把它纳入本笔事务.
-     * <p>基准直接取当前内容, 不调用 {@link SparrowInventory#prepareWrite()}: 事务中段刷新引用容器
-     * 会提交一笔嵌套的 External 事务并派发它自己的 Post, 相当于在 Pre 与 commit 之间重入事件系统.
-     * <p>同一笔事务内对同一个 Inventory 只发一次. 处理器抛出异常导致纳入被丢弃时, 缓存的基准
-     * 仍然保留, 后面的处理器再次纳入它时看到的是同一份基准, 不会因为中途被别人写过而错位.
-     *
-     * @param inventory 要纳入的 Inventory
-     * @return 纳入那一刻签发的规划基准
-     */
+    // 签发一个尚未参与事务的 Inventory 的规划基准, 供 Pre 事件把它拉进本笔事务.
+    // 这里直接取当前内容, 不走 prepareWrite: 事务中段刷新引用容器会顺手提交一笔嵌套 External 事务并派发它自己的 Post,
+    // 等于在 Pre 和 commit 之间重入了事件系统. 同一笔事务内一个 Inventory 只签一次, 处理器抛异常把纳入丢掉了,
+    // 缓存的基准也留着, 后面的处理器再拉它进来看到的还是同一份, 不会因为中途被别人写过而错位.
     @NotNull
     PlannedRoot rootOf(@NotNull SparrowInventory inventory) {
         return this.includedRoots.computeIfAbsent(inventory, SparrowInventory::openPlan);
     }
 
-    /**
-     * 为 Pre 事件的纳入动作构造一条空写集: 基准经 {@link #rootOf} 签发, 与后续提交阶段共用同一份.
-     *
-     * @param inventory 要纳入的 Inventory
-     * @return 持有该 Inventory 规划基准的空写集
-     */
+    // 给 Pre 事件的纳入动作造一条空写集, 基准与后续提交阶段共用同一份.
     @NotNull
     TransactionScope includeScope(@NotNull SparrowInventory inventory) {
         return new TransactionScope(this.rootOf(inventory), List.of());
     }
 
-    /**
-     * 在事务开始之前直接改写某个槽位的候选最终值.
-     * <p>供交互闸门(Bukkit 与 Sparrow 事件)使用: 它们跑在事务之外, 写入立即生效, 没有 Pre 处理器
-     * 那种"抛异常就整组丢弃"的分组语义. Inventory 还没参与本笔事务时自动纳入, 并且因为这里还没进入
-     * 事务, 纳入前可以安全地刷新引用容器, 让基准反映外部容器的当前内容.
-     * <p>不经过槽级放入规则过滤: 放入规则是给外部放入用的, 监听器本身就是决定内容的一方.
-     *
-     * @param inventory 要写入的 Inventory
-     * @param rootSlot Inventory 槽位
-     * @param after 新的候选最终值, {@code null} 表示清空槽位
-     * @throws IndexOutOfBoundsException Inventory 不包含该槽位
-     * @throws IllegalArgumentException 改写后的写集非法
-     */
+    // 在事务开始之前直接改写某个槽位的候选最终值, 给交互闸门(Bukkit 与 Sparrow 事件)用: 它们跑在事务之外,
+    // 写入立即生效, 没有 Pre 处理器那种"抛异常就整组丢弃"的分组语义. 也不过槽级放入规则 —— 放入规则是拦外部放入的,
+    // 监听器本身就是决定内容的那一方.
     void setAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
         int rootIndex = this.indexOf(inventory);
         if (rootIndex < 0) {
-            // 闸门跑在事务之外, 这里刷新引用容器不会重入事件系统.
+            // 还没进事务, 这里刷新引用容器不会重入事件系统, 于是新纳入者的基准可以反映外部容器的当前内容
             inventory.prepareWrite();
         }
         PlannedRoot basis = rootIndex < 0 ? this.rootOf(inventory) : this.scopes.get(rootIndex).basis();
@@ -165,15 +118,8 @@ final class TransactionDraft {
         return -1;
     }
 
-    /**
-     * 接纳一个正常返回的 Pre 处理器留下的最终值, 让后续处理器和提交阶段继续使用它.
-     * <p>处理器可以改动原有 Inventory 里的槽位, 也可以在末尾追加新纳入的 Inventory,
-     * 但不能移除或换位已经参与的那些. 只纳入却没有写任何槽位的 Inventory 等于没有纳入,
-     * 会在这里被丢掉. 新结果会再次检查槽位范围和重复写入, 检查失败时不会替换当前草稿.
-     *
-     * @param scopes 处理器执行后的完整写集
-     * @throws IllegalArgumentException 当处理器移除或换位了参与事务的 Inventory, 或产生了非法、冲突的槽位修改时
-     */
+    // 接下一个正常返回的 Pre 处理器留下的最终值, 让后续处理器和提交阶段接着用. 整份新结果通过检查才替换草稿,
+    // 一处不合法就整份不要.
     void accept(@NotNull List<TransactionScope> scopes) {
         // 事件仍持有原来的写集, 说明这个处理器没有改动最终值.
         if (scopes == this.scopes) {
@@ -205,15 +151,7 @@ final class TransactionDraft {
         this.scopes = validate(rewritten);
     }
 
-    /**
-     * 检查一份写集能不能安全提交, 并整理成不可修改列表.
-     * <p>要求事务至少修改一个槽位, 槽号没有越界, 同一个 Inventory 只出现一次. 同一个槽位或同一个真实外部
-     * 槽位被写两次时直接拒绝整笔事务, 避免提交顺序悄悄决定最终结果.
-     *
-     * @param scopes 准备提交的各组 Inventory 修改
-     * @return 确认没有冲突的不可修改列表, 顺序与传入一致
-     * @throws IllegalArgumentException 当没有可提交的修改, 槽号越界, 同一个 Inventory 出现多次, 或多个修改写到同一真实槽位时
-     */
+    // 检查一份写集能不能安全提交, 顺手整理成不可修改列表.
     @NotNull
     private static List<TransactionScope> validate(@NotNull List<TransactionScope> scopes) {
         // 一笔事务必须实际修改至少一个 Inventory.
