@@ -344,7 +344,7 @@ public interface Window {
     /**
      * 绑定到指定的 Signal, 当 Signal 被标脏时, 会触发传入的回调函数.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
-     * <p><strong>绑定跟随打开期</strong>, 关闭时摘掉订阅, 重新打开时按声明重新挂上.
+     * <p><strong>绑定跟随打开期</strong>, 首次打开时才挂上订阅, 关闭时摘掉, 重新打开时按声明重新挂上.
      *
      * @param signal 数据源
      * @param callback 失效回调

@@ -121,6 +121,7 @@ abstract class AbstractWindowSession implements WindowSession {
         AbstractWindow<?> current = this.currentWindow();
         this.releaseMembers();
         this.chainSnapshot = List.of();
+        this.detachBindings();
         if (closeCurrent && current != null) {
             try {
                 this.manager.closeNow(current, reason);
@@ -154,6 +155,16 @@ abstract class AbstractWindowSession implements WindowSession {
         if (this.deactivate()) {
             this.releaseMembers();
             this.chainSnapshot = List.of();
+            this.detachBindings();
+        }
+    }
+
+    // 会话不会再激活, 终态迁移后把绑定的订阅当场摘掉, 不等会话被回收.
+    private void detachBindings() {
+        try {
+            this.bindings.suspendAll();
+        } catch (RuntimeException | Error throwable) {
+            this.manager.report("Failed to detach Window session bindings", throwable);
         }
     }
 

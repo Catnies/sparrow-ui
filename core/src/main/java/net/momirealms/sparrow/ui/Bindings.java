@@ -14,6 +14,25 @@ public final class Bindings {
     private final Object suspendLock = new Object();
     private boolean suspended;  // 由 suspendLock 保护
 
+    public Bindings() {
+        this(false);
+    }
+
+    private Bindings(boolean suspended) {
+        this.suspended = suspended;
+    }
+
+    /**
+     * 创建一个出生即挂起的集合, 登记的声明先只记下来, 第一次 {@link #resumeAll()} 才挂上.
+     * <p>给有打开期的宿主用, 例如 Window.
+     *
+     * @return 新集合
+     */
+    @NotNull
+    public static Bindings suspended() {
+        return new Bindings(true);
+    }
+
     /**
      * 收下一条声明并立即建立订阅, 之后跟随宿主挂起与恢复.
      * <p>处于挂起状态时, 登记的声明会被记下来, 订阅会被关闭. 等恢复时再次挂上.

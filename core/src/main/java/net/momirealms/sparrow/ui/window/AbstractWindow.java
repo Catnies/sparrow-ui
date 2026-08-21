@@ -114,7 +114,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final @Nullable Object data;                // 随窗携带的用户对象
     private final WindowSession.Kind rootSessionKind;       // 成为链根时新会话的类型
     private final List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
-    private final Bindings bindings = new Bindings();   // 本 Window 持有的 Signal 绑定
+    private final Bindings bindings = Bindings.suspended(); // 本 Window 持有的 Signal 绑定, 出生即挂起, 首次打开才挂上
 
     // 用户处理器
     private final HandlerList<Runnable> openHandlers;   // 打开处理器

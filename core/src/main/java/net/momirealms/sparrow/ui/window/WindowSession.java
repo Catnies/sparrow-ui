@@ -39,6 +39,7 @@ public interface WindowSession {
 
     /**
      * 绑定到指定的 Signal, Signal 将会持有本会话的弱引用.
+     * <p>绑定随会话结束一并摘掉, 之后不再回调.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
      *
      * @param signal 数据源
