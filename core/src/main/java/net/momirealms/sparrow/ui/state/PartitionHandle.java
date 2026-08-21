@@ -23,6 +23,10 @@ final class PartitionHandle<K, T> extends AbstractSignal<T> {
         this.key = key;
     }
 
+    K key() {
+        return this.key;
+    }
+
     @Override
     public T get() {
         return this.owner.partition(this.key).get();

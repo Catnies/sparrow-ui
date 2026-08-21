@@ -3,11 +3,10 @@ package net.momirealms.sparrow.ui.state;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.ref.Reference;
-import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.Objects;
- import java.util.concurrent.atomic.AtomicReference;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * KeyedSignal 抽象实现骨架.
@@ -17,8 +16,9 @@ import java.util.Objects;
  * @param <P> 分区实现类型
  */
 abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> {
-    private final KeyStateStore<K, KeyState<K, T, P>> store;    // key -> (分区 & 句柄)
-    private final ReferenceQueue<PartitionHandle<K, T>> deadHandles = new ReferenceQueue<>();
+private final KeyStateStore<K, KeyState<K, T, P>> store;                                                 // key -> (分区 & 句柄), 只放有分区的 key.
+    private final WeakHashMap<K, WeakReference<PartitionHandle<K, T>>> detached = new WeakHashMap<>();   // 分区已删但仍有人持有的句柄, key 用句柄自己那份
+    private final Object detachedLock = new Object();                                                    // 保护 detached, 锁序固定为主表 compute 在外
 
     AbstractKeyedSignal(KeyStateStore<K, KeyState<K, T, P>> store) {
         this.store = Objects.requireNonNull(store, "store");
@@ -38,32 +38,28 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     // 取出或新建一个 Key 对应的分区.
     final P partition(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        this.purgeDeadHandles();
         // 读值路径上绝大多数取用命中已有分区, 这条快路径避开 compute 的桶锁.
         KeyState<K, T, P> state = this.store.get(key);
         if (state != null) {
-            P existing = state.partition;
-            if (existing != null) {
-                this.afterPartitionAccess(existing);
-                return existing;
-            }
+            this.afterPartitionAccess(state.partition);
+            return state.partition;
         }
-        // KeyState 可能不存在, 也可能只剩句柄(先 at 后读, 或分区已删), 统一在 compute 内补建分区.
+        // 没有分区就在 compute 内补建, 该 key 若有寄放在旁表里的句柄一并接回来.
         AtomicReference<P> resolved = new AtomicReference<>();
         this.store.compute(key, (k, existing) -> {
-            KeyState<K, T, P> target = existing != null ? existing : new KeyState<>();
-            P current = target.partition;
-            if (current == null) {
-                P created = this.createPartition(k);
-                // 接到该 key 已有的 PartitionHandle 上, 挂载完成后才发布 partition 字段.
-                PartitionHandle<K, T> handle = this.liveHandle(target);
-                if (handle != null) {
-                    handle.attach(created);
-                }
-                target.partition = created;
-                current = created;
+            if (existing != null) {
+                resolved.set(existing.partition);
+                return existing;
             }
-            resolved.set(current);
+            P created = this.createPartition(k);
+            KeyState<K, T, P> target = new KeyState<>(created);
+            PartitionHandle<K, T> handle = this.takeDetached(k);
+            if (handle != null) {
+                // 挂载完成后才随 KeyState 一起发布.
+                handle.attach(created);
+                target.handleRef = new WeakReference<>(handle);
+            }
+            resolved.set(created);
             return target;
         });
         P partition = resolved.get();
@@ -92,14 +88,12 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     @NotNull
     public Signal<T> at(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        this.purgeDeadHandles();
         // 句柄与分区都在且转发已挂好时直接返回. 这条快路径只读不挂载, 挂载与换挂仍收在该 key 的 compute 内.
         KeyState<K, T, P> state = this.store.get(key);
         if (state != null) {
             PartitionHandle<K, T> live = this.liveHandle(state);
-            P current = state.partition;
-            if (live != null && current != null && live.isAttachedTo(current)) {
-                this.afterPartitionAccess(current);
+            if (live != null && live.isAttachedTo(state.partition)) {
+                this.afterPartitionAccess(state.partition);
                 return live;
             }
         }
@@ -107,24 +101,20 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         AtomicReference<PartitionHandle<K, T>> resolvedHandle = new AtomicReference<>();
         AtomicReference<P> resolvedPartition = new AtomicReference<>();
         this.store.compute(key, (k, existing) -> {
-            KeyState<K, T, P> target = existing != null ? existing : new KeyState<>();
+            KeyState<K, T, P> target = existing != null ? existing : new KeyState<>(this.createPartition(k));
             PartitionHandle<K, T> handle = this.liveHandle(target);
             if (handle == null) {
-                handle = new PartitionHandle<>(this, k);
+                // 分区删过还没重建时句柄寄放在旁表里, 先接回来, 没有才新建.
+                handle = this.takeDetached(k);
+                if (handle == null) {
+                    handle = new PartitionHandle<>(this, k);
+                }
                 // 强引用经 resolvedHandle 逃出 compute, 否则刚建好的句柄可能在返回给调用方之前就被回收.
-                target.handleRef = new HandleReference<>(handle, k, this.deadHandles);
+                target.handleRef = new WeakReference<>(handle);
             }
-            P current = target.partition;
-            if (current == null) {
-                P created = this.createPartition(k);
-                handle.attach(created);
-                target.partition = created;
-                current = created;
-            } else {
-                handle.attach(current);
-            }
+            handle.attach(target.partition);
             resolvedHandle.set(handle);
-            resolvedPartition.set(current);
+            resolvedPartition.set(target.partition);
             return target;
         });
         this.afterPartitionAccess(resolvedPartition.get());
@@ -134,27 +124,26 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     // 返回 KeyState 上仍存活的句柄, 没有则返回 null.
     @Nullable
     private PartitionHandle<K, T> liveHandle(KeyState<K, T, P> state) {
-        HandleReference<K, T> reference = state.handleRef;
+        WeakReference<PartitionHandle<K, T>> reference = state.handleRef;
         return reference == null ? null : reference.get();
     }
 
-    // 清除句柄已被回收的 KeyState 残留.
-    private void purgeDeadHandles() {
-        Reference<? extends PartitionHandle<K, T>> reference;
-        while ((reference = this.deadHandles.poll()) != null) {
-            if (!(reference instanceof HandleReference<?, ?>)) {
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            HandleReference<K, T> dead = (HandleReference<K, T>) reference;
-            this.store.computeIfPresent(dead.key, (ignored, state) -> {
-                // 只在 KeyState 仍指向这条死引用时清除, 免得误清同 key 新建的句柄.
-                if (state.handleRef != dead) {
-                    return state;
-                }
-                state.handleRef = null;
-                return state.partition == null ? null : state;
-            });
+    // 把分区已删但仍存活的句柄寄放到旁表. 只在该 key 的 compute 内调用.
+    private void parkDetached(PartitionHandle<K, T> handle) {
+        synchronized (this.detachedLock) {
+            // 旁表的 key 用句柄自己那份, key 就只被句柄强持. 先移掉同 key 的旧条目: WeakHashMap 的 put 不换 key 对象,
+            // 留着旧 key 对象会让这条新寄放跟着旧 key 的回收一起蒸发.
+            this.detached.remove(handle.key());
+            this.detached.put(handle.key(), new WeakReference<>(handle));
+        }
+    }
+
+    // 取回旁表里该 key 仍存活的句柄, 没有则返回 null; 条目无论死活都一并摘掉. 只在该 key 的 compute 内调用.
+    @Nullable
+    private PartitionHandle<K, T> takeDetached(K key) {
+        synchronized (this.detachedLock) {
+            WeakReference<PartitionHandle<K, T>> reference = this.detached.remove(key);
+            return reference == null ? null : reference.get();
         }
     }
 
@@ -163,63 +152,53 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         Objects.requireNonNull(key, "key");
         KeyState<K, T, P> state = this.store.get(key);
         if (state != null) {
-            P partition = state.partition;
-            if (partition != null) {
-                this.dirtyPartition(partition);
-            }
+            this.dirtyPartition(state.partition);
         }
     }
 
     @Override
     public void dirtyAll() {
-        this.store.forEachValue(state -> {
-            P partition = state.partition;
-            if (partition != null) {
-                this.dirtyPartition(partition);
-            }
-        });
+        this.store.forEachValue(state -> this.dirtyPartition(state.partition));
     }
 
     @Override
     public void remove(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        this.purgeDeadHandles();
         this.store.computeIfPresent(key, (ignored, state) -> {
-            P partition = state.partition;
-            if (partition != null) {
-                // 分区终止会关闭它的全部订阅.
-                partition.retire();
-                PartitionHandle<K, T> handle = this.liveHandle(state);
-                if (handle != null) {
-                    handle.onPartitionEvicted(partition);
-                }
-                state.partition = null;
+            // 分区终止会关闭它的全部订阅.
+            state.partition.retire();
+            PartitionHandle<K, T> handle = this.liveHandle(state);
+            if (handle != null) {
+                handle.onPartitionEvicted(state.partition);
+                this.parkDetached(handle);
             }
-            // 句柄也不在了的 KeyState 没有存在意义.
-            return this.liveHandle(state) == null ? null : state;
+            // 主表只放有分区的 key, 条目整个删掉.
+            return null;
         });
     }
 
     // 当前已激活的分区数.
     final int partitionCount() {
         int[] count = new int[1];
-        this.store.forEachValue(state -> {
-            if (state.partition != null) {
-                count[0]++;
-            }
-        });
+        this.store.forEachValue(ignored -> count[0]++);
         return count[0];
     }
 
-    // 当前仍存活的 {@link PartitionHandle} 数.
+    // 当前仍存活的 {@link PartitionHandle} 数, 主表与旁表一起算.
     final int handleCount() {
-        this.purgeDeadHandles();
         int[] count = new int[1];
         this.store.forEachValue(state -> {
             if (this.liveHandle(state) != null) {
                 count[0]++;
             }
         });
+        synchronized (this.detachedLock) {
+            for (WeakReference<PartitionHandle<K, T>> reference : this.detached.values()) {
+                if (reference.get() != null) {
+                    count[0]++;
+                }
+            }
+        }
         return count[0];
     }
 
@@ -229,23 +208,15 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     }
 
     /**
-     * 一个 key 名下的全部状态, 持有分区与句柄弱引用.
-     * <p>两个字段的写入操作都收在该 key 的 compute 内.
+     * 一个有分区的 key 的全部状态: 分区本身与句柄的弱引用.
+     * <p>分区建好才进表, 句柄引用的写入收在该 key 的 compute 内.
      */
     static final class KeyState<K, T, P extends AbstractSignal<T>> {
-        volatile P partition;                       // 当前分区, null 表示未建或已删
-        volatile HandleReference<K, T> handleRef;   // 句柄的弱引用, null 表示无人取过句柄
-    }
+        final P partition;                                          // 当前分区
+        volatile WeakReference<PartitionHandle<K, T>> handleRef;    // 句柄的弱引用, null 表示无人取过句柄
 
-    /**
-     * 句柄的弱引用, 携带 key 以便句柄回收后清掉对应 KeyState 的残留.
-     */
-    private static final class HandleReference<K, T> extends WeakReference<PartitionHandle<K, T>> {
-        private final K key;
-
-        private HandleReference(PartitionHandle<K, T> handle, K key, ReferenceQueue<? super PartitionHandle<K, T>> queue) {
-            super(handle, queue);
-            this.key = key;
+        KeyState(P partition) {
+            this.partition = partition;
         }
     }
 }
