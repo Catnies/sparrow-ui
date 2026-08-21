@@ -7,16 +7,6 @@ import org.jetbrains.annotations.Nullable;
 public interface StonecutterWindow extends Window {
 
     /**
-     * 创建使用 2x1 上部 Pane 和空 4x0 按钮 Pane 的 Builder.
-     *
-     * @return 切石机 Window Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new StonecutterWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 返回当前选中的配方按钮索引.
      *
      * @return 配方按钮索引, -1 表示未选择
@@ -32,9 +22,11 @@ public interface StonecutterWindow extends Window {
      */
     void setSelectedRecipeIndex(int index);
 
-    /**
-     * 切石机 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new StonecutterWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<StonecutterWindow, Builder> {
 
         /**

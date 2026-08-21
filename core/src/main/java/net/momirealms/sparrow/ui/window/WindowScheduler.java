@@ -15,40 +15,22 @@ final class WindowScheduler {
     private final AsyncScheduler async;     // 全局异步调度入口
     private final EntityScheduler entity;   // 实体区域调度入口
 
-    /**
-     * 创建绑定指定插件的调度入口.
-     *
-     * @param plugin 调度任务所属的插件实例
-     */
     WindowScheduler(@NotNull Plugin plugin) {
         this.plugin = plugin;
         this.async = new AsyncScheduler();
         this.entity = new EntityScheduler();
     }
 
-    /**
-     * 返回全局异步调度入口.
-     *
-     * @return 异步调度入口
-     */
     @NotNull
     AsyncScheduler async() {
         return this.async;
     }
 
-    /**
-     * 返回实体区域调度入口.
-     *
-     * @return 实体调度入口
-     */
     @NotNull
     EntityScheduler entity() {
         return this.entity;
     }
 
-    /**
-     * Paper 全局异步调度入口, 任务与具体实体无关.
-     */
     final class AsyncScheduler {
 
         /**
@@ -77,9 +59,6 @@ final class WindowScheduler {
         }
     }
 
-    /**
-     * 按实体所在区域线程调度的入口, 任务跟随实体生命周期.
-     */
     final class EntityScheduler {
 
         /**

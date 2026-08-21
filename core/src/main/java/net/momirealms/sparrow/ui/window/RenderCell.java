@@ -19,16 +19,16 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public final class RenderCell implements AutoCloseable {
-    private final RenderContext context;
-    private final Runnable invalidator;
-    private final Consumer<? super Throwable> exceptionHandler;
+    private final RenderContext context;                                // 渲染上下文
+    private final Runnable invalidator;                                 // 脏标记回调
+    private final Consumer<? super Throwable> exceptionHandler;         // 渲染异常出口
 
-    private final AtomicBoolean recomputeRequested = new AtomicBoolean(true);
-    private final AtomicBoolean resetRequested = new AtomicBoolean();   // 任意线程提交的作废请求, 由渲染消费
-    private final AtomicLong inFlightToken = new AtomicLong(); // 在飞异步渲染任务的代数, 0 表示没有在飞任务; 代数从 1 起且只增, 所以作废在飞任务也是写 0
-    private volatile long generation = 1L;          // 当前 Provider 的代数
-    private volatile @Nullable Completed lastCompleted; // 最近完成值
-    private @Nullable Object activeSourceKey;       // 当前来源的身份
+    private final AtomicBoolean recomputeRequested = new AtomicBoolean(true); // 是否需要重算当前来源
+    private final AtomicBoolean resetRequested = new AtomicBoolean();         // 任意线程提交的作废请求
+    private final AtomicLong inFlightToken = new AtomicLong();       // 在飞异步任务代数, 0 表示无在飞
+    private volatile long generation = 1L;                            // 当前来源代数
+    private volatile @Nullable Completed lastCompleted;               // 最近完成值
+    private @Nullable Object activeSourceKey;                         // 当前来源身份
 
     public RenderCell(@NotNull RenderContext context, @NotNull Runnable invalidator, @NotNull Consumer<? super Throwable> exceptionHandler) {
         this.context = Objects.requireNonNull(context, "context");
@@ -46,9 +46,7 @@ public final class RenderCell implements AutoCloseable {
      */
     @NotNull
     public ItemStack render(@NotNull Intent intent) {
-        // 执行作废操作
         this.applyPendingReset();
-        // 执行渲染
         return switch (intent) {
             case Intent.Direct(var value) -> {
                 this.clearSource();

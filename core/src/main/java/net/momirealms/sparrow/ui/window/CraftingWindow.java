@@ -6,19 +6,11 @@ import org.jetbrains.annotations.Nullable;
 
 public interface CraftingWindow extends RecipeBookWindow {
 
-    /**
-     * 创建使用 3x3 合成 Pane 和 1x1 结果 Pane 的 Builder.
-     *
-     * @return 工作台 Window Builder
-     */
     @NotNull
     static Builder builder() {
         return new CraftingWindowImpl.BuilderImpl();
     }
 
-    /**
-     * 工作台 Window 的可重复 Builder.
-     */
     interface Builder extends RecipeBookWindow.Builder<CraftingWindow, Builder> {
 
         /**

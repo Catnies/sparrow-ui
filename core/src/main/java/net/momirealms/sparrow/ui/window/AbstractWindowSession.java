@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -15,12 +16,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-/**
- * 会话的共享骨架: 生命周期, 关闭去向决策与查询快照.
- * <p>成员结构(栈或树)与步入, 回退, 离场处置由 {@link WindowSession.Kind} 对应的子类给出;
- * 实际打开与关闭 Window 仍由 {@link WindowManager} 完成.
- * <p>成员结构只在玩家实体线程修改, 查询走 volatile 快照.
- */
 abstract class AbstractWindowSession implements WindowSession {
     final WindowManager manager;
     private final Player viewer;
@@ -126,7 +121,7 @@ abstract class AbstractWindowSession implements WindowSession {
             try {
                 this.manager.closeNow(current, reason);
             } catch (RuntimeException | Error throwable) {
-                this.manager.report("Failed to close Window session current Window", throwable);
+                SparrowUI.getInstance().handleException("Failed to close Window session current Window", throwable);
             }
         }
         this.fireEndHandlers(reason);
@@ -164,7 +159,7 @@ abstract class AbstractWindowSession implements WindowSession {
         try {
             this.bindings.suspendAll();
         } catch (RuntimeException | Error throwable) {
-            this.manager.report("Failed to detach Window session bindings", throwable);
+            SparrowUI.getInstance().handleException("Failed to detach Window session bindings", throwable);
         }
     }
 
@@ -179,7 +174,7 @@ abstract class AbstractWindowSession implements WindowSession {
         this.endHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
                 "Failed to handle Window session end",
-                this.manager::report
+                SparrowUI.getInstance()::handleException
         );
     }
 

@@ -6,19 +6,11 @@ import org.jetbrains.annotations.Nullable;
 
 public interface DispenserWindow extends Window {
 
-    /**
-     * 创建默认使用 3x3 上部 Pane 的 Builder.
-     *
-     * @return 发射器窗口 Builder
-     */
     @NotNull
     static Builder builder() {
         return new DispenserWindowImpl.BuilderImpl();
     }
 
-    /**
-     * 发射器 Window 的可重复 Builder.
-     */
     interface Builder extends Window.Builder<DispenserWindow, Builder> {
 
         /**

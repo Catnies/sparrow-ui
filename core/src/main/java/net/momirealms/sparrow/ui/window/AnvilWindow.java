@@ -11,15 +11,6 @@ import java.util.function.Consumer;
 public interface AnvilWindow extends Window {
 
     /**
-     * 创建默认使用 3x1 上部 Pane 的 Builder.
-     *
-     * @return 铁砧窗口 Builder
-     */
-    static @NotNull Builder builder() {
-        return new AnvilWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 返回最近一次由客户端提交的重命名文本.
      *
      * @return 重命名文本
@@ -99,9 +90,10 @@ public interface AnvilWindow extends Window {
      */
     void removeRenameHandler(@NotNull Consumer<? super String> handler);
 
-    /**
-     * 铁砧 Window 的可重复 Builder.
-     */
+    static @NotNull Builder builder() {
+        return new AnvilWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<AnvilWindow, Builder> {
 
         /**

@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.ui.window;
 
 /**
- * 主动向配方书 Window 发送 ghost recipe 的结果.
+ * 配方书 Window ghost recipe 发送结果.
  */
 public enum GhostRecipeResult {
-    SENT,
-    WINDOW_CLOSED,
-    RECIPE_NOT_FOUND,
-    VIEWER_UNAVAILABLE
+    SENT,               // 已进入发送路径
+    WINDOW_CLOSED,      // 窗口已关闭
+    RECIPE_NOT_FOUND,   // 配方不存在
+    VIEWER_UNAVAILABLE  // 玩家不可用
 }

@@ -11,14 +11,13 @@ import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+import net.momirealms.sparrow.ui.SparrowUI;
+
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 final class BukkitInventoryBridge {
-    private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
 
-    BukkitInventoryBridge(@NotNull BiConsumer<? super String, ? super Throwable> exceptionHandler) {
-        this.exceptionHandler = exceptionHandler;
+    BukkitInventoryBridge() {
     }
 
     /**
@@ -41,7 +40,7 @@ final class BukkitInventoryBridge {
             Bukkit.getPluginManager().callEvent(event);
             return !event.isCancelled();
         } catch (Throwable throwable) {
-            this.exceptionHandler.accept("Failed to bridge Window click to Bukkit", throwable);
+            SparrowUI.getInstance().handleException("Failed to bridge Window click to Bukkit", throwable);
             return false;
         }
     }
@@ -72,7 +71,7 @@ final class BukkitInventoryBridge {
             }
             return true;
         } catch (Throwable throwable) {
-            this.exceptionHandler.accept("Failed to bridge Window drag to Bukkit", throwable);
+            SparrowUI.getInstance().handleException("Failed to bridge Window drag to Bukkit", throwable);
             return false;
         }
     }

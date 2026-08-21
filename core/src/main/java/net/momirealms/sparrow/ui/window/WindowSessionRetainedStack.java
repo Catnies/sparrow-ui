@@ -8,10 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * {@link WindowSession.Kind#RETAINED_STACK} 会话: 结构同 {@link WindowSessionStack},
- * 唯一差异是被弹出的 Window 收进保留区, 引用保留到会话结束.
- */
 final class WindowSessionRetainedStack extends WindowSessionStack {
     private final List<Window> retained = new ArrayList<>(); // 被弹出的窗
 

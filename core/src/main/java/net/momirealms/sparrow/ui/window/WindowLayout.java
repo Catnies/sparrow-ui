@@ -9,12 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * 将 Window 的有序结构区域预编译为不可变的槽位到 Pane 映射.
- * <p>Region 的声明顺序就是最终 Window 槽位顺序, 尾部 Window 虚拟区域不进入菜单协议.
- * Region 仅存在于构建期, 运行时所有槽位都直接解析为普通根 PaneLink.
- * <p>编译结果是一个扁平数组, Window 槽位号即下标, 运行期查询无需再遍历区域.
- */
 final class WindowLayout {
     private static final PaneSize LOWER_SIZE = new PaneSize(9, 4);
 
@@ -34,8 +28,6 @@ final class WindowLayout {
 
     /**
      * 按声明顺序编译 Window 的全部区域.
-     *
-     * <p>布局必须且只能包含一个 9x4 lower 区域, 至少包含一个 upper 区域.
      * 传入的参数顺序决定了协议顺序, Window 虚拟区域如果存在, 必须全部位于协议区域之后.
      *
      * @param regions 按最终 Window 槽位顺序排列的区域
@@ -145,7 +137,6 @@ final class WindowLayout {
      *
      * @param windowSlot Window 槽位号
      * @return 该槽位对应的根 PaneLink
-     * @throws IndexOutOfBoundsException 槽位号超出 Window 范围时抛出
      */
     @NotNull
     Element.PaneLink paneAt(int windowSlot) {
@@ -202,11 +193,6 @@ final class WindowLayout {
         return this.links[this.lowerStart].pane();
     }
 
-    /**
-     * 返回布局引用的全部根 Pane.
-     *
-     * @return 按首次出现顺序去重后的 Pane 列表
-     */
     @NotNull
     List<Pane> panes() {
         return this.panes;

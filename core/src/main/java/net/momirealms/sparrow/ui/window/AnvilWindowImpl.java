@@ -16,11 +16,11 @@ import java.util.List;
 import java.util.function.Consumer;
 
 final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements AnvilWindow {
-    private final HandlerList<Consumer<String>> renameHandlers;
-    private volatile String renameText = "";
-    private volatile int enchantmentCost;
-    private volatile boolean textFieldAlwaysEnabled;
-    private volatile boolean resultAlwaysValid;
+    private final HandlerList<Consumer<String>> renameHandlers; // 重命名回调, 按注册顺序触发
+    private volatile String renameText = "";                    // 最近客户端提交的重命名文本
+    private volatile int enchantmentCost;                       // 客户端显示的等级消耗
+    private volatile boolean textFieldAlwaysEnabled;            // 输入槽为空时是否保持文本框可编辑
+    private volatile boolean resultAlwaysValid;                 // 结果槽为空时是否保持结果按钮有效
 
     AnvilWindowImpl(
             @NotNull WindowManager manager,
@@ -156,13 +156,16 @@ final class AnvilWindowImpl extends AbstractWindow<AnvilMenuHandle> implements A
     }
 
     private void handleRename(@NotNull String text) {
+        // 记录最新文本并同步到菜单
         this.renameText = text;
         AnvilMenuHandle menu = this.menuHandle();
         if (menu != null) {
             menu.handleRename(text);
         }
+        // 结果槽与菜单状态联动刷新
         this.notifyUpdate(2);
         this.notifyUpdateMenu();
+        // 依次通知外部处理器
         this.renameHandlers.forEachIsolated(
                 handler -> handler.accept(text),
                 "Failed to handle Anvil Window rename",

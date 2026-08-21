@@ -13,16 +13,6 @@ import java.util.function.Consumer;
 public interface EnchantmentWindow extends Window {
 
     /**
-     * 创建使用 2x1 上部 Pane, 玩家 Bukkit Inventory 和三个禁用选项的 Builder.
-     *
-     * @return 附魔台 Window Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new EnchantmentWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置一个附魔选项; null 表示禁用该按钮.
      *
      * @param index 选项索引, 范围为 [0, 3)
@@ -93,9 +83,11 @@ public interface EnchantmentWindow extends Window {
     record EnchantOption(int cost, @Nullable Enchantment clue, int clueLevel) {
     }
 
-    /**
-     * 附魔台 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new EnchantmentWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<EnchantmentWindow, Builder> {
 
         /**

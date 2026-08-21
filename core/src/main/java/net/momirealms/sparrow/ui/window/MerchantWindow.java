@@ -14,16 +14,6 @@ import java.util.function.Consumer;
 public interface MerchantWindow extends Window {
 
     /**
-     * 创建使用 3x1 上部 Pane 的 Builder.
-     *
-     * @return 商人 Window Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new MerchantWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置商人等级.
      *
      * @param level 0 到 5 的等级
@@ -256,9 +246,11 @@ public interface MerchantWindow extends Window {
         AVAILABLE
     }
 
-    /**
-     * MerchantWindow 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new MerchantWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<MerchantWindow, Builder> {
 
         /**

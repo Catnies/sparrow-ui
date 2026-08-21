@@ -7,16 +7,6 @@ import org.jetbrains.annotations.Nullable;
 public interface FurnaceWindow extends RecipeBookWindow {
 
     /**
-     * 创建熔炉 Window Builder.
-     *
-     * @return 熔炉 Window Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new FurnaceWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置箭头已经完成的烹饪进度.
      *
      * @param progress 范围为 0.0 到 1.0 的进度
@@ -44,9 +34,11 @@ public interface FurnaceWindow extends RecipeBookWindow {
      */
     double getFuelProgress();
 
-    /**
-     * 熔炉 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new FurnaceWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends RecipeBookWindow.Builder<FurnaceWindow, Builder> {
 
         /**

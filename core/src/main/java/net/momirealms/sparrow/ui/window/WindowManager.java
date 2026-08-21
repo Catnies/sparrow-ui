@@ -5,7 +5,6 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
 import net.momirealms.sparrow.ui.internal.menu.MenuFactoryImpl;
-import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -27,17 +26,18 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 
+/**
+ * 集中管理活动 Window 与玩家命令通道, 负责打开、关闭与会话生命周期.
+ */
 public final class WindowManager implements Listener {
-    private final MenuFactory menuFactory;
-    private final WindowScheduler scheduler;
-    private final BukkitInventoryBridge bukkitBridge;
-    private final BiConsumer<? super String, ? super Throwable> exceptionHandler;
-    private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>();
-    private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();
-    private final AtomicLong generations = new AtomicLong();
-    private final AtomicBoolean shutdown = new AtomicBoolean();
+    private final MenuFactory menuFactory;                                         // 创建菜单处理器
+    private final WindowScheduler scheduler;                                       // 实体与异步调度入口
+    private final BukkitInventoryBridge bukkitBridge;                              // 点击桥接到 Bukkit 事件
+    private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>(); // 玩家 -> 当前窗
+    private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();  // 玩家 -> 命令通道
+    private final AtomicLong generations = new AtomicLong();                   // 打开代际, 隔离迟到输入
+    private final AtomicBoolean shutdown = new AtomicBoolean();                // 是否已进入关服收尾
 
     WindowManager(Plugin plugin) {
         this(plugin, new MenuFactoryImpl(plugin));
@@ -46,8 +46,7 @@ public final class WindowManager implements Listener {
     WindowManager(Plugin plugin, MenuFactory menuFactory) {
         this.menuFactory = menuFactory;
         this.scheduler = new WindowScheduler(plugin);
-        this.exceptionHandler = SparrowUI.getInstance()::handleException;
-        this.bukkitBridge = new BukkitInventoryBridge(this.exceptionHandler);
+        this.bukkitBridge = new BukkitInventoryBridge();
     }
 
     @NotNull
@@ -55,11 +54,6 @@ public final class WindowManager implements Listener {
         return SparrowUI.getInstance().windowManager();
     }
 
-    /**
-     * 创建并注册 WindowManager.
-     *
-     * @return 已注册的 WindowManager
-     */
     @NotNull
     public static WindowManager create() {
         Plugin plugin = SparrowUI.getInstance().getPlugin();
@@ -92,6 +86,7 @@ public final class WindowManager implements Listener {
      * @param back 会话内打开时, 本次打开是否为回到上一扇
      */
     private Window.OpenResult openNow(AbstractWindow<?> window, @Nullable AbstractWindowSession transitionSession, boolean back) {
+        // 校验关服与窗口可用性
         if (this.shutdown.get()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
@@ -103,37 +98,40 @@ public final class WindowManager implements Listener {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
-        // 顶替的是别的当前窗就是会话外打开, 本次导航自己的当前窗属会话内交接, 会话不结束
+        // 推导会话归属, 同会话内交接不算被顶替
         AbstractWindow<?> previous = this.active.get(viewer.getUniqueId());
         AbstractWindowSession displaced = previous == null ? null : previous.sessionImpl();
         if (displaced == transitionSession) {
             displaced = null;
         }
         boolean replaceWindow = previous != null && previous != window;
+        // 在实体线程初始化新窗口
         try {
             window.openOnViewerEntity(this.generations.getAndIncrement(), replaceWindow);
         } catch (ViewerUnavailableException ignored) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 
+        // 发布活动窗并清理被替换的旧窗
         this.active.put(viewer.getUniqueId(), window);
         if (replaceWindow) {
             try {
                 previous.closeOnViewerEntity(InventoryCloseEvent.Reason.OPEN_NEW);
             } catch (RuntimeException | Error throwable) {
-                this.report("Failed to clean up replaced Window", throwable);
+                SparrowUI.getInstance().handleException("Failed to clean up replaced Window", throwable);
             }
         }
+        // 关服竞态, 新窗立即回滚
         if (this.shutdown.get()) {
             this.active.remove(viewer.getUniqueId(), window);
             window.closeOnViewerEntity(InventoryCloseEvent.Reason.PLUGIN);
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
-        // 被顶掉的当前窗已随本次打开一并关闭, 会话只做自身收尾
+        // 被顶替的会话只做自身收尾
         if (displaced != null) {
             displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
         }
-        // 会话状态在 open handler 之前落地, 会话外打开的窗成为新根窗, 会话在此刻诞生, 会话内打开则推进当前位置
+        // 会话落位, 再触发打开回调
         if (transitionSession == null) {
             window.session(AbstractWindowSession.create(this, window));
         } else {
@@ -174,8 +172,7 @@ public final class WindowManager implements Listener {
 
     /**
      * 等待一扇还在构建中的 Window 完成, 再从出发窗打开它.
-     * <p>发起时先记下出发窗当时的挂载. 构建结果到达时出发窗已经关闭, 被顶替, 或者不再是所在会话的当前窗,
-     * 本次导航就此作罢: 不打开任何窗口, 原会话与玩家正在看的菜单都不改变.
+     * <p>发起时先记下出发窗当时的挂载. 构建结果到达时若出发窗已关闭/已变更/被顶替就丢弃.
      *
      * @param source 上一扇 Window
      * @param next 构建中的下一扇 Window
@@ -200,7 +197,7 @@ public final class WindowManager implements Listener {
     // 在玩家实体线程解析出发窗所属的会话, 必要时新起一段会话.
     private boolean navigateNow(AbstractWindow<?> source, AbstractWindow<?> next) {
         AbstractWindowSession session = source.sessionImpl();
-        // 仍是会话成员却已不在当前位置: 位置早就不在出发窗上, 不再新起一段会话去覆盖它的归属
+        // 仍是会话成员却已不在当前位置, 位置早就不在出发窗上, 不再新起一段会话去覆盖它的归属
         if (session != null) {
             return session.currentWindow() == source && session.navigateNow(next);
         }
@@ -389,35 +386,6 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 统一上报异步命令的失败.
-     *
-     * @param stage 命令阶段
-     * @param message 失败报告文本
-     */
-    private void reportFailure(CompletionStage<?> stage, String message) {
-        stage.exceptionally(throwable -> {
-            this.report(message, throwable);
-            return null;
-        });
-    }
-
-    /**
-     * 将内部异常交给插件的统一异常处理器.
-     *
-     * @param message 错误说明
-     * @param throwable 异常
-     */
-    void report(String message, Throwable throwable) {
-        try {
-            this.exceptionHandler.accept(message, throwable);
-        } catch (Throwable reportingFailure) {
-            if (reportingFailure != throwable) {
-                ThrowableUtils.combine(throwable, reportingFailure);
-            }
-        }
-    }
-
-    /**
      * Bukkit 观测到容器关闭时, 若 InventoryView 属于某个活动 Window 则按外部关闭处理.
      * 断线关闭已经由服务器接管, 事件返回后会继续完成容器生命周期, 因此必须在事件内同步通知 handler;
      * 其他原因仍延后到下一实体 tick, 保留 close handler 打开新 Window 的既有能力.
@@ -435,7 +403,7 @@ public final class WindowManager implements Listener {
                     try {
                         window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
                     } catch (RuntimeException | Error throwable) {
-                        this.report("Failed to process disconnected Window close", throwable);
+                        SparrowUI.getInstance().handleException("Failed to process disconnected Window close", throwable);
                     }
                     this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
                 }
@@ -443,16 +411,16 @@ public final class WindowManager implements Listener {
             }
 
             PlayerCommandLane lane = this.lane(window.viewer());
-            this.reportFailure(
-                    lane.submitDeferred(
-                            () -> {
-                                this.closeNow(window, event.getReason());
-                                return null;
-                            },
-                            () -> null
-                    ),
-                    "Failed to process external Window close"
-            );
+            lane.submitDeferred(
+                    () -> {
+                        this.closeNow(window, event.getReason());
+                        return null;
+                    },
+                    () -> null
+            ).exceptionally(throwable -> {
+                SparrowUI.getInstance().handleException("Failed to process external Window close", throwable);
+                return null;
+            });
         }
     }
 
@@ -466,7 +434,7 @@ public final class WindowManager implements Listener {
             try {
                 window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
             } catch (RuntimeException | Error throwable) {
-                this.report("Failed to close Window after player quit", throwable);
+                SparrowUI.getInstance().handleException("Failed to close Window after player quit", throwable);
             }
             this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
         }
@@ -496,7 +464,7 @@ public final class WindowManager implements Listener {
         if (!wasOpen) {
             return;
         }
-        this.report(
+        SparrowUI.getInstance().handleException(
                 "Window entity scheduler retired before close handlers ran"
                         + " [player=" + playerId
                         + ", window=" + window.getClass().getName() + "]",
@@ -509,9 +477,9 @@ public final class WindowManager implements Listener {
         if (!this.shutdown.compareAndSet(false, true)) {
             return;
         }
+        // 逐个收尾正在开启的 Window , 已失联的通道直接本地收尾
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
             PlayerCommandLane lane = this.lanes.get(window.viewer().getUniqueId());
-            // 通道已经注销或已经属于重连后的新 Player, 这扇窗只能由本次 shutdown 直接收尾
             if (lane == null || !lane.belongsTo(window.viewer())) {
                 this.shutdownNow(window);
                 continue;
@@ -519,15 +487,17 @@ public final class WindowManager implements Listener {
             lane.terminate(() -> this.shutdownNow(window));
         }
         this.active.clear();
+        // 注销剩余通道
         for (PlayerCommandLane lane : Set.copyOf(this.lanes.values())) {
             lane.retire();
         }
         this.lanes.clear();
+        // 关闭菜单后端
         if (this.menuFactory instanceof AutoCloseable closeable) {
             try {
                 closeable.close();
             } catch (Exception exception) {
-                this.report("Failed to close Window menu backend", exception);
+                SparrowUI.getInstance().handleException("Failed to close Window menu backend", exception);
             }
         }
     }
@@ -539,13 +509,13 @@ public final class WindowManager implements Listener {
             try {
                 session.endNow(InventoryCloseEvent.Reason.PLUGIN, false);
             } catch (RuntimeException | Error throwable) {
-                this.report("Failed to end Window session during shutdown", throwable);
+                SparrowUI.getInstance().handleException("Failed to end Window session during shutdown", throwable);
             }
         }
         try {
             this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
         } catch (RuntimeException | Error throwable) {
-            this.report("Failed to close Window during shutdown", throwable);
+            SparrowUI.getInstance().handleException("Failed to close Window during shutdown", throwable);
         }
     }
 

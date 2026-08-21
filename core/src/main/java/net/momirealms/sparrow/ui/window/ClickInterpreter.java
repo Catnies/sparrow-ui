@@ -9,11 +9,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashSet;
 import java.util.List;
 
-/**
- * 把客户端发过来的 Container 协议包解释成 Window 能直接分派的单次点击或完整拖拽.
- * <p>解释器自己保管 QUICK_CRAFT(按住键拖过多个槽位)的跨包状态, 只在玩家的实体线程使用:
- * 普通点击会先终止未完成的拖拽, 协议字段和 Window 槽位范围也在这里统一校验.
- */
 final class ClickInterpreter {
     @Nullable private ActiveDrag activeDrag; // 正在进行中的拖拽行为, 没有时为 null, 仅实体线程访问
 

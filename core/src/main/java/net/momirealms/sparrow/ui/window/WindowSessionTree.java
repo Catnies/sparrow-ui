@@ -11,11 +11,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * {@link WindowSession.Kind#TREE} 会话: 步入查重的树, 树中成员唯一.
- * <p>步入已存在的成员是把当前位置移过去(跨枝亦然, 父链保持原样), 回退是回到父节点;
- * 两者都不丢弃任何成员, 步入过的 Window 全部保留到会话结束.
- */
 final class WindowSessionTree extends AbstractWindowSession {
     private final IdentityHashMap<AbstractWindow<?>, AbstractWindow<?>> parents = new IdentityHashMap<>(8); // 成员到父窗, 根窗为 null
     private @Nullable AbstractWindow<?> cursor; // 当前位置, 恒指向当前窗

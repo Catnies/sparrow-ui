@@ -11,16 +11,6 @@ import java.util.function.BiConsumer;
 public interface CrafterWindow extends Window {
 
     /**
-     * 创建使用 3x3 输入 Pane 和 1x1 结果 Pane 的 Builder.
-     *
-     * @return 合成器窗口 Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new CrafterWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置输入槽的禁用状态.
      *
      * @param slot 输入槽编号
@@ -68,9 +58,11 @@ public interface CrafterWindow extends Window {
      */
     void removeSlotToggleHandler(@NotNull BiConsumer<? super Integer, ? super Boolean> handler);
 
-    /**
-     * 合成器 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new CrafterWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<CrafterWindow, Builder> {
 
         /**

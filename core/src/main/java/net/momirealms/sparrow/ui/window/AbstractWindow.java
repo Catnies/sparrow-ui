@@ -61,10 +61,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/**
- * 各类 Window 共用的基类, 负责生命周期, 显示路径解析和协议同步.
- * <p>每次打开都会更新 generation, 迟到的协议输入和异步失效通知会被忽略.
- */
 abstract class AbstractWindow<M extends MenuHandle> implements Window {
     /**
      * Builder 交给共享生命周期构造器的不可变设置快照.
@@ -912,7 +908,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 运行打开处理器.
     void fireOpenHandlers() {
-        this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", this.manager::report);
+        this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", SparrowUI.getInstance()::handleException);
     }
 
     /**
@@ -930,7 +926,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         // PacketHandler 在 Paper 的限流器之前, 所以这里要自己限制包速率, 防止恶意刷包
         // 溢出后按 UNKNOWN 原因强制关闭 Window;
         if (menuHandle.hasInputOverflowed()) {
-            this.manager.report(
+            SparrowUI.getInstance().handleException(
                     "Closing Window because its incoming packet queue overflowed",
                     new IllegalStateException("incoming packet queue capacity exceeded")
             );
@@ -946,7 +942,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 this.clickInterpreter.reset();
                 this.cursorDirty = true;
                 this.forceFull = true;
-                this.manager.report("Failed to process a Window interaction", throwable);
+                SparrowUI.getInstance().handleException("Failed to process a Window interaction", throwable);
             }
             if (!this.open) {
                 return;
@@ -1063,7 +1059,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.outsideClickHandlers.forEachIsolated(
                 handler -> handler.accept(event),
                 "Failed to handle Window outside click",
-                this.manager::report
+                SparrowUI.getInstance()::handleException
         );
         if (event.isCancelled() || !guard.stillValid()) {
             return;
@@ -1219,7 +1215,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.windowStateChangeHandlers.forEachIsolated(
                 handler -> handler.accept(this.clientWindowState),
                 "Failed to handle Window state acknowledgement",
-                this.manager::report
+                SparrowUI.getInstance()::handleException
         );
     }
 
@@ -1570,7 +1566,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             this.forceFull = true;
             this.menuDirty = true;
             this.forceReopen |= reopen; // 重开失败后客户端标题状态未知, 后续必须再重开一次
-            this.manager.report("Failed to synchronize Window", throwable);
+            SparrowUI.getInstance().handleException("Failed to synchronize Window", throwable);
         } finally {
             this.renderedBeforeEvent.clear();
         }
@@ -1611,7 +1607,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     }
                     localSlots[windowSlot] = rendered;
                 } catch (Throwable throwable) {
-                    this.manager.report("Failed to render Window slot " + windowSlot, throwable);
+                    SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);
                     localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemUtils.EMPTY : localSlots[windowSlot];
                 }
             }
@@ -1644,7 +1640,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     : new RenderCell.Intent.Projected(visual.sourceKey(), visual.provider(), visual.placeholder(), actual);
             return new MenuHandle.CursorSnapshot(actual, ItemUtils.copyOrEmpty(this.cursorRenderCell.render(intent)));
         } catch (Throwable throwable) {
-            this.manager.report("Failed to render Window cursor visualizer", throwable);
+            SparrowUI.getInstance().handleException("Failed to render Window cursor visualizer", throwable);
             return new MenuHandle.CursorSnapshot(actual, actual.clone());
         }
     }
@@ -1786,7 +1782,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.closeHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
                 "Failed to handle Window close",
-                this.manager::report
+                SparrowUI.getInstance()::handleException
         );
     }
 
@@ -1795,7 +1791,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         boolean wasOpen = this.open;
         Throwable failure = this.teardownOnEntity(null);
         if (failure != null) {
-            this.manager.report("Failed to retire Window session", failure);
+            SparrowUI.getInstance().handleException("Failed to retire Window session", failure);
         }
         return wasOpen;
     }
@@ -1858,7 +1854,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 上报 Window 处理器里的异常
     protected final void report(@NotNull String message, @NotNull Throwable throwable) {
-        this.manager.report(message, throwable);
+        SparrowUI.getInstance().handleException(message, throwable);
     }
 
     // 当前打开着的类型化菜单处理器
@@ -1986,7 +1982,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 return path.render().isEmpty();
             } catch (Throwable throwable) {
                 // 读不出这一格显示什么就当它有东西: 收集的前提是玩家看到一格空位, 存疑时不放行.
-                AbstractWindow.this.manager.report("Failed to render Window slot " + windowSlot, throwable);
+                SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);
                 return false;
             }
         }

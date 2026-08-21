@@ -7,16 +7,6 @@ import org.jetbrains.annotations.Nullable;
 public interface SmokerWindow extends RecipeBookWindow {
 
     /**
-     * 创建烟熏炉 Window Builder.
-     *
-     * @return 烟熏炉 Window Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new SmokerWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置箭头已经完成的烹饪进度.
      *
      * @param progress 范围为 0.0 到 1.0 的进度
@@ -44,9 +34,11 @@ public interface SmokerWindow extends RecipeBookWindow {
      */
     double getFuelProgress();
 
-    /**
-     * 烟熏炉 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new SmokerWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends RecipeBookWindow.Builder<SmokerWindow, Builder> {
 
         @NotNull

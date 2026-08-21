@@ -6,18 +6,10 @@ import org.jetbrains.annotations.Nullable;
 
 public interface HopperWindow extends Window {
 
-    /**
-     * 创建默认使用 5x1 上部 Pane 的 Builder.
-     *
-     * @return 漏斗窗口 Builder
-     */
     static @NotNull Builder builder() {
         return new HopperWindowImpl.BuilderImpl();
     }
 
-    /**
-     * 漏斗 Window 的可重复 Builder.
-     */
     interface Builder extends Window.Builder<HopperWindow, Builder> {
 
         /**

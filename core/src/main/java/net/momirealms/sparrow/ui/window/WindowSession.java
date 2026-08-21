@@ -144,7 +144,7 @@ public interface WindowSession {
          */
         RETAINED_STACK,
         /**
-         * 树. {@link Window#navigate} 查重: 目标已在树中时当前位置直接移过去并以原实例重新打开,
+         * 树. {@link Window#navigate} 查重, 目标已在树中时当前位置直接移过去并以原实例重新打开,
          * 不在时成为当前节点的新孩子; {@link Window#back()} 回到父节点且不丢弃任何成员.
          * 步入过的 Window 全部保留到会话结束.
          */

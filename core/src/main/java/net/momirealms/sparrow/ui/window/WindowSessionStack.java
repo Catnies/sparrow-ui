@@ -9,10 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * {@link WindowSession.Kind#STACK} 会话: 线性栈, 步入不查重, 同一实例可压入多次;
- * 回退弹出栈顶, 栈中不再出现该实例时丢弃对它的引用.
- */
 class WindowSessionStack extends AbstractWindowSession {
     private final List<Window> stack = new ArrayList<>(); // 根窗到栈顶, 只在玩家实体线程修改
 

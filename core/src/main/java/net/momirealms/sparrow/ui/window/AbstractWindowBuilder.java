@@ -24,14 +24,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/**
- * 各类 Window Builder 共用的生命周期配置实现.
- *
- * <p>具体 Builder 只负责自身布局约束与菜单类型, 本类负责复制公共配置并保证 Builder 可复用.</p>
- *
- * @param <W> Builder 创建的 Window 类型
- * @param <B> 具体 Builder 类型
- */
 abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<W, B>> implements Window.Builder<W, B> {
     private @Nullable Player viewer;
     private Supplier<? extends Component> titleSupplier = Component::empty;

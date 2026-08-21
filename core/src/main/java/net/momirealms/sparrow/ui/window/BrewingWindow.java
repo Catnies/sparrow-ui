@@ -7,16 +7,6 @@ import org.jetbrains.annotations.Nullable;
 public interface BrewingWindow extends Window {
 
     /**
-     * 创建使用 3x1 结果 Pane, 1x1 原料 Pane 与 1x1 燃料 Pane 的 Builder.
-     *
-     * @return 酿造台窗口 Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new BrewingWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 设置箭头已经完成的酿造进度.
      *
      * @param progress 范围为 0.0 到 1.0 的进度
@@ -44,9 +34,11 @@ public interface BrewingWindow extends Window {
      */
     double getFuelProgress();
 
-    /**
-     * 酿造台 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new BrewingWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<BrewingWindow, Builder> {
 
         /**

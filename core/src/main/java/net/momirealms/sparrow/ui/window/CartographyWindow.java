@@ -19,16 +19,6 @@ public interface CartographyWindow extends Window {
     int MAP_SIZE = 128;
 
     /**
-     * 创建使用 1x2 输入 Pane 与 1x1 结果 Pane 的 Builder.
-     *
-     * @return 制图台窗口 Builder
-     */
-    @NotNull
-    static Builder builder() {
-        return new CartographyWindowImpl.BuilderImpl();
-    }
-
-    /**
      * 把图片转换为地图色并绘制到指定起点.
      *
      * @param x 左上角 x 坐标
@@ -185,9 +175,11 @@ public interface CartographyWindow extends Window {
         LOCK        // 使用玻璃板触发的锁定预览
     }
 
-    /**
-     * 制图台 Window 的可重复 Builder.
-     */
+    @NotNull
+    static Builder builder() {
+        return new CartographyWindowImpl.BuilderImpl();
+    }
+
     interface Builder extends Window.Builder<CartographyWindow, Builder> {
 
         /**

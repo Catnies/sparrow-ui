@@ -9,8 +9,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implements BrewingWindow {
-    private volatile double brewProgress;
-    private volatile double fuelProgress;
+    private volatile double brewProgress; // 酿造进度, 0.0-1.0
+    private volatile double fuelProgress; // 燃料进度, 0.0-1.0
 
     BrewingWindowImpl(
             @NotNull WindowManager manager,
@@ -83,12 +83,12 @@ final class BrewingWindowImpl extends AbstractWindow<BrewingMenuHandle> implemen
     }
 
     static final class BuilderImpl extends AbstractWindowBuilder<BrewingWindow, BrewingWindow.Builder> implements BrewingWindow.Builder {
-        private Pane inputPane = Pane.empty(new PaneSize(1, 1));
-        private Pane fuelPane = Pane.empty(new PaneSize(1, 1));
-        private Pane resultPane = Pane.empty(new PaneSize(3, 1));
-        private @Nullable Pane lowerPane;
-        private double brewProgress;
-        private double fuelProgress;
+        private Pane inputPane = Pane.empty(new PaneSize(1, 1));    // 协议槽位 3 的原料格
+        private Pane fuelPane = Pane.empty(new PaneSize(1, 1));     // 协议槽位 4 的燃料格
+        private Pane resultPane = Pane.empty(new PaneSize(3, 1));   // 协议槽位 0-2 的结果格
+        private @Nullable Pane lowerPane;                           // 玩家物品栏, null 时接管 Bukkit 背包
+        private double brewProgress;                                // 初始酿造进度
+        private double fuelProgress;                                // 初始燃料进度
 
         BuilderImpl() {
         }

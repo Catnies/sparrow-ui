@@ -6,19 +6,11 @@ import org.jetbrains.annotations.Nullable;
 
 public interface GrindstoneWindow extends Window {
 
-    /**
-     * 创建默认使用 1x2 输入 Pane 和 1x1 结果 Pane 的 Builder.
-     *
-     * @return 砂轮窗口 Builder
-     */
     @NotNull
     static Builder builder() {
         return new GrindstoneWindowImpl.BuilderImpl();
     }
 
-    /**
-     * 砂轮 Window 的可重复 Builder.
-     */
     interface Builder extends Window.Builder<GrindstoneWindow, Builder> {
 
         /**
