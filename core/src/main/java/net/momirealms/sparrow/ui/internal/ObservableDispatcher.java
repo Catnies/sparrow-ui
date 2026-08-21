@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal;
 
-import net.momirealms.sparrow.ui.Observable;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
@@ -9,10 +8,9 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
-public final class ObservableDispatcher<T> implements Observable<T> {
+public final class ObservableDispatcher<T> {
     private final CopyOnWriteArrayList<Entry<T>> entries = new CopyOnWriteArrayList<>();
 
-    @Override
     public Subscription subscribe(Observer<? super T> observer) {
         Objects.requireNonNull(observer, "observer");
         Entry<T> entry = new Entry<>(this, observer);

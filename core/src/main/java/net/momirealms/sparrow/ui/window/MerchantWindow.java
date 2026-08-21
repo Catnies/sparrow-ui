@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.Observable;
+import net.momirealms.sparrow.ui.Observer;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.item.Item;
 import org.jetbrains.annotations.NotNull;
@@ -113,7 +114,7 @@ public interface MerchantWindow extends Window {
     /**
      * 商人界面中的一项纯展示交易.
      */
-    sealed interface Trade extends Observable<TradeChange> permits MerchantWindowImpl.TradeImpl {
+    sealed interface Trade permits MerchantWindowImpl.TradeImpl {
 
         /**
          * 创建 Trade Builder.
@@ -178,7 +179,17 @@ public interface MerchantWindow extends Window {
         void setAvailable(boolean available);
 
         /**
-         * Trade 的可重复 Builder.
+         * 订阅折扣与可用状态的变化.
+         * <p>订阅由 Trade 保活, 直到凭证被显式关闭, 见 {@link Observer}.
+         *
+         * @param observer 收到 {@link TradeChange} 的观察者
+         * @return 订阅凭证, 用于显式退订
+         */
+        @NotNull
+        Subscription subscribe(@NotNull Observer<? super TradeChange> observer);
+
+        /**
+         * Trade 的可重复使用的 Builder.
          */
         sealed interface Builder permits MerchantWindowImpl.TradeImpl.BuilderImpl {
 
