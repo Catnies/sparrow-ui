@@ -13,20 +13,20 @@ import java.util.List;
 // 一笔事务向一个 Inventory 发 Pre 与 Post 事件的那一份差事, 一笔事务改几个 Inventory 就有几份.
 // 名单在事务开始时就定死, 所以 Pre 处理器新增的订阅或槽位修改不会把本轮 Pre 事件递归派发一遍.
 final class TransactionNotification {
-    private final SparrowInventory inventory; // 接收本组事件的 Inventory
-    private final UpdateReason reason;        // 这笔事务为什么发生
+    private final InventoryUpdateChannel channel; // 接收本组事件的 Inventory 的派发通道, 票号也向它领
+    private final UpdateReason reason;            // 这笔事务为什么发生
     private final List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients;   // 事务开始时已经订阅且能看到原始变化的 Pre 接收者
     private final List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients; // 事务开始时已经订阅的 Post 接收者
 
     private long postTicket = -1L; // 串行派发时在提交临界区内领到的票号, -1 表示不排队
 
     TransactionNotification(
-            @NotNull SparrowInventory inventory,
+            @NotNull InventoryUpdateChannel channel,
             @NotNull UpdateReason reason,
             @NotNull List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients,
             @NotNull List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients
     ) {
-        this.inventory = inventory;
+        this.channel = channel;
         this.reason = reason;
         this.preRecipients = preRecipients;
         this.postRecipients = postRecipients;
@@ -34,6 +34,7 @@ final class TransactionNotification {
 
     // 按订阅顺序跑完本轮 Pre 处理器, 带着上一个 Inventory 传下来的取消状态进, 带着本组跑完的取消状态出.
     boolean publishPre(boolean cancelled, @NotNull TransactionDraft draft, @Nullable InteractionDraft interaction) {
+        SparrowInventory inventory = this.channel.inventory();
         for (int i = 0; i < this.preRecipients.size(); i++) {
             Observer<? super InventoryPreUpdateEvent> observer = this.preRecipients.get(i).observer();
             // 弱引用指向的观察者已经被回收时, 本轮直接跳过它.
@@ -41,7 +42,7 @@ final class TransactionNotification {
 
             // 每个处理器都从最新草稿创建独立事件, 失败时不会污染其他处理器.
             InventoryPreUpdateEvent event = new InventoryPreUpdateEvent(
-                    this.inventory,
+                    inventory,
                     this.reason,
                     draft.scopes(),
                     true,
@@ -68,7 +69,7 @@ final class TransactionNotification {
     // 开了串行派发就在提交临界区内领个票号; 没有 Post 接收者干脆不领, 领了不派发会让票号和放行对不上.
     void takePostTicket() {
         if (this.postRecipients.isEmpty()) return;
-        this.postTicket = this.inventory.takePostTicket();
+        this.postTicket = this.channel.takePostTicket();
     }
 
     // 在当前提交线程上把最终结果发给本轮 Post 订阅者; 领过票号的先等叫号, 同一 Inventory 的 Post 因此既不并发也不乱序.
@@ -78,17 +79,17 @@ final class TransactionNotification {
             this.dispatchPost(scopes, version);
             return;
         }
-        this.inventory.awaitPostTurn(this.postTicket);
+        this.channel.awaitPostTurn(this.postTicket);
         try {
             this.dispatchPost(scopes, version);
         } finally {
-            this.inventory.releasePostTurn();
+            this.channel.releasePostTurn();
         }
     }
 
     // 一个观察者炸了不影响其余的, 上报之后接着往下发.
     private void dispatchPost(@NotNull List<TransactionScope> scopes, long version) {
-        InventoryPostUpdateEvent event = new InventoryPostUpdateEvent(this.inventory, this.reason, scopes, version);
+        InventoryPostUpdateEvent event = new InventoryPostUpdateEvent(this.channel.inventory(), this.reason, scopes, version);
         for (int i = 0; i < this.postRecipients.size(); i++) {
             Observer<? super InventoryPostUpdateEvent> observer = this.postRecipients.get(i).observer();
             if (observer != null) {

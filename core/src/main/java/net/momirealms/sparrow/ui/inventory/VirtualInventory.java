@@ -103,7 +103,9 @@ public final class VirtualInventory extends SparrowInventory {
      * @return 开启串行派发时返回 {@code true}
      */
     public boolean serialPostDispatch() {
-        return this.serialPostDispatch;
+        // 只读, 所以不去建通道.
+        InventoryUpdateChannel channel = this.updateChannelIfPresent();
+        return channel != null && channel.serialPostDispatch();
     }
 
     /**
@@ -118,7 +120,7 @@ public final class VirtualInventory extends SparrowInventory {
      * @param serialPostDispatch 是否串行派发
      */
     public void serialPostDispatch(boolean serialPostDispatch) {
-        this.serialPostDispatch = serialPostDispatch;
+        this.updateChannel().serialPostDispatch(serialPostDispatch);
     }
 
     @Override

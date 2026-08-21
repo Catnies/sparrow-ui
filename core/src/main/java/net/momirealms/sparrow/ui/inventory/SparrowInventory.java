@@ -74,16 +74,11 @@ public abstract class SparrowInventory {
     private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
     private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
 
-    volatile boolean serialPostDispatch;          // 开启后本 Inventory 的 Post 严格按提交顺序串行派发, 后到的提交线程阻塞等待
-    private final Object postGate = new Object(); // 只保护下面两个票号, 不保护任何内容状态
-    private long nextPostTicket;                  // 下一个待签发的票号, 只在提交临界区内自增
-    private long servingPostTicket;               // 正在派发的票号, 只在 postGate 内自增
-
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
 
     @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅和退役递增
-    @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新时创建
+    @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新或开启串行 Post 时创建
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
     SparrowInventory(@Nullable ItemStack @NotNull [] initial) {
@@ -1231,9 +1226,9 @@ public abstract class SparrowInventory {
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
-    // 取出承载事务订阅与事件派发的通道, 第一次订阅时才创建.
+    // 取出承载事务订阅, 事件派发与 Post 串行叫号的通道; 第一次订阅或第一次配置串行派发时才建出来.
     @NotNull
-    private InventoryUpdateChannel updateChannel() {
+    InventoryUpdateChannel updateChannel() {
         InventoryUpdateChannel channel = this.updateChannel;
         if (channel == null) {
             synchronized (this) {
@@ -1266,38 +1261,6 @@ public abstract class SparrowInventory {
     public PlannedRoot openPlanForWrite() {
         this.prepareWrite();
         return this.openPlan();
-    }
-
-    // 在提交临界区里领一个票号, 领到的先后就是提交的先后; 没开串行派发时返回 -1.
-    long takePostTicket() {
-        // 只有持有写锁的基准会走到这里, 所以 nextPostTicket 自增不必再加同步
-        if (!this.serialPostDispatch) return -1L;
-        return this.nextPostTicket++;
-    }
-
-    // 阻塞到自己的票号被叫到. 这里故意不响应中断: 半路溜走会让排在后面的票永远等不到放行.
-    void awaitPostTurn(long ticket) {
-        boolean interrupted = false;
-        synchronized (this.postGate) {
-            while (this.servingPostTicket != ticket) {
-                try {
-                    this.postGate.wait();
-                } catch (InterruptedException exception) {
-                    interrupted = true;
-                }
-            }
-        }
-        if (interrupted) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // 叫下一个票号. 必须与 awaitPostTurn 在同一个 finally 里配对, 漏掉一次, 本 Inventory 之后的提交线程就全卡死了.
-    void releasePostTurn() {
-        synchronized (this.postGate) {
-            this.servingPostTicket++;
-            this.postGate.notifyAll();
-        }
     }
 
     // 内容就在自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身, 同时兼任校验依据 ——

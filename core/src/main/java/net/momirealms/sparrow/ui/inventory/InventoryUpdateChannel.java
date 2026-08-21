@@ -13,10 +13,16 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 // 一个 Inventory 的事务订阅器, 每个 Inventory 至多一个. 事务只按写集里属于本 Inventory 的那一组变更派发.
+// Post 的串行叫号也归它, 那个顺序是"每个 Inventory 一条"的事, 而这里正是每 Inventory 一份的派发对象.
 final class InventoryUpdateChannel {
     private final SparrowInventory inventory; // 拥有本订阅器的 Inventory
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
+
+    private volatile boolean serialPostDispatch;  // 开启后本 Inventory 的 Post 严格按提交顺序串行派发, 后到的提交线程阻塞等待
+    private final Object postGate = new Object(); // 只保护下面两个票号, 不保护任何内容状态
+    private long nextPostTicket;                  // 下一个待签发的票号, 只在提交临界区内自增
+    private long servingPostTicket;               // 正在派发的票号, 只在 postGate 内自增
 
     InventoryUpdateChannel(@NotNull SparrowInventory inventory) {
         this.inventory = inventory;
@@ -62,6 +68,51 @@ final class InventoryUpdateChannel {
         if (preRecipients.isEmpty() && postRecipients.isEmpty()) {
             return null;
         }
-        return new TransactionNotification(this.inventory, reason, preRecipients, postRecipients);
+        return new TransactionNotification(this, reason, preRecipients, postRecipients);
+    }
+
+    // 在提交临界区里领一个票号, 领到的先后就是提交的先后; 没开串行派发时返回 -1.
+    long takePostTicket() {
+        // 能开串行派发的只有 VirtualInventory, 它提交时必然持着自己的写锁, 所以 nextPostTicket 自增不必再加同步
+        if (!this.serialPostDispatch) return -1L;
+        return this.nextPostTicket++;
+    }
+
+    // 阻塞到自己的票号被叫到. 这里故意不响应中断: 半路溜走会让排在后面的票永远等不到放行.
+    void awaitPostTurn(long ticket) {
+        boolean interrupted = false;
+        synchronized (this.postGate) {
+            while (this.servingPostTicket != ticket) {
+                try {
+                    this.postGate.wait();
+                } catch (InterruptedException exception) {
+                    interrupted = true;
+                }
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // 叫下一个票号. 必须与 awaitPostTurn 在同一个 finally 里配对, 漏掉一次, 本 Inventory 之后的提交线程就全卡死了.
+    void releasePostTurn() {
+        synchronized (this.postGate) {
+            this.servingPostTicket++;
+            this.postGate.notifyAll();
+        }
+    }
+
+    boolean serialPostDispatch() {
+        return this.serialPostDispatch;
+    }
+
+    void serialPostDispatch(boolean serialPostDispatch) {
+        this.serialPostDispatch = serialPostDispatch;
+    }
+
+    @NotNull
+    SparrowInventory inventory() {
+        return this.inventory;
     }
 }
