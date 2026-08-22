@@ -59,29 +59,6 @@ public record ItemDragClick(
     }
 
     /**
-     * 读取本格最近一次推给客户端的显示内容.
-     * <p>惰性读取, 每次调用返回一份新副本. 在处理器内调用读到的是手势发生时玩家看到的内容;
-     * 把本对象存下来跨 tick 再读会读到之后的渲染结果.
-     *
-     * @return 本格显示内容的副本, 没有内容时为空物品
-     */
-    @NotNull
-    public ItemStack displayed() {
-        return this.window.displayedAt(this.windowSlot);
-    }
-
-    /**
-     * 读取手势经过的任意一格最近一次推给客户端的显示内容.
-     *
-     * @param windowSlot 要读取的 Window 槽位
-     * @return 该格显示内容的副本, 没有内容时为空物品
-     */
-    @NotNull
-    public ItemStack displayedAt(int windowSlot) {
-        return this.window.displayedAt(windowSlot);
-    }
-
-    /**
      * 手势经过的一个 Window 槽位.
      *
      * @param windowSlot 该站的 Window 槽位
