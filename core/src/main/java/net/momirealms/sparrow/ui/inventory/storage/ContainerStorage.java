@@ -45,7 +45,8 @@ abstract class ContainerStorage implements ExternalStorage {
     }
 
     // 这一刻该读写的 NMS 容器, 每次访问都问一遍, 因为玩家背包那种会被换掉.
-    @NotNull
+    // 容器住在世界里, 世界放手之后本存储也跟着放手, 那之后问出来的是 null, 读到空, 写入丢弃.
+    @Nullable
     abstract Object container();
 
     @Override
@@ -56,7 +57,9 @@ abstract class ContainerStorage implements ExternalStorage {
     @Override
     @Nullable
     public ItemStack read(int slot) {
-        Object handle = ContainerProxy.INSTANCE.getItem(this.container(), slot);
+        Object container = this.container();
+        if (container == null) return null;
+        Object handle = ContainerProxy.INSTANCE.getItem(container, slot);
         // NMS 容器用空物品表示空槽, 这里换成外部存储约定的 null
         if (ItemStackProxy.INSTANCE.isEmpty(handle)) return null;
         return CraftItemStackProxy.INSTANCE.asCraftMirror(handle);
@@ -67,6 +70,7 @@ abstract class ContainerStorage implements ExternalStorage {
     public ItemStack @NotNull [] readAll() {
         Object container = this.container();
         @Nullable ItemStack[] contents = new ItemStack[this.size];
+        if (container == null) return contents;
         for (int slot = 0; slot < contents.length; slot++) {
             Object handle = ContainerProxy.INSTANCE.getItem(container, slot);
             // NMS 容器用空物品表示空槽, 这里换成外部存储约定的 null
@@ -77,24 +81,22 @@ abstract class ContainerStorage implements ExternalStorage {
 
     @Override
     public boolean contentEquals(int slot, @Nullable ItemStack expected) {
-        return ItemUtils.isHandleContentEqual(ContainerProxy.INSTANCE.getItem(this.container(), slot), expected);
+        Object container = this.container();
+        if (container == null) return expected == null;
+        return ItemUtils.isHandleContentEqual(ContainerProxy.INSTANCE.getItem(container, slot), expected);
     }
 
     @Override
     public void write(int slot, @Nullable ItemStack item) {
+        Object container = this.container();
+        if (container == null) return;
         // 传入实例的所有权归存储, 取出它的句柄直接放进容器, 不必再复制一份
         Object handle = item == null ? ItemStackProxy.EMPTY : ItemUtils.getItemStackHandle(item);
-        ContainerProxy.INSTANCE.setItem(this.container(), slot, handle);
+        ContainerProxy.INSTANCE.setItem(container, slot, handle);
     }
 
     @Override
     public int maxStackSize(int slot) {
         return this.maxStackSize;
-    }
-
-    @Override
-    @NotNull
-    public SlotKey keyOf(int slot) {
-        return new SlotKey(this.container(), slot);
     }
 }

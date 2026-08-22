@@ -5,32 +5,39 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.lang.ref.WeakReference;
+import java.util.UUID;
 
 // Bukkit 槽号与 NMS 背包槽号一一对应, 前面是主背包与快捷栏, 后面那几格由 NMS 背包自己换算到装备上.
 final class PlayerContainerStorage extends ContainerStorage {
-    private final HumanEntity owner; // 背包主人, 跨死亡重生稳定
+    private final WeakReference<HumanEntity> owner; // 背包主人, 跨死亡重生稳定
+    private final UUID ownerId;                     // 判等归属, 重生换掉背包对象也不变
 
     PlayerContainerStorage(@NotNull HumanEntity owner, int size) {
         super(size, ContainerProxy.INSTANCE.getMaxStackSize(containerOf(owner)));
-        this.owner = owner;
+        this.owner = new WeakReference<>(owner);
+        this.ownerId = owner.getUniqueId();
     }
 
     @Override
-    @NotNull
+    @Nullable
     Object container() {
-        return containerOf(this.owner);
+        HumanEntity owner = this.owner.get();
+        return owner == null ? null : containerOf(owner);
     }
 
     @Override
     @NotNull
     public SlotKey keyOf(int slot) {
-        // 归属跟着玩家走. 重生换掉的是背包, 用玩家 UUID 当归属才能跨重生判等
-        return new SlotKey(this.owner.getUniqueId(), slot);
+        return new SlotKey(this.ownerId, slot);
     }
 
     @Override
     public boolean alive() {
-        return !(this.owner instanceof Player player) || player.isConnected();
+        HumanEntity owner = this.owner.get();
+        return owner != null && (!(owner instanceof Player player) || player.isConnected());
     }
 
     // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个.

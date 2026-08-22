@@ -56,9 +56,9 @@ enum BukkitInventoryLayout {
                 return null;
             }
             return new SplicedStorage(
-                    new MountEquipmentStorage(CraftInventorySaddledMountProxy.INSTANCE.getSaddleInventory(inventory), mount, SADDLE_SLOT),
-                    new MountEquipmentStorage(CraftInventorySaddledMountProxy.INSTANCE.getArmorInventory(inventory), mount, BODY_ARMOR_SLOT),
-                    ContainerStorage.of(main)
+                    new MountContainerStorage(CraftInventorySaddledMountProxy.INSTANCE.getSaddleInventory(inventory), mount, SADDLE_SLOT),
+                    new MountContainerStorage(CraftInventorySaddledMountProxy.INSTANCE.getArmorInventory(inventory), mount, BODY_ARMOR_SLOT),
+                    new MountContainerStorage(main, mount, MAIN_FIRST_SLOT)
             );
         }
     },
@@ -73,6 +73,7 @@ enum BukkitInventoryLayout {
 
     private static final int SADDLE_SLOT = 0;      // 坐骑背包的鞍位
     private static final int BODY_ARMOR_SLOT = 1;  // 坐骑背包的护甲位
+    private static final int MAIN_FIRST_SLOT = 2;  // 坐骑背包主仓的第一格
     private static final ClassValue<BukkitInventoryLayout> LAYOUTS = new ClassValue<>() {
         @Override
         protected BukkitInventoryLayout computeValue(Class<?> type) {

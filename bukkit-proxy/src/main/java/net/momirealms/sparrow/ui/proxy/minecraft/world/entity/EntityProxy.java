@@ -5,6 +5,8 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
+import java.util.UUID;
+
 @ReflectionProxy(name = "net.minecraft.world.entity.Entity")
 public interface EntityProxy {
     EntityProxy INSTANCE = ASMProxyFactory.create(EntityProxy.class);
@@ -12,4 +14,7 @@ public interface EntityProxy {
 
     @MethodInvoker(name = "isRemoved")
     boolean isRemoved(Object target);
+
+    @MethodInvoker(name = "getUUID")
+    UUID getUUID(Object target);
 }

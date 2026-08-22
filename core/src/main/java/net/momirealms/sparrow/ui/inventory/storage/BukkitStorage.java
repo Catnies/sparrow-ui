@@ -13,6 +13,8 @@ import java.util.function.Function;
 
 /**
  * Bukkit 容器的外部存储适配, 读写直达被引用容器, 自身不持有任何内容状态.
+ * <p>本类是认不出槽位排布时的兜底通道. 那种情况下看不出被引用容器背后是什么, 只好强持有它;
+ * 那个容器背后要是连着世界里的东西, 本存储就会一直牵着那个世界, 得靠 retire 主动放手.
  * <p>存储槽位就是 Bukkit 容器槽位. {@code getContents} 与 {@code getStorageContents}
  * 都是容器槽位的前缀区段, 区段下标与 {@code getItem}/{@code setItem} 的槽位一致.
  */

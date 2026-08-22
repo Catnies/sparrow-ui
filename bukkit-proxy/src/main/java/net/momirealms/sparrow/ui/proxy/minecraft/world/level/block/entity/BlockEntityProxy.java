@@ -12,4 +12,10 @@ public interface BlockEntityProxy {
 
     @MethodInvoker(name = "isRemoved")
     boolean isRemoved(Object target);
+
+    @MethodInvoker(name = "getLevel")
+    Object getLevel(Object target);
+
+    @MethodInvoker(name = "getBlockPos")
+    Object getBlockPos(Object target);
 }

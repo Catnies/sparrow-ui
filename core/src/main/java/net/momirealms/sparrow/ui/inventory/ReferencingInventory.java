@@ -18,6 +18,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,6 +34,8 @@ import java.util.function.UnaryOperator;
  * <p>外部世界绕过本类直接改存储时, 靠与 lastKnown 逐槽比对发现, 以
  * {@link net.momirealms.sparrow.ui.inventory.event.UpdateReason.External} 的名义补派 post 事件并同步显示.
  * 比对由 Window 每 tick 一次的 {@link #refresh()} 和写入口的写前准备触发, 本类自己不注册调度任务.
+ * <p>引用世界里的容器(方块, 实体)时只弱持有它, 不拦着它随区块卸载或者实体消失被回收, 世界放手之后本 Inventory 退役.
+ * 世界里问不出宿主的容器(例如 Bukkit.createInventory 造的)没有别人持有, 由存储自己钉住, 用不着调用方另外留一份引用.
  */
 public final class ReferencingInventory extends SparrowInventory {
     private static final ExternalStorage RETIRED_STORAGE = new ExternalStorage() {
@@ -63,7 +66,7 @@ public final class ReferencingInventory extends SparrowInventory {
     };
 
     private ExternalStorage storage;                // 内容实际存放的地方, 读写一律以它为准, 退役后换成空壳
-    private @Nullable Inventory referenced;         // 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器或者已退役时为 null
+    private @Nullable WeakReference<Inventory> referenced; // 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器或者已退役时为 null
     private final int[] storageSlots;               // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
     private final SlotKey[] slotKeys;               // 当前 Inventory 槽位 -> 判等身份, 只用来回答是不是同一格, 退役后改成只代表自己
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
@@ -82,7 +85,7 @@ public final class ReferencingInventory extends SparrowInventory {
     ) {
         super(new ItemStack[initialKnown.length]);
         this.storage = storage;
-        this.referenced = referenced;
+        this.referenced = referenced == null ? null : new WeakReference<>(referenced);
         this.storageSlots = storageSlots(slotMapping);
         this.slotKeys = slotKeys(storage, slotMapping);
         this.addOrder = addOrder;
@@ -164,7 +167,7 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Nullable
     public Inventory referencedInventory() {
-        return this.referenced;
+        return this.referenced == null ? null : this.referenced.get();
     }
 
     /**
