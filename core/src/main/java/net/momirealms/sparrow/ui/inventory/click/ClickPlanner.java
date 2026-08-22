@@ -3,6 +3,8 @@ package net.momirealms.sparrow.ui.inventory.click;
 import net.momirealms.sparrow.ui.inventory.InventoryPlanner;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickActions;
+import net.momirealms.sparrow.ui.inventory.click.rules.ClickBundleRules;
+import net.momirealms.sparrow.ui.inventory.click.rules.ClickOutcome;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickSlotRules;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
@@ -24,9 +26,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntPredicate;
 
@@ -96,7 +96,7 @@ final class ClickPlanner {
         InventoryAction action = clickType == ClickType.NUMBER_KEY && (hotbarButton < 0 || hotbarButton > 8)
                 ? InventoryAction.UNKNOWN
                 : actionOf(candidate);
-        return new PreparedClick(true, action, withRealBefore(candidate, overlay));
+        return new PreparedClick(true, action, candidate == null ? null : candidate.withRealBefore(overlay));
     }
 
     @Nullable
@@ -116,7 +116,7 @@ final class ClickPlanner {
         SparrowInventory inventory = link.inventory();
         PlannedRoot plan = openPlan(inventory, write);
         @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
-        ClickSlotRules.Outcome outcome = clickType == ClickType.LEFT
+        ClickOutcome outcome = clickType == ClickType.LEFT
                 ? ClickSlotRules.computeLeftClick(current, cursor, inventory.slotMaxStackSize(link.slot()))
                 : ClickSlotRules.computeRightClick(
                         current,
@@ -157,18 +157,18 @@ final class ClickPlanner {
             ClickType clickType,
             @Nullable ItemStack current,
             ItemStack cursor,
-            ClickSlotRules.Outcome outcome
+            ClickOutcome outcome
     ) {
         if (cursor.isEmpty()) {
             return null;
         }
-        if (clickType == ClickType.LEFT && current != null && ClickActions.isBundle(cursor)) {
+        if (clickType == ClickType.LEFT && current != null && ClickBundleRules.isBundle(cursor)) {
             return null;
         }
-        if (clickType == ClickType.LEFT && ClickActions.isBundle(current)) {
+        if (clickType == ClickType.LEFT && ClickBundleRules.isBundle(current)) {
             return null;
         }
-        if (clickType == ClickType.RIGHT && current == null && ClickActions.isBundle(cursor)) {
+        if (clickType == ClickType.RIGHT && current == null && ClickBundleRules.isBundle(cursor)) {
             return outcome.placementInput();
         }
         return cursor;
@@ -507,162 +507,6 @@ final class ClickPlanner {
         return targets;
     }
 
-    // 把一趟拖拽算成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
-    @Nullable
-    static PreparedDrag prepareDrag(
-            ClickSemantics.Context context,
-            ClickType clickType,
-            List<Integer> windowSlots,
-            InteractionOverlay overlay
-    ) {
-        ItemStack actualCursor = context.cursor();
-        ItemStack cursor = overlay.cursorOr(actualCursor);
-        boolean creative = clickType == ClickType.MIDDLE;
-        if (cursor.isEmpty() || (creative && context.viewer().getGameMode() != GameMode.CREATIVE)) {
-            return null;
-        }
-
-        // 约定: 拖拽只认背后有 Inventory 且未冻结的窗口槽, Item 槽, 空槽和冻结槽直接从候选里剔除.
-        // 因此混合拖拽(一半 Item 槽一半 Inventory 槽)照常派发事件, 但 newItems 只有 Inventory 槽那一半,
-        // 被剔除的槽位在插件视角里凭空消失; 整趟拖拽全落在这些槽上时候选为空, 不派发 Bukkit 事件.
-        // 两者都是预期行为: 引擎接管不了的槽位没有分配结果可以呈现, 也没有事务可以取消.
-        LinkedHashMap<SlotKey, DragLink> candidates = new LinkedHashMap<>();
-        for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {
-            int windowSlot = windowSlots.get(windowIndex);
-            ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-            if (link != null && !context.frozenAt(windowSlot) && !link.inventory().frozen()) {
-                candidates.putIfAbsent(link.physicalKey(), new DragLink(windowSlot, link));
-            }
-        }
-        if (candidates.isEmpty()) {
-            return null;
-        }
-
-        List<ClickSemantics.LinkedSlot> reasonSlots = new ArrayList<>(candidates.size());
-        for (DragLink candidate : candidates.values()) {
-            reasonSlots.add(candidate.link());
-        }
-        UpdateReason reason = new PlayerUpdateReason.Drag(context.viewer(), clickType, reasonSlots);
-        Map<SparrowInventory, PlannedRoot> plans = new LinkedHashMap<>();
-        Map<SparrowInventory, IntPredicate> placements = new LinkedHashMap<>();
-        List<DragTarget> targets = new ArrayList<>(candidates.size());
-        for (DragLink candidate : candidates.values()) {
-            ClickSemantics.LinkedSlot link = candidate.link();
-            SparrowInventory inventory = link.inventory();
-            PlannedRoot plan = plans.computeIfAbsent(inventory, key -> openPlan(key, true));
-            @Nullable ItemStack current = overlay.viewOf(plan)[link.slot()];
-            if (current != null && !ItemUtils.isSimilar(current, cursor)) {
-                continue;
-            }
-            int capacity = effectiveCapacity(link, cursor) - ItemUtils.amountOf(current);
-            if (capacity <= 0) {
-                continue;
-            }
-            IntPredicate placement = placements.computeIfAbsent(
-                    inventory,
-                    key -> key.placementPredicate(cursor)
-            );
-            if (!placement.test(link.slot())) {
-                continue;
-            }
-            targets.add(new DragTarget(candidate.windowSlot(), link, current, capacity));
-        }
-        if (targets.isEmpty()) {
-            return null;
-        }
-
-        // 左键均分, 右键每格一个, 创造模式中键每格塞满且不消耗光标
-        int perSlot = switch (clickType) {
-            case LEFT -> cursor.getAmount() / targets.size();
-            case RIGHT -> 1;
-            default -> cursor.getMaxStackSize();
-        };
-        if (perSlot <= 0) {
-            return null;
-        }
-
-        Map<SparrowInventory, List<SlotChange>> deltasByInventory = new LinkedHashMap<>();
-        LinkedHashMap<Integer, ItemStack> newItems = new LinkedHashMap<>();
-        int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
-        int placedTotal = 0;
-        for (int targetIndex = 0; targetIndex < targets.size() && budget > 0; targetIndex++) {
-            DragTarget target = targets.get(targetIndex);
-            int placed = Math.min(Math.min(perSlot, target.capacity()), budget);
-            if (placed <= 0) {
-                continue;
-            }
-            ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
-            deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
-                    .add(new SlotChange(target.link().slot(), target.current(), after));
-            newItems.put(target.windowSlot(), after.clone());
-            if (!creative) {
-                budget -= placed;
-                placedTotal += placed;
-            }
-        }
-        if (newItems.isEmpty()) {
-            return null;
-        }
-
-        List<TransactionScope> scopes = new ArrayList<>();
-        for (Map.Entry<SparrowInventory, List<SlotChange>> entry : deltasByInventory.entrySet()) {
-            scopes.add(new TransactionScope(plans.get(entry.getKey()), entry.getValue()));
-        }
-        ItemStack newCursor;
-        if (creative) {
-            newCursor = cursor.clone();
-        } else {
-            int left = cursor.getAmount() - placedTotal;
-            newCursor = left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY;
-        }
-        ClickCandidate candidate = ClickCandidate.plan(InventoryAction.NOTHING, reason)
-                .scopes(scopes)
-                .reads(new ArrayList<>(plans.values()))
-                .checkCursor(actualCursor)
-                .requireCreative(creative)
-                .draft(InteractionDraft.cursorAfter(newCursor))
-                .build();
-        return new PreparedDrag(withRealBefore(candidate, overlay), newCursor, Map.copyOf(newItems));
-    }
-
-    // 覆盖层只改变规划期读到的现场, 不改变容器里的真账. 写集记下的 before 因此换回规划基准的真实内容,
-    // 让 Pre, Post 处理器和净变化统计看到这一格实际从什么变成什么, 而不是一份容器从来没有过的账.
-    // 提交只用 after, 并发校验只比对基准数组本身, 所以这一步不影响事务本身的结果.
-    @Nullable
-    private static ClickCandidate withRealBefore(@Nullable ClickCandidate candidate, InteractionOverlay overlay) {
-        if (candidate == null || overlay.isEmpty() || candidate.scopes().isEmpty()) {
-            return candidate;
-        }
-        List<TransactionScope> scopes = candidate.scopes();
-        List<TransactionScope> rewritten = new ArrayList<>(scopes.size());
-        for (int scopeIndex = 0; scopeIndex < scopes.size(); scopeIndex++) {
-            TransactionScope scope = scopes.get(scopeIndex);
-            @Nullable ItemStack[] planned = scope.planned();
-            List<SlotChange> changes = scope.slotChanges();
-            List<SlotChange> restored = new ArrayList<>(changes.size());
-            for (int changeIndex = 0; changeIndex < changes.size(); changeIndex++) {
-                SlotChange change = changes.get(changeIndex);
-                // 只换 before 的来源, after 沿用候选算出的内容.
-                restored.add(new SlotChange(change.slot(), planned[change.slot()], change.unsafeAfter()));
-            }
-            rewritten.add(scope.withSlotChanges(restored));
-        }
-        return new ClickCandidate(
-                candidate.action(),
-                candidate.eventTarget(),
-                candidate.reason(),
-                List.copyOf(rewritten),
-                candidate.plannedRoots(),
-                candidate.expectedCursor(),
-                candidate.checkCursor(),
-                candidate.expectedOffhand(),
-                candidate.checkOffhand(),
-                candidate.requireCreative(),
-                candidate.draft(),
-                candidate.afterCommit()
-        );
-    }
-
     @NotNull
     private static PlannedRoot openPlan(SparrowInventory inventory, boolean write) {
         return write ? inventory.openPlanForWrite() : inventory.openPlan();
@@ -673,38 +517,11 @@ final class ClickPlanner {
         return candidate == null ? InventoryAction.NOTHING : candidate.action();
     }
 
-    private static int effectiveCapacity(ClickSemantics.LinkedSlot link, ItemStack item) {
-        return Math.min(link.inventory().slotMaxStackSize(link.slot()), item.getMaxStackSize());
-    }
-
     // handled 说的是这一格归不归点击语义管, 与算不算得出候选无关, 冻结槽归引擎管却永远没有候选.
     record PreparedClick(
             boolean handled,
             @NotNull InventoryAction action,
             @Nullable ClickCandidate candidate
-    ) {
-    }
-
-    // newCursor 与 newItems 是给 Bukkit 拖拽事件看的最终分配结果, 与 candidate 出自同一次计算.
-    record PreparedDrag(
-            @NotNull ClickCandidate candidate,
-            @NotNull ItemStack newCursor,
-            @NotNull Map<Integer, ItemStack> newItems
-    ) {
-    }
-
-    private record DragLink(
-            int windowSlot,
-            @NotNull ClickSemantics.LinkedSlot link
-    ) {
-    }
-
-    // capacity 是这一格还能再吃下多少件, 已经扣掉了槽里现有的数量.
-    private record DragTarget(
-            int windowSlot,
-            @NotNull ClickSemantics.LinkedSlot link,
-            @Nullable ItemStack current,
-            int capacity
     ) {
     }
 }

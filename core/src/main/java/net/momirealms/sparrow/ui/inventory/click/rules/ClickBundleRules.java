@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.inventory.click.rules;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.tags.ItemTagsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsMutableProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
@@ -17,9 +18,15 @@ import org.jetbrains.annotations.Nullable;
 @ApiStatus.Internal
 public final class ClickBundleRules {
 
+    // 点击语义里所有的收纳袋判定都走这里: 认的是 NMS 物品标签 #minecraft:bundles, 所以彩色收纳袋和数据包扩展同样命中,
+    // 袋内数据仍由下面四条路径按 BUNDLE_CONTENTS 组件读. 空槽空光标必然不是袋子, 先挡掉再解析 NMS, 普通空点击就碰不到代理.
+    public static boolean isBundle(@Nullable ItemStack item) {
+        return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
+    }
+
     // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.
     @Nullable
-    public static ClickSlotRules.Outcome computeInsertionIntoCursorBundle(
+    public static ClickOutcome computeInsertionIntoCursorBundle(
             ItemStack current,
             ItemStack cursor
     ) {
@@ -40,12 +47,12 @@ public final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickSlotRules.Outcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter);
+        return new ClickOutcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter);
     }
 
     // 从光标 Bundle 取出选中整组; 槽位放不下的余量重新插回 Bundle.
     @Nullable
-    public static ClickSlotRules.Outcome computeExtractionFromCursorBundle(
+    public static ClickOutcome computeExtractionFromCursorBundle(
             ItemStack cursor,
             int slotLimit
     ) {
@@ -82,12 +89,12 @@ public final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickSlotRules.Outcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter, taken);
+        return new ClickOutcome(ItemUtils.copyWithAmount(taken, placed), bundleAfter, taken);
     }
 
     // 使用原版 BundleContents 规则把光标物品尽量插入槽位 Bundle.
     @Nullable
-    public static ClickSlotRules.Outcome computeBundleInsertion(
+    public static ClickOutcome computeBundleInsertion(
             ItemStack current,
             ItemStack cursor
     ) {
@@ -108,12 +115,12 @@ public final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickSlotRules.Outcome(bundleAfter, cursorAfter.isEmpty() ? ItemUtils.EMPTY : cursorAfter);
+        return new ClickOutcome(bundleAfter, cursorAfter.isEmpty() ? ItemUtils.EMPTY : cursorAfter);
     }
 
     // 空手右键槽位 Bundle: 取出选中(或第一件)整组物品上光标.
     @Nullable
-    public static ClickSlotRules.Outcome computeBundleTake(
+    public static ClickOutcome computeBundleTake(
             ItemStack current,
             @Nullable ItemStack observedBundle,
             int selectedIndex
@@ -152,6 +159,6 @@ public final class ClickBundleRules {
         if (taken.isEmpty()) {
             return null;
         }
-        return new ClickSlotRules.Outcome(bundleAfter, taken);
+        return new ClickOutcome(bundleAfter, taken);
     }
 }

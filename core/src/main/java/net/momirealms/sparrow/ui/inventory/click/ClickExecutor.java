@@ -101,7 +101,7 @@ final class ClickExecutor {
     ) {
         // 拖拽的分配在派发之前就算好, 事件写的光标是最终值; 只有槽位写入才是需要重新解释的现场.
         InteractionOverlay overlay = InteractionOverlay.forDrag();
-        ClickPlanner.PreparedDrag prepared = ClickPlanner.prepareDrag(context, clickType, windowSlots, overlay);
+        DragPlanner.PreparedDrag prepared = DragPlanner.prepare(context, clickType, windowSlots, overlay);
         if (prepared != null) {
             ClickExecutor executor = new ClickExecutor(
                     context,
@@ -109,7 +109,7 @@ final class ClickExecutor {
                     overlay,
                     () -> {
                         // 重规划后的分配结果可能与 Bukkit 事件看到的 newItems 不同; 事件只派发一次, 不再重发.
-                        ClickPlanner.PreparedDrag replanned = ClickPlanner.prepareDrag(context, clickType, windowSlots, overlay);
+                        DragPlanner.PreparedDrag replanned = DragPlanner.prepare(context, clickType, windowSlots, overlay);
                         return replanned == null ? null : replanned.candidate();
                     },
                     () -> "拖拽 " + clickType + " @ windowSlots " + windowSlots

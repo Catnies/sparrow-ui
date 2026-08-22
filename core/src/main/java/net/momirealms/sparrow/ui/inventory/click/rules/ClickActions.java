@@ -1,7 +1,5 @@
 package net.momirealms.sparrow.ui.inventory.click.rules;
 
-import net.momirealms.sparrow.ui.proxy.minecraft.tags.ItemTagsProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -34,18 +32,18 @@ public final class ClickActions {
     public static InventoryAction leftAction(
             @Nullable ItemStack current,
             ItemStack cursor,
-            ClickSlotRules.Outcome outcome
+            ClickOutcome outcome
     ) {
         if (cursor.isEmpty()) {
             return InventoryAction.PICKUP_ALL;
         }
         // 收纳袋在两个方向上都有专属操作: 光标是袋子表示把槽里的东西收进去, 槽里是袋子表示把光标塞进去.
-        if (current != null && isBundle(cursor)) {
+        if (current != null && ClickBundleRules.isBundle(cursor)) {
             return outcome.slotAfter() == null
                     ? InventoryAction.PICKUP_ALL_INTO_BUNDLE
                     : InventoryAction.PICKUP_SOME_INTO_BUNDLE;
         }
-        if (isBundle(current)) {
+        if (ClickBundleRules.isBundle(current)) {
             return outcome.cursorAfter().isEmpty()
                     ? InventoryAction.PLACE_ALL_INTO_BUNDLE
                     : InventoryAction.PLACE_SOME_INTO_BUNDLE;
@@ -68,10 +66,10 @@ public final class ClickActions {
     @NotNull
     public static InventoryAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
         // 收纳袋右键是逐件进出, 与左键的整袋收纳区分开; 袋子对袋子仍然只是交换.
-        if (current == null && isBundle(cursor)) {
+        if (current == null && ClickBundleRules.isBundle(cursor)) {
             return InventoryAction.PLACE_FROM_BUNDLE;
         }
-        if (isBundle(current)) {
+        if (ClickBundleRules.isBundle(current)) {
             return cursor.isEmpty() ? InventoryAction.PICKUP_FROM_BUNDLE : InventoryAction.SWAP_WITH_CURSOR;
         }
         if (cursor.isEmpty()) {
@@ -80,11 +78,5 @@ public final class ClickActions {
         return current == null || ItemUtils.isSimilar(current, cursor)
                 ? InventoryAction.PLACE_ONE
                 : InventoryAction.SWAP_WITH_CURSOR;
-    }
-
-    // 点击语义里所有的收纳袋判定都走这里: 认的是 NMS 物品标签 #minecraft:bundles, 所以彩色收纳袋和数据包扩展同样命中,
-    // 袋内数据仍由深层分支按 BUNDLE_CONTENTS 组件读. 空槽空光标必然不是袋子, 先挡掉再解析 NMS, 普通空点击就碰不到代理.
-    public static boolean isBundle(@Nullable ItemStack item) {
-        return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
     }
 }

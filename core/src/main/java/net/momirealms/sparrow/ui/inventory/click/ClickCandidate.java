@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
 import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
@@ -11,6 +12,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -51,6 +53,43 @@ record ClickCandidate(
     @NotNull
     static Builder plan(@NotNull InventoryAction action, @NotNull UpdateReason reason) {
         return new Builder(action, reason);
+    }
+
+    // 把写集里记的 before 换回规划基准的真实内容. 覆盖层只改变规划期读到的现场, 不改变容器里的真账,
+    // 换回来才能让 Pre, Post 处理器和净变化统计看到这一格实际从什么变成什么, 而不是一份容器从来没有过的账.
+    // 提交只用 after, 并发校验只比对基准数组本身, 所以这一步不影响事务本身的结果.
+    @NotNull
+    ClickCandidate withRealBefore(@NotNull InteractionOverlay overlay) {
+        if (overlay.isEmpty() || this.scopes.isEmpty()) {
+            return this;
+        }
+        List<TransactionScope> rewritten = new ArrayList<>(this.scopes.size());
+        for (int scopeIndex = 0; scopeIndex < this.scopes.size(); scopeIndex++) {
+            TransactionScope scope = this.scopes.get(scopeIndex);
+            @Nullable ItemStack[] planned = scope.planned();
+            List<SlotChange> changes = scope.slotChanges();
+            List<SlotChange> restored = new ArrayList<>(changes.size());
+            for (int changeIndex = 0; changeIndex < changes.size(); changeIndex++) {
+                SlotChange change = changes.get(changeIndex);
+                // 只换 before 的来源, after 沿用候选算出的内容.
+                restored.add(new SlotChange(change.slot(), planned[change.slot()], change.unsafeAfter()));
+            }
+            rewritten.add(scope.withSlotChanges(restored));
+        }
+        return new ClickCandidate(
+                this.action,
+                this.eventTarget,
+                this.reason,
+                List.copyOf(rewritten),
+                this.plannedRoots,
+                this.expectedCursor,
+                this.checkCursor,
+                this.expectedOffhand,
+                this.checkOffhand,
+                this.requireCreative,
+                this.draft,
+                this.afterCommit
+        );
     }
 
     // 先把外部容器的变更同步进各规划基准, 再复核候选是否仍然成立.
@@ -118,7 +157,6 @@ record ClickCandidate(
             this.reason = reason;
         }
 
-        // 派发 Sparrow 点击事件的目标槽位.
         @NotNull
         Builder scopes(@NotNull List<TransactionScope> scopes) {
             this.scopes = scopes;
