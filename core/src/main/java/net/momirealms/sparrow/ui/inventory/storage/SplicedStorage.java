@@ -45,6 +45,12 @@ final class SplicedStorage implements ExternalStorage {
     }
 
     @Override
+    public boolean contentEquals(int slot, @Nullable ItemStack expected) {
+        int part = this.partOf(slot);
+        return this.parts[part].contentEquals(slot - this.offsets[part], expected);
+    }
+
+    @Override
     public void write(int slot, @Nullable ItemStack item) {
         int part = this.partOf(slot);
         this.parts[part].write(slot - this.offsets[part], item);

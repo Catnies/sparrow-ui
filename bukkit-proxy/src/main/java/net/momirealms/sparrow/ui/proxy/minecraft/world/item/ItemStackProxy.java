@@ -51,6 +51,9 @@ public interface ItemStackProxy {
     @MethodInvoker(name = "is")
     boolean is(Object target, @Type(name = "net.minecraft.tags.TagKey") Object tag);
 
+    @MethodInvoker(name = "isEmpty")
+    boolean isEmpty(Object target);
+
     @MethodInvoker(name = "matches", isStatic = true)
     boolean matches(@Type(name = "net.minecraft.world.item.ItemStack") Object a, @Type(name = "net.minecraft.world.item.ItemStack") Object b);
 

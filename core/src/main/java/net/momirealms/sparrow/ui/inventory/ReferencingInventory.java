@@ -311,7 +311,7 @@ public final class ReferencingInventory extends SparrowInventory {
             SlotChange delta = deltas.get(i);
             int storageSlot = this.storageSlots[delta.slot()];
             // 现值已经和要写的内容相等就别动它, 等值覆盖会作废外部还拿着的那个引用
-            if (!ItemUtils.isContentEqual(this.storage.read(storageSlot), delta.unsafeAfter())) {
+            if (!this.storage.contentEquals(storageSlot, delta.unsafeAfter())) {
                 this.storage.write(storageSlot, delta.after());
             }
             this.lastKnown[delta.slot()] = delta.after();
@@ -322,18 +322,19 @@ public final class ReferencingInventory extends SparrowInventory {
     // 存储内容和 lastKnown 逐槽比一遍, 对不上的就认下来并以 External 原因补派 post 事件; 只记账不回写, 存储里的实例原样不动.
     private void reconcileFromStorage() {
         if (this.retired) return;
-        // 比较阶段直接用存储读出来的引用. 绝大多数 tick 没有外部变更, 只有对不上的那一格才由 SlotChange 复制
-        @Nullable ItemStack[] raw = this.storage.readAll();
+        // 比对交给存储自己做. 绝大多数 tick 一格都没变, 这一趟因此不为比对分配任何东西;
+        // 只有对不上的那一格才去读现值, 由 SlotChange 记下前后两版
         @Nullable List<SlotChange> deltas = null;
         for (int slot = 0; slot < this.lastKnown.length; slot++) {
-            @Nullable ItemStack liveItem = raw[this.storageSlots[slot]];
+            int storageSlot = this.storageSlots[slot];
             @Nullable ItemStack knownItem = this.lastKnown[slot];
-            if (!ItemUtils.isContentEqual(liveItem, knownItem)) {
-                if (deltas == null) {
-                    deltas = new ArrayList<>();
-                }
-                deltas.add(new SlotChange(slot, knownItem, liveItem));
+            if (this.storage.contentEquals(storageSlot, knownItem)) {
+                continue;
             }
+            if (deltas == null) {
+                deltas = new ArrayList<>();
+            }
+            deltas.add(new SlotChange(slot, knownItem, ItemUtils.nullIfEmpty(this.storage.read(storageSlot))));
         }
         if (deltas == null) {
             return;
@@ -347,7 +348,7 @@ public final class ReferencingInventory extends SparrowInventory {
         }
         this.modCount++;
         TransactionResult result = InventoryTransactions.commitExternalSync(
-                new TransactionScope(new Live(this, this.mapView(raw), this.modCount), deltas)
+                new TransactionScope(new Live(this, this.readView(), this.modCount), deltas)
         );
         // 调用方既然保证了串行访问, 这里就不该冲突; 真冲突了说明调用边界已经被破坏, 交给异常处理器上报
         if (!(result instanceof TransactionResult.Committed)) {

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -66,6 +67,20 @@ public interface ExternalStorage {
      * @param item 新内容, 清空槽位为 {@code null}
      */
     void write(int slot, @Nullable ItemStack item);
+
+    /**
+     * 判断槽位现值与给定内容是不是同一份东西.
+     * <p>引擎每 tick 都靠它逐槽比对来发现外部改动, 因此实现不应当为比对本身分配对象.
+     * 默认实现先 {@link #read(int)} 再比; 内容另有更贴近底层的表示时应当覆写, 直接在那一层比,
+     * 免得为了比一下就把每一格都包装成 Bukkit 物品.
+     *
+     * @param slot 存储槽位
+     * @param expected 期望的内容, {@code null} 表示期望空槽
+     * @return 相同时返回 true
+     */
+    default boolean contentEquals(int slot, @Nullable ItemStack expected) {
+        return ItemUtils.isContentEqual(this.read(slot), expected);
+    }
 
     /**
      * 槽位自身的堆叠上限, 不含物品自带的堆叠上限.
