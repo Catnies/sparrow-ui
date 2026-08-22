@@ -32,7 +32,7 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * {@link VirtualInventory} 的包内字节编解码实现.
+ * {@link VirtualInventory} 的字节编解码实现.
  * <p>此类不缓存任何反射代理或注册表对象, 只有真正调用编解码方法时才会解析代理.
  *
  * <h2>字节布局</h2>

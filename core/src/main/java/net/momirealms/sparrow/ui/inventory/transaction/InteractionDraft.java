@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.transaction;
 
+import net.momirealms.sparrow.ui.inventory.click.ClickSemantics;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -32,13 +33,15 @@ public final class InteractionDraft {
 
     // 一份什么都不改的空草稿.
     @NotNull
-    static InteractionDraft empty() {
+    @ApiStatus.Internal
+    public static InteractionDraft empty() {
         return new InteractionDraft();
     }
 
     // 只覆盖光标的草稿.
     @NotNull
-    static InteractionDraft cursorAfter(@NotNull ItemStack cursor) {
+    @ApiStatus.Internal
+    public static InteractionDraft cursorAfter(@NotNull ItemStack cursor) {
         InteractionDraft draft = new InteractionDraft();
         draft.cursor(cursor);
         return draft;
@@ -46,7 +49,8 @@ public final class InteractionDraft {
 
     // 只覆盖副手的草稿, offhand 为 null 表示清空副手.
     @NotNull
-    static InteractionDraft offhandAfter(@Nullable ItemStack offhand) {
+    @ApiStatus.Internal
+    public static InteractionDraft offhandAfter(@Nullable ItemStack offhand) {
         InteractionDraft draft = new InteractionDraft();
         draft.offhand(offhand);
         return draft;
@@ -54,7 +58,8 @@ public final class InteractionDraft {
 
     // 只记一件掉落物的草稿.
     @NotNull
-    static InteractionDraft dropped(@NotNull ItemStack item) {
+    @ApiStatus.Internal
+    public static InteractionDraft dropped(@NotNull ItemStack item) {
         InteractionDraft draft = new InteractionDraft();
         draft.drop(item);
         return draft;

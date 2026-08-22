@@ -1,10 +1,12 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.transaction;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,7 +16,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 // 一个 Inventory 的事务订阅器, 每个 Inventory 至多一个. 事务只按写集里属于本 Inventory 的那一组变更派发.
 // Post 的串行叫号也归它, 那个顺序是"每个 Inventory 一条"的事, 而这里正是每 Inventory 一份的派发对象.
-final class InventoryUpdateChannel {
+@ApiStatus.Internal
+public final class InventoryUpdateChannel {
     private final SparrowInventory inventory; // 拥有本订阅器的 Inventory
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
     private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
@@ -24,19 +27,19 @@ final class InventoryUpdateChannel {
     private long nextPostTicket;                  // 下一个待签发的票号, 只在提交临界区内自增
     private long servingPostTicket;               // 正在派发的票号, 只在 postGate 内自增
 
-    InventoryUpdateChannel(@NotNull SparrowInventory inventory) {
+    public InventoryUpdateChannel(@NotNull SparrowInventory inventory) {
         this.inventory = inventory;
     }
 
     // 添加一个 PreUpdate 处理器.
     @NotNull
-    Subscription subscribePre(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
+    public Subscription subscribePre(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
         return this.subscribe(this.preSubscribers, observer);
     }
 
     // 添加一个 PostUpdate 处理器.
     @NotNull
-    Subscription subscribePost(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
+    public Subscription subscribePost(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
         return this.subscribe(this.postSubscribers, observer);
     }
 
@@ -103,11 +106,11 @@ final class InventoryUpdateChannel {
         }
     }
 
-    boolean serialPostDispatch() {
+    public boolean serialPostDispatch() {
         return this.serialPostDispatch;
     }
 
-    void serialPostDispatch(boolean serialPostDispatch) {
+    public void serialPostDispatch(boolean serialPostDispatch) {
         this.serialPostDispatch = serialPostDispatch;
     }
 

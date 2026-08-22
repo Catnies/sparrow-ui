@@ -5,16 +5,22 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
-import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
+import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.AddResult;
 import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
+import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
+import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
+import net.momirealms.sparrow.ui.inventory.transaction.InventoryTransactions;
+import net.momirealms.sparrow.ui.inventory.transaction.InventoryUpdateChannel;
+import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
@@ -205,7 +211,8 @@ public abstract class SparrowInventory {
 
     // 把当前两层放入规则定格成一个槽位过滤器, item 零拷贝跨槽复用同一个实例.
     @NotNull
-    IntPredicate placementPredicate(@NotNull ItemStack item) {
+    @ApiStatus.Internal
+    public IntPredicate placementPredicate(@NotNull ItemStack item) {
         // 先抓住两层规则的当前版本, 规划途中有人换规则也不会让前后槽位用上不同标准
         @Nullable Predicate<ItemStack> placementRule = this.placementRule;
         @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
@@ -1085,7 +1092,8 @@ public abstract class SparrowInventory {
     }
 
     // 写入口读取规划内容之前的钩子, ReferencingInventory 在这里同步外部内容; simulate 这类纯读路径不经过.
-    void prepareWrite() {
+    @ApiStatus.Internal
+    public void prepareWrite() {
     }
 
     /**
@@ -1113,7 +1121,8 @@ public abstract class SparrowInventory {
     }
 
     // 无人监听时派发方可以省下构造事件的开销.
-    boolean hasClickObservers() {
+    @ApiStatus.Internal
+    public boolean hasClickObservers() {
         return this.clickEvents.subscriptionCount() != 0;
     }
 
@@ -1129,7 +1138,8 @@ public abstract class SparrowInventory {
         return this.clickEvents.subscribe(observer);
     }
 
-    void publishClick(@NotNull SparrowInventoryClickEvent event) {
+    @ApiStatus.Internal
+    public void publishClick(@NotNull SparrowInventoryClickEvent event) {
         this.clickEvents.publish(event);
     }
 
@@ -1144,7 +1154,8 @@ public abstract class SparrowInventory {
         return this.bundleSelectEvents.subscribe(observer);
     }
 
-    void publishBundleSelect(@NotNull InventoryBundleSelectEvent event) {
+    @ApiStatus.Internal
+    public void publishBundleSelect(@NotNull InventoryBundleSelectEvent event) {
         this.bundleSelectEvents.publish(event);
     }
 
@@ -1244,7 +1255,8 @@ public abstract class SparrowInventory {
 
     // 事务引擎凭它找出本笔事务要通知谁, 从未订阅过的 Inventory 不值得为它建一个空通道, 所以只看不建.
     @Nullable
-    InventoryUpdateChannel updateChannelIfPresent() {
+    @ApiStatus.Internal
+    public InventoryUpdateChannel updateChannelIfPresent() {
         return this.updateChannel;
     }
 

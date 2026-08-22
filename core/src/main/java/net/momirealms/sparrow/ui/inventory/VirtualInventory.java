@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.exception.InventoryDecodeException;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
+import net.momirealms.sparrow.ui.inventory.transaction.InventoryUpdateChannel;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

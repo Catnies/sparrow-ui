@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import org.bukkit.entity.HumanEntity;
@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -16,7 +17,8 @@ import java.util.function.Function;
  * <p>存储槽位就是 Bukkit 容器槽位: {@code getContents} 与 {@code getStorageContents}
  * 都是容器槽位的前缀区段, 区段下标与 {@code getItem}/{@code setItem} 的槽位一致.
  */
-final class BukkitStorage implements ExternalStorage {
+@ApiStatus.Internal
+public final class BukkitStorage implements ExternalStorage {
     private final Inventory bukkitInventory;                                 // 被引用的 Bukkit 容器
     private final Function<Inventory, @Nullable ItemStack[]> contentsGetter; // 读取被引用区段(getContents / getStorageContents)
     private final int size;                  // 被引用区段的槽位数量, 构造时取样
@@ -38,7 +40,7 @@ final class BukkitStorage implements ExternalStorage {
     // 给一个 Bukkit Inventory 挑一种外部存储实现. 能走 NMS 的前提是被引用区段的槽号与 NMS 槽号一一对应,
     // 背后压根不是 NMS 实现的回退到本类的 Bukkit 通道.
     @NotNull
-    static ExternalStorage of(
+    public static ExternalStorage of(
             @NotNull Inventory inventory,
             @NotNull Function<Inventory, @Nullable ItemStack[]> contentsGetter
     ) {

@@ -1,8 +1,11 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.transaction;
 
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.InventoryChange;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
+import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -17,13 +20,14 @@ import java.util.Objects;
 // 处理器可以改已参与 Inventory 的任意槽位, 也可以纳入新的 Inventory, 但不许移除或换位已参与的那些 ——
 // 提交阶段就靠这个顺序区分原有参与者和新纳入者. 已参与者的规划内容自事务开始就锁定, 提交时还要拿它判断
 // 期间有没有别人插队; 新纳入者则以纳入那一刻的内容为基准.
-final class TransactionDraft {
+@ApiStatus.Internal
+public final class TransactionDraft {
     private List<TransactionScope> scopes;         // 按 Inventory 分组的当前待提交内容, 每一条自带该 Inventory 的规划基准
     // Pre 期间新纳入的 Inventory 的规划基准. 同一笔事务内只发一次, 保证事件与提交阶段用的是同一份.
     private final IdentityHashMap<SparrowInventory, PlannedRoot> includedRoots = new IdentityHashMap<>();
 
     // 草稿要在闸门跑用户代码之前就建好, 校验因此跟着一起前移: 形状非法的事务在任何监听器动手之前就被拒, 不让它们白忙一场.
-    TransactionDraft(@NotNull List<TransactionScope> scopes) {
+    public TransactionDraft(@NotNull List<TransactionScope> scopes) {
         this.scopes = validate(scopes);
     }
 
@@ -34,7 +38,7 @@ final class TransactionDraft {
     // 给规划期算不出写集的交互用的空草稿, 闸门的写入先攒进来. 空写集没有形状可校验, 所以这里不走 validate,
     // 第一次 setAfter 之后的每次改写照常校验.
     @NotNull
-    static TransactionDraft empty() {
+    public static TransactionDraft empty() {
         return new TransactionDraft();
     }
 
@@ -71,7 +75,7 @@ final class TransactionDraft {
     // 在事务开始之前直接改写某个槽位的候选最终值, 给交互闸门(Bukkit 与 Sparrow 事件)用: 它们跑在事务之外,
     // 写入立即生效, 没有 Pre 处理器那种"抛异常就整组丢弃"的分组语义. 也不过槽级放入规则 —— 放入规则是拦外部放入的,
     // 监听器本身就是决定内容的那一方.
-    void setAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
+    public void setAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
         int rootIndex = this.indexOf(inventory);
         if (rootIndex < 0) {
             // 还没进事务, 这里刷新引用容器不会重入事件系统, 于是新纳入者的基准可以反映外部容器的当前内容

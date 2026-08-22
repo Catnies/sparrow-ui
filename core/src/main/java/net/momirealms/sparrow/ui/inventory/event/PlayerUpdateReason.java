@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
-import net.momirealms.sparrow.ui.inventory.ClickSemantics;
+import net.momirealms.sparrow.ui.inventory.click.ClickSemantics;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.jetbrains.annotations.NotNull;

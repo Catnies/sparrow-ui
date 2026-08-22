@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.storage;
 
 import org.jetbrains.annotations.NotNull;
 

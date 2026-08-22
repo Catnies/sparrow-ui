@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
-import net.momirealms.sparrow.ui.inventory.InteractionEdits;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;

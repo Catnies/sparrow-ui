@@ -4,6 +4,12 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
+import net.momirealms.sparrow.ui.inventory.storage.BukkitStorage;
+import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
+import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
+import net.momirealms.sparrow.ui.inventory.transaction.InventoryTransactions;
+import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -250,7 +256,8 @@ public final class ReferencingInventory extends SparrowInventory {
 
     // 写之前先确认存储还在, 再比对一次把积压的外部变更派发出去, 接下来的规划才是基于最新内容算的.
     @Override
-    void prepareWrite() {
+    @ApiStatus.Internal
+    public void prepareWrite() {
         this.refresh();
     }
 

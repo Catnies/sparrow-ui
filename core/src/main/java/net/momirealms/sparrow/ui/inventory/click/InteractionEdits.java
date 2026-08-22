@@ -1,6 +1,10 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
+import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionDraft;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;

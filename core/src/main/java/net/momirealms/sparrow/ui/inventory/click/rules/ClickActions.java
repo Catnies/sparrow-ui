@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click.rules;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.tags.ItemTagsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
@@ -6,14 +6,16 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-final class ClickActions {
+@ApiStatus.Internal
+public final class ClickActions {
 
     // 点到窗口外: 手上没东西就什么也不会发生, 有东西则按左右键决定丢整堆还是丢一个.
     @NotNull
-    static InventoryAction outsideAction(ItemStack cursor, ClickType clickType) {
+    public static InventoryAction outsideAction(ItemStack cursor, ClickType clickType) {
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
             return InventoryAction.UNKNOWN;
         }
@@ -29,7 +31,7 @@ final class ClickActions {
 
     // 左键点击某个槽位的操作. 具体是"放下全部"还是"放下一部分"取决于实际结果, 因此要看规则算出的 outcome.
     @NotNull
-    static InventoryAction leftAction(
+    public static InventoryAction leftAction(
             @Nullable ItemStack current,
             ItemStack cursor,
             ClickSlotRules.Outcome outcome
@@ -64,7 +66,7 @@ final class ClickActions {
 
     // 右键点击某个槽位的操作. 右键的结果形状固定(取一半, 放一个, 交换), 不需要看规则算出的 outcome.
     @NotNull
-    static InventoryAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
+    public static InventoryAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
         // 收纳袋右键是逐件进出, 与左键的整袋收纳区分开; 袋子对袋子仍然只是交换.
         if (current == null && isBundle(cursor)) {
             return InventoryAction.PLACE_FROM_BUNDLE;
@@ -82,7 +84,7 @@ final class ClickActions {
 
     // 点击语义里所有的收纳袋判定都走这里: 认的是 NMS 物品标签 #minecraft:bundles, 所以彩色收纳袋和数据包扩展同样命中,
     // 袋内数据仍由深层分支按 BUNDLE_CONTENTS 组件读. 空槽空光标必然不是袋子, 先挡掉再解析 NMS, 普通空点击就碰不到代理.
-    static boolean isBundle(@Nullable ItemStack item) {
+    public static boolean isBundle(@Nullable ItemStack item) {
         return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
     }
 }

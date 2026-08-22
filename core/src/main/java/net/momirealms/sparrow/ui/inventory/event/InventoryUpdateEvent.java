@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
-import net.momirealms.sparrow.ui.inventory.TransactionScope;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;

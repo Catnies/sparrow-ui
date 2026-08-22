@@ -1,9 +1,17 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.InventoryPlanner;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.inventory.click.rules.ClickActions;
+import net.momirealms.sparrow.ui.inventory.click.rules.ClickSlotRules;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
+import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
+import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
+import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
 import org.bukkit.event.inventory.ClickType;

@@ -1,19 +1,21 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click.rules;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 // 单槽点击的槽位数学: 拿起, 放置, 劈半, 合并与整堆交换;
-final class ClickSlotRules {
+@ApiStatus.Internal
+public final class ClickSlotRules {
 
     private ClickSlotRules() {
     }
 
     // 算出左键点击后槽位与光标各自的新内容.
     @Nullable
-    static Outcome computeLeftClick(
+    public static Outcome computeLeftClick(
             @Nullable ItemStack current,
             ItemStack cursor,
             int slotLimit
@@ -48,7 +50,7 @@ final class ClickSlotRules {
 
     // 算出带 Window 本地 Bundle 选择状态的右键结果.
     @Nullable
-    static Outcome computeRightClick(
+    public static Outcome computeRightClick(
             @Nullable ItemStack current,
             ItemStack cursor,
             int slotLimit,
@@ -90,7 +92,7 @@ final class ClickSlotRules {
 
     // 算出两边物品不同时的整堆交换.
     @Nullable
-    static Outcome computeSwap(
+    public static Outcome computeSwap(
             ItemStack current,
             ItemStack cursor,
             int slotLimit
@@ -103,7 +105,7 @@ final class ClickSlotRules {
     }
 
     // 计算槽位对这个物品真正生效的堆叠上限: 槽位上限与物品自身上限取小.
-    static int effectiveLimit(int slotLimit, ItemStack item) {
+    public static int effectiveLimit(int slotLimit, ItemStack item) {
         return Math.min(slotLimit, item.getMaxStackSize());
     }
 
@@ -115,7 +117,7 @@ final class ClickSlotRules {
 
     // 槽位与光标的点击结果. placementInput 是这次真正被放进槽位的物品, 只有从收纳袋里掏东西时才与
     // 光标本身不同: 光标拿着袋子, 落进槽位的却是袋子里的某一件, 槽级放入规则要检查的是后者.
-    record Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter, @Nullable ItemStack placementInput) {
+    public record Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter, @Nullable ItemStack placementInput) {
 
         // 放入物就是光标本身的常规结果, 由调用方自己从光标取值.
         Outcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter) {

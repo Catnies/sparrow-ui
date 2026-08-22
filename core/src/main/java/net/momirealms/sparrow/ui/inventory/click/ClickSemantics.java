@@ -1,8 +1,10 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click;
 
-import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
+import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
+import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;

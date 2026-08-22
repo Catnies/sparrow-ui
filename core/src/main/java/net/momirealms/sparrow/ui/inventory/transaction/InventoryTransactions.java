@@ -1,9 +1,12 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.transaction;
 
+import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.inventory.TransactionResult;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,7 +22,8 @@ import java.util.function.LongSupplier;
 // Inventory 事务引擎.
 // 一笔事务大致分为4个部分: plan (规划内容上算好每个槽改成什么)) -> pre (预处理器) -> commit(核对每条规划基准) -> post (后处理器)
 // 涉及多个 Inventory 时按锁凭证的固定序号逐把加锁, 多线程同时跑跨 Inventory 事务也不会死锁, 不加锁的那一种靠调用方串行访问.
-final class InventoryTransactions {
+@ApiStatus.Internal
+public final class InventoryTransactions {
     private static final VersionSource VERSION_SOURCE = new VersionSource(System::currentTimeMillis); // 成功事务的全局逻辑版本源
     private static final ThreadLocal<ArrayDeque<Runnable>> POST_DISPATCH = new ThreadLocal<>(); // 当前线程等待派发的 Post 批次
 
@@ -38,7 +42,7 @@ final class InventoryTransactions {
      * @throws Error 当提交后处理失败时; 此时 Sparrow 内部状态已经提交, 异常不表示零变更
      */
     @NotNull
-    static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<TransactionScope> scopes, boolean bypassPre) {
+    public static TransactionResult commit(@NotNull UpdateReason reason, @NotNull List<TransactionScope> scopes, boolean bypassPre) {
         return commit(reason, new TransactionDraft(scopes), null, bypassPre, null, List.of(), () -> true);
     }
 
@@ -65,7 +69,7 @@ final class InventoryTransactions {
      * @return 事务结果; 只要不是 Committed, 所有参与 Inventory 都保持原样
      */
     @NotNull
-    static TransactionResult commit(
+    public static TransactionResult commit(
             @NotNull UpdateReason reason,
             @NotNull TransactionDraft draft,
             @Nullable InteractionDraft interaction,
@@ -86,7 +90,7 @@ final class InventoryTransactions {
      * @return 事务结果; 只要不是 Committed, 参与的 Inventory 就保持原样
      */
     @NotNull
-    static TransactionResult commitExternalSync(@NotNull TransactionScope scope) {
+    public static TransactionResult commitExternalSync(@NotNull TransactionScope scope) {
         return new Commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false).run();
     }
 

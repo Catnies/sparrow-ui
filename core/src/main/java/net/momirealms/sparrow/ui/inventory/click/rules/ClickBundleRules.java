@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click.rules;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
@@ -9,15 +9,17 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleCont
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
 // 收纳袋的点击规则, 四条路径一律交给 NMS BundleContents 代理按原版组件规则算.
 // 纯槽位数学计算在 ClickSlotRules, 这里只放非碰组件不可的部分.
-final class ClickBundleRules {
+@ApiStatus.Internal
+public final class ClickBundleRules {
 
     // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.
     @Nullable
-    static ClickSlotRules.Outcome computeInsertionIntoCursorBundle(
+    public static ClickSlotRules.Outcome computeInsertionIntoCursorBundle(
             ItemStack current,
             ItemStack cursor
     ) {
@@ -43,7 +45,7 @@ final class ClickBundleRules {
 
     // 从光标 Bundle 取出选中整组; 槽位放不下的余量重新插回 Bundle.
     @Nullable
-    static ClickSlotRules.Outcome computeExtractionFromCursorBundle(
+    public static ClickSlotRules.Outcome computeExtractionFromCursorBundle(
             ItemStack cursor,
             int slotLimit
     ) {
@@ -85,7 +87,7 @@ final class ClickBundleRules {
 
     // 使用原版 BundleContents 规则把光标物品尽量插入槽位 Bundle.
     @Nullable
-    static ClickSlotRules.Outcome computeBundleInsertion(
+    public static ClickSlotRules.Outcome computeBundleInsertion(
             ItemStack current,
             ItemStack cursor
     ) {
@@ -111,7 +113,7 @@ final class ClickBundleRules {
 
     // 空手右键槽位 Bundle: 取出选中(或第一件)整组物品上光标.
     @Nullable
-    static ClickSlotRules.Outcome computeBundleTake(
+    public static ClickSlotRules.Outcome computeBundleTake(
             ItemStack current,
             @Nullable ItemStack observedBundle,
             int selectedIndex

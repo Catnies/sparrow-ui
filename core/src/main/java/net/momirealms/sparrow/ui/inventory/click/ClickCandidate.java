@@ -1,6 +1,9 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.click;
 
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
+import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
+import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
 import org.bukkit.event.inventory.InventoryAction;

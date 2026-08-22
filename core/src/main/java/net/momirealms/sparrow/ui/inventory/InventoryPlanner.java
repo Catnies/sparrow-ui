@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,7 +15,8 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
 // 批量与单槽操作的规划算法, 槽位数学全集中在这里, 只读内容进, 槽位变更出.
-final class InventoryPlanner {
+@ApiStatus.Internal
+public final class InventoryPlanner {
 
     /**
      * 规划一次单槽放入, 空槽看有效上限, 相似堆看剩余空间, 不相似一个不接纳.
@@ -92,7 +94,7 @@ final class InventoryPlanner {
      * @return 放入方案与放不下的余量
      */
     @NotNull
-    static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
+    public static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
         List<SlotChange> deltas = new ArrayList<>();
         int remaining = item.getAmount();
 
@@ -169,7 +171,7 @@ final class InventoryPlanner {
      * @return 收集方案与实际能收到的数量
      */
     @NotNull
-    static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
+    public static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
         List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
         boolean[] touched = new boolean[snapshot.length];
@@ -213,10 +215,10 @@ final class InventoryPlanner {
     }
 
     // remaining 是规划完仍然放不下的数量.
-    record AddPlan(List<SlotChange> deltas, int remaining) {
+    public record AddPlan(List<SlotChange> deltas, int remaining) {
     }
 
     // taken 是实际能取出的总数量.
-    record TakePlan(List<SlotChange> deltas, int taken) {
+    public record TakePlan(List<SlotChange> deltas, int taken) {
     }
 }

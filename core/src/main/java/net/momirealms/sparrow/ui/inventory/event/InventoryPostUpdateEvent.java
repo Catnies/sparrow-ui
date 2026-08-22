@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
-import net.momirealms.sparrow.ui.inventory.TransactionScope;
+import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 

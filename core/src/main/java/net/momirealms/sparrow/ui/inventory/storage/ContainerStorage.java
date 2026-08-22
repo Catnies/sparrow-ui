@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.inventory;
+package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
@@ -7,9 +7,9 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.CompoundContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.EntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MerchantContainerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.block.entity.BlockEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.block.entity.LecternInventoryProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
