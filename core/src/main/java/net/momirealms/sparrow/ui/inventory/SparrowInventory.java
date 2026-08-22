@@ -617,7 +617,7 @@ public abstract class SparrowInventory {
      * @return 至少有一个相似物品堆时返回 {@code true}
      */
     public boolean containsSimilar(@NotNull ItemStack template) {
-        return this.contains(item -> item.isSimilar(template));
+        return this.contains(item -> ItemUtils.isSimilar(item, template));
     }
 
     /**
@@ -665,7 +665,7 @@ public abstract class SparrowInventory {
      * @return 相似物品堆所在的非空槽数量
      */
     public int countSimilar(@NotNull ItemStack template) {
-        return this.count(item -> item.isSimilar(template));
+        return this.count(item -> ItemUtils.isSimilar(item, template));
     }
 
     /**

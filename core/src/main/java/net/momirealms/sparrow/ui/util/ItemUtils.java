@@ -72,9 +72,9 @@ public final class ItemUtils {
         return itemStack == null || itemStack.isEmpty();
     }
 
-    // 判断两个物品是否相似(类型与数据一致), 任一为 null 时返回 false.
+    // 判断两个物品是否相似(类型与数据一致, 不比较数量), 任一为 null 时返回 false.
     public static boolean isSimilar(@Nullable ItemStack a, @Nullable ItemStack b) {
-        return a != null && b != null && a.isSimilar(b);
+        return a != null && b != null && ItemStackProxy.INSTANCE.isSameItemSameComponents(getItemStackHandle(a), getItemStackHandle(b));
     }
 
     // 判断两个物品是否表示同一份内容, 判定基于 ItemStack.equals, null 与空物品视为相同.

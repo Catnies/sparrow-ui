@@ -71,7 +71,7 @@ public final class SlotChange {
      * @return 两个非空物品是否发生了不相似的替换
      */
     public boolean isReplacement() {
-        return this.after != null && this.before != null && !this.after.isSimilar(this.before);
+        return this.after != null && this.before != null && !ItemUtils.isSimilar(this.after, this.before);
     }
 
     /**
@@ -94,7 +94,7 @@ public final class SlotChange {
         if (this.after == null) {
             return 0;
         }
-        if (this.before == null || !this.after.isSimilar(this.before)) {
+        if (!ItemUtils.isSimilar(this.after, this.before)) {
             return this.after.getAmount();
         }
         return Math.max(this.after.getAmount() - this.before.getAmount(), 0);
@@ -110,7 +110,7 @@ public final class SlotChange {
         if (this.before == null) {
             return 0;
         }
-        if (this.after == null || !this.before.isSimilar(this.after)) {
+        if (!ItemUtils.isSimilar(this.before, this.after)) {
             return this.before.getAmount();
         }
         return Math.max(this.before.getAmount() - this.after.getAmount(), 0);

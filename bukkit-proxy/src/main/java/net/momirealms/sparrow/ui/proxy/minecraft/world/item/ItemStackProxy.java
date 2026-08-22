@@ -51,6 +51,9 @@ public interface ItemStackProxy {
     @MethodInvoker(name = "is")
     boolean is(Object target, @Type(name = "net.minecraft.tags.TagKey") Object tag);
 
+    @MethodInvoker(name = "isSameItemSameComponents", isStatic = true)
+    boolean isSameItemSameComponents(@Type(name = "net.minecraft.world.item.ItemStack") Object a, @Type(name = "net.minecraft.world.item.ItemStack") Object b);
+
     @MethodInvoker(name = "transmuteCopy")
     Object transmuteCopy(Object target, @Type(name = "net.minecraft.world.level.ItemLike") Object item);
 

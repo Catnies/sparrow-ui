@@ -286,7 +286,7 @@ public abstract class InventoryUpdateEvent {
         // 先与反方向相互抵消, 一进一出的那部分对整个 Inventory 没有净影响.
         for (int i = 0; i < oppositeDirection.size() && remaining > 0; ) {
             NetItem opposite = oppositeDirection.get(i);
-            if (!template.isSimilar(opposite.template())) {
+            if (!ItemUtils.isSimilar(template, opposite.template())) {
                 i++;
                 continue;
             }
@@ -303,7 +303,7 @@ public abstract class InventoryUpdateEvent {
         // 抵消不掉的部分先塞进同方向已有条目的剩余堆叠空间.
         for (int i = 0; i < sameDirection.size() && remaining > 0; i++) {
             NetItem same = sameDirection.get(i);
-            if (!template.isSimilar(same.template())) {
+            if (!ItemUtils.isSimilar(template, same.template())) {
                 continue;
             }
             int accepted = Math.min(remaining, same.template().getMaxStackSize() - same.amount());
