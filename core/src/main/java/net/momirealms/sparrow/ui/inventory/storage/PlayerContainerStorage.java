@@ -6,8 +6,7 @@ import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-// 玩家背包的存储, 每次访问都重新解析当前那条 NMS 背包, 归属则跟着玩家 UUID 走.
-// 只覆盖存储区段(主背包与快捷栏). 装备槽在 NMS 背包里走另一套槽位映射, 按同一组槽号读写会错位.
+// Bukkit 槽号与 NMS 背包槽号一一对应, 前面是主背包与快捷栏, 后面那几格由 NMS 背包自己换算到装备上.
 final class PlayerContainerStorage extends ContainerStorage {
     private final HumanEntity owner; // 背包主人, 跨死亡重生稳定
 

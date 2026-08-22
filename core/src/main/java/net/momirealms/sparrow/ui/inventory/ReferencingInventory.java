@@ -36,7 +36,8 @@ import java.util.function.UnaryOperator;
 public final class ReferencingInventory extends SparrowInventory {
     private final ExternalStorage storage;          // 内容实际存放的地方, 读写一律以它为准
     private final @Nullable Inventory referenced;   // 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器时为 null
-    private final SlotKey[] externalSlots;          // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
+    private final int[] storageSlots;               // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
+    private final SlotKey[] slotKeys;               // 当前 Inventory 槽位 -> 判等身份, 只用来回答是不是同一格
     private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
 
     private final @Nullable ItemStack[] lastKnown;  // 上次见到的内容, 逐槽一份副本, 只用来发现外部改动
@@ -54,7 +55,8 @@ public final class ReferencingInventory extends SparrowInventory {
         super(new ItemStack[initialKnown.length]);
         this.storage = storage;
         this.referenced = referenced;
-        this.externalSlots = externalSlots(storage, slotMapping);
+        this.storageSlots = storageSlots(slotMapping);
+        this.slotKeys = slotKeys(storage, slotMapping);
         this.addOrder = addOrder;
         this.lastKnown = initialKnown;
     }
@@ -157,7 +159,7 @@ public final class ReferencingInventory extends SparrowInventory {
     @Nullable
     public ItemStack unsafeItemAt(int slot) {
         if (this.retired) return null;
-        return ItemUtils.nullIfEmpty(this.storage.read(this.externalSlots[slot].slot()));
+        return ItemUtils.nullIfEmpty(this.storage.read(this.storageSlots[slot]));
     }
 
     /**
@@ -226,7 +228,7 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Override
     public int slotMaxStackSize(int slot) {
-        return this.storage.maxStackSize(this.externalSlots[slot].slot());
+        return this.storage.maxStackSize(this.storageSlots[slot]);
     }
 
     /**
@@ -251,7 +253,7 @@ public final class ReferencingInventory extends SparrowInventory {
     @Override
     @NotNull
     public SlotKey physicalKey(int slot) {
-        return this.externalSlots[slot];
+        return this.slotKeys[slot];
     }
 
     // 写之前先确认存储还在, 再比对一次把积压的外部变更派发出去, 接下来的规划才是基于最新内容算的.
@@ -273,10 +275,10 @@ public final class ReferencingInventory extends SparrowInventory {
     private void liveApply(@NotNull List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
-            int externalSlot = this.externalSlots[delta.slot()].slot();
+            int storageSlot = this.storageSlots[delta.slot()];
             // 现值已经和要写的内容相等就别动它, 等值覆盖会作废外部还拿着的那个引用
-            if (!ItemUtils.isContentEqual(this.storage.read(externalSlot), delta.unsafeAfter())) {
-                this.storage.write(externalSlot, delta.after());
+            if (!ItemUtils.isContentEqual(this.storage.read(storageSlot), delta.unsafeAfter())) {
+                this.storage.write(storageSlot, delta.after());
             }
             this.lastKnown[delta.slot()] = delta.after();
         }
@@ -290,7 +292,7 @@ public final class ReferencingInventory extends SparrowInventory {
         @Nullable ItemStack[] raw = this.storage.readAll();
         @Nullable List<SlotChange> deltas = null;
         for (int slot = 0; slot < this.lastKnown.length; slot++) {
-            @Nullable ItemStack liveItem = raw[this.externalSlots[slot].slot()];
+            @Nullable ItemStack liveItem = raw[this.storageSlots[slot]];
             @Nullable ItemStack knownItem = this.lastKnown[slot];
             if (!ItemUtils.isContentEqual(liveItem, knownItem)) {
                 if (deltas == null) {
@@ -326,7 +328,7 @@ public final class ReferencingInventory extends SparrowInventory {
     // 里面剩下的东西既不该出现在菜单里, 也不该当规划依据, 所以直接给一整排空槽位.
     private @Nullable ItemStack @NotNull [] readView() {
         if (this.retired) {
-            return new ItemStack[this.externalSlots.length];
+            return new ItemStack[this.storageSlots.length];
         }
         return this.mapView(this.storage.readAll());
     }
@@ -334,9 +336,9 @@ public final class ReferencingInventory extends SparrowInventory {
     // 把存储原始内容按当前槽位顺序摆好, 元素零拷贝, 空物品折成 null.
     @Nullable
     private ItemStack @NotNull [] mapView(@Nullable ItemStack[] raw) {
-        @Nullable ItemStack[] view = new ItemStack[this.externalSlots.length];
+        @Nullable ItemStack[] view = new ItemStack[this.storageSlots.length];
         for (int slot = 0; slot < view.length; slot++) {
-            view[slot] = ItemUtils.nullIfEmpty(raw[this.externalSlots[slot].slot()]);
+            view[slot] = ItemUtils.nullIfEmpty(raw[this.storageSlots[slot]]);
         }
         return view;
     }
@@ -359,13 +361,23 @@ public final class ReferencingInventory extends SparrowInventory {
         return slots;
     }
 
-    // 构造时一次算好每个槽位的 SlotKey, 之后判断"是不是同一格"就不必再问存储.
-    private static SlotKey[] externalSlots(ExternalStorage storage, SlotOrder slotMapping) {
-        SlotKey[] externalSlots = new SlotKey[slotMapping.size()];
-        for (int slot = 0; slot < slotMapping.size(); slot++) {
-            externalSlots[slot] = storage.keyOf(slotMapping.slotAt(slot));
+    // 构造时一次摊平槽位映射, 当前 Inventory 槽位对应存储自己坐标里的哪一格, 读写与比对都按这张表换算.
+    private static int[] storageSlots(SlotOrder slotMapping) {
+        int[] storageSlots = new int[slotMapping.size()];
+        for (int slot = 0; slot < storageSlots.length; slot++) {
+            storageSlots[slot] = slotMapping.slotAt(slot);
         }
-        return externalSlots;
+        return storageSlots;
+    }
+
+    // 构造时一次算好每个槽位的 SlotKey, 之后判断"是不是同一格"就不必再问存储.
+    // 它只回答身份: 接起来的存储交出的是段内本地槽号, 拿它当存储槽位去读写会整体错位.
+    private static SlotKey[] slotKeys(ExternalStorage storage, SlotOrder slotMapping) {
+        SlotKey[] slotKeys = new SlotKey[slotMapping.size()];
+        for (int slot = 0; slot < slotKeys.length; slot++) {
+            slotKeys[slot] = storage.keyOf(slotMapping.slotAt(slot));
+        }
+        return slotKeys;
     }
 
     // 玩家背包重排, 槽位 i 指向 Bukkit 容器槽位 (i + 9) % 36, 热键行(容器 0-8)因此落到本 Inventory 的 27-35, 也就是最后一行.

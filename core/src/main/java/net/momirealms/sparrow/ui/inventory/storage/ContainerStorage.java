@@ -9,6 +9,9 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 // 直接读写 NMS 容器的存储, 槽位数量, 堆叠上限与读写全部取自容器自己.
 abstract class ContainerStorage implements ExternalStorage {
     private final int size;         // 被引用区段的槽位数量, 构造时取样
@@ -17,6 +20,28 @@ abstract class ContainerStorage implements ExternalStorage {
     ContainerStorage(int size, int maxStackSize) {
         this.size = size;
         this.maxStackSize = maxStackSize;
+    }
+
+    // 把一个 NMS 容器包成存储.
+    @NotNull
+    static ExternalStorage of(@NotNull Object container) {
+        // 大箱子那种把几个容器接起来的容器在这里就拆开, 每个容器各占一段.
+        if (!CompoundContainerProxy.CLASS.isInstance(container)) {
+            return new FixedContainerStorage(container);
+        }
+        List<ExternalStorage> parts = new ArrayList<>(2);
+        collectParts(container, parts);
+        return new SplicedStorage(parts.toArray(new ExternalStorage[0]));
+    }
+
+    // 顺着接起来的结构往下走, 把每个真正存放内容的容器收成独立一段.
+    private static void collectParts(Object container, List<ExternalStorage> parts) {
+        if (!CompoundContainerProxy.CLASS.isInstance(container)) {
+            parts.add(new FixedContainerStorage(container));
+            return;
+        }
+        collectParts(CompoundContainerProxy.INSTANCE.getContainer1(container), parts);
+        collectParts(CompoundContainerProxy.INSTANCE.getContainer2(container), parts);
     }
 
     // 这一刻该读写的 NMS 容器, 每次访问都问一遍, 因为玩家背包那种会被换掉.
@@ -67,22 +92,6 @@ abstract class ContainerStorage implements ExternalStorage {
     @Override
     @NotNull
     public SlotKey keyOf(int slot) {
-        return keyOf(this.container(), slot);
-    }
-
-    // 找到真正存放这一格的那个容器, 顺手把槽号换算到它自己的坐标里.
-    @NotNull
-    private static SlotKey keyOf(Object container, int slot) {
-        // CompoundContainer (比如大箱子) 是两个 Container 接起来的, 归属需要具体到被包装的 Container
-        if (CompoundContainerProxy.CLASS.isInstance(container)) {
-            Object first = CompoundContainerProxy.INSTANCE.getContainer1(container);
-            int firstSize = ContainerProxy.INSTANCE.getContainerSize(first);
-            if (slot < firstSize) {
-                return keyOf(first, slot);
-            }
-            return keyOf(CompoundContainerProxy.INSTANCE.getContainer2(container), slot - firstSize);
-        }
-        // 其余的正常引用 container 本身
-        return new SlotKey(container, slot);
+        return new SlotKey(this.container(), slot);
     }
 }

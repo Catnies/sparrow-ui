@@ -23,7 +23,7 @@ public interface ExternalStorage {
      */
     @NotNull
     static ExternalStorage ofContainer(@NotNull Object container) {
-        return new FixedContainerStorage(container);
+        return ContainerStorage.of(container);
     }
 
     /**
