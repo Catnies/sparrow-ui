@@ -1197,7 +1197,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (contents == null
                 || requestedIndex < 0
                 || requestedIndex >= BundleContentsProxy.INSTANCE.size(contents)
-                || previous != null && previous.selectedIndex() == requestedIndex && previous.observedBundle().equals(bundle)) {
+                || previous != null && previous.selectedIndex() == requestedIndex && ItemUtils.isContentEqual(previous.observedBundle(), bundle)) {
             this.bundleSelections[rawSlot] = null;
             return;
         }
@@ -1603,7 +1603,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     ItemStack rendered = path.render();
                     if (windowSlot < this.bundleSelections.length) {
                         BundleSelectionState selection = this.bundleSelections[windowSlot];
-                        if (selection != null && !selection.observedBundle().equals(rendered)) {
+                        if (selection != null && !ItemUtils.isContentEqual(selection.observedBundle(), rendered)) {
                             this.bundleSelections[windowSlot] = null;
                         }
                     }
@@ -1631,7 +1631,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         try {
             // 光标内容变了, 基于旧内容算出的异步视觉一并作废
             MenuHandle.CursorSnapshot previous = this.localCursor;
-            if (previous == null || !previous.actual().equals(actual)) {
+            if (previous == null || !ItemUtils.isContentEqual(previous.actual(), actual)) {
                 this.cursorRenderCell.reset();
             }
             // 光标映射展示, 没有映射时按菜单实际光标显示

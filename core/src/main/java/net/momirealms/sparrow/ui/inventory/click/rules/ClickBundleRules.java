@@ -135,8 +135,7 @@ public final class ClickBundleRules {
             return null;
         }
         // 只认客户端当时看的就是这只袋子的那次选择, 对不上或没选就退回第一件
-        int takeIndex = observedBundle != null
-                && observedBundle.equals(current)
+        int takeIndex = ItemUtils.isContentEqual(observedBundle, current)
                 && selectedIndex >= 0
                 && selectedIndex < BundleContentsProxy.INSTANCE.size(contents)
                 ? selectedIndex

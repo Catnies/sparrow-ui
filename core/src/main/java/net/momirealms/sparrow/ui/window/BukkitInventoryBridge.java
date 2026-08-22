@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -66,7 +67,7 @@ final class BukkitInventoryBridge {
             // 拖拽事件的 setCursor 写的是事件自己的字段而不是 InventoryView, 在这里回传.
             // 事件构造时用的就是这份 newCursor, 值没变说明没人调过 setCursor —— 不写, 否则每次拖拽
             // 都会被记成一次监听器写入, 候选作废后就再也不会重规划.
-            if (!newCursor.equals(event.getCursor())) {
+            if (!ItemUtils.isContentEqual(newCursor, event.getCursor())) {
                 edits.cursor(event.getCursor());
             }
             return true;

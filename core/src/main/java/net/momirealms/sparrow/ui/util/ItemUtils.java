@@ -77,9 +77,9 @@ public final class ItemUtils {
         return a != null && b != null && ItemStackProxy.INSTANCE.isSameItemSameComponents(getItemStackHandle(a), getItemStackHandle(b));
     }
 
-    // 判断两个物品是否表示同一份内容, 判定基于 ItemStack.equals, null 与空物品视为相同.
+    // 判断两个物品是否表示同一份内容(类型, 数据与数量都一致), null 与空物品视为相同.
     public static boolean isContentEqual(@Nullable ItemStack a, @Nullable ItemStack b) {
-        return isNullOrEmpty(a) ? isNullOrEmpty(b) : a.equals(b);
+        return isNullOrEmpty(a) ? isNullOrEmpty(b) : b != null && ItemStackProxy.INSTANCE.matches(getItemStackHandle(a), getItemStackHandle(b));
     }
 
     // 判断物品的底层物品类型是否就是给定的 item 对象, null 或空物品返回 false.

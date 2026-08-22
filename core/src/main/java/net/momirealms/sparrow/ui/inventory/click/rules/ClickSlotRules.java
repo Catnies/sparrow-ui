@@ -61,8 +61,9 @@ public final class ClickSlotRules {
         }
         if (ClickBundleRules.isBundle(current)) {
             if (!cursor.isEmpty()) {
-                return current.equals(cursor) ? null : computeSwap(current, cursor, slotLimit);
+                return ItemUtils.isContentEqual(current, cursor) ? null : computeSwap(current, cursor, slotLimit);
             }
+            assert current != null;
             return ClickBundleRules.computeBundleTake(current, observedBundle, selectedIndex);
         }
         if (cursor.isEmpty()) {
