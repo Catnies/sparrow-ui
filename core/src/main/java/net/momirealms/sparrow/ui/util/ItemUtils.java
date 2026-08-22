@@ -82,6 +82,16 @@ public final class ItemUtils {
         return isNullOrEmpty(a) ? isNullOrEmpty(b) : b != null && ItemStackProxy.INSTANCE.matches(getItemStackHandle(a), getItemStackHandle(b));
     }
 
+    // 拿 NMS 句柄直接和一份 Bukkit 物品比内容, 免得为了比一下就把句柄包成 Bukkit 物品又立刻拆回来.
+    // expected 为 null 或空物品都表示期望这一格是空的.
+    public static boolean isHandleContentEqual(@NotNull Object handle, @Nullable ItemStack expected) {
+        boolean expectedEmpty = isNullOrEmpty(expected);
+        if (handle == ItemStackProxy.EMPTY || ItemStackProxy.INSTANCE.isEmpty(handle)) {
+            return expectedEmpty;
+        }
+        return !expectedEmpty && ItemStackProxy.INSTANCE.matches(handle, getItemStackHandle(expected));
+    }
+
     // 判断物品的底层物品类型是否就是给定的 item 对象, null 或空物品返回 false.
     public static boolean isType(@Nullable ItemStack itemStack, @NotNull Object item) {
         return !isNullOrEmpty(itemStack) && ItemStackProxy.INSTANCE.getItem(ItemUtils.getItemStackHandle(itemStack)) == item;

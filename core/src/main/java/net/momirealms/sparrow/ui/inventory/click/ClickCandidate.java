@@ -107,7 +107,7 @@ record ClickCandidate(
     // 光标和副手只在规划时真的读过它们时才复核, 没读过的就不属于本次结论的前提.
     @Nullable
     StaleReason staleReason(ClickSemantics.Context context) {
-        if (this.checkCursor && !ItemUtils.isContentEqual(this.expectedCursor, context.cursor())) {
+        if (this.checkCursor && !ItemUtils.isHandleContentEqual(context.unsafeCursor(), this.expectedCursor)) {
             return StaleReason.CURSOR;
         }
         if (this.checkOffhand && !Objects.equals(this.expectedOffhand, ItemUtils.nullIfEmpty(context.offhand()))) {

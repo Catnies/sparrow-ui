@@ -534,7 +534,7 @@ public abstract class SparrowInventory {
      * @return 全部槽位都满时返回 {@code true}
      */
     public boolean isFull() {
-        ItemStack[] snapshot = this.snapshot();
+        ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
             ItemStack item = snapshot[i];
             if (item == null || item.getAmount() < Math.min(this.slotMaxStackSize(i), item.getMaxStackSize())) {
@@ -550,7 +550,7 @@ public abstract class SparrowInventory {
      * @return 全部槽位都为空时返回 {@code true}
      */
     public boolean isEmpty() {
-        ItemStack[] snapshot = this.snapshot();
+        ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
             if (snapshot[i] != null) {
                 return false;
@@ -565,7 +565,7 @@ public abstract class SparrowInventory {
      * @return 存在空槽时返回 {@code true}
      */
     public boolean hasEmptySlot() {
-        ItemStack[] snapshot = this.snapshot();
+        ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
             if (snapshot[i] == null) {
                 return true;

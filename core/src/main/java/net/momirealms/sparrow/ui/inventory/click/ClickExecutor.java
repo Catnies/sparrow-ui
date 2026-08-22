@@ -228,7 +228,7 @@ final class ClickExecutor {
         edits.closeOverlay();
         // 规划期算不出候选往往只是因为当时光标为空或者装不下. 闸门改掉了现场就按新现场重算一次,
         // 这次可能真的有事可做. 这条路径没有候选也就没有读集, 容器自己被换掉检测不到.
-        if (!this.overlay.isEmpty() || !ItemUtils.isContentEqual(plannedCursor, this.context.cursor())) {
+        if (!this.overlay.isEmpty() || !ItemUtils.isHandleContentEqual(this.context.unsafeCursor(), plannedCursor)) {
             @Nullable ClickCandidate replanned = this.replan.get();
             if (replanned != null && replanned.staleReason(this.context) == null) {
                 // 重算出的候选自带事件目标, Sparrow 点击事件跟着它派发.

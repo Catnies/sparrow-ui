@@ -23,6 +23,7 @@ import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.BundleContentsProxy;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -2012,6 +2013,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         public ItemStack cursor() {
             M menu = AbstractWindow.this.menuHandle;
             return menu != null ? menu.cursor() : ItemUtils.EMPTY;
+        }
+
+        @Override
+        @NotNull
+        public Object unsafeCursor() {
+            M menu = AbstractWindow.this.menuHandle;
+            return menu != null ? menu.unsafeCursor() : ItemStackProxy.EMPTY;
         }
 
         @Override

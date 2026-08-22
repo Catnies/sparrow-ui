@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -231,6 +232,16 @@ public final class ClickSemantics {
          */
         @NotNull
         ItemStack cursor();
+
+        /**
+         * 光标上正拿着的物品, 不复制也不包装, 交出去的就是底层那一份.
+         *
+         * @return 光标物品的 NMS 句柄
+         */
+        @NotNull
+        default Object unsafeCursor() {
+            return ItemUtils.getItemStackHandle(this.cursor());
+        }
 
         /**
          * 直接覆盖菜单光标上的物品.

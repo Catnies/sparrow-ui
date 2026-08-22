@@ -79,12 +79,7 @@ abstract class ContainerStorage implements ExternalStorage {
 
     @Override
     public boolean contentEquals(int slot, @Nullable ItemStack expected) {
-        Object handle = ContainerProxy.INSTANCE.getItem(this.container(), slot);
-        boolean expectedEmpty = ItemUtils.isNullOrEmpty(expected);
-        if (handle == ItemStackProxy.EMPTY || ItemStackProxy.INSTANCE.isEmpty(handle)) {
-            return expectedEmpty;
-        }
-        return !expectedEmpty && ItemStackProxy.INSTANCE.matches(handle, ItemUtils.getItemStackHandle(expected));
+        return ItemUtils.isHandleContentEqual(ContainerProxy.INSTANCE.getItem(this.container(), slot), expected);
     }
 
     @Override

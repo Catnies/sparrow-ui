@@ -473,6 +473,12 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         return this.actualCarried;
     }
 
+    @Override
+    @NotNull
+    public Object unsafeCursor() {
+        return this.carried();
+    }
+
     // 只从代理菜单的 setCarried 覆盖进来, 也就是只有外部 NMS/CraftBukkit 调用会走到这里.
     // HumanEntity#setItemOnCursor 这类写法在写完之后会自己发一个光标包, 把客户端显示改成实际光标 ——
     // 而 Window 展示的可能是另一份视觉光标. 标记下来, 让本轮同步重新核对一次, 否则这次错位会一直留着.

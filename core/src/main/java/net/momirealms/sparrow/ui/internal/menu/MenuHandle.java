@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.text.Component;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -197,6 +198,16 @@ public interface MenuHandle extends AutoCloseable {
      */
     @NotNull
     ItemStack cursor();
+
+    /**
+     * 菜单实际拿着的光标, 不复制也不包装, 交出去的就是底层那一份.
+     *
+     * @return 菜单实际光标的 NMS 句柄
+     */
+    @NotNull
+    default Object unsafeCursor() {
+        return ItemUtils.getItemStackHandle(this.cursor());
+    }
 
     /**
      * 整体覆盖菜单实际持有的光标物品.
