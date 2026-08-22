@@ -771,15 +771,15 @@ public interface Window {
          * @param openHandlers 打开处理器
          * @return 此 Builder
          */
-        @NotNull B setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
+        @NotNull B setOpenHandlers(@NotNull List<? extends Consumer<? super W>> openHandlers);
 
         /**
-         * 追加一个打开处理器.
+         * 追加一个打开处理器. 处理器接收本 Builder 创建的具体 Window, 查看者经 {@link Window#viewer()} 取得.
          *
          * @param openHandler 打开处理器
          * @return 此 Builder
          */
-        @NotNull B addOpenHandler(@NotNull Runnable openHandler);
+        @NotNull B addOpenHandler(@NotNull Consumer<? super W> openHandler);
 
         /**
          * 替换关闭后依次执行的处理器列表.
@@ -788,16 +788,16 @@ public interface Window {
          * @return 此 Builder
          */
         @NotNull B setCloseHandlers(
-                @NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers
+                @NotNull List<? extends BiConsumer<? super W, ? super InventoryCloseEvent.Reason>> closeHandlers
         );
 
         /**
-         * 追加一个关闭处理器.
+         * 追加一个关闭处理器. 处理器接收本 Builder 创建的具体 Window, 查看者经 {@link Window#viewer()} 取得.
          *
-         * @param closeHandler 关闭处理器
+         * @param closeHandler 关闭处理器, 第二个参数为关闭原因
          * @return 此 Builder
          */
-        @NotNull B addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+        @NotNull B addCloseHandler(@NotNull BiConsumer<? super W, ? super InventoryCloseEvent.Reason> closeHandler);
 
         /**
          * 替换容器外点击处理器列表. 每个处理器同时接收本 Builder 创建的具体 Window.

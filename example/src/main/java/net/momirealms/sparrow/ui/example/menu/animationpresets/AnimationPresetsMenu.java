@@ -172,7 +172,7 @@ public final class AnimationPresetsMenu {
                 .setUpperPane(this.stage)
                 .setLowerPane(this.buildControlPane())
                 // 动画播在 Pane 上, 共享宿主不随窗口关闭而终结, 收尾得自己做
-                .addCloseHandler(ignoredReason -> this.stopCurrent())
+                .addCloseHandler((ignoredWindow, ignoredReason) -> this.stopCurrent())
                 .build(viewer);
     }
 

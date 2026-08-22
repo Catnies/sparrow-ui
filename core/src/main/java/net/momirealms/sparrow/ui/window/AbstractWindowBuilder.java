@@ -28,8 +28,8 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private @Nullable Player viewer;
     private Supplier<? extends Component> titleSupplier = Component::empty;
     private boolean closeable = true;
-    private List<Runnable> openHandlers = new ArrayList<>();
-    private List<Consumer<InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
+    private List<Consumer<W>> openHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
+    private List<BiConsumer<W, InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
     private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
     private boolean backOnPlayerClose;
     private @Nullable Object data;
@@ -109,30 +109,30 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     @Override
-    public final @NotNull B setOpenHandlers(@NotNull List<? extends Runnable> openHandlers) {
-        this.openHandlers = new ArrayList<>(openHandlers);
+    public final @NotNull B setOpenHandlers(@NotNull List<? extends Consumer<? super W>> openHandlers) {
+        this.openHandlers = new ArrayList<>(HandlerList.copyConsumers(openHandlers));
         return this.self();
     }
 
     @Override
-    public final @NotNull B addOpenHandler(@NotNull Runnable openHandler) {
-        this.openHandlers.add(openHandler);
+    public final @NotNull B addOpenHandler(@NotNull Consumer<? super W> openHandler) {
+        this.openHandlers.add(HandlerList.narrowConsumer(openHandler));
         return this.self();
     }
 
     @Override
     public final @NotNull B setCloseHandlers(
-            @NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers
+            @NotNull List<? extends BiConsumer<? super W, ? super InventoryCloseEvent.Reason>> closeHandlers
     ) {
-        this.closeHandlers = new ArrayList<>(HandlerList.copyConsumers(closeHandlers));
+        this.closeHandlers = new ArrayList<>(HandlerList.copyBiConsumers(closeHandlers));
         return this.self();
     }
 
     @Override
     public final @NotNull B addCloseHandler(
-            @NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler
+            @NotNull BiConsumer<? super W, ? super InventoryCloseEvent.Reason> closeHandler
     ) {
-        this.closeHandlers.add(HandlerList.narrowConsumer(closeHandler));
+        this.closeHandlers.add(HandlerList.narrowBiConsumer(closeHandler));
         return this.self();
     }
 
@@ -282,6 +282,16 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
      * @return 独立的不可变设置快照
      */
     private AbstractWindow.Settings settings(@NotNull AtomicReference<W> windowReference) {
+        List<Runnable> boundOpenHandlers = new ArrayList<>(this.openHandlers.size());
+        for (int index = 0; index < this.openHandlers.size(); index++) {
+            Consumer<W> handler = this.openHandlers.get(index);
+            boundOpenHandlers.add(() -> handler.accept(windowReference.get()));
+        }
+        List<Consumer<InventoryCloseEvent.Reason>> boundCloseHandlers = new ArrayList<>(this.closeHandlers.size());
+        for (int index = 0; index < this.closeHandlers.size(); index++) {
+            BiConsumer<W, InventoryCloseEvent.Reason> handler = this.closeHandlers.get(index);
+            boundCloseHandlers.add(reason -> handler.accept(windowReference.get(), reason));
+        }
         List<Consumer<WindowOutsideClick>> boundOutsideClickHandlers = new ArrayList<>(this.outsideClickHandlers.size());
         for (int index = 0; index < this.outsideClickHandlers.size(); index++) {
             BiConsumer<W, WindowOutsideClick> handler = this.outsideClickHandlers.get(index);
@@ -290,8 +300,8 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         return new AbstractWindow.Settings(
                 this.titleSupplier,
                 this.closeable,
-                List.copyOf(this.openHandlers),
-                List.copyOf(this.closeHandlers),
+                List.copyOf(boundOpenHandlers),
+                List.copyOf(boundCloseHandlers),
                 List.copyOf(boundOutsideClickHandlers),
                 this.backOnPlayerClose,
                 this.data,

@@ -122,7 +122,7 @@ public final class StoneAppraisalMenu {
         this.window = NormalWindow.builder()
                 .setTitle(Component.text("石头鉴定", NamedTextColor.DARK_GRAY))
                 .setUpperPane(this.pane)
-                .addCloseHandler(ignoredReason -> this.closeOut())
+                .addCloseHandler((ignoredWindow, ignoredReason) -> this.closeOut())
                 .build(viewer);
     }
 
