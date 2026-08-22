@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 一次点击或拖拽形成的精确候选: 已经算好的写集, 加上提交前必须复核的前置条件.
+ * 一次点击或拖拽形成的精确候选, 由已经算好的写集与提交前必须复核的前置条件组成.
  * <p>候选一旦形成就不再重新规划, 每过一道闸门就把这些前置条件复核一遍, 变了任何一条就整体作废.
  * 每条规划路径只声明自己关心的条件, 没声明的一律取"不复核".
  *
@@ -49,14 +49,14 @@ record ClickCandidate(
         @NotNull Runnable afterCommit
 ) {
 
-    // 开出一份建造器, 只带上每个候选都有的两样: 操作类型与变更原因.
+    // 开出一份建造器, 只带上每个候选都有的操作类型与变更原因.
     @NotNull
     static Builder plan(@NotNull InventoryAction action, @NotNull UpdateReason reason) {
         return new Builder(action, reason);
     }
 
-    // 把写集里记的 before 换回规划基准的真实内容. 覆盖层只改变规划期读到的现场, 不改变容器里的真账,
-    // 换回来才能让 Pre, Post 处理器和净变化统计看到这一格实际从什么变成什么, 而不是一份容器从来没有过的账.
+    // 把写集里记的 before 换回规划基准的真实内容. 覆盖层只改变规划期读到的现场, 容器里的真账没动过,
+    // 换回来之后 Pre, Post 处理器和净变化统计看到的才是这一格实际从什么变成什么.
     // 提交只用 after, 并发校验只比对基准数组本身, 所以这一步不影响事务本身的结果.
     @NotNull
     ClickCandidate withRealBefore(@NotNull InteractionOverlay overlay) {
@@ -103,8 +103,8 @@ record ClickCandidate(
     }
 
     // 不触发任何刷新, 只比对规划时记下的光标, 副手, 游戏模式和各 Inventory 的基准状态引用.
-    // 说明是哪个前置条件变了; 候选仍然成立时返回 null.
-    // 光标和副手只在规划时真的读过它们时才复核: 没读过就不是本次结论的前提, 换掉了也不影响结论.
+    // 说明是哪个前置条件变了, 候选仍然成立时返回 null.
+    // 光标和副手只在规划时真的读过它们时才复核, 没读过的就不属于本次结论的前提.
     @Nullable
     StaleReason staleReason(ClickSemantics.Context context) {
         if (this.checkCursor && !ItemUtils.isContentEqual(this.expectedCursor, context.cursor())) {

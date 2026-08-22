@@ -57,8 +57,8 @@ public final class InteractionEdits {
      */
     public boolean cursor(@Nullable ItemStack cursor) {
         if (this.context == null) return false;
-        // 无论草稿是不是刚建的都记一次: 候选自己不复核光标(shift, 数字键, 换副手)时, 这是唯一能发现
-        // "监听器写了最终值, 又有人直接换掉菜单实际光标"的地方.
+        // 无论草稿是不是刚建的都记一次. 候选自己不复核光标(shift, 数字键, 换副手)时,
+        // 这是唯一能发现 "监听器写了最终值, 又有人直接换掉菜单实际光标"的地方.
         this.rememberCursor();
         ItemStack after = ItemUtils.copyOrEmpty(cursor);
         InteractionOverlay overlay = this.overlay;
@@ -91,7 +91,7 @@ public final class InteractionEdits {
             return false;
         }
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-        // 玩家侧只读的 Inventory 同样拒收: 否则这笔写入并进写集后, 整笔玩家事务会被冻结兜底取消.
+        // 玩家侧只读的 Inventory 同样拒收, 这笔写入并进写集之后整笔玩家事务会被冻结兜底取消.
         if (link == null || link.inventory().frozen()) {
             return false;
         }
@@ -115,13 +115,13 @@ public final class InteractionEdits {
         transaction.setAfter(inventory, slot, item);
     }
 
-    // 关闭现场覆盖阶段: Bukkit 闸门跑完之后, 后面每一道闸门写进来的都是提交后的最终值.
+    // 关闭现场覆盖阶段. Bukkit 闸门跑完之后, 后面每一道闸门写进来的都是提交后的最终值.
     void closeOverlay() {
         this.overlay = null;
     }
 
     // 把闸门留下的现场覆盖结算进本句柄的草稿. 新结论已经把某一格算进写集时, 覆盖只是它的规划输入,
-    // 不再重复写一遍; 结论没碰过的格子则是一次独立的改动, 追加成最终值随同一笔事务提交.
+    // 到此为止. 结论没碰过的格子则是一次独立的改动, 追加成最终值随同一笔事务提交.
     void settle(@NotNull InteractionOverlay overlay, @Nullable ClickCandidate target) {
         List<TransactionScope> scopes = target == null ? List.of() : target.scopes();
         overlay.forEachSlot((inventory, slot, item) -> {
@@ -160,12 +160,11 @@ public final class InteractionEdits {
         return ClickCandidate.StaleReason.CURSOR;
     }
 
-    // 第一次写入时记下光标, 之后不再更新. 这一刻是监听器算最终值时看到的那一份, 比候选的规划期原值更贴切.
-    // cursor() 按契约返回副本, 这里不再多复制一次.
+    // 只在第一次写入时记下光标. 这一刻是监听器算最终值时看到的那一份, 比候选的规划期原值更贴切.
     private void rememberCursor() {
         ClickSemantics.Context context = this.context;
         if (this.expectedCursor == null && context != null) {
-            this.expectedCursor = context.cursor();
+            this.expectedCursor = context.cursor(); // 返回副本, 直接存下即可.
         }
     }
 

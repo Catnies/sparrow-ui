@@ -28,7 +28,7 @@ import java.util.function.UnaryOperator;
  * <p><strong>串行访问由调用方负责.</strong> 所有读写都必须在存储可合法访问的上下文中串行执行
  * (Bukkit 存储即容器的属主线程); 接入 Window 期间, 玩家实体线程就是事实上的串行化线程.
  * 本类不判断平台或存储的执行所有者, 也不调度到其线程. 平台抛出的访问异常会沿调用栈传播.
- * <p>并发校验看 modCount 而不是状态数组: 规划基准是当场逐槽读存储填出来的临时数组, 每次规划都重建一份, 只用来读内容.
+ * <p>并发校验看 modCount. 规划基准是当场逐槽读存储填出来的临时数组, 每次规划都重建一份, 只用来读内容.
  * <p>外部世界绕过本类直接改存储时, 靠与 lastKnown 逐槽比对发现, 以
  * {@link net.momirealms.sparrow.ui.inventory.event.UpdateReason.External} 的名义补派 post 事件并同步显示.
  * 比对由 Window 每 tick 一次的 {@link #refresh()} 和写入口的写前准备触发, 本类自己不注册调度任务.
@@ -43,7 +43,7 @@ public final class ReferencingInventory extends SparrowInventory {
     private volatile boolean retired;               // 存储已经不在了, 之后读到空, 写入一律失败
     private long modCount;                          // 并发校验用的计数, 自己写入或吸收外部变更后加一
 
-    // 交给基类的状态数组只是拿来定槽位数量的: 内容读写全改道外部存储, 那个数组永远是空的, 也永远不会被交换.
+    // 交给基类的状态数组只是拿来定槽位数量的, 内容读写全改道外部存储, 那个数组永远是空的, 也永远不会被交换.
     private ReferencingInventory(
             ExternalStorage storage,
             @Nullable Inventory referenced,
@@ -82,7 +82,7 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 引用玩家背包的存储内容, 并把热键行挪到当前 Inventory 的最后九个槽位:
+     * 引用玩家背包的存储内容, 并把热键行挪到当前 Inventory 的最后九个槽位.
      * 当前 Inventory 槽位 {@code i} 对应 Bukkit 容器槽位 {@code (i + 9) % 36}, 主背包在前, 快捷栏在后.
      * ADD 操作按原版 quick-move 的习惯从热键行尾部反向遍历.
      *
@@ -269,12 +269,12 @@ public final class ReferencingInventory extends SparrowInventory {
         return new Live(this, this.readView(), this.modCount);
     }
 
-    // 把本写集落进外部存储, 顺带同步 lastKnown, 免得自己写的东西下一轮被当成外部改动.
+    // 把本写集落进外部存储, 顺带同步 lastKnown, 让自己写进去的内容在下一轮比对里保持一致.
     private void liveApply(@NotNull List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             int externalSlot = this.externalSlots[delta.slot()].slot();
-            // 现值已经和要写的内容相等就别动它: 一次等值覆盖会白白作废外部还拿着的那个引用
+            // 现值已经和要写的内容相等就别动它, 等值覆盖会作废外部还拿着的那个引用
             if (!ItemUtils.isContentEqual(this.storage.read(externalSlot), delta.unsafeAfter())) {
                 this.storage.write(externalSlot, delta.after());
             }
@@ -286,7 +286,7 @@ public final class ReferencingInventory extends SparrowInventory {
     // 存储内容和 lastKnown 逐槽比一遍, 对不上的就认下来并以 External 原因补派 post 事件; 只记账不回写, 存储里的实例原样不动.
     private void reconcileFromStorage() {
         if (this.retired) return;
-        // 比较阶段直接用存储读出来的引用, 不复制物品 —— 绝大多数 tick 根本没有外部变更, 只有对不上的那一格才由 SlotChange 复制
+        // 比较阶段直接用存储读出来的引用. 绝大多数 tick 没有外部变更, 只有对不上的那一格才由 SlotChange 复制
         @Nullable ItemStack[] raw = this.storage.readAll();
         @Nullable List<SlotChange> deltas = null;
         for (int slot = 0; slot < this.lastKnown.length; slot++) {
@@ -303,7 +303,7 @@ public final class ReferencingInventory extends SparrowInventory {
             return;
         }
 
-        // 先记账再派发: lastKnown 改记现值(直接共用 SlotChange 里那份副本, 两边都不会去改它), modCount 加一,
+        // 先记账再派发. lastKnown 改记现值(直接共用 SlotChange 里那份副本, 两边都不会去改它), modCount 加一,
         // 这样 post 处理器在事件里重新发起写入时, 看到的已经是新版本.
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
@@ -313,7 +313,7 @@ public final class ReferencingInventory extends SparrowInventory {
         TransactionResult result = InventoryTransactions.commitExternalSync(
                 new TransactionScope(new Live(this, this.mapView(raw), this.modCount), deltas)
         );
-        // 调用方既然保证了串行访问, 这里就不该冲突; 真冲突了说明调用边界已经被破坏, 交给统一异常处理器上报
+        // 调用方既然保证了串行访问, 这里就不该冲突; 真冲突了说明调用边界已经被破坏, 交给异常处理器上报
         if (!(result instanceof TransactionResult.Committed)) {
             SparrowUI.getInstance().handleException(
                     "Failed to dispatch external changes of a ReferencingInventory",
@@ -368,7 +368,7 @@ public final class ReferencingInventory extends SparrowInventory {
         return externalSlots;
     }
 
-    // 玩家背包重排: 槽位 i 指向 Bukkit 容器槽位 (i + 9) % 36, 热键行(容器 0-8)因此落到本 Inventory 的 27-35, 也就是最后一行.
+    // 玩家背包重排, 槽位 i 指向 Bukkit 容器槽位 (i + 9) % 36, 热键行(容器 0-8)因此落到本 Inventory 的 27-35, 也就是最后一行.
     private static int[] reorderPlayerStorage(int[] slots) {
         int[] reordered = new int[slots.length];
         for (int i = 0; i < slots.length; i++) {
@@ -377,8 +377,8 @@ public final class ReferencingInventory extends SparrowInventory {
         return reordered;
     }
 
-    // 内容放在外部存储里时用的规划基准: planned 是新建时逐槽读存储填出来的临时数组, 只用来读内容;
-    // 校验改看新建时记下的 modCount —— 之后任何写入或吸收外部变更都会让它对不上.
+    // 内容放在外部存储里时用的规划基准. planned 是新建时逐槽读存储填出来的临时数组, 只用来读内容,
+    // 校验则看新建时记下的 modCount, 之后任何写入或吸收外部变更都会让它对不上.
     private static final class Live extends PlannedRoot {
         private final ReferencingInventory owner;
         private final long modCountAtPlan;

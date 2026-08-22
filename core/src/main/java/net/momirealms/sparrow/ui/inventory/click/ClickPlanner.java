@@ -59,7 +59,7 @@ final class ClickPlanner {
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
             return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
         }
-        // 冻结槽彻底不参与交互: 不算候选, 不派发任何事件, 也不分派 Item 点击, 只让客户端预测被纠正回来.
+        // 冻结槽彻底不参与交互, 不算候选, 不派发任何事件, 也不分派 Item 点击, 只让客户端预测被纠正回来.
         if (context.frozenAt(windowSlot)) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
         }
@@ -69,7 +69,7 @@ final class ClickPlanner {
         if (link == null) {
             return new PreparedClick(false, InventoryAction.NOTHING, null);
         }
-        // Inventory 级冻结是玩家侧只读: 点在冻结 Inventory 展示槽上的一切动作与冻结槽同待遇.
+        // Inventory 级冻结是玩家侧只读, 点在冻结 Inventory 展示槽上的一切动作与冻结槽同待遇.
         if (link.inventory().frozen()) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
         }
@@ -339,7 +339,7 @@ final class ClickPlanner {
     /**
      * 规划一次双击收集.
      * <p>客户端的双击发的是 PICKUP 与 PICKUP_ALL 两个包, 第一个包拿起被点槽的物品, 第二个包才收集同类.
-     * 因此收集成立时被点的槽恰好是空的, 而玩家握着物品去双击时第一个包会把物品放回去, 那一格不再为空.
+     * 因此收集成立时被点的槽恰好是空的, 而玩家握着物品去双击时第一个包会把物品放回去, 那一格是满的.
      *
      * @return 被点的槽拿得出收集资格时返回候选, 否则返回 {@code null}
      */
@@ -400,7 +400,7 @@ final class ClickPlanner {
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    // 可见性在读集去重前短路: 不可见槽不得占用 coveredSlots, 同一物理槽可能经另一个 Inventory 可见暴露
+                    // 可见性判断排在去重之前, 同一个物理槽可能经另一个 Inventory 暴露, coveredSlots 要留给可见的那次
                     slot -> linked.visible(slot) && coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
@@ -423,8 +423,8 @@ final class ClickPlanner {
     }
 
     // 规划一次 shift 点击, 按优先级挨个试每个不是源 Inventory 的目标, 跨目标累积, 直到源槽物品全部装完或目标试完.
-    // 每个问过的目标都要进读集, 目标装不装得下直接决定了后面的物品往哪走, 一个当时满着的目标之后被清空,
-    // 本次分配就不再是应该产生的结果, 整个候选必须作废. 所以不能按"有没有贡献"再收窄.
+    // 每个问过的目标都要进读集. 目标装不装得下直接决定了后面的物品往哪走, 一个当时满着的目标之后被清空,
+    // 本次分配的结果就跟着变, 整个候选必须作废. 读集因此已经是最小集合, 按"有没有贡献"再收窄会漏.
     @Nullable
     private static ClickCandidate prepareShift(
             ClickSemantics.Context context,
@@ -459,7 +459,7 @@ final class ClickPlanner {
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
-                    // 可见性在读集去重前短路: 不可见槽不得占用 coveredSlots, 同一物理槽可能经另一个 Inventory 可见暴露
+                    // 可见性判断排在去重之前, 同一个物理槽可能经另一个 Inventory 暴露, coveredSlots 要留给可见的那次.
                     slot -> linked.visible(slot) && coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
             );
             if (!addPlan.deltas().isEmpty()) {

@@ -283,7 +283,7 @@ public abstract class InventoryUpdateEvent {
     // 把一次物品流动记到它自己那个方向上, 但先拿去抵消反方向已经记下的相同物品.
     private static void balance(@NotNull List<NetItem> sameDirection, @NotNull List<NetItem> oppositeDirection, @NotNull ItemStack template, int amount) {
         int remaining = amount;
-        // 先与反方向相互抵消: 一进一出的那部分对整个 Inventory 没有净影响.
+        // 先与反方向相互抵消, 一进一出的那部分对整个 Inventory 没有净影响.
         for (int i = 0; i < oppositeDirection.size() && remaining > 0; ) {
             NetItem opposite = oppositeDirection.get(i);
             if (!template.isSimilar(opposite.template())) {

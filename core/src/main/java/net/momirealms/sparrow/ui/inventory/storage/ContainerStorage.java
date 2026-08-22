@@ -10,7 +10,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 // 直接读写 NMS 容器的存储, 槽位数量, 堆叠上限与读写全部取自容器自己.
-// 两个实现的差别只有"这一刻该读写哪个容器": 定死一个的看 FixedContainerStorage, 跟着玩家走的看 PlayerContainerStorage.
 abstract class ContainerStorage implements ExternalStorage {
     private final int size;         // 被引用区段的槽位数量, 构造时取样
     private final int maxStackSize; // 容器的堆叠上限, 构造时缓存

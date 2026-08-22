@@ -118,7 +118,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
 
     /**
      * 把一个尚未参与本次事务的 Inventory 纳入进来, 之后就能对它调用 {@link #setAfter(SparrowInventory, int, ItemStack)}.
-     * <p>纳入之后, 它与原有参与者一起成功或一起回滚:
+     * <p>纳入之后, 它与原有参与者一起成功或一起回滚.
      * <pre>{@code
      * // 玩家往 A 放入泥土时, B 同步放入等量钻石
      * if (event.include(vault) ) {
@@ -126,12 +126,10 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
      * }
      * }</pre>
      * <p>纳入必须是刻意动作, 因此 {@code setAfter} 对未纳入的 Inventory 仍然直接抛异常, 不会自动纳入.
-     * 只纳入却没有写任何槽位, 等于没有纳入.
-     * <p>新纳入的 Inventory 有三条与原有参与者不同的语义:
      * <ul>
-     *     <li>它<b>不参与本轮 Pre</b> —— 否则它的处理器又能拉进下一个, 递归没有终点; 但它照常收到 Post.</li>
-     *     <li>它的基准状态取纳入那一刻的内容, <b>不会先同步外部容器</b> —— 事务中段刷新引用容器会重入事件系统.</li>
-     *     <li>写进它的内容<b>不经过槽级放入规则过滤</b> —— 放入规则是给外部放入用的, 处理器本身就是决定内容的一方.</li>
+     *     <li>它<b>不参与本轮 Pre</b>, 但照常收到 Post, 不会递归展开.</li>
+     *     <li>它的基准状态取纳入那一刻的内容, <b>不会先同步外部容器</b>. 事务中段刷新引用容器会重入事件系统.</li>
+     *     <li>写进它的内容<b>不经过槽级放入规则过滤</b>. 放入规则是拦外部放入的, 处理器本身就是决定内容的一方.</li>
      * </ul>
      *
      * @param inventory 要纳入本次事务的 Inventory
@@ -162,7 +160,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     /**
      * 返回本笔事务的交互副作用草稿, 用来改写提交后的光标, 副手和掉落物.
      * <p>{@link #setAfter} 只能改容器里的内容, 光标不属于任何 Inventory. 缩小一个槽位的最终值时,
-     * 差额该不该回到光标, 只有处理器自己知道, 因此需要在这里一并写清楚:
+     * 差额该不该回到光标, 只有处理器自己知道, 要在这里一并写清楚.
      * <pre>{@code
      * // 炉子这次只吃得下 10 个, 其余 54 个退回光标
      * event.setAfter(0, null);
@@ -196,10 +194,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
 
     /**
      * 取消整笔事务, 或恢复前面处理器留下的取消.
-     * <p>取消状态按订阅顺序在处理器之间传递: 当前处理器看到的初始值就是前面处理器留下的结果,
-     * 传入 {@code false} 会清除这个取消, 事务照常提交.
-     * <p>当前处理器抛出异常时, 这次调用连同它通过 {@link #setAfter} 做的候选值修改一起被丢弃,
-     * 后面的处理器看到的仍然是它执行前的取消状态.
+     * <p>取消状态按订阅顺序在处理器之间传递, 当前处理器看到的初始值就是前面处理器留下的结果.
      *
      * @param cancelled {@code true} 取消整笔事务, {@code false} 让事务继续提交
      */

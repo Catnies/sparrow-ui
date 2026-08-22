@@ -56,9 +56,6 @@ final class VirtualInventoryCodec {
         );
     }
 
-    private VirtualInventoryCodec() {
-    }
-
     // 把 VirtualInventory 这一刻的槽内容编成字节数组.
     static byte @NotNull [] serialize(@NotNull VirtualInventory inventory) {
         UUID uuid = inventory.uuid();
@@ -133,7 +130,7 @@ final class VirtualInventoryCodec {
         }
     }
 
-    // 走原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩交给外面那层信封统一承担, 这里一件也不管.
+    // 走原版 ItemStack Codec 生成裸 NBT, DataVersion 与压缩交给外面那层信封一并承担, 这里一件也不管.
     private static byte @NotNull [] serializeItem(@NotNull ItemStack item) {
         Object tag = ItemStackProxy.CODEC.encodeStart(REGISTRY_OPS, ItemUtils.getItemStackHandle(item)).getOrThrow();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -231,7 +228,7 @@ final class VirtualInventoryCodec {
         }
     }
 
-    // 自己实现 VarInt 而不是借 NMS 的: NMS 那套只吃 ByteBuf, 拿来用就得在 GZIP 流里多一层临时缓冲和复制.
+    // 自己实现 VarInt. NMS 那套只吃 ByteBuf, 接进 GZIP 流要多一层临时缓冲和复制.
     private static void writeVarInt(DataOutput output, int value) throws IOException {
         int remaining = value;
         while ((remaining & ~0x7F) != 0) {

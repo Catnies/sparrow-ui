@@ -22,9 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntPredicate;
 
-// 拖拽的规划器: 输入是手势经过的一串窗口槽, 输出是把光标按键位分摊下去的候选.
-// 与 ClickPlanner 分开是因为两条路子除了都产候选之外没有共同步骤: 拖拽没有"点中哪一格"可言,
-// 分配结果要先算好交给 Bukkit 事件看, 而且它永远是写路径, 不像单击还要给预估留一条只读通道.
+// 拖拽的规划器, 输入是手势经过的一串窗口槽, 输出是把光标按键位分摊下去的候选.
 final class DragPlanner {
 
     // 把一趟拖拽算成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
@@ -42,10 +40,10 @@ final class DragPlanner {
             return null;
         }
 
-        // 约定: 拖拽只认背后有 Inventory 且未冻结的窗口槽, Item 槽, 空槽和冻结槽直接从候选里剔除.
+        // 拖拽只认背后有 Inventory 且未冻结的窗口槽, Item 槽, 空槽和冻结槽直接从候选里剔除.
         // 因此混合拖拽(一半 Item 槽一半 Inventory 槽)照常派发事件, 但 newItems 只有 Inventory 槽那一半,
         // 被剔除的槽位在插件视角里凭空消失; 整趟拖拽全落在这些槽上时候选为空, 不派发 Bukkit 事件.
-        // 两者都是预期行为: 引擎接管不了的槽位没有分配结果可以呈现, 也没有事务可以取消.
+        // 两者都是预期行为, 引擎接管不了的槽位没有分配结果可以呈现, 也没有事务可以取消.
         LinkedHashMap<SlotKey, DragLink> candidates = new LinkedHashMap<>();
         for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {
             int windowSlot = windowSlots.get(windowIndex);

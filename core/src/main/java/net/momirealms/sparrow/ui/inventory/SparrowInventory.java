@@ -47,19 +47,16 @@ import java.util.function.UnaryOperator;
 
 /**
  * SparrowUI 所有受事务保护的 Inventory 的公共抽象, 可以把它理解成一个会自动通知变更的箱子.
- * <p>所有实现都遵守三条约定:
  * <ul>
  *   <li>空槽只用 {@code null} 表示, Inventory 中不会保留 AIR 物品或数量不大于 0 的物品;</li>
  *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
  *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
  * </ul>
- * <p>内容放在哪里决定了用哪种实现: {@link VirtualInventory} 自己拿着状态数组, 任何线程都能安全读写;
- * {@link ReferencingInventory} 内容在 {@link ExternalStorage} 里, 访问是否串行由调用方负责.
- * <p><strong>对象身份约定</strong>: 一笔事务写过的槽位, 提交后一律是新实例; 光标, 副手和事件负载都是副本.
+ * <p><strong>对象身份约定</strong>. 一笔事务写过的槽位, 提交后一律是新实例; 光标, 副手和事件负载都是副本.
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
-    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果: 变更列表为空, 也不派发事件
+    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果, 变更列表为空, 也不派发事件
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
 
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
@@ -77,7 +74,7 @@ public abstract class SparrowInventory {
     private volatile int collectOperationPriority;
     private volatile int otherOperationPriority;
     private volatile boolean includeObscuredSlots; // 未被 Pane 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
-    private volatile boolean frozen; // 玩家侧只读: 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
+    private volatile boolean frozen; // 玩家侧只读, 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
     private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
 
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
@@ -116,7 +113,7 @@ public abstract class SparrowInventory {
      * @return 按槽号排列的物品副本数组, 空槽位置为 {@code null}
      */
     public @Nullable ItemStack @NotNull [] snapshot() {
-        // 先把 volatile 引用抓到局部变量, 免得复制过程中状态数组被换掉.
+        // 先把 volatile 引用抓到局部变量, 整个复制过程读的都是同一份状态数组.
         @Nullable ItemStack[] snapshot = this.state;
         @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
         for (int i = 0; i < snapshot.length; i++) {
@@ -247,9 +244,9 @@ public abstract class SparrowInventory {
 
     /**
      * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
-     * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层:
+     * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层.
      * 非空槽按真实内容显示, 空槽回退 {@link #setBackground(ItemProvider) 容器背景}.
-     * <p>视觉配置是嵌套的层级: 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
+     * <p>视觉配置是嵌套的层级. 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
      * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
      * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
      * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
@@ -294,7 +291,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层:
+     * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层.
      * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
      * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
      * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
@@ -432,7 +429,7 @@ public abstract class SparrowInventory {
 
     /**
      * 设置未被 Pane 展示的槽位是否参与快速转移与双击收集.
-     * 默认不参与: 点击语义只触及本 Inventory 经未冻结槽位展示的部分.
+     * 默认不参与, 点击语义只触及本 Inventory 经未冻结槽位展示的部分.
      * 开启后未展示的槽位也会参与, 但 Pane 冻结槽展示的槽位始终不参与.
      *
      * @param includeObscuredSlots 未展示槽位是否参与点击语义
@@ -463,7 +460,7 @@ public abstract class SparrowInventory {
 
     /**
      * 设置本 Inventory 是否玩家侧只读.
-     * 冻结后玩家经任何窗口对本 Inventory 的点击与拖拽一律不成立: 不算候选, 不派发任何事件,
+     * 冻结后玩家经任何窗口对本 Inventory 的点击与拖拽一律不成立. 不算候选, 不派发任何事件,
      * 也不作为快速转移与双击收集的来源或目标, 客户端预测会被纠正回来.
      * 程序写入与外部同步不受影响, 对应的事件照常派发.
      *
@@ -865,7 +862,7 @@ public abstract class SparrowInventory {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算: 先合并相似的未满堆, 再占空槽
+        // 在规划内容上计算, 先合并相似的未满堆, 再占空槽
         InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
                 basis.planned(),
                 input,
@@ -897,7 +894,7 @@ public abstract class SparrowInventory {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算: 先收未满堆, 不够再收满堆
+        // 在规划内容上计算, 先收未满堆, 不够再收满堆
         InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
                 basis.planned(),
                 sample,
@@ -984,7 +981,7 @@ public abstract class SparrowInventory {
 
     /**
      * 判断 Inventory 能否按参数顺序完整取出全部物品.
-     * <p>多个物品共用同一份规划内容: 前面已经算作取走的部分, 后面不会再认领一次.
+     * <p>多个物品共用同一份规划内容, 前面已经算作取走的部分, 后面不会再认领一次.
      *
      * @param items 要检查的物品, 各自的数量就是需要取出的数量
      * @return 全部能取出时返回 {@code true}
@@ -1106,7 +1103,6 @@ public abstract class SparrowInventory {
     @NotNull
     @ApiStatus.Experimental
     public org.bukkit.inventory.Inventory asBukkitInventory() {
-        // 双重检查锁定: Bukkit 以 == 或 Map 键辨认 Inventory, 每次新建实例都会破坏身份语义
         org.bukkit.inventory.Inventory view = this.bukkitView;
         if (view == null) {
             synchronized (this) {
@@ -1120,7 +1116,7 @@ public abstract class SparrowInventory {
         return view;
     }
 
-    // 无人监听时派发方可以省下构造事件的开销.
+    // 派发方构造事件之前先问这一句.
     @ApiStatus.Internal
     public boolean hasClickObservers() {
         return this.clickEvents.subscriptionCount() != 0;
@@ -1187,7 +1183,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 返回本 Inventory 的内容修订计数: 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
+     * 返回本 Inventory 的内容修订计数. 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
      * <p>第一次调用时创建, 之后恒返回同一个实例; 它是给 Signal 管线用的失效载体, 计数值本身没有含义.
      * <p><strong>递增在提交线程上同步派发</strong>, 所以下游的失效回调也跑在那里, 挂在它下面的
      * {@link Signal#mapDistinct} 会把重算函数拖进事务的提交收尾; 开了串行 Post 派发的 Inventory 还会因此阻塞后续提交线程.
@@ -1275,8 +1271,8 @@ public abstract class SparrowInventory {
         return this.openPlan();
     }
 
-    // 内容就在自己状态数组里时用的规划基准: planned 就是规划那一刻的状态数组本身, 同时兼任校验依据 ——
-    // 元素发布后不再改动, 换内容就是换数组, 所以比一下引用就知道期间有没有别人提交过.
+    // 内容就在自己状态数组里时用的规划基准. planned 就是规划那一刻的状态数组本身, 同时兼任校验依据,
+    // 元素一经发布就固定, 换内容就是换数组, 比一下引用就知道期间有没有别人提交过.
     private static final class Stm extends PlannedRoot {
 
         private Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
@@ -1301,7 +1297,7 @@ public abstract class SparrowInventory {
             @Nullable ItemStack[] next = this.planned().clone();
             for (int i = 0; i < deltas.size(); i++) {
                 SlotChange delta = deltas.get(i);
-                // 等值跳过: 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
+                // 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
                 @Nullable ItemStack after = delta.unsafeAfter();
                 @Nullable ItemStack current = next[delta.slot()];
                 next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;

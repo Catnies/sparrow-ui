@@ -10,7 +10,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-// 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务: 加锁, 校验, 构造新状态, 交换和落地
+// 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务. 加锁, 校验, 构造新状态, 交换和落地
 // 这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
 // 实现由持有内容的那个 Inventory 自己给出, 状态数组和 modCount 这些命门因此不必离开各自的类.
 @ApiStatus.Internal
@@ -33,7 +33,7 @@ public abstract class PlannedRoot {
         return this.planned;
     }
 
-    // 本基准怎么参与提交临界区: 要加锁的交出锁凭证, 不加锁的返回 null.
+    // 本基准怎么参与提交临界区, 要加锁的交出锁凭证, 不加锁的返回 null.
     @Nullable
     protected abstract StateLock stateLock();
 
@@ -49,7 +49,7 @@ public abstract class PlannedRoot {
     // 状态提交后, post 派发前的落地动作; 调不调由引擎按事务属性决定(External 同步就免了回写).
     protected abstract void land(@NotNull List<SlotChange> deltas);
 
-    // 全序加锁凭证: 引擎按 order 升序逐把加锁, 跨 Inventory 的事务因此不会互相锁死.
+    // 全序加锁凭证. 引擎按 order 升序逐把加锁, 跨 Inventory 的事务因此不会互相锁死.
     public record StateLock(@NotNull ReentrantLock lock, long order) {
     }
 }

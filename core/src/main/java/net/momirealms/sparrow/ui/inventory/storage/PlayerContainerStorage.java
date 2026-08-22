@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 // 玩家背包的存储, 每次访问都重新解析当前那条 NMS 背包, 归属则跟着玩家 UUID 走.
-// 只覆盖存储区段(主背包与快捷栏): 装备槽在 NMS 背包里走另一套槽位映射, 按同一组槽号读写会错位.
+// 只覆盖存储区段(主背包与快捷栏). 装备槽在 NMS 背包里走另一套槽位映射, 按同一组槽号读写会错位.
 final class PlayerContainerStorage extends ContainerStorage {
     private final HumanEntity owner; // 背包主人, 跨死亡重生稳定
 
@@ -25,7 +25,7 @@ final class PlayerContainerStorage extends ContainerStorage {
     @Override
     @NotNull
     public SlotKey keyOf(int slot) {
-        // 归属跟着玩家走: 重生换掉的是背包, 那条 NMS 背包拿来当归属重生前后就不判等了
+        // 归属跟着玩家走. 重生换掉的是背包, 用玩家 UUID 当归属才能跨重生判等
         return new SlotKey(this.owner.getUniqueId(), slot);
     }
 

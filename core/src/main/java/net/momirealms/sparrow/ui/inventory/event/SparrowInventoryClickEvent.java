@@ -70,7 +70,7 @@ public final class SparrowInventoryClickEvent {
 
     /**
      * 返回把本次点击的写入合并进候选草稿的句柄.
-     * <p>与前一道 Bukkit 点击事件用的是同一份: Bukkit 监听器写下的结果就是这里读到的内容,
+     * <p>与前一道 Bukkit 点击事件用的是同一份. Bukkit 监听器写下的结果就是这里读到的内容,
      * 这里写下的结果又会交给随后的 Pre 处理器. 写入只有在事务真正提交后才生效.
      *
      * @return 本次交互的写入句柄

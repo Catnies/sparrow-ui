@@ -34,7 +34,7 @@ public record TransactionScope(@NotNull InventoryChange change, @NotNull Planned
         return this.basis.planned();
     }
 
-    // 换掉槽位变化但留住原基准, 给 Pre 编辑和记账口径修正用: 改写永远不换校验依据.
+    // 换掉槽位变化但留住原基准, 给 Pre 编辑和记账口径修正用, 不换校验依据.
     @NotNull
     public TransactionScope withSlotChanges(@NotNull List<SlotChange> slotChanges) {
         return new TransactionScope(this.basis, slotChanges);

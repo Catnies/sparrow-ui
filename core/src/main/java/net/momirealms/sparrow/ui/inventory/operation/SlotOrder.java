@@ -4,7 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * 批量算法访问槽位的迭代顺序, 不可变且构造即校验.
- * <p>顺序必须是 {@code [0, size)} 的一个排列: 覆盖全部槽且无重复.
+ * <p>顺序必须是 {@code [0, size)} 的一个排列, 覆盖全部槽且无重复.
  */
 public final class SlotOrder {
     private final int[] slots; // slots[i] = 第 i 个被访问的槽号
@@ -14,7 +14,7 @@ public final class SlotOrder {
     }
 
     /**
-     * 自然顺序: 0, 1, 2, ... size-1.
+     * 自然顺序, 也就是 0, 1, 2, ... size-1.
      *
      * @param size 槽位数量
      * @return 自然顺序

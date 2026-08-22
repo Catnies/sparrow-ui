@@ -6,7 +6,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-// 单槽点击的槽位数学: 拿起, 放置, 劈半, 合并与整堆交换. 一沾收纳袋组件就转给 ClickBundleRules.
+// 单槽点击的槽位数学, 涵盖拿起, 放置, 劈半, 合并与整堆交换.
 @ApiStatus.Internal
 public final class ClickSlotRules {
 
@@ -98,11 +98,11 @@ public final class ClickSlotRules {
         if (cursor.getAmount() > effectiveLimit(slotLimit, cursor)) {
             return null;
         }
-        // 整堆交换: 两端内容对调, 数量与组件都不变.
+        // 两端内容对调, 数量与组件都不变.
         return new ClickOutcome(cursor, current);
     }
 
-    // 计算槽位对这个物品真正生效的堆叠上限: 槽位上限与物品自身上限取小.
+    // 槽位上限与物品自身上限取小, 得到这个物品在这一格真正生效的堆叠上限.
     public static int effectiveLimit(int slotLimit, ItemStack item) {
         return Math.min(slotLimit, item.getMaxStackSize());
     }

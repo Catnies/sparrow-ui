@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * ReferencingInventory 的内容实际存放的地方, 读写一律以它为准: Bukkit 容器只是它的一种实现.
+ * ReferencingInventory 的内容实际存放的地方, 读写一律以它为准.
  * <p>槽位坐标是存储自己的坐标(Bukkit 实现即 Bukkit 容器槽位).
  * <p>同一 Inventory 的所有访问必须串行, 串行由调用方负责, 框架不提供并发保障.
  */
@@ -35,8 +35,7 @@ public interface ExternalStorage {
 
     /**
      * 读取槽位现值.
-     * <p>可以返回内部活实例, 也可以返回副本: 引擎只读取不修改, 也不把它持有到本次操作之外.
-     * 需要与引擎彻底隔离的实现返回副本即可.
+     * <p>可以返回内部活实例, 也可以返回副本. 引擎只读取不修改, 也不把它持有到本次操作之外.
      *
      * @param slot 存储槽位
      * @return 槽位现值, 空槽返回 {@code null}
@@ -91,8 +90,8 @@ public interface ExternalStorage {
 
     /**
      * 检查和内容存放的地方是不是还在.
-     * <p>ReferencingInventory 每次刷新都会执行, 若回答 {@code false},
-     * Inventory 则就地删除: 之后读到的是空, 写入一律失败, 快速转移与双击收集也不再把它当成目标.
+     * <p>ReferencingInventory 每次刷新都会执行, 若回答 {@code false}, Inventory 则就地删除.
+     * 之后读到的是空, 写入一律失败, 快速转移与双击收集也不把它当成目标.
      *
      * @return 还在时返回 true
      */

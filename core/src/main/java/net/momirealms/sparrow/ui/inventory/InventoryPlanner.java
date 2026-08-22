@@ -49,7 +49,7 @@ public final class InventoryPlanner {
     }
 
     /**
-     * 规划一次数量增减: 减少时最低到 0, 增加时最高到有效堆叠上限.
+     * 规划一次数量增减, 减少时最低到 0, 增加时最高到有效堆叠上限.
      *
      * @param current 该槽当前内容, 空槽为 {@code null}
      * @param slot 槽位序号
@@ -62,8 +62,8 @@ public final class InventoryPlanner {
         if (current == null || change == 0) {
             return null;
         }
-        // 减量只受下限 0 约束, 上限钳制绝不能作用在减量上 —— 否则直接写入的超上限堆会在"减 1"时被悄悄压回上限.
-        // 这里走 long 是为了躲开 int 边界溢出.
+        // 减量只受下限 0 约束, 上限钳制只作用在增量上, 直接写入的超上限堆减 1 之后仍然保留超出的数量.
+        // 这里走 long 躲开 int 边界溢出.
         long desired = (long) current.getAmount() + change;
         int target;
         if (change < 0) {
@@ -82,7 +82,7 @@ public final class InventoryPlanner {
     }
 
     /**
-     * 规划一次批量放入: 按给定顺序先走一遍, 把物品合并进相似且没堆满的堆;
+     * 规划一次批量放入. 按给定顺序先走一遍, 把物品合并进相似且没堆满的堆,
      * 还有剩余再走第二遍, 按同样的顺序占用空槽.
      * 每个槽最多放多少取 min(槽位上限, 物品自身上限), 上限报 0 的槽(比如被调用方禁用的槽)自然被跳过.
      *
@@ -98,7 +98,7 @@ public final class InventoryPlanner {
         List<SlotChange> deltas = new ArrayList<>();
         int remaining = item.getAmount();
 
-        // 第一遍: 合并到相似且未满的堆
+        // 合并到相似且未满的堆
         for (int i = 0; i < order.size() && remaining > 0; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
@@ -114,7 +114,7 @@ public final class InventoryPlanner {
             remaining -= moved;
         }
 
-        // 第二遍: 占用空槽
+        // 占用空槽
         for (int i = 0; i < order.size() && remaining > 0; i++) {
             int slot = order.slotAt(i);
             if (snapshot[slot] != null) {
@@ -132,7 +132,7 @@ public final class InventoryPlanner {
     }
 
     /**
-     * 规划一次批量移除: 按给定顺序逐槽检查, matcher 看中的物品就扣掉,
+     * 规划一次批量移除. 按给定顺序逐槽检查, matcher 看中的物品就扣掉,
      * 直到凑够数量或者翻完所有槽.
      *
      * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
@@ -160,7 +160,7 @@ public final class InventoryPlanner {
     }
 
     /**
-     * 规划一次批量收集: 按给定顺序先收没堆满的"零头"(让满堆保持完整), 凑不够再动满堆.
+     * 规划一次批量收集, 按给定顺序先收没堆满的"零头"(让满堆保持完整), 凑不够再动满堆.
      *
      * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
      * @param template 物品样板, 只用来判断"像不像", 它自己的数量不影响结果
@@ -202,7 +202,7 @@ public final class InventoryPlanner {
         return new TakePlan(deltas, taken);
     }
 
-    // 计算这个槽对这个物品真正生效的堆叠上限: 槽位上限与物品自身上限取小.
+    // 槽位上限与物品自身上限取小, 得到这个物品在这一格真正生效的堆叠上限.
     private static int effectiveMaxStackSize(IntUnaryOperator slotLimit, int slot, ItemStack item) {
         return Math.min(slotLimit.applyAsInt(slot), item.getMaxStackSize());
     }

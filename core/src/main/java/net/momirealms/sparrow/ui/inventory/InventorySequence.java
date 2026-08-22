@@ -89,8 +89,7 @@ public final class InventorySequence {
     }
 
     /**
-     * 返回本序列的失效来源: 名单增减了成员, 或任何一个成员的内容变了, 它都失效一次.
-     * <p>第一次调用时创建, 之后恒返回同一个实例.
+     * 返回本序列的失效来源. 名单增减了成员, 或任何一个成员的内容变了, 它都失效一次.
      *
      * @return 本序列的失效来源
      */
@@ -101,7 +100,7 @@ public final class InventorySequence {
             synchronized (this) {
                 current = this.signal;
                 if (current == null) {
-                    // 这里盯的是名单本身而不是 inventories(): 后者会写回名单, 在 merging 对齐的途中触发它自己的失效回调, 让对齐重入.
+                    // 这里盯的是名单本身. inventories() 会写回名单, 在 merging 对齐的途中触发它自己的失效回调, 让对齐重入.
                     current = Signals.merging(this.members, SparrowInventory::contentSignal);
                     this.signal = current;
                 }

@@ -18,8 +18,11 @@ import org.jetbrains.annotations.Nullable;
 @ApiStatus.Internal
 public final class ClickBundleRules {
 
-    // 点击语义里所有的收纳袋判定都走这里: 认的是 NMS 物品标签 #minecraft:bundles, 所以彩色收纳袋和数据包扩展同样命中,
-    // 袋内数据仍由下面四条路径按 BUNDLE_CONTENTS 组件读. 空槽空光标必然不是袋子, 先挡掉再解析 NMS, 普通空点击就碰不到代理.
+    private ClickBundleRules() {
+    }
+
+    // 点击语义里所有的收纳袋判定都走这里. 认的是 NMS 物品标签 #minecraft:bundles, 彩色收纳袋和数据包扩展同样命中,
+    // 袋内数据由下面四条路径按 BUNDLE_CONTENTS 组件读. 空槽与空光标先短路掉, 普通空点击碰不到代理.
     public static boolean isBundle(@Nullable ItemStack item) {
         return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
     }
@@ -50,7 +53,7 @@ public final class ClickBundleRules {
         return new ClickOutcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter);
     }
 
-    // 从光标 Bundle 取出选中整组; 槽位放不下的余量重新插回 Bundle.
+    // 从光标 Bundle 取出选中整组, 槽位放不下的余量重新插回 Bundle.
     @Nullable
     public static ClickOutcome computeExtractionFromCursorBundle(
             ItemStack cursor,
@@ -72,7 +75,7 @@ public final class ClickBundleRules {
         if (placed <= 0) {
             return null;
         }
-        // 槽位吃不下的那部分原样塞回袋子; 塞不回去说明这次取出无法收支平衡, 整条路径作废, 一件都不动
+        // 槽位吃不下的那部分原样塞回袋子. 塞不回去说明这次取出收支不平, 整条路径作废, 一件都不动
         int remainder = taken.getAmount() - placed;
         if (remainder > 0) {
             ItemStack remainderStack = ItemUtils.copyWithAmount(taken, remainder);
@@ -118,7 +121,7 @@ public final class ClickBundleRules {
         return new ClickOutcome(bundleAfter, cursorAfter.isEmpty() ? ItemUtils.EMPTY : cursorAfter);
     }
 
-    // 空手右键槽位 Bundle: 取出选中(或第一件)整组物品上光标.
+    // 空手右键槽位 Bundle, 取出选中(或第一件)整组物品上光标.
     @Nullable
     public static ClickOutcome computeBundleTake(
             ItemStack current,
@@ -143,8 +146,8 @@ public final class ClickBundleRules {
         int previousSelection = VersionHelper.isOrAbove26_1()
                 ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)
                 : BundleContentsProxy.INSTANCE.selectedItem(contents);
-        // toggle 是开关不是赋值, 目标正好已经是当前选中项时, 单独 toggle 一次反而把它关掉了.
-        // 先关掉旧选中再 toggle 目标, 第二次就一定落在"选上", removeOne 才会取到想要的那一件
+        // toggle 是开关语义, 对同一个索引连按两次等于没选.
+        // 先关掉旧选中再 toggle 目标, 第二次一定落在"选上", removeOne 才取到想要的那一件
         if (previousSelection >= 0) {
             BundleContentsMutableProxy.INSTANCE.toggleSelectedItem(mutableContents, previousSelection);
         }

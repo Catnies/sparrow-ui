@@ -35,7 +35,7 @@ public final class ClickSemantics {
         }
     }
 
-    // 参与点击语义的连接 Inventory 及其可见槽位: 只有经未冻结协议槽展示的槽位可见.
+    // 参与点击语义的连接 Inventory 及其可见槽位, 只有经未冻结协议槽展示的槽位可见.
     public record LinkedInventory(@NotNull SparrowInventory inventory, @NotNull BitSet visibleSlots) {
         boolean visible(int slot) {
             return this.visibleSlots.get(slot);
@@ -59,7 +59,7 @@ public final class ClickSemantics {
             int hotbarButton,
             int windowSlot
     ) {
-        // 只要规划器算出的操作类型: write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
+        // 只要规划器算出的操作类型. write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
         // 预估发生在任何交互事件之前, 所以现场上还没有任何覆盖可言.
         return ClickPlanner.prepareClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {}, false, InteractionOverlay.forClick()).action();
     }
@@ -150,7 +150,7 @@ public final class ClickSemantics {
     }
 
     /**
-     * 处理一次已经完成的拖拽分配: 所有碰到的当前 Inventory 槽位进入同一笔事务, 分不完的部分留在光标上.
+     * 处理一次已经完成的拖拽分配. 所有碰到的当前 Inventory 槽位进入同一笔事务, 分不完的部分留在光标上.
      * <p>拖拽经过的 Item 槽, 空槽和冻结槽不参与分配, 也不会出现在事件的分配结果里; 整趟拖拽全落在
      * 这些槽位上时本方法不派发任何事件.
      *
@@ -171,11 +171,6 @@ public final class ClickSemantics {
     @ApiStatus.Internal
     public interface Context {
 
-        /**
-         * 本次操作对应的玩家.
-         *
-         * @return 交互的玩家
-         */
         @NotNull
         Player viewer();
 
@@ -209,7 +204,7 @@ public final class ClickSemantics {
         boolean displayedEmptyAt(int windowSlot);
 
         /**
-         * 查出数字键要交换的目标: 当前 lower 快捷栏某个按键位置实际连接的当前 Inventory 槽位;
+         * 查出数字键要交换的目标, 也就是当前 lower 快捷栏某个按键位置实际连接的那个 Inventory 槽位.
          * 该位置不是 InventoryLink 或路径经过已冻结 Pane 时返回 {@code null}.
          *
          * @param hotbarButton 热键编号, 0 到 8
@@ -267,7 +262,7 @@ public final class ClickSemantics {
         void drop(@NotNull ItemStack item);
 
         /**
-         * 标记某个 Window 槽位需要重新核对: 下一次同步时客户端会被纠正为服务端渲染结果,
+         * 标记某个 Window 槽位需要重新核对. 下一次同步时客户端会被纠正为服务端渲染结果,
          * 用来纠正客户端的点击预测.
          *
          * @param windowSlot Window 槽位
@@ -282,8 +277,6 @@ public final class ClickSemantics {
      */
     @ApiStatus.Internal
     public interface InteractionGate {
-
-        // 一律放行的闸门, 供不派发事件的调用方使用.
         InteractionGate ALLOW_ALL = new InteractionGate() {
         };
 

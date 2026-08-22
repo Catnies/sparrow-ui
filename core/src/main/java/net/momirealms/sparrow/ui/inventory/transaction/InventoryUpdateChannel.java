@@ -64,7 +64,7 @@ public final class InventoryUpdateChannel {
         }
 
         // Pre 接收者只认原始事务里属于本 Inventory 的变更, 之后的编辑既不补派也不递归派 Pre;
-        // Post 名单则先留着, 等 Pre 全跑完再按最终变更筛, 免得漏掉 Pre 新增槽位的提交后通知
+        // Post 名单则先留着, 等 Pre 全跑完再按最终变更筛, Pre 新增的槽位也能拿到提交后通知
         if (scope.slotChanges().isEmpty()) {
             preRecipients = List.of();
         }
@@ -81,7 +81,7 @@ public final class InventoryUpdateChannel {
         return this.nextPostTicket++;
     }
 
-    // 阻塞到自己的票号被叫到. 这里故意不响应中断: 半路溜走会让排在后面的票永远等不到放行.
+    // 阻塞到自己的票号被叫到. 这里故意不响应中断, 排在后面的票要等这一次走完才轮得到.
     void awaitPostTurn(long ticket) {
         boolean interrupted = false;
         synchronized (this.postGate) {

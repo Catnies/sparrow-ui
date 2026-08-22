@@ -67,8 +67,6 @@ public final class SlotChange {
      * 判断两个非空物品是否发生了不相似的替换.
      * <p>替换同时包含旧物品流出和新物品流入, 因此本方法返回 {@code true} 时,
      * {@link #isAdd()} 与 {@link #isRemove()} 也会返回 {@code true}.
-     * 物品相似性按 Bukkit {@link ItemStack#isSimilar(ItemStack)} 定义:
-     * 材质, 名称, 附魔或其他物品元数据不同都可能使本方法返回 {@code true}.
      *
      * @return 两个非空物品是否发生了不相似的替换
      */
