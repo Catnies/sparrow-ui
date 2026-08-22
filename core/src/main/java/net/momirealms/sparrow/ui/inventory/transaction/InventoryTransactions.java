@@ -15,9 +15,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
-import java.util.function.LongSupplier;
 
 // Inventory 事务引擎.
 // 一笔事务大致分为4个部分: plan (规划内容上算好每个槽改成什么)) -> pre (预处理器) -> commit(核对每条规划基准) -> post (后处理器)
@@ -347,23 +345,6 @@ public final class InventoryTransactions {
         @Nullable PlannedRoot.StateLock lock = root.stateLock();
         if (lock != null) {
             locks.add(lock);
-        }
-    }
-
-    // 给成功的事务发版本号, 以系统毫秒时间打底, 在当前 JVM / 类加载器生命周期内严格单调.
-    // 同一毫秒里的多笔事务和系统时钟回拨都退化成"前一个加一", 所以版本只适合比新旧, 既不等于精确墙上时间, 也不跨重启延续.
-    static final class VersionSource {
-        private final LongSupplier clock;                        // 提供当前系统毫秒时间, 测试可以换成可控时钟
-        private final AtomicLong lastVersion = new AtomicLong(); // 已签发的最大版本
-
-        VersionSource(@NotNull LongSupplier clock) {
-            this.clock = clock;
-        }
-
-        // 签发一个严格大于此前所有结果的版本.
-        long next() {
-            long currentTime = this.clock.getAsLong();
-            return this.lastVersion.updateAndGet(previous -> Math.max(currentTime, previous + 1));
         }
     }
 }

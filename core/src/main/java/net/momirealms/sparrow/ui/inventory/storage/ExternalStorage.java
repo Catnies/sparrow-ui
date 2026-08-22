@@ -23,7 +23,7 @@ public interface ExternalStorage {
      */
     @NotNull
     static ExternalStorage ofContainer(@NotNull Object container) {
-        return new ContainerStorage.Fixed(container);
+        return new FixedContainerStorage(container);
     }
 
     /**
