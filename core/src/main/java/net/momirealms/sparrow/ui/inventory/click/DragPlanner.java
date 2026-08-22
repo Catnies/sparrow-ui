@@ -112,7 +112,7 @@ final class DragPlanner {
             ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
             deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
                     .add(new SlotChange(target.link().slot(), target.current(), after));
-            newItems.put(target.windowSlot(), after.clone());
+            newItems.put(target.windowSlot(), after); // 前面复制过了, 不用再复制.
             if (!creative) {
                 budget -= placed;
                 placedTotal += placed;

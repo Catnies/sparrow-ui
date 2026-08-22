@@ -576,30 +576,12 @@ public abstract class SparrowInventory {
 
     /**
      * 判断是否存在 matcher 选中的物品.
-     *
-     * @param matcher 判断物品是否符合条件的函数
-     * @return 至少有一个物品符合条件时返回 {@code true}
-     */
-    public boolean contains(@NotNull Predicate<? super ItemStack> matcher) {
-        ItemStack[] snapshot = this.snapshot();
-        for (int i = 0; i < snapshot.length; i++) {
-            ItemStack item = snapshot[i];
-            if (item != null && matcher.test(item)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * 零物品拷贝地判断是否存在 matcher 选中的物品.
-     * <p>matcher 会直接收到内部 {@link ItemStack} 实例. matcher 只能读取当前入参, 不得修改或保存引用;
-     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
+     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有.
      *
      * @param matcher 判断物品是否符合条件的只读函数
      * @return 至少有一个物品符合条件时返回 {@code true}
      */
-    public boolean unsafeContains(@NotNull Predicate<? super ItemStack> matcher) {
+    public boolean contains(@NotNull Predicate<? super ItemStack> matcher) {
         ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
             ItemStack item = snapshot[i];
@@ -617,36 +599,18 @@ public abstract class SparrowInventory {
      * @return 至少有一个相似物品堆时返回 {@code true}
      */
     public boolean containsSimilar(@NotNull ItemStack template) {
-        return this.contains(item -> ItemUtils.isSimilar(item, template));
+        Object handle = ItemUtils.getItemStackHandle(template);
+        return this.contains(item -> ItemUtils.isSimilarToHandle(item, handle));
     }
 
     /**
      * 统计 matcher 选中的物品堆数量, 不累加堆内物品数量.
-     *
-     * @param matcher 判断物品是否符合条件的函数
-     * @return 符合条件的非空槽数量
-     */
-    public int count(@NotNull Predicate<? super ItemStack> matcher) {
-        ItemStack[] snapshot = this.snapshot();
-        int count = 0;
-        for (int i = 0; i < snapshot.length; i++) {
-            ItemStack item = snapshot[i];
-            if (item != null && matcher.test(item)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    /**
-     * 零物品拷贝地统计 matcher 选中的物品堆数量, 不累加堆内物品数量.
-     * <p>matcher 会直接收到内部 {@link ItemStack} 实例. matcher 只能读取当前入参, 不得修改或保存引用;
-     * 违反约定会绕过事务, 事件, Window 刷新和外部容器同步.
+     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有;
      *
      * @param matcher 判断物品是否符合条件的只读函数
      * @return 符合条件的非空槽数量
      */
-    public int unsafeCount(@NotNull Predicate<? super ItemStack> matcher) {
+    public int count(@NotNull Predicate<? super ItemStack> matcher) {
         ItemStack[] snapshot = this.unsafeSnapshot();
         int count = 0;
         for (int i = 0; i < snapshot.length; i++) {
@@ -665,7 +629,8 @@ public abstract class SparrowInventory {
      * @return 相似物品堆所在的非空槽数量
      */
     public int countSimilar(@NotNull ItemStack template) {
-        return this.count(item -> ItemUtils.isSimilar(item, template));
+        Object handle = ItemUtils.getItemStackHandle(template);
+        return this.count(item -> ItemUtils.isSimilarToHandle(item, handle));
     }
 
     /**
@@ -912,8 +877,8 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 按 OTHER 遍历顺序移除 matcher 选中的物品, 最多移除 {@code upTo} 个.
-     * 整个移除过程作为一次事务提交.
+     * 按 OTHER 遍历顺序移除 matcher 选中的物品, 最多移除 {@code upTo} 个, 整个移除过程作为一次事务提交.
+     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有.
      *
      * @param reason 本次修改的原因
      * @param matcher 判断某个物品是否应被移除的函数
@@ -1003,7 +968,7 @@ public abstract class SparrowInventory {
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
                 SlotChange delta = deltas.get(j);
-                working[delta.slot()] = delta.after();
+                working[delta.slot()] = delta.unsafeAfter();
             }
         }
         return true;
@@ -1057,7 +1022,7 @@ public abstract class SparrowInventory {
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
                 SlotChange delta = deltas.get(j);
-                working[delta.slot()] = delta.after();
+                working[delta.slot()] = delta.unsafeAfter();
             }
             index++;
         }

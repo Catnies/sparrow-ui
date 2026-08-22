@@ -96,13 +96,14 @@ public final class InventoryPlanner {
     @NotNull
     public static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
         List<SlotChange> deltas = new ArrayList<>();
+        Object itemHandle = ItemUtils.getItemStackHandle(item);
         int remaining = item.getAmount();
 
         // 合并到相似且未满的堆
         for (int i = 0; i < order.size() && remaining > 0; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
-            if (!ItemUtils.isSimilar(current, item)) {
+            if (!ItemUtils.isSimilarToHandle(current, itemHandle)) {
                 continue;
             }
             int space = effectiveMaxStackSize(slotLimit, slot, current) - current.getAmount();
@@ -136,7 +137,7 @@ public final class InventoryPlanner {
      * 直到凑够数量或者翻完所有槽.
      *
      * @param snapshot 供规划算法读取的当前 Inventory 内容, 空槽为 {@code null}
-     * @param matcher 判断某个物品该不该移除; 它是调用方代码, 只许接触物品副本
+     * @param matcher 判断某个物品该不该移除; 它是调用方代码, 拿到的是零拷贝的内部引用
      * @param upTo 最多移除的数量
      * @param order 槽位遍历顺序
      * @return 移除方案与实际能移除的数量
@@ -148,8 +149,8 @@ public final class InventoryPlanner {
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
-            // matcher 是用户代码, 只允许它接触物品副本
-            if (current == null || !matcher.test(current.clone())) {
+            // matcher 是调用方代码, 按约定只读不改, 因此直接把内部实例交给它, 不为一次判断复制一份
+            if (current == null || !matcher.test(current)) {
                 continue;
             }
             int take = Math.min(current.getAmount(), upTo - taken);
@@ -174,6 +175,7 @@ public final class InventoryPlanner {
     public static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
         List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
+        Object templateHandle = ItemUtils.getItemStackHandle(template);
         boolean[] touched = new boolean[snapshot.length];
 
         // 第一遍只碰零头, 第二遍才动满堆; touched 保证同一个槽只落进其中一遍
@@ -182,7 +184,7 @@ public final class InventoryPlanner {
             for (int i = 0; i < order.size() && taken < upTo; i++) {
                 int slot = order.slotAt(i);
                 @Nullable ItemStack current = snapshot[slot];
-                if (touched[slot] || !ItemUtils.isSimilar(current, template)) {
+                if (touched[slot] || !ItemUtils.isSimilarToHandle(current, templateHandle)) {
                     continue;
                 }
                 boolean fullStack = current.getAmount() >= effectiveMaxStackSize(slotLimit, slot, current);

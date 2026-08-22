@@ -77,6 +77,12 @@ public final class ItemUtils {
         return a != null && b != null && ItemStackProxy.INSTANCE.isSameItemSameComponents(getItemStackHandle(a), getItemStackHandle(b));
     }
 
+    // 判断物品与给定句柄是否相似(类型与数据一致, 不比较数量), 给句柄在循环外只解一次的场景用.
+    // 逐槽循环里另一边往往是循环不变量, 每轮重解一次句柄在它不是 CraftItemStack 时会退化成一次完整转换.
+    public static boolean isSimilarToHandle(@Nullable ItemStack item, @NotNull Object handle) {
+        return item != null && ItemStackProxy.INSTANCE.isSameItemSameComponents(getItemStackHandle(item), handle);
+    }
+
     // 判断两个物品是否表示同一份内容(类型, 数据与数量都一致), null 与空物品视为相同.
     public static boolean isContentEqual(@Nullable ItemStack a, @Nullable ItemStack b) {
         return isNullOrEmpty(a) ? isNullOrEmpty(b) : b != null && ItemStackProxy.INSTANCE.matches(getItemStackHandle(a), getItemStackHandle(b));

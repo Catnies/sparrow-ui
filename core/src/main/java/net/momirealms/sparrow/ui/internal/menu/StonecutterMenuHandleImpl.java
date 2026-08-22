@@ -74,14 +74,17 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     @Override
     public void setRecipeButtons(ItemStack @NotNull [] buttons) {
         Objects.requireNonNull(buttons, "buttons");
-        ArrayList<ItemStack> copy = new ArrayList<>(buttons.length);
         for (int index = 0; index < buttons.length; index++) {
-            copy.add(ItemUtils.copyOrEmpty(Objects.requireNonNull(buttons[index], "buttons contains null")));
+            Objects.requireNonNull(buttons[index], "buttons contains null");
         }
-        List<ItemStack> snapshot = List.copyOf(copy);
-        if (this.recipeButtons.equals(snapshot)) {
-            return;
+        // 入参和现值相等判断对原件和副本给出同一答案, 内容没变就.
+        if (this.sameRecipeButtons(buttons)) return;
+        // 传进来的数组归调用方所有, 存下来的这一份必须独立
+        ItemStack[] copy = new ItemStack[buttons.length];
+        for (int index = 0; index < buttons.length; index++) {
+            copy[index] = ItemUtils.copyOrEmpty(buttons[index]);
         }
+        List<ItemStack> snapshot = List.of(copy);
 
         this.recipeButtons = snapshot;
         if (this.selectedRecipeIndex >= snapshot.size()) {
@@ -90,6 +93,24 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         this.recipeButtonsDirty = true;
         this.dataDirty = true;
         this.forceRemoteSlot(RESULT_SLOT);
+    }
+
+    // 现值是归一化过的, (空物品统一存成空物品), 入参没有, 因此空的那一侧要按同一标准比.
+    private boolean sameRecipeButtons(ItemStack @NotNull [] buttons) {
+        if (this.recipeButtons.size() != buttons.length) {
+            return false;
+        }
+        for (int index = 0; index < buttons.length; index++) {
+            ItemStack current = this.recipeButtons.get(index);
+            ItemStack incoming = buttons[index];
+            if (current.isEmpty() != incoming.isEmpty()) {
+                return false;
+            }
+            if (!current.isEmpty() && !current.equals(incoming)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override

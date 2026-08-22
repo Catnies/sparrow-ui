@@ -58,8 +58,8 @@ abstract class ContainerStorage implements ExternalStorage {
     public ItemStack read(int slot) {
         Object handle = ContainerProxy.INSTANCE.getItem(this.container(), slot);
         // NMS 容器用空物品表示空槽, 这里换成外部存储约定的 null
-        if (handle == ItemStackProxy.EMPTY) return null;
-        return ItemUtils.nullIfEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(handle));
+        if (ItemStackProxy.INSTANCE.isEmpty(handle)) return null;
+        return CraftItemStackProxy.INSTANCE.asCraftMirror(handle);
     }
 
     @Override
@@ -70,9 +70,7 @@ abstract class ContainerStorage implements ExternalStorage {
         for (int slot = 0; slot < contents.length; slot++) {
             Object handle = ContainerProxy.INSTANCE.getItem(container, slot);
             // NMS 容器用空物品表示空槽, 这里换成外部存储约定的 null
-            contents[slot] = handle != ItemStackProxy.EMPTY
-                    ? ItemUtils.nullIfEmpty(CraftItemStackProxy.INSTANCE.asCraftMirror(handle))
-                    : null;
+            contents[slot] = ItemStackProxy.INSTANCE.isEmpty(handle) ? null : CraftItemStackProxy.INSTANCE.asCraftMirror(handle);
         }
         return contents;
     }

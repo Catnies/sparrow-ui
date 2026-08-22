@@ -3,6 +3,8 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory.ContainerOperation;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,7 +38,7 @@ final class InventoryContainerHandler implements InvocationHandler {
         return switch (operation) {
             case GET_CONTAINER_SIZE -> this.inventory.size();
             case IS_EMPTY -> this.isEmpty();
-            case GET_ITEM -> CraftInventoryFactory.toNms(this.inventory.itemAt((int) arguments[0]));
+            case GET_ITEM -> ownedHandle(this.inventory.unsafeItemAt((int) arguments[0]));
             case REMOVE_ITEM -> CraftInventoryFactory.toNms(this.removeItem((int) arguments[0], (int) arguments[1]));
             case REMOVE_ITEM_NO_UPDATE -> CraftInventoryFactory.toNms(this.removeItemNoUpdate((int) arguments[0]));
             case SET_ITEM -> {
@@ -71,7 +73,7 @@ final class InventoryContainerHandler implements InvocationHandler {
     }
 
     private boolean isEmpty() {
-        ItemStack[] contents = this.inventory.snapshot();
+        ItemStack[] contents = this.inventory.unsafeSnapshot();
         for (int slot = 0; slot < contents.length; slot++) {
             if (contents[slot] != null && !contents[slot].isEmpty()) {
                 return false;
@@ -129,7 +131,7 @@ final class InventoryContainerHandler implements InvocationHandler {
     }
 
     private void clearContent() {
-        ItemStack[] contents = this.inventory.snapshot();
+        ItemStack[] contents = this.inventory.unsafeSnapshot();
         for (int slot = 0; slot < contents.length; slot++) {
             if (contents[slot] != null && !contents[slot].isEmpty()) {
                 this.setItem(slot, null);
@@ -137,11 +139,17 @@ final class InventoryContainerHandler implements InvocationHandler {
         }
     }
 
+    private static Object ownedHandle(@Nullable ItemStack item) {
+        return ItemUtils.isNullOrEmpty(item)
+                ? ItemStackProxy.EMPTY
+                : ItemStackProxy.INSTANCE.copy(ItemUtils.getItemStackHandle(item));
+    }
+
     private ArrayList<Object> contents() {
-        ItemStack[] contents = this.inventory.snapshot();
+        ItemStack[] contents = this.inventory.unsafeSnapshot();
         ArrayList<Object> converted = new ArrayList<>(contents.length);
         for (int slot = 0; slot < contents.length; slot++) {
-            converted.add(CraftInventoryFactory.toNms(contents[slot]));
+            converted.add(ownedHandle(contents[slot]));
         }
         return converted;
     }
