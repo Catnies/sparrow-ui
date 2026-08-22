@@ -553,18 +553,20 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         ) {
             this.trade = trade;
             this.invalidator = invalidator;
+            // 交易列表画在容器槽位之外, 三个位置共用同一份不占槽位的渲染上下文
+            RenderContext renderContext = RenderContext.offSlot(window);
             this.firstInputRenderCell = new RenderCell(
-                    new RenderContext(window, FIRST_INPUT_SLOT),
+                    renderContext,
                     invalidator,
                     throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant first input", throwable)
             );
             this.secondInputRenderCell = new RenderCell(
-                    new RenderContext(window, SECOND_INPUT_SLOT),
+                    renderContext,
                     invalidator,
                     throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant second input", throwable)
             );
             this.resultRenderCell = new RenderCell(
-                    new RenderContext(window, RESULT_SLOT),
+                    renderContext,
                     invalidator,
                     throwable -> SparrowUI.getInstance().handleException("Failed to render asynchronous Merchant result", throwable)
             );

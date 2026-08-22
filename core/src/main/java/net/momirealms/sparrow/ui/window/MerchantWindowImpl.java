@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.pane.Pane;
@@ -15,7 +14,6 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.window.click.MerchantTradeSelectClick;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -36,7 +34,6 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     private volatile List<MerchantWindow.Trade> trades; // 已应用的不可修改有序快照
 
     private int previousTradeIndex = -1; // 当前客户端会话最近一次成功选择的索引
-    private long selectionResetVersion; // 识别 Item 处理器内重入触发的选择重置
 
     MerchantWindowImpl(
             @NotNull WindowManager manager,
@@ -150,7 +147,6 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         // 客户端会保留选择索引, 列表缩短后重开同一界面以清除可能悬空的索引
         if (trades.size() < previous.size()) {
             this.previousTradeIndex = -1;
-            this.selectionResetVersion++;
             this.notifyReopen();
         }
     }
@@ -190,7 +186,6 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     protected MerchantMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
         // 每次真正打开新会话都从未选择状态开始
         this.previousTradeIndex = -1;
-        this.selectionResetVersion++;
         MerchantMenuHandle menuHandle = factory.merchant(this.viewer(), generation, this, this::report);
         try {
             menuHandle.setLevel(this.level);
@@ -227,8 +222,8 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
 
     /**
      * 处理原版客户端的交易选择包.
-     * <p>三个 Item 处理器按输入槽 0, 1, 2 的顺序 fail-fast 执行. 处理器内即使重入修改 Trade 列表,
-     * 本次调用仍使用入口快照; 列表缩短触发的选择重置不会被旧索引覆盖.
+     * <p>选择只发布一次 MerchantTradeSelectClick, 不给 Trade 的三个 Item 分派点击, 它们是纯展示的.
+     * 处理器内即使重入修改 Trade 列表, 本次调用仍使用入口快照; 重入触发的选择重置发生在本次索引提交之后, 照常覆盖它.
      */
     private void handleTradeSelection(MenuInput.WindowSpecific.TradeSelect selection) {
         MerchantMenuHandle menuHandle = this.menuHandle();
@@ -252,19 +247,10 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
                 ? snapshot.get(previousIndex)
                 : null;
         MerchantWindow.Trade selectedTrade = snapshot.get(selectedIndex);
-        long resetVersion = this.selectionResetVersion;
+        // 选择索引是协议状态, 先于用户处理器提交
+        this.previousTradeIndex = selectedIndex;
 
-        // 任一 Item 抛错都会终止后续 Item 和 TradeSelection, previous 也不会前移
-        selectedTrade.getFirstInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 0));
-        selectedTrade.getSecondInput().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 1));
-        selectedTrade.getResult().handleClick(new ItemClick(this.viewer(), ClickType.LEFT, this, menuHandle.cursor(), 2));
-
-        // Item 处理器可能重入缩短列表; 只有选择状态未被重置时才提交本次索引
-        if (this.selectionResetVersion == resetVersion) {
-            this.previousTradeIndex = selectedIndex;
-        }
-
-        // 重复选择仍执行三个 Item, 但不重复发布 TradeSelection
+        // 重复选择不重复发布
         if (previousIndex == selectedIndex) {
             return;
         }
