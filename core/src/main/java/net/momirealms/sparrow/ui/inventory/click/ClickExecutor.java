@@ -152,7 +152,7 @@ final class ClickExecutor {
         }
         // Bukkit 闸门是覆盖层的唯一写入者, 之后每一道闸门写进来的都是提交后的最终值.
         edits.closeOverlay();
-        @Nullable ClickCandidate.StaleReason stale = stale(candidate.revalidate(this.context), edits);
+        @Nullable ClickCandidate.StaleReason stale = this.recheck(candidate, fireBukkitInventoryEvent && this.gate.firesBukkitEvents(), edits);
         if (stale == null && this.overlay.isEmpty()) {
             this.finishCandidate(candidate, edits);
             return;
@@ -183,10 +183,19 @@ final class ClickExecutor {
     // Sparrow 点击事件与提交. 重规划之后从这里继续, 因此这一段不含任何 Bukkit 事件.
     private void finishCandidate(ClickCandidate candidate, InteractionEdits edits) {
         ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
-        if (eventTarget != null
-                && (!this.passGate(() -> this.gate.allowInventoryClick(eventTarget, candidate.action(), edits))
-                || !this.survived(stale(candidate.revalidate(this.context), edits)))) {
-            return;
+        if (eventTarget != null) {
+            if (!this.gate.stillValid()) {
+                return;
+            }
+            // 有订阅者这道闸门才真的跑用户代码. 读在派发前一刻, 订阅者在事件里退订也不影响这次的答案.
+            boolean observed = eventTarget.inventory().hasClickObservers();
+            if (
+                    !this.gate.allowInventoryClick(eventTarget, candidate.action(), edits)
+                    || !this.gate.stillValid()
+                    || !this.survived(this.recheck(candidate, observed, edits))
+            ) {
+                return;
+            }
         }
         @Nullable TransactionDraft draft = edits.transaction();
         if (draft == null) {
@@ -260,6 +269,13 @@ final class ClickExecutor {
                 List.of(),
                 () -> this.survived(edits.staleCursor()) && this.gate.stillValid()
         );
+    }
+
+    // 闸门之后的复核. 闸门真的跑过用户代码才把外部容器重新同步进来, 没跑过时规划基准还是刚读的那份, 纯身份比对就够了.
+    // 纯身份比对看不见绕过框架的外部直写. 规划期读到外部变更时会就地补派一轮 External Post, 那里的处理器如果直接写另一个已经取过基准的引用容器.
+    @Nullable
+    private ClickCandidate.StaleReason recheck(ClickCandidate candidate, boolean userCodeRan, InteractionEdits edits) {
+        return stale(userCodeRan ? candidate.revalidate(this.context) : candidate.staleReason(this.context), edits);
     }
 
     // 候选自身的前提之外再兜一层. 候选不复核光标(shift, 数字键, 换副手)时, 监听器写进草稿的光标同样是

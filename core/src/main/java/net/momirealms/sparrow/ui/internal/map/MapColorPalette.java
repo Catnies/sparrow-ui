@@ -26,8 +26,7 @@ public final class MapColorPalette {
         profile = MapColorProfile.load(colors);
     }
 
-    @NotNull
-    public static byte[] imageToBytes(@NotNull BufferedImage image) {
+    public static byte @NotNull [] imageToBytes(@NotNull BufferedImage image) {
         MapColorProfile current = profile;
         if (current == null) {
             throw new IllegalStateException("Map color palette is not initialized");

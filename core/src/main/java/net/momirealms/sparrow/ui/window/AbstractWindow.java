@@ -44,7 +44,9 @@ import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -2053,18 +2055,25 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final int stateId;
         private final long pathRevision;
         // 本次交互是否派发 Bukkit 事件, 开始时定下来: 重置事件状态副本, 实际派发和取回事件写入必须按同一个答案走
-        private final boolean fireBukkitEvents = SparrowUI.getInstance().fireBukkitInventoryEvents();
+        private final boolean fireBukkitEvents;
 
-        InteractionGuard(MenuHandle menu) {
+        // Bukkit 事件在没有插件监听时不派发, Paper 自己派发事件前也是这么判断的.
+        InteractionGuard(MenuHandle menu, org.bukkit.event.HandlerList eventHandlers) {
             this.menu = menu;
             this.generation = AbstractWindow.this.generation;
             this.stateId = menu.stateId();
             this.pathRevision = AbstractWindow.this.interactionPathRevision.get();
+            this.fireBukkitEvents = SparrowUI.getInstance().fireBukkitInventoryEvents() && eventHandlers.getRegisteredListeners().length != 0;
         }
 
         @Override
         public boolean stillValid() {
             return AbstractWindow.this.isInteractionCurrent(this.generation, this.menu, this.stateId, this.pathRevision);
+        }
+
+        @Override
+        public boolean firesBukkitEvents() {
+            return this.fireBukkitEvents;
         }
 
         // 派发 Bukkit 事件前先让 Bukkit 事件状态副本对齐服务端渲染结果; 渲染本身可能跑用户代码, 之后要重新复核.
@@ -2113,7 +2122,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final ClickInterpreter.Result.SingleClick click;
 
         ClickGuard(MenuHandle menu, ClickInterpreter.Result.SingleClick click) {
-            super(menu);
+            super(menu, InventoryClickEvent.getHandlerList());
             this.click = click;
         }
 
@@ -2158,7 +2167,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final ClickType clickType;
 
         DragGuard(MenuHandle menu, ClickType clickType) {
-            super(menu);
+            super(menu, InventoryDragEvent.getHandlerList());
             this.clickType = clickType;
         }
 

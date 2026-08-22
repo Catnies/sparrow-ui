@@ -320,6 +320,16 @@ public final class ClickSemantics {
         }
 
         /**
+         * {@link #allowClick} 与 {@link #allowDrag} 会不会真的派发 Bukkit 事件.
+         * 返回 {@code false} 表示那一段只是放行, 中途没有任何用户代码跑过, 引擎据此省掉闸门之后的外部容器重同步.
+         *
+         * @return 本次交互会派发 Bukkit 事件时返回 {@code true}
+         */
+        default boolean firesBukkitEvents() {
+            return true;
+        }
+
+        /**
          * 复核交互是否仍然属于当前 Window 状态.
          * 事件处理器可能已经关闭或重开 Window, 改变菜单状态, 或替换协议槽位的连接与冻结语义.
          *
