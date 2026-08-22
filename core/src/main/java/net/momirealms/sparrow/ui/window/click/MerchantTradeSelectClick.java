@@ -1,5 +1,6 @@
-package net.momirealms.sparrow.ui.window;
+package net.momirealms.sparrow.ui.window.click;
 
+import net.momirealms.sparrow.ui.window.MerchantWindow;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -14,7 +15,7 @@ import org.jetbrains.annotations.Nullable;
  * @param previousTrade 之前索引在本次入口快照中对应的 Trade
  * @param selectedTrade 本次选择的 Trade
  */
-public record MerchantTradeSelection(
+public record MerchantTradeSelectClick(
         @NotNull Player player,
         @NotNull MerchantWindow window,
         int previousIndex,
