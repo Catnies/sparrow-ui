@@ -10,13 +10,13 @@ import java.util.UUID;
 final class MountEquipmentStorage extends ContainerStorage {
     private final Object container; // 取出来的那一格容器
     private final UUID mount;       // 这一格属于哪只坐骑
-    private final int mountSlot;    // 这一格在坐骑背包里的槽号, 鞍与护甲靠它区分
+    private final int firstMountSlot; // 在坐骑背包里的起始槽号
 
-    MountEquipmentStorage(@NotNull Object container, @NotNull UUID mount, int mountSlot) {
+    MountEquipmentStorage(@NotNull Object container, @NotNull UUID mount, int firstMountSlot) {
         super(ContainerProxy.INSTANCE.getContainerSize(container), ContainerProxy.INSTANCE.getMaxStackSize(container));
         this.container = container;
         this.mount = mount;
-        this.mountSlot = mountSlot;
+        this.firstMountSlot = firstMountSlot;
     }
 
     @Override
@@ -28,7 +28,7 @@ final class MountEquipmentStorage extends ContainerStorage {
     @Override
     @NotNull
     public SlotKey keyOf(int slot) {
-        // 这一段只有一格, 槽号取它在坐骑背包里的位置
-        return new SlotKey(this.mount, this.mountSlot);
+        // 槽号取它在坐骑背包里的位置, 这样同一只坐骑的两段各算各的
+        return new SlotKey(this.mount, this.firstMountSlot + slot);
     }
 }

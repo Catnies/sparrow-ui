@@ -272,7 +272,6 @@ final class ClickExecutor {
     }
 
     // 闸门之后的复核. 闸门真的跑过用户代码才把外部容器重新同步进来, 没跑过时规划基准还是刚读的那份, 纯身份比对就够了.
-    // 纯身份比对看不见绕过框架的外部直写. 规划期读到外部变更时会就地补派一轮 External Post, 那里的处理器如果直接写另一个已经取过基准的引用容器.
     @Nullable
     private ClickCandidate.StaleReason recheck(ClickCandidate candidate, boolean userCodeRan, InteractionEdits edits) {
         return stale(userCodeRan ? candidate.revalidate(this.context) : candidate.staleReason(this.context), edits);

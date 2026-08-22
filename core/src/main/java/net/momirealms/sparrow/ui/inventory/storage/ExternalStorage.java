@@ -79,6 +79,7 @@ public interface ExternalStorage {
      * 把存储槽位换算成 {@link SlotKey}, 两个 Inventory 落到同一个 SlotKey 时判定为同一个存储位置.
      * <p>归属要按值判等并在存储活着的期间保持稳定, 不要交出每次取用都新建的包装对象.
      * 拼起来的存储要把归属下放到真正存放这一格的那一层, 并把槽号换算到那一层的坐标里.
+     * <p>交出的槽号因此是那一层自己的坐标, SlotKey 只回答"是不是同一格", 读写一律用本存储的槽位.
      *
      * @param slot 存储槽位
      * @return 该槽位的 SlotKey
