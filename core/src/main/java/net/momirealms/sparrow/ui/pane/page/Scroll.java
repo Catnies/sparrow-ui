@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.pane.page;
 
+import net.momirealms.sparrow.ui.state.ListSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.jetbrains.annotations.NotNull;
@@ -54,6 +55,19 @@ public final class Scroll<T> {
     }
 
     /**
+     * 同 {@link #vertical(Signal, int, int)}, 接集合装饰器, 跟着变更走.
+     *
+     * @param source 完整序列, 变更时滚动内容跟着变
+     * @param width 一行放多少条, 必须为正数
+     * @param rows 一次显示多少行, 必须为正数
+     * @return 滚动
+     */
+    @NotNull
+    public static <T> Scroll<T> vertical(@NotNull ListSignal<? extends T> source, int width, int rows) {
+        return vertical((Signal<? extends List<? extends T>>) source, width, rows);
+    }
+
+    /**
      * 竖向滚动声明, 按行宽把序列铺开, 一次显示 {@code rows} 行.
      *
      * @param source 完整序列
@@ -84,6 +98,19 @@ public final class Scroll<T> {
     @NotNull
     public static <T> Scroll<T> horizontal(@NotNull List<? extends T> content, int height, int columns) {
         return horizontal(Signal.of(List.copyOf(content)), height, columns);
+    }
+
+    /**
+     * 同 {@link #horizontal(Signal, int, int)}, 接集合装饰器, 跟着变更走.
+     *
+     * @param source 完整序列, 变更时滚动内容跟着变
+     * @param height 一列放多少条, 必须为正数
+     * @param columns 一次显示多少列, 必须为正数
+     * @return 滚动
+     */
+    @NotNull
+    public static <T> Scroll<T> horizontal(@NotNull ListSignal<? extends T> source, int height, int columns) {
+        return horizontal((Signal<? extends List<? extends T>>) source, height, columns);
     }
 
     /**

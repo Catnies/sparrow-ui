@@ -2,11 +2,13 @@ package net.momirealms.sparrow.ui.pane.page;
 
 import net.momirealms.sparrow.ui.state.AsyncSignal;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.ListSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
@@ -95,6 +97,19 @@ public final class Page<T> {
     }
 
     /**
+     * 同 {@link #of(Signal, int)}, 接集合装饰器. {@code ListSignal} 既是 {@code List} 又是 {@code Signal<List>},
+     * 这个重载替它选定跟着变更走的那一边.
+     *
+     * @param source 完整序列, 变更时翻页内容跟着变
+     * @param pageSize 一页显示多少条, 必须为正数
+     * @return 分页
+     */
+    @NotNull
+    public static <T> Page<T> of(@NotNull ListSignal<? extends T> source, int pageSize) {
+        return of((Signal<? extends List<? extends T>>) source, pageSize);
+    }
+
+    /**
      * 基础翻页声明, 每页条数相同, 总页数由序列长度算出来.
      *
      * @param source 完整序列
@@ -122,6 +137,18 @@ public final class Page<T> {
     @NotNull
     public static <T> Page<T> of(@NotNull KeyedSignal<Integer, List<T>> pages, @NotNull Signal<Integer> pageCount) {
         return new Page<>(pageCount.map(count -> Math.max(1, count)), index -> Signals.switching(pages, index), NONE, NONE);
+    }
+
+    /**
+     * 同 {@link #of(Signal, IntUnaryOperator)}, 接集合装饰器, 跟着变更走.
+     *
+     * @param source 完整序列, 变更时翻页内容跟着变
+     * @param pageSizeOf 给出第 n 页显示多少条, 必须返回正数
+     * @return 分页
+     */
+    @NotNull
+    public static <T> Page<T> of(@NotNull ListSignal<? extends T> source, @NotNull IntUnaryOperator pageSizeOf) {
+        return of((Signal<? extends List<? extends T>>) source, pageSizeOf);
     }
 
     /**
@@ -297,14 +324,13 @@ public final class Page<T> {
      * @param list 完整序列
      * @param offset 这一页从第几条开始
      * @param length 这一页最多放多少条
-     * @return 该页的内容; 起点已经越过序列末尾时给出空的一段
+     * @return 该页的内容, 是一份复制; 起点已经越过序列末尾时给出空的一段
      */
     private static <T> List<T> slice(List<? extends T> list, int offset, int length) {
         int size = list.size();
         int from = Math.min(offset, size);
         int to = Math.min(from + length, size);
-        @SuppressWarnings("unchecked")
-        List<T> page = (List<T>) list.subList(from, to);
-        return page;
+        // 来源可能是活集合(ListSignal), 页内容要复制出来, 翻页之间才不会被后续变更改写
+        return new ArrayList<>(list.subList(from, to));
     }
 }

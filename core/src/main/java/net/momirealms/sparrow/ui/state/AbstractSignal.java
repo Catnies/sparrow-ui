@@ -27,7 +27,8 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         LensSignal,
         TickingSignal,
         PacedSignal,
-        CountdownSignal
+        CountdownSignal,
+        CollectionSignal
 {
     private static final BiPredicate<Object, Object> DEFAULT_SAME_VALUE = Objects::equals;
 
@@ -110,7 +111,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      * @throws IllegalStateException 本线程正在派发本节点时再次调用, 也就是回调里又让这个 signal 失效了
      */
     protected final void notifyDirty() {
-        if (this.retired) return;
+        if (this.retired || this.entries.isEmpty()) return;
         if (this.dispatchingThread == Thread.currentThread()) {
             throw new IllegalStateException("Reentrant invalidation: a listener invalidated this signal while it was still dispatching");
         }

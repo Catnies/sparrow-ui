@@ -18,7 +18,7 @@ import java.util.function.Supplier;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSignal {
+public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSignal, ListSignal, SetSignal, MapSignal {
 
     /**
      * 读取当前值.
