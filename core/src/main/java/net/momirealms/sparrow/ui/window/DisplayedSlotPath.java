@@ -41,6 +41,9 @@ final class DisplayedSlotPath implements AutoCloseable {
     private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.RESOLVING);
     private PathState current;  // 当前已解析出的路径
 
+    @Nullable
+    private volatile Object remembered;   // 最近一次渲染记下的东西, 终点 Item 换了或关闭了 Window 就清理
+
     /**
      * 创建并立即解析一个 Window 槽位的显示路径.
      *
@@ -54,7 +57,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         this.windowSlot = windowSlot;
         this.rootPane = rootPane;
         this.rootSlot = rootPane.size().checkSlot(rootSlot);
-        this.renderContext = new RenderContext(window, windowSlot);
+        this.renderContext = new RenderContext(window, windowSlot, this::remember);
         this.renderCell = new RenderCell(
                 this.renderContext,
                 () -> this.onDirty(Invalidation.COMPLETION),
@@ -185,6 +188,7 @@ final class DisplayedSlotPath implements AutoCloseable {
             this.current = next;
             if (leafChanged) {
                 this.renderCell.reset();
+                this.remembered = null;     // 上一个终点记下的东西不留给下一个
             }
             if (this.window instanceof AbstractWindow<?> abstractWindow) {
                 if (refreshTargetsStale) {
@@ -506,6 +510,16 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
+    // 渲染替这位玩家这个槽位记下一个东西, 下一次渲染覆盖.
+    private void remember(@Nullable Object value) {
+        this.remembered = value;
+    }
+
+    @Nullable
+    Object remembered() {
+        return this.remembered;
+    }
+
     /**
      * 把点击转发给路径终点的 Item.
      * 路径按冻结处理或终点不是 Item 时直接忽略.
@@ -627,6 +641,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
         this.renderCell.close();
         this.windowVisualSubscription.close();
+        this.remembered = null;
         PathState previous = this.current;
         this.current = null;
         if (previous != null) {

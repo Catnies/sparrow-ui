@@ -617,6 +617,16 @@ public interface Window {
     ItemStack displayedAt(int windowSlot);
 
     /**
+     * 读取某个 Window 槽位最近一次渲染记下的东西, 见 {@code RenderContext.remember}.
+     * <p>槽位越界、尚未渲染或没记过时返回 {@code null}.
+     *
+     * @param windowSlot Window 槽位
+     * @return 记下的东西, 没有时为 {@code null}
+     */
+    @Nullable
+    Object rememberedAt(int windowSlot);
+
+    /**
      * 此 Window 的所属玩家.
      *
      * @return 查看者

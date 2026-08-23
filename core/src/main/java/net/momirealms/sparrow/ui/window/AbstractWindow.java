@@ -762,6 +762,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return displayed == null ? ItemStack.empty() : displayed.clone();
     }
 
+    @Nullable
+    @Override
+    public Object rememberedAt(int windowSlot) {
+        DisplayedSlotPath[] paths = this.paths;
+        if (paths == null || windowSlot < 0 || windowSlot >= paths.length || paths[windowSlot] == null) {
+            return null;
+        }
+        return paths[windowSlot].remembered();
+    }
+
     @NotNull
     @Override
     public Player viewer() {
