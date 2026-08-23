@@ -85,7 +85,7 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> KeyedSignal<K, T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader) {
-        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader);
+        return async(placeholder, executor, loader, AbstractSignal.defaultSameValue());
     }
 
     /**
@@ -99,6 +99,69 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> KeyedSignal<K, T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic());
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), null);
+    }
+
+    /**
+     * 创建一个轮询的异步分区数据源, 语义同 {@link Signal#polling(Object, Executor, Supplier, long)}, 按分区各自算有没有订阅.
+     * <p>只有句柄被订阅了的那几个分区在轮询, 取句柄不算订阅; 分页场景下就是只有正在显示的那一页在刷.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param periodTicks 轮询周期, 必须为正
+     * @return 轮询的分区 signal
+     * @throws IllegalArgumentException {@code periodTicks} 不是正数
+     */
+    @NotNull
+    static <K, T> KeyedSignal<K, T> polling(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodTicks) {
+        return polling(placeholder, executor, loader, periodTicks, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 同 {@link #polling(Object, Executor, Function, long)}, 但指定判等函数, 全部分区共用同一个.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param periodTicks 轮询周期, 必须为正
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 轮询的分区 signal
+     * @throws IllegalArgumentException {@code periodTicks} 不是正数
+     */
+    @NotNull
+    static <K, T> KeyedSignal<K, T> polling(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodTicks, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), AsyncSignalImpl.Polling.everyTicks(periodTicks));
+    }
+
+    /**
+     * 同 {@link #polling(Object, Executor, Function, long)}, 但以毫秒计, 时钟挂在 Paper 异步调度器上.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param periodMillis 轮询周期毫秒数, 不小于 50
+     * @return 轮询的分区 signal
+     * @throws IllegalArgumentException {@code periodMillis} 小于 50
+     */
+    @NotNull
+    static <K, T> KeyedSignal<K, T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodMillis) {
+        return pollingMillis(placeholder, executor, loader, periodMillis, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 同 {@link #pollingMillis(Object, Executor, Function, long)}, 但指定判等函数, 全部分区共用同一个.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param periodMillis 轮询周期毫秒数, 不小于 50
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 轮询的分区 signal
+     * @throws IllegalArgumentException {@code periodMillis} 小于 50
+     */
+    @NotNull
+    static <K, T> KeyedSignal<K, T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodMillis, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), AsyncSignalImpl.Polling.everyMillis(periodMillis));
     }
 }

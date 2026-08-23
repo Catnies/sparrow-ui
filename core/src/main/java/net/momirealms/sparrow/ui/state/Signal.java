@@ -167,9 +167,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      */
     @NotNull
     static <T> AsyncSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader) {
-        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader);
-        signal.scheduleInitialLoad();
-        return signal;
+        return async(placeholder, executor, loader, AbstractSignal.defaultSameValue());
     }
 
     /**
@@ -184,7 +182,82 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      */
     @NotNull
     static <T> AsyncSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader, sameValue);
+        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader, sameValue, null);
+        signal.scheduleInitialLoad();
+        return signal;
+    }
+
+    /**
+     * 创建一个轮询的异步数据源, 有订阅期间每 {@code periodTicks} 个 tick 重新装载一次;
+     * 没有订阅时与 {@link #async(Object, Executor, Supplier)} 一样, 只在 {@link AsyncSignal#dirty} 时装载.
+     * <p>创建时即调度一次首载. 订阅到来时若上一次装载结束已超过一个周期, 立刻补装载一次; 首载还在飞时不叠加.
+     * <p>同一周期的轮询共用一个 tick 源, 会在同一拍一起发起装载, 执行器是节流点.
+     * 装载失败与执行器拒绝任务的处理同 {@link #async(Object, Executor, Supplier)}, 下一拍照常再试.
+     *
+     * <pre>{@code
+     * AsyncSignal<List<Offer>> offers = Signal.polling(List.of(), executor, dao::topOffers, 100);   // 每 5 秒刷一次
+     * }</pre>
+     *
+     * @param placeholder 首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行重算的执行器
+     * @param loader 重算函数, 约束同 {@link #async(Object, Executor, Supplier)}
+     * @param periodTicks 轮询周期, 必须为正
+     * @return 轮询的异步 signal
+     * @throws IllegalArgumentException {@code periodTicks} 不是正数
+     */
+    @NotNull
+    static <T> AsyncSignal<T> polling(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, long periodTicks) {
+        return polling(placeholder, executor, loader, periodTicks, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 同 {@link #polling(Object, Executor, Supplier, long)}, 但指定判等函数, 判为相同的装载结果不产生失效.
+     *
+     * @param placeholder 首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行重算的执行器
+     * @param loader 重算函数, 约束同 {@link #async(Object, Executor, Supplier)}
+     * @param periodTicks 轮询周期, 必须为正
+     * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
+     * @return 轮询的异步 signal
+     * @throws IllegalArgumentException {@code periodTicks} 不是正数
+     */
+    @NotNull
+    static <T> AsyncSignal<T> polling(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, long periodTicks, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyTicks(periodTicks));
+        signal.scheduleInitialLoad();
+        return signal;
+    }
+
+    /**
+     * 同 {@link #polling(Object, Executor, Supplier, long)}, 但以毫秒计, 时钟挂在 Paper 异步调度器上.
+     * <p>装载照旧在 {@code executor} 上跑, 失效通知照旧从装载完成的线程发出, 订阅者看不出时钟挂在哪里.
+     *
+     * @param placeholder 首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行重算的执行器
+     * @param loader 重算函数, 约束同 {@link #async(Object, Executor, Supplier)}
+     * @param periodMillis 轮询周期毫秒数, 不小于 50
+     * @return 轮询的异步 signal
+     * @throws IllegalArgumentException {@code periodMillis} 小于 50
+     */
+    @NotNull
+    static <T> AsyncSignal<T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, long periodMillis) {
+        return pollingMillis(placeholder, executor, loader, periodMillis, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 同 {@link #pollingMillis(Object, Executor, Supplier, long)}, 但指定判等函数.
+     *
+     * @param placeholder 首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行重算的执行器
+     * @param loader 重算函数, 约束同 {@link #async(Object, Executor, Supplier)}
+     * @param periodMillis 轮询周期毫秒数, 不小于 50
+     * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
+     * @return 轮询的异步 signal
+     * @throws IllegalArgumentException {@code periodMillis} 小于 50
+     */
+    @NotNull
+    static <T> AsyncSignal<T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, long periodMillis, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyMillis(periodMillis));
         signal.scheduleInitialLoad();
         return signal;
     }

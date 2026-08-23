@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
@@ -16,22 +18,20 @@ final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSi
     private final Executor executor;
     private final Function<? super K, ? extends T> loader;
     private final BiPredicate<? super T, ? super T> sameValue;
+    @Nullable private final AsyncSignalImpl.Polling polling;    // 全部分区共用, 每个分区只在自己有订阅时轮询
 
-    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader) {
-        this(placeholder, executor, loader, AbstractSignal.defaultSameValue(), KeyStateStore.generic());
-    }
-
-    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store) {
+    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store, @Nullable AsyncSignalImpl.Polling polling) {
         super(store);
         this.placeholder = placeholder;
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");
         this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
+        this.polling = polling;
     }
 
     @Override
     AsyncSignalImpl<T> createPartition(K key) {
-        return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key), this.sameValue);
+        return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key), this.sameValue, this.polling);
     }
 
     // 分区被取用时推动首载, 只有第一次真正生效.

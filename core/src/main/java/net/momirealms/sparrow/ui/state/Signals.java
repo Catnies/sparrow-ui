@@ -8,6 +8,9 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class Signals {
+    private static final long MIN_MILLIS_PERIOD = 50L;    // 毫秒时钟的周期下限, 一个 tick
+    private static final WeakPeriodCache<TickingSignal> millisClocks = new WeakPeriodCache<>();  // 周期 -> 毫秒时钟
+
     private static volatile TickingSignal ticking; // 懒初始化的全局唯一实例
     private static volatile Delayer tickDelayer = Delayer.paperTicks();       // 防抖与节流 tick 基入口用的调度器
     private static volatile Delayer millisDelayer = Delayer.paperMillis();    // 毫秒基入口用的调度器
@@ -60,6 +63,23 @@ public final class Signals {
             return ticking();
         }
         return ((TickingSignal) ticking()).every(periodTicks);
+    }
+
+    /**
+     * 毫秒时钟, 每 {@code periodMillis} 毫秒失效一次, 值是<strong>有订阅者以来经过的周期数</strong>, 跨停表续走不回退.
+     * <p>任务挂在 Paper 异步调度器上, <strong>失效通知在异步线程上发出</strong>, 订阅者回调必须线程安全.
+     * 同周期共享一个实例, 没人持有的周期随 GC 消失; 第一个订阅者到来才起任务, 最后一个走了就取消.
+     *
+     * @param periodMillis 周期毫秒数, 不小于 50
+     * @return 毫秒时钟
+     * @throws IllegalArgumentException 周期小于 50 毫秒
+     */
+    @NotNull
+    public static Signal<Long> everyMillis(long periodMillis) {
+        if (periodMillis < MIN_MILLIS_PERIOD) {
+            throw new IllegalArgumentException("periodMillis must be at least " + MIN_MILLIS_PERIOD + ": " + periodMillis);
+        }
+        return millisClocks.get(periodMillis, period -> new TickingSignal(TickingSignal.paperMillisTicker(period)));
     }
 
     /**

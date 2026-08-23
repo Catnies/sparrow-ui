@@ -1,13 +1,16 @@
 package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
@@ -17,6 +20,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     private static final int LOADING = 2;       // 一轮加载进行中
     private static final int LOADING_DIRTY = 3; // 加载中又登记了失效, 本轮完成后补跑一轮
     private static final int MAX_SCHEDULE_ATTEMPTS = 2;     // 首次提交, 外加为并发登记的失效补一次.
+    private static final long MILLIS_PER_TICK = 50L;
 
     private final Executor executor;
     private final Supplier<? extends T> loader;
@@ -26,15 +30,16 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
 
     @Nullable private Thread loadingThread; // 正在跑装载函数的线程
 
-    AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader) {
-        this(placeholder, executor, loader, defaultSameValue());
-    }
+    @Nullable private final Polling polling;            // 轮询设置, 为 null 就是普通异步源
+    private volatile long lastCompletedNanos;           // 上一次装载结束的时刻, 成功失败都记, 激活刷新据此判断过没过期
+    @Nullable private Subscription clockSubscription;   // 有订阅期间挂在轮询时钟上, activationLock 内读写
 
-    AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue) {
+    AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable Polling polling) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");
         this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
         this.state = new AtomicReference<>(new Versioned<>(placeholder, 0L));
+        this.polling = polling;
     }
 
     // 调度首次初始化.
@@ -54,6 +59,29 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     @Override
     long version() {
         return this.state.get().version();
+    }
+
+    @Override
+    protected void onActive() {
+        if (this.polling == null) return;
+        // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
+        this.clockSubscription = this.polling.clock().onDirty(() -> {
+            this.reapDeadEntries();
+            if (this.entryCount() == 0) return;
+            this.dirty();
+        });
+        // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
+        if (this.loadState.get() == IDLE && System.nanoTime() - this.lastCompletedNanos >= this.polling.periodNanos()) {
+            this.dirty();
+        }
+    }
+
+    @Override
+    protected void onInactive() {
+        if (this.clockSubscription != null) {
+            this.clockSubscription.close();
+            this.clockSubscription = null;
+        }
     }
 
     @Override
@@ -125,6 +153,8 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         } catch (RuntimeException exception) {
             failure = exception;
         } finally {
+            // 先记时刻再改状态, 看到 IDLE 的人一定看得到这次的时刻
+            this.lastCompletedNanos = System.nanoTime();
             pending = this.loadState.getAndUpdate(current -> current == LOADING_DIRTY ? LOADING : IDLE) == LOADING_DIRTY;
         }
 
@@ -163,6 +193,20 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
             if (this.state.compareAndSet(current, new Versioned<>(value, current.version() + 1))) {
                 return true;
             }
+        }
+    }
+
+    // 轮询设置, 共享的周期时钟, 以及一个周期折成纳秒(激活刷新用). 同周期的轮询共用同一个时钟, 会在同一拍一起发起装载.
+    record Polling(AbstractSignal<Long> clock, long periodNanos) {
+
+        @NotNull
+        static Polling everyTicks(long periodTicks) {
+            return new Polling(require(Signals.everyTicks(periodTicks)), TimeUnit.MILLISECONDS.toNanos(periodTicks * MILLIS_PER_TICK));
+        }
+
+        @NotNull
+        static Polling everyMillis(long periodMillis) {
+            return new Polling(require(Signals.everyMillis(periodMillis)), TimeUnit.MILLISECONDS.toNanos(periodMillis));
         }
     }
 }

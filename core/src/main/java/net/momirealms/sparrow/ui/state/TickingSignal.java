@@ -6,11 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.lang.ref.Reference;
-import java.lang.ref.ReferenceQueue;
-import java.lang.ref.WeakReference;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.function.LongConsumer;
 
 final class TickingSignal extends AbstractSignal<Long> {
@@ -18,8 +14,7 @@ final class TickingSignal extends AbstractSignal<Long> {
     private Ticker.Handle handle;
     private long epochBase; // 本段调度启动时的冻结值, 回调的段内计数叠在它之上, 值因此跨停表续走不回退
     private volatile Versioned<Long> state = new Versioned<>(0L, 0L);
-    private final Map<Long, PeriodicRef> periodic = new HashMap<>();                     // 周期 -> 降频视图, 只弱持有
-    private final ReferenceQueue<Signal<Long>> releasedViews = new ReferenceQueue<>();   // 视图已被回收的槽
+    private final WeakPeriodCache<Signal<Long>> periodic = new WeakPeriodCache<>();   // 周期 -> 降频视图
 
     TickingSignal(Ticker ticker) {
         this.ticker = ticker;
@@ -61,26 +56,12 @@ final class TickingSignal extends AbstractSignal<Long> {
      */
     @NotNull
     Signal<Long> every(long periodTicks) {
-        synchronized (this.periodic) {
-            for (Reference<?> released; (released = this.releasedViews.poll()) != null; ) {
-                // 只清仍指向这条死引用的槽, 不误删已经重建的视图.
-                this.periodic.remove(((PeriodicRef) released).period, released);
-            }
-            PeriodicRef cached = this.periodic.get(periodTicks);
-            Signal<Long> view = cached == null ? null : cached.get();
-            if (view == null) {
-                view = this.mapDistinct(tick -> tick / periodTicks);
-                this.periodic.put(periodTicks, new PeriodicRef(periodTicks, view, this.releasedViews));
-            }
-            return view;
-        }
+        return this.periodic.get(periodTicks, period -> this.mapDistinct(tick -> tick / period));
     }
 
     // 当前缓存着的降频视图数.
     int periodicViewCount() {
-        synchronized (this.periodic) {
-            return this.periodic.size();
-        }
+        return this.periodic.size();
     }
 
     /**
@@ -99,6 +80,23 @@ final class TickingSignal extends AbstractSignal<Long> {
         };
     }
 
+    /**
+     * 毫秒时钟的调度实现, 挂在 Paper 异步调度器上, 回调在异步线程.
+     * <p>与 tick 版一样自己数回调次数.
+     */
+    @NotNull
+    static TickingSignal.Ticker paperMillisTicker(long periodMillis) {
+        return onTick -> {
+            Plugin plugin = SparrowUI.getInstance().getPlugin();
+            // 相邻两拍可能落在不同的池线程上, 但调度器要等这一拍跑完才排下一拍, 计数始终只有一个写者
+            long[] elapsed = new long[1];
+            ScheduledTask task = Bukkit.getAsyncScheduler().runAtFixedRate(
+                    plugin, ignoredTask -> onTick.accept(++elapsed[0]), periodMillis, periodMillis, TimeUnit.MILLISECONDS
+            );
+            return task::cancel;
+        };
+    }
+
     // 调度抽象, 默认实现用 Paper 全局区域调度器.
     interface Ticker {
 
@@ -109,16 +107,6 @@ final class TickingSignal extends AbstractSignal<Long> {
         interface Handle {
 
             void cancel();
-        }
-    }
-
-    // 对降频视图的弱引用, 携带所在周期, 视图被回收后可以直接从引用队列定位并清掉缓存槽.
-    private static final class PeriodicRef extends WeakReference<Signal<Long>> {
-        private final long period;
-
-        private PeriodicRef(long period, Signal<Long> view, ReferenceQueue<? super Signal<Long>> queue) {
-            super(view, queue);
-            this.period = period;
         }
     }
 }
