@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @param <K> 分区 key 类型
  * @param <T> 值类型
  */
-final class PartitionHandle<K, T> extends AbstractSignal<T> {
+sealed class PartitionHandle<K, T> extends AbstractSignal<T> permits MutablePartitionHandle {
     private final AbstractKeyedSignal<K, T, ?> owner;
     private final K key;
     private final AtomicLong version = new AtomicLong();

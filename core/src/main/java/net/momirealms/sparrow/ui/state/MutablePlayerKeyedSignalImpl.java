@@ -19,6 +19,12 @@ final class MutablePlayerKeyedSignalImpl<T> extends PlayerKeyedSignalImpl<T> imp
     }
 
     @Override
+    @NotNull
+    public MutableSignal<T> at(@NotNull UUID key) {
+        return this.delegate.at(key);
+    }
+
+    @Override
     public void set(@NotNull UUID key, T value) {
         this.delegate.set(key, value);
     }

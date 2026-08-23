@@ -34,6 +34,17 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
     }
 
     @Override
+    MutablePartitionHandle<K, T> createHandle(K key) {
+        return new MutablePartitionHandle<>(this, key);
+    }
+
+    @Override
+    @NotNull
+    public MutablePartitionHandle<K, T> at(@NotNull K key) {
+        return (MutablePartitionHandle<K, T>) super.at(key);
+    }
+
+    @Override
     void dirtyPartition(SyncPartition<K, T> partition) {
         partition.dirty();
     }

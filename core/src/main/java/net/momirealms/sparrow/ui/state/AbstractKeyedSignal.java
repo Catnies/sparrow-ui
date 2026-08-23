@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <P> 分区实现类型
  */
 abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> {
-private final KeyStateStore<K, KeyState<K, T, P>> store;                                                 // key -> (分区 & 句柄), 只放有分区的 key.
+    private final KeyStateStore<K, KeyState<K, T, P>> store;                                             // key -> (分区 & 句柄), 只放有分区的 key.
     private final WeakHashMap<K, WeakReference<PartitionHandle<K, T>>> detached = new WeakHashMap<>();   // 分区已删但仍有人持有的句柄, key 用句柄自己那份
     private final Object detachedLock = new Object();                                                    // 保护 detached, 锁序固定为主表 compute 在外
 
@@ -34,6 +34,11 @@ private final KeyStateStore<K, KeyState<K, T, P>> store;                        
      * 标脏一个已激活的分区.
      */
     abstract void dirtyPartition(P partition);
+
+    // 建该 key 的句柄, 只在该 key 的 compute 内调用.
+    PartitionHandle<K, T> createHandle(K key) {
+        return new PartitionHandle<>(this, key);
+    }
 
     // 取出或新建一个 Key 对应的分区.
     final P partition(@NotNull K key) {
@@ -86,7 +91,7 @@ private final KeyStateStore<K, KeyState<K, T, P>> store;                        
      */
     @Override
     @NotNull
-    public Signal<T> at(@NotNull K key) {
+    public PartitionHandle<K, T> at(@NotNull K key) {
         Objects.requireNonNull(key, "key");
         // 句柄与分区都在且转发已挂好时直接返回. 这条快路径只读不挂载, 挂载与换挂仍收在该 key 的 compute 内.
         KeyState<K, T, P> state = this.store.get(key);
@@ -107,7 +112,7 @@ private final KeyStateStore<K, KeyState<K, T, P>> store;                        
                 // 分区删过还没重建时句柄寄放在旁表里, 先接回来, 没有才新建.
                 handle = this.takeDetached(k);
                 if (handle == null) {
-                    handle = new PartitionHandle<>(this, k);
+                    handle = this.createHandle(k);
                 }
                 // 强引用经 resolvedHandle 逃出 compute, 否则刚建好的句柄可能在返回给调用方之前就被回收.
                 target.handleRef = new WeakReference<>(handle);

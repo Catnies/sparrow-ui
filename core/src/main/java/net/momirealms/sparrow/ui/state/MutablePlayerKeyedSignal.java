@@ -13,6 +13,12 @@ import java.util.function.UnaryOperator;
  */
 public interface MutablePlayerKeyedSignal<T> extends PlayerKeyedSignal<T>, MutableKeyedSignal<UUID, T> {
 
+    @Override
+    @NotNull
+    default MutableSignal<T> at(@NotNull Player player) {
+        return this.at(player.getUniqueId());
+    }
+
     default void set(@NotNull Player player, T value) {
         this.set(player.getUniqueId(), value);
     }
