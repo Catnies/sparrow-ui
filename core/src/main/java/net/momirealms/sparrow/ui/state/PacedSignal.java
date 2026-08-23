@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.Nullable;
 
@@ -94,16 +95,21 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
         if (emit) this.notifyDirty();
     }
 
-    // 延时任务到点. 代数不符说明这个任务已被后来的排入取代, 什么也不做.
+    // 延时任务到点. 代数不符说明这个任务已被后来的排入取代或属于上一段, 什么也不做.
+    // 本方法整个跑在调度器线程上, 拍快照会跑用户的 mapper, 抛出去只会落到调度器自己的日志里, 所以在这里兜住上报.
     private void fire(long generation) {
-        this.reapDeadEntries();
-        boolean emit;
-        synchronized (this.stateLock) {
-            if (!this.active || generation != this.generation) return;
-            this.pending = null;
-            emit = this.onFireLocked();
+        try {
+            this.reapDeadEntries();
+            boolean emit;
+            synchronized (this.stateLock) {
+                if (!this.active || generation != this.generation) return;
+                this.pending = null;
+                emit = this.onFireLocked();
+            }
+            if (emit) this.notifyDirty();
+        } catch (RuntimeException exception) {
+            SparrowUI.getInstance().handleException("Failed to fire a paced signal task", exception);
         }
-        if (emit) this.notifyDirty();
     }
 
     // 上游失效时在状态锁内决定怎么办, 返回 true 表示现在就向下游发出.
