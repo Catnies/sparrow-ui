@@ -17,6 +17,7 @@ final class CountdownSignal extends AbstractSignal<Long> {
     private volatile boolean active;                    // 有订阅期间为真, 拉取路径据此决定读记录还是对齐
     private Subscription deadlineSubscription;          // 有订阅期间挂着
     @Nullable private Subscription clockSubscription;   // 只在有订阅且还没归零期间挂着, stateLock 内读写
+    private long samplingGeneration;                    // 每挂一次采样时钟推进一次, 采样回调带着自己那一次的代数, stateLock 内读写
 
     CountdownSignal(AbstractSignal<Long> deadline, AbstractSignal<Long> clock) {
         this.deadline = deadline;
@@ -81,9 +82,10 @@ final class CountdownSignal extends AbstractSignal<Long> {
     }
 
     // 采样时钟到拍, 用记下的截止算一次剩余. 每拍都派发, 死掉的下游由派发自己剔除, 清到空会走 onInactive 把时钟摘掉.
-    private void onSample() {
+    // 时钟派发前先把回调读了出来, 这期间摘掉时钟撤不回那次调用, 所以迟到的回调还要对一次代数, 不是自己这一次挂的就走人.
+    private void onSample(long generation) {
         synchronized (this.stateLock) {
-            if (!this.active || this.clockSubscription == null) return;
+            if (!this.active || this.clockSubscription == null || generation != this.samplingGeneration) return;
             long remaining = remaining(this.snapshot.get().deadlineMillis());
             this.snapshot.updateAndGet(current -> new Snapshot(current.deadlineMillis(), current.deadlineVersion(), remaining, current.version() + 1L));
             this.updateSamplingLocked(remaining);
@@ -104,7 +106,8 @@ final class CountdownSignal extends AbstractSignal<Long> {
     private void updateSamplingLocked(long remaining) {
         if (remaining > 0L) {
             if (this.clockSubscription == null) {
-                this.clockSubscription = this.clock.link(this, this::onSample);
+                long generation = ++this.samplingGeneration;
+                this.clockSubscription = this.clock.link(this, () -> this.onSample(generation));
             }
         } else if (this.clockSubscription != null) {
             this.clockSubscription.close();

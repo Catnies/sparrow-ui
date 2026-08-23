@@ -34,6 +34,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     @Nullable private final Polling polling;            // 轮询设置, 为 null 就是普通异步源
     private volatile long lastCompletedNanos;           // 上一次装载结束的时刻, 成功失败都记, 激活刷新据此判断过没过期
     @Nullable private Subscription clockSubscription;   // 有订阅期间挂在轮询时钟上, activationLock 内读写
+    private volatile long clockGeneration;              // 每挂一次时钟推进一次, 时钟回调带着自己那一段的代数, activationLock 内写
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable Polling polling) {
         this.executor = Objects.requireNonNull(executor, "executor");
@@ -65,13 +66,8 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     @Override
     protected void onActive() {
         if (this.polling == null) return;
-        // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
-        // 清扫要顺着订阅链走到底: 装载结果判等不变时没有派发, 被持有的派生节点自己发现不了它的订阅者已经死光.
-        this.clockSubscription = this.polling.clock().link(this, () -> {
-            this.reapDownstream();
-            if (this.entryCount() == 0) return;
-            this.dirty();
-        });
+        long generation = ++this.clockGeneration;
+        this.clockSubscription = this.polling.clock().link(this, () -> this.onPollTick(generation));
         // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
         if (this.loadState.get() == IDLE && System.nanoTime() - this.lastCompletedNanos >= this.polling.periodNanos()) {
             this.dirty();
@@ -84,6 +80,17 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
             this.clockSubscription.close();
             this.clockSubscription = null;
         }
+    }
+
+    // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
+    // 清扫要顺着订阅链走到底: 装载结果判等不变时没有派发, 被持有的派生节点自己发现不了它的订阅者已经死光.
+    private void onPollTick(long generation) {
+        // 时钟派发前先把回调读了出来, 这期间停表再重开撤不回那次调用, 迟到的旧段回调看到的订阅数是新一段的, 不拦就多跑一次 loader.
+        // 只是一次 volatile 读, 读完到 dirty() 之间恰好停表重开的话仍会多跑一次, 那与新一段激活时的补载同形, 不为它加锁.
+        if (generation != this.clockGeneration) return;
+        this.reapDownstream();
+        if (this.entryCount() == 0) return;
+        this.dirty();
     }
 
     @Override
