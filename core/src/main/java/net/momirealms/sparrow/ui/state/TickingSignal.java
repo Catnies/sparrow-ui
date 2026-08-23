@@ -7,13 +7,13 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongConsumer;
 
 final class TickingSignal extends AbstractSignal<Long> {
     private final Ticker ticker;
     private Ticker.Handle handle;
-    private long epochBase; // 本段调度启动时的冻结值, 回调的段内计数叠在它之上, 值因此跨停表续走不回退
-    private volatile Versioned<Long> state = new Versioned<>(0L, 0L);
+    private final AtomicReference<Versioned<Long>> state = new AtomicReference<>(new Versioned<>(0L, 0L));
     private final WeakPeriodCache<Signal<Long>> periodic = new WeakPeriodCache<>();   // 周期 -> 降频视图
 
     TickingSignal(Ticker ticker) {
@@ -22,18 +22,20 @@ final class TickingSignal extends AbstractSignal<Long> {
 
     @Override
     public Long get() {
-        return this.state.value();
+        return this.state.get().value();
     }
 
     @Override
     long version() {
-        return this.state.version();
+        return this.state.get().version();
     }
 
     @Override
     protected void onActive() {
-        this.epochBase = this.state.value();
-        this.handle = this.ticker.start(this::onTick);
+        // 本段的起点由回调自己带着, 段内计数叠在它之上, 值因此跨停表续走不回退.
+        // cancel 只拦后续运行, 正在跑的那一拍会迟到, 它拿的必须还是自己那一段的起点.
+        long base = this.state.get().value();
+        this.handle = this.ticker.start(tick -> this.onTick(base, tick));
     }
 
     @Override
@@ -42,11 +44,14 @@ final class TickingSignal extends AbstractSignal<Long> {
         this.handle = null;
     }
 
-    private void onTick(long tick) {
-        long total = this.epochBase + tick;
-        Versioned<Long> current = this.state;
-        if (current.value() == total) return;
-        this.state = new Versioned<>(total, current.version() + 1);
+    private void onTick(long base, long tick) {
+        long total = base + tick;
+        while (true) {
+            Versioned<Long> current = this.state.get();
+            // 迟到的旧段回调算出的值不会比新段已经发出的大, 值只往前走; 两段的回调可能在不同线程上, 发布用 CAS
+            if (total <= current.value()) return;
+            if (this.state.compareAndSet(current, new Versioned<>(total, current.version() + 1))) break;
+        }
         this.notifyDirty();
     }
 
