@@ -29,6 +29,9 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
 
     /**
      * 订阅失效信号, <strong>不允许在回调里让同一个 signal 再次失效</strong>, 这样做会抛出 {@link IllegalStateException}.
+     * <p>被拒的只是重入的那一次派发: 回调里那次写入本身已经落地, 值与版本都算数, 只是这次变化没有通知出去, 要等下一次失效.
+     * 异常在监听器隔离边界上交给统一异常处理器, <strong>不会回流给触发这一轮派发的写入方</strong> —— 那次写入照常返回,
+     * 同一轮里其余监听器也照常收到通知, 所以在写入外面套 {@code try/catch} 抓不到监听器里的这个错.
      * <p>通知不携带值, 也不触发求值. signal 弱持有监听器, <strong>订阅的存活由调用方持有的凭证决定</strong>,
      * 凭证不再被引用时订阅自动消亡并在后续派发时被剔除. 因此凭证必须存起来, 丢掉就等于退订.
      *
@@ -53,6 +56,8 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      * 创建一个可写数据源, 并指定判等函数.
      * <p><strong>只有两个值都不是 {@code null} 时才会调用它</strong>.
      * <p>它必须廉价, 无副作用, 它在写入线程上执行, 抛出异常时的行为与 {@code equals} 抛出时一样.
+     * <p>它还<strong>至少要自反</strong>, 一个值跟自己比必须为真. 不自反的话把同一个引用原样再写一遍也会推进版本并通知一次,
+     * 后果只是多发失效, 不会漏发; 库不为此加运行时检查, 也不替违反契约的判等函数兜底.
      * <p><strong>它被 signal 持有整个生命周期, 禁止捕获 {@code Player}、{@code World}、{@code Window} 一类对象.</strong>
      *
      * <pre>{@code

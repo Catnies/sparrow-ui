@@ -98,7 +98,7 @@ public interface KeyedSignal<K, T> {
 
     /**
      * 创建一个异步分区数据源.
-     * <p>分区装载时即调度一次首载, 完成前 {@code get} 返回占位值.
+     * <p>每个分区在<strong>第一次被读到</strong>时调度一次首载, 取句柄不算读; 完成前 {@code get} 返回占位值.
      *
      * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
      * @param executor 执行装载的执行器

@@ -101,7 +101,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     @NotNull
     public PartitionHandle<K, T> at(@NotNull K key) {
         Objects.requireNonNull(key, "key");
-        // 句柄与分区都在且转发已挂好时直接返回. 这条快路径只读不挂载, 挂载与换挂仍收在该 key 的 compute 内.
+        // 句柄与分区都在, 且句柄跟的正是这个分区时直接返回. 这条快路径只读, 让句柄跟上分区仍收在该 key 的 compute 内.
         KeyState<K, T, P> state = this.store.get(key);
         if (state != null) {
             PartitionHandle<K, T> live = this.liveHandle(state);
