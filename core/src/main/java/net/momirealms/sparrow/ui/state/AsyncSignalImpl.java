@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<T> {
@@ -18,12 +19,18 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
 
     private final Executor executor;
     private final Supplier<? extends T> loader;
+    private final BiPredicate<? super T, ? super T> sameValue;
     private final AtomicReference<Versioned<T>> state;
     private final AtomicInteger loadState = new AtomicInteger(UNLOADED);
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader) {
+        this(placeholder, executor, loader, defaultSameValue());
+    }
+
+    AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");
+        this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
         this.state = new AtomicReference<>(new Versioned<>(placeholder, 0L));
     }
 
@@ -134,7 +141,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     private boolean publishValue(T value) {
         while (true) {
             Versioned<T> current = this.state.get();
-            if (Objects.equals(current.value(), value)) {
+            if (same(this.sameValue, current.value(), value)) {
                 return false;
             }
             if (this.state.compareAndSet(current, new Versioned<>(value, current.version() + 1))) {

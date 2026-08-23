@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.state;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.Executor;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
@@ -59,6 +60,18 @@ public interface KeyedSignal<K, T> {
     }
 
     /**
+     * 创建一个同步分区数据源, 并指定判等函数, 全部分区共用同一个.
+     *
+     * @param initial 分区装载与重算函数, 在读取线程执行.
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 可写分区 signal
+     */
+    @NotNull
+    static <K, T> MutableKeyedSignal<K, T> of(@NotNull Function<? super K, ? extends T> initial, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new KeyedSignalImpl<>(initial, sameValue, KeyStateStore.generic());
+    }
+
+    /**
      * 创建一个异步分区数据源.
      * <p>分区装载时即调度一次首载, 完成前 {@code get} 返回占位值.
      *
@@ -70,5 +83,19 @@ public interface KeyedSignal<K, T> {
     @NotNull
     static <K, T> KeyedSignal<K, T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader) {
         return new AsyncKeyedSignalImpl<>(placeholder, executor, loader);
+    }
+
+    /**
+     * 创建一个异步分区数据源, 并指定判等函数, 全部分区共用同一个.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 分区 signal
+     */
+    @NotNull
+    static <K, T> KeyedSignal<K, T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic());
     }
 }

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
@@ -14,21 +15,23 @@ final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSi
     private final T placeholder;
     private final Executor executor;
     private final Function<? super K, ? extends T> loader;
+    private final BiPredicate<? super T, ? super T> sameValue;
 
     AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader) {
-        this(placeholder, executor, loader, KeyStateStore.generic());
+        this(placeholder, executor, loader, AbstractSignal.defaultSameValue(), KeyStateStore.generic());
     }
 
-    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store) {
+    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store) {
         super(store);
         this.placeholder = placeholder;
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");
+        this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
     }
 
     @Override
     AsyncSignalImpl<T> createPartition(K key) {
-        return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key));
+        return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key), this.sameValue);
     }
 
     // 分区被取用时推动首载, 只有第一次真正生效.

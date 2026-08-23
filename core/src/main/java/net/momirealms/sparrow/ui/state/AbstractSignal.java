@@ -11,6 +11,7 @@ import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 abstract sealed class AbstractSignal<T> implements Signal<T> permits
@@ -25,6 +26,8 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         PartitionHandle,
         TickingSignal
 {
+    private static final BiPredicate<Object, Object> DEFAULT_SAME_VALUE = Objects::equals;
+
     private final CopyOnWriteArrayList<Entry> entries = new CopyOnWriteArrayList<>(); // 订阅者
     private final ReferenceQueue<Runnable> deadNodes = new ReferenceQueue<>(); // 绑定节点已被回收的弱条目
     private final Object activationLock = new Object();
@@ -137,8 +140,15 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     @Override
     @NotNull
     public <R> Signal<R> mapDistinct(@NotNull Function<? super T, ? extends R> mapper) {
+        return this.mapDistinct(mapper, defaultSameValue());
+    }
+
+    @Override
+    @NotNull
+    public <R> Signal<R> mapDistinct(@NotNull Function<? super T, ? extends R> mapper, @NotNull BiPredicate<? super R, ? super R> sameValue) {
         Objects.requireNonNull(mapper, "mapper");
-        return new MapDistinctSignal<>(this, mapper);
+        Objects.requireNonNull(sameValue, "sameValue");
+        return new MapDistinctSignal<>(this, mapper, sameValue);
     }
 
     // 当前订阅条目数.
@@ -166,6 +176,19 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         } catch (RuntimeException exception) {
             SparrowUI.getInstance().handleException("Failed to close a signal subscription", exception);
         }
+    }
+
+    static BiPredicate<Object, Object> defaultSameValue() {
+        return DEFAULT_SAME_VALUE;
+    }
+
+    // 判等函数的空值策略, 全部节点共用这一份. 两边都是 null 算相同, 只有一边是 null 算不同,
+    // 两边都非 null 才轮得到判等函数, 所以 ItemStack::isSimilar 这类不接受 null 的方法引用可以直接传.
+    static <V> boolean same(BiPredicate<? super V, ? super V> sameValue, V current, V candidate) {
+        if (current == null || candidate == null) {
+            return current == candidate;
+        }
+        return sameValue.test(current, candidate);
     }
 
     // 把公开工厂收到的 signal 收窄到内部实现.

@@ -7,12 +7,14 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * 响应式数据源: 持有单个值, 值过期时向订阅者广播失效.
- * <p>值按 {@code equals} 判断有没有变化, 原地改掉一个可变对象再写回同一个引用会被当成没变.
+ * <p>值按判等函数判断有没有变化, 默认是 {@link Objects#equals}, 原地改掉一个可变对象再写回同一个引用会被当成没变.
+ * 想换一种判法就用带 {@code sameValue} 参数的工厂, 见 {@link #of(Object, BiPredicate)}.
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
@@ -48,6 +50,25 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     }
 
     /**
+     * 创建一个可写数据源, 并指定判等函数.
+     * <p><strong>只有两个值都不是 {@code null} 时才会调用它</strong>.
+     * <p>它必须廉价, 无副作用, 它在写入线程上执行, 抛出异常时的行为与 {@code equals} 抛出时一样.
+     * <p><strong>它被 signal 持有整个生命周期, 禁止捕获 {@code Player}、{@code World}、{@code Window} 一类对象.</strong>
+     *
+     * <pre>{@code
+     * MutableSignal<ItemStack> shown = Signal.of(stack, ItemStack::isSimilar);
+     * }</pre>
+     *
+     * @param initial 初始值, 允许为 {@code null}
+     * @param sameValue 判等函数
+     * @return 可写 signal
+     */
+    @NotNull
+    static <T> MutableSignal<T> of(T initial, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new MutableSignalImpl<>(initial, sameValue);
+    }
+
+    /**
      * 惰性派生, 失效原样透传, {@code mapper} 仅在派生值被拉取时执行, 并按上游版本缓存结果.
      *
      * @param mapper 纯函数, 可在任意线程被执行
@@ -58,7 +79,8 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
 
     /**
      * 派生, 上游每次失效都会立即重算并与缓存值判等,
-     * 相等则吞掉失效不再向下游传播, 适合逐层降频分派.
+     * 判为相同则吞掉失效不再向下游传播, 适合逐层降频分派.
+     * <p>判等用 {@link Objects#equals}, 换一种判断方式用 {@link #mapDistinct(Function, BiPredicate)}.
      * <p><strong>{@code mapper} 不得读取其他 signal.</strong> 本方法是整个模型里唯一在失效传播路径上
      * 求值的节点, 求值期间持有本节点的重算锁. 需要多个来源时用 {@link #combine} 显式组合.
      *
@@ -67,6 +89,17 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      */
     @NotNull
     <R> Signal<R> mapDistinct(@NotNull Function<? super T, ? extends R> mapper);
+
+    /**
+     * 同 {@link #mapDistinct(Function)}, 但用给定的判等函数比较派生值.
+     * <p>判等函数跑在失效线程与拉取线程上, 而且在本节点的重算锁内, 必须廉价, 也不得读取其他 signal.
+     *
+     * @param mapper 纯函数, 在失效线程与拉取线程被执行
+     * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
+     * @return 派生 signal
+     */
+    @NotNull
+    <R> Signal<R> mapDistinct(@NotNull Function<? super T, ? extends R> mapper, @NotNull BiPredicate<? super R, ? super R> sameValue);
 
     /**
      * 创建一个异步数据源, {@link #get()} 立即返回占位值或最近完成的值, 重算由 {@code executor} 在后台执行.
@@ -81,6 +114,23 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     @NotNull
     static <T> AsyncSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader) {
         AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader);
+        signal.scheduleInitialLoad();
+        return signal;
+    }
+
+    /**
+     * 创建一个异步数据源, 并指定判等函数, 语义同 {@link #async(Object, Executor, Supplier)}.
+     * <p>判等函数在装载完成线程上执行, 判为相同的装载结果不产生失效.
+     *
+     * @param placeholder 首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行重算的执行器
+     * @param loader 重算函数, 在 executor 线程执行, 必须线程安全; 不得(直接或间接)使本 signal 失效, 同步执行器下会构成无界递归.
+     * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
+     * @return 异步 signal
+     */
+    @NotNull
+    static <T> AsyncSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Supplier<? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        AsyncSignalImpl<T> signal = new AsyncSignalImpl<>(placeholder, executor, loader, sameValue);
         signal.scheduleInitialLoad();
         return signal;
     }

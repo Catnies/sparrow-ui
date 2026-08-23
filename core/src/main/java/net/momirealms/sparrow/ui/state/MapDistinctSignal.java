@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.Subscription;
 
-import java.util.Objects;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
@@ -15,15 +15,17 @@ import java.util.function.Function;
 final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
     private final AbstractSignal<S> source;
     private final Function<? super S, ? extends T> mapper;
+    private final BiPredicate<? super T, ? super T> sameValue;
     private final Object recomputeLock = new Object();
     private volatile Cached<T> cached;
     private volatile long version;
     private long notifiedVersion;   // 已向下游通知过的版本
     private Subscription upstream;
 
-    MapDistinctSignal(AbstractSignal<S> source, Function<? super S, ? extends T> mapper) {
+    MapDistinctSignal(AbstractSignal<S> source, Function<? super S, ? extends T> mapper, BiPredicate<? super T, ? super T> sameValue) {
         this.source = source;
         this.mapper = mapper;
+        this.sameValue = sameValue;
     }
 
     @Override
@@ -58,7 +60,7 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
             return;
         }
         T value = this.mapper.apply(this.source.get());
-        boolean changed = current == null || !Objects.equals(current.value(), value);
+        boolean changed = current == null || !same(this.sameValue, current.value(), value);
         this.cached = new Cached<>(value, sourceVersion);
         if (changed) {
             this.version++;

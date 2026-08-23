@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 /**
@@ -39,7 +40,19 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> MutablePlayerKeyedSignal<T> of(@NotNull Function<? super UUID, ? extends T> initial) {
-        return new MutablePlayerKeyedSignalImpl<>(new KeyedSignalImpl<>(initial, KeyStateStore.generic()));
+        return of(initial, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 创建一个同步的玩家分区数据源并指定判等函数, 语义同 {@link KeyedSignal#of(Function, BiPredicate)}, 外加退出自动删除.
+     *
+     * @param initial 分区装载与重算函数, 在读取线程执行.
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 可写玩家分区 signal
+     */
+    @NotNull
+    static <T> MutablePlayerKeyedSignal<T> of(@NotNull Function<? super UUID, ? extends T> initial, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new MutablePlayerKeyedSignalImpl<>(new KeyedSignalImpl<>(initial, sameValue, KeyStateStore.generic()));
     }
 
     /**
@@ -52,6 +65,20 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> PlayerKeyedSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader) {
-        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, KeyStateStore.generic()));
+        return async(placeholder, executor, loader, AbstractSignal.defaultSameValue());
+    }
+
+    /**
+     * 创建一个异步的玩家分区数据源并指定判等函数, 语义同 {@link KeyedSignal#async(Object, Executor, Function, BiPredicate)}, 外加退出自动删除.
+     *
+     * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}
+     * @param executor 执行装载的执行器
+     * @param loader 分区装载函数, 在 executor 线程执行.
+     * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}
+     * @return 玩家分区 signal
+     */
+    @NotNull
+    static <T> PlayerKeyedSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
+        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic()));
     }
 }

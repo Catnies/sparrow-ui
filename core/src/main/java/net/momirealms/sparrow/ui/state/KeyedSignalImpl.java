@@ -4,6 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
@@ -15,19 +16,21 @@ import java.util.function.UnaryOperator;
  */
 final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> {
     private final Function<? super K, ? extends T> initial;
+    private final BiPredicate<? super T, ? super T> sameValue;
 
     KeyedSignalImpl(Function<? super K, ? extends T> initial) {
-        this(initial, KeyStateStore.generic());
+        this(initial, AbstractSignal.defaultSameValue(), KeyStateStore.generic());
     }
 
-    KeyedSignalImpl(Function<? super K, ? extends T> initial, KeyStateStore<K, KeyState<K, T, SyncPartition<K, T>>> store) {
+    KeyedSignalImpl(Function<? super K, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, SyncPartition<K, T>>> store) {
         super(store);
         this.initial = Objects.requireNonNull(initial, "initial");
+        this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
     }
 
     @Override
     SyncPartition<K, T> createPartition(K key) {
-        return new SyncPartition<>(key, this.initial);
+        return new SyncPartition<>(key, this.initial, this.sameValue);
     }
 
     @Override
@@ -55,11 +58,13 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
 
         private final K key;
         private final Function<? super K, ? extends T> initial;
+        private final BiPredicate<? super T, ? super T> sameValue;
         private final AtomicReference<PartitionState<T>> state = new AtomicReference<>(new PartitionState<>(null, 0L, true));
 
-        private SyncPartition(K key, Function<? super K, ? extends T> initial) {
+        private SyncPartition(K key, Function<? super K, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue) {
             this.key = key;
             this.initial = initial;
+            this.sameValue = sameValue;
         }
 
         @Override
@@ -88,7 +93,7 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
             // 每一轮总有某个线程成功, 系统整体一定前进
             while (true) {
                 PartitionState<T> current = this.state.get();
-                if (!current.stale() && Objects.equals(current.value(), value)) {
+                if (!current.stale() && same(this.sameValue, current.value(), value)) {
                     return;
                 }
                 if (this.state.compareAndSet(current, new PartitionState<>(value, current.version() + 1, false))) {
@@ -104,7 +109,7 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
                 PartitionState<T> current = this.state.get();
                 T base = current.stale() ? this.initial.apply(this.key) : current.value();
                 T value = updater.apply(base);
-                if (!current.stale() && Objects.equals(current.value(), value)) {
+                if (!current.stale() && same(this.sameValue, current.value(), value)) {
                     return;
                 }
                 if (this.state.compareAndSet(current, new PartitionState<>(value, current.version() + 1, false))) {

@@ -4,12 +4,19 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiPredicate;
 import java.util.function.UnaryOperator;
 
 final class MutableSignalImpl<T> extends AbstractSignal<T> implements MutableSignal<T> {
+    private final BiPredicate<? super T, ? super T> sameValue;
     private final AtomicReference<Versioned<T>> state;
 
     MutableSignalImpl(T initial) {
+        this(initial, defaultSameValue());
+    }
+
+    MutableSignalImpl(T initial, BiPredicate<? super T, ? super T> sameValue) {
+        this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
         this.state = new AtomicReference<>(new Versioned<>(initial, 0L));
     }
 
@@ -27,7 +34,7 @@ final class MutableSignalImpl<T> extends AbstractSignal<T> implements MutableSig
     public void set(T value) {
         while (true) {
             Versioned<T> current = this.state.get();
-            if (Objects.equals(current.value(), value)) {
+            if (same(this.sameValue, current.value(), value)) {
                 return;
             }
             if (this.state.compareAndSet(current, new Versioned<>(value, current.version() + 1))) {
@@ -43,7 +50,7 @@ final class MutableSignalImpl<T> extends AbstractSignal<T> implements MutableSig
         while (true) {
             Versioned<T> current = this.state.get();
             T value = updater.apply(current.value());
-            if (Objects.equals(current.value(), value)) {
+            if (same(this.sameValue, current.value(), value)) {
                 return;
             }
             if (this.state.compareAndSet(current, new Versioned<>(value, current.version() + 1))) {
