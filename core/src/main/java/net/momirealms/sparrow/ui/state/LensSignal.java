@@ -61,7 +61,7 @@ final class LensSignal<S, F> extends AbstractSignal<F> implements MutableSignal<
 
     @Override
     protected void onActive() {
-        this.upstream = this.view.onDirty(this::notifyDirty);
+        this.upstream = this.view.link(this, this::notifyDirty);
     }
 
     @Override

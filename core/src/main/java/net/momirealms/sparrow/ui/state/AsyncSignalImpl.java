@@ -66,8 +66,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     protected void onActive() {
         if (this.polling == null) return;
         // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
-        this.clockSubscription = this.polling.clock().onDirty(() -> {
-            this.reapDeadEntries();
+        // 清扫要顺着订阅链走到底: 装载结果判等不变时没有派发, 被持有的派生节点自己发现不了它的订阅者已经死光.
+        this.clockSubscription = this.polling.clock().link(this, () -> {
+            this.reapDownstream();
             if (this.entryCount() == 0) return;
             this.dirty();
         });

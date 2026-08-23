@@ -99,7 +99,7 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
         Subscription previous = this.sourceUpstream;
         Subscription attached = null;
         if (previous != null) {
-            attached = source.onDirty(this::onUpstreamDirty);
+            attached = source.link(this, this::onUpstreamDirty);
         }
         // 取版本快照. 抛出时整笔换源作废: 新转发当场撤掉, 选中结果与旧转发都维持原状,
         // 否则逻辑上还选着旧来源, 转发却已经改听新来源, 而换回旧 key 走的是快路径, 不会再重挂.
@@ -146,12 +146,12 @@ final class SwitchingSignal<K, T> extends AbstractSignal<T> {
     protected void onActive() {
         Subscription discarded = null;
         synchronized (this.switchLock) {
-            this.keyUpstream = this.key.onDirty(this::onUpstreamDirty);
+            this.keyUpstream = this.key.link(this, this::onUpstreamDirty);
             try {
                 this.refreshLocked();
                 Selected<K, T> current = this.selected;
                 assert current != null; // refreshLocked 一定会留下一个选中结果
-                this.sourceUpstream = current.source().onDirty(this::onUpstreamDirty);
+                this.sourceUpstream = current.source().link(this, this::onUpstreamDirty);
                 // 上一句之前发生的来源失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
                 discarded = this.refreshLocked();
             } catch (RuntimeException | Error exception) {

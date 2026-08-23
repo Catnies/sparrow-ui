@@ -82,7 +82,7 @@ sealed class PartitionHandle<K, T> extends AbstractSignal<T> permits MutablePart
             }
             previous = this.forward;
             // 这里使用弱订阅, 不能让分区反过来钉住本对象.
-            this.forward = this.active ? partition.onDirty(this::onPartitionDirty) : null;
+            this.forward = this.active ? partition.link(this, this::onPartitionDirty) : null;
             this.sync(partition);
             // attached 是挂载完全完成的发布标志, 必须在转发建立与版本推进之后最后写入.
             this.attached = partition;
@@ -116,7 +116,7 @@ sealed class PartitionHandle<K, T> extends AbstractSignal<T> permits MutablePart
             AbstractSignal<T> partition = this.attached;
             if (partition != null) {
                 // 先挂转发再对版本, 挂载前后到达的失效都不会漏; 订阅前的变化收进版本, 不补发
-                this.forward = partition.onDirty(this::onPartitionDirty);
+                this.forward = partition.link(this, this::onPartitionDirty);
                 this.sync(partition);
             }
         }

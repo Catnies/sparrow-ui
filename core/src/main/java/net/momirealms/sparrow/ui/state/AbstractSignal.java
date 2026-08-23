@@ -55,13 +55,25 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     @Override
     public Subscription onDirty(@NotNull Runnable listener) {
         Objects.requireNonNull(listener, "listener");
-        return this.register(listener);
+        return this.register(listener, null);
+    }
+
+    /**
+     * 派生节点订阅上游用这个, 与 {@link #onDirty} 只差一点: 条目记下谁是下游, {@link #reapDownstream} 才能顺着订阅链走下去.
+     *
+     * @param downstream 订阅本节点的派生节点
+     * @param listener 失效回调
+     * @return 订阅凭证, 与 onDirty 的一样弱
+     */
+    @NotNull
+    final Subscription link(@NotNull AbstractSignal<?> downstream, @NotNull Runnable listener) {
+        return this.register(listener, downstream);
     }
 
     @NotNull
-    private Subscription register(Runnable callback) {
+    private Subscription register(Runnable callback, @Nullable AbstractSignal<?> downstream) {
         // 弱引用的目标必须是新建的节点, 因为无捕获 lambda 与静态方法引用会被 JVM 缓存成常驻单例, 弱引用永远不会清空.
-        BindingNode node = new BindingNode(callback);
+        BindingNode node = new BindingNode(callback, downstream);
         Entry entry = new Entry(node);
         node.bindEntry(entry);
         synchronized (this.activationLock) {
@@ -104,6 +116,20 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
             }
         } while ((reference = this.deadNodes.poll()) != null);
         this.sweepClosed();
+    }
+
+    // 先让下游各派生节点清一遍死条目, 再清自己, 全程不派发失效.
+    // 装载结果判等不变的轮询源没有派发机会, 下游死光了也没人发现, 只能由它在时钟到拍时主动走一遍:
+    // 派生节点清到空会自己退订, 退订逐级回到这里, 本节点随之清到空, onInactive 才有机会把时钟收掉.
+    final void reapDownstream() {
+        for (Entry entry : this.entries) {
+            if (entry.isClosed()) continue;
+            if (entry.node.get() instanceof BindingNode node) {
+                AbstractSignal<?> downstream = node.downstream;
+                if (downstream != null) downstream.reapDownstream();
+            }
+        }
+        this.reapDeadEntries();
     }
 
     /**
@@ -247,16 +273,17 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      * 给一批来源挂上同一个失效回调.
      *
      * @param sources 要挂的来源
+     * @param downstream 订阅这批来源的派生节点
      * @param listener 失效回调
      * @return 与 sources 同下标的订阅凭证
      */
     @NotNull
-    static Subscription[] attachAll(AbstractSignal<?>[] sources, @NotNull Runnable listener) {
+    static Subscription[] attachAll(AbstractSignal<?>[] sources, @NotNull AbstractSignal<?> downstream, @NotNull Runnable listener) {
         Subscription[] subscriptions = new Subscription[sources.length];
         int attached = 0;
         try {
             for (int index = 0; index < sources.length; index++) {
-                subscriptions[index] = sources[index].onDirty(listener);
+                subscriptions[index] = sources[index].link(downstream, listener);
                 attached++;
             }
         } catch (RuntimeException | Error exception) {
@@ -338,12 +365,14 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      * 而条目是本 signal 的内部类, 因此持有本节点等于持有整条上游.
      */
     private static final class BindingNode implements Subscription, Runnable {
-        @Nullable private volatile Runnable callback;   // 关闭后置 null
-        @Nullable private volatile Subscription entry;  // 注册后填入, 关闭后置 null
+        @Nullable private volatile Runnable callback;               // 关闭后置 null
+        @Nullable private volatile Subscription entry;              // 注册后填入, 关闭后置 null
+        @Nullable private volatile AbstractSignal<?> downstream;    // 经 link 订阅的派生节点, 用户订阅为 null, 关闭后置 null
         private volatile boolean closed;
 
-        private BindingNode(@NotNull Runnable callback) {
+        private BindingNode(@NotNull Runnable callback, @Nullable AbstractSignal<?> downstream) {
             this.callback = callback;
+            this.downstream = downstream;
         }
 
         private void bindEntry(Subscription entry) {
@@ -378,6 +407,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
             this.closed = true;
             this.callback = null;
             this.entry = null;
+            this.downstream = null;
         }
     }
 

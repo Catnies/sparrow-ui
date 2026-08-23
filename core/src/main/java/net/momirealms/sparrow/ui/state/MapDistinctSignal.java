@@ -66,7 +66,7 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        this.upstream = this.source.onDirty(this::onSourceDirty);
+        this.upstream = this.source.link(this, this::onSourceDirty);
         try {
             // 没有基线时首次订阅会把"从无到有"误判为值变化, 把 notifiedVersion 抬到当前版本.
             this.notifiedVersion.accumulateAndGet(this.align().version(), Math::max);

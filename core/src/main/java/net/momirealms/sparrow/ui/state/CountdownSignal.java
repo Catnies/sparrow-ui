@@ -56,7 +56,7 @@ final class CountdownSignal extends AbstractSignal<Long> {
 
     @Override
     protected void onActive() {
-        this.deadlineSubscription = this.deadline.onDirty(this::onDeadlineDirty);
+        this.deadlineSubscription = this.deadline.link(this, this::onDeadlineDirty);
         try {
             synchronized (this.stateLock) {
                 long remaining = this.refreshDeadlineLocked();
@@ -104,7 +104,7 @@ final class CountdownSignal extends AbstractSignal<Long> {
     private void updateSamplingLocked(long remaining) {
         if (remaining > 0L) {
             if (this.clockSubscription == null) {
-                this.clockSubscription = this.clock.onDirty(this::onSample);
+                this.clockSubscription = this.clock.link(this, this::onSample);
             }
         } else if (this.clockSubscription != null) {
             this.clockSubscription.close();

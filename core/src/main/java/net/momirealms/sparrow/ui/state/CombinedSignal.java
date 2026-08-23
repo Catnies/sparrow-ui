@@ -53,7 +53,7 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
     @Override
     protected void onActive() {
         // 这里使用弱订阅, 不能让来源反过来钉住本节点.
-        this.upstream = attachAll(this.sources, this::notifyDirty);
+        this.upstream = attachAll(this.sources, this, this::notifyDirty);
     }
 
     @Override
