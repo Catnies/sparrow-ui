@@ -26,7 +26,7 @@ public sealed interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> per
      * 挂一个元素钩子, 值存入<strong>之前</strong>调用, 返回值才是真正存进去的, 原样返回就是不换.
      * <p>它是给 "把包装器注入到别人的字段里" 这种用法准备的, 例如换掉一个区块的方块实体表, 每个方块实体放进来时换成代理.
      * 钩子在写入线程同步跑, 通知永远在钩子之后; 挂多个按挂的顺序串着跑, 前一个的返回值是后一个的入参.
-     * 替换已有映射时先对旧值跑 {@link #onRemoved} 的钩子, 再对新值跑本钩子, 旁表按 key 登记才不会把刚放进去的新条目误删.
+     * 替换已有映射时先对旧值跑 {@link #afterRemove} 的钩子, 再对新值跑本钩子, 旁表按 key 登记才不会把刚放进去的新条目误删.
      * <p>带钩子的 {@code put} 先读再写, 在并发 map 上不再原子; 钩子面向注入 NMS 那类单线程结构,
      * 并发 map 上要原子又要钩子就用 {@code compute} 一族, 它们的钩子跑在被包装 map 的重算函数里,
      * <strong>钩子里不得碰同一张 map</strong>(并发 map 会抛 {@code Recursive update}), 重算函数可能被重跑, 钩子要能重跑.
@@ -36,7 +36,7 @@ public sealed interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> per
      * @return 本包装器
      */
     @NotNull
-    MapSignal<K, V> onPut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook);
+    MapSignal<K, V> beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook);
 
     /**
      * 挂一个元素钩子, 映射从 map 移除<strong>之后</strong>调用, 收到的是被存着的那个值.
@@ -46,7 +46,7 @@ public sealed interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> per
      * @return 本包装器
      */
     @NotNull
-    MapSignal<K, V> onRemoved(@NotNull BiConsumer<? super K, ? super V> hook);
+    MapSignal<K, V> afterRemove(@NotNull BiConsumer<? super K, ? super V> hook);
 
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知, 语义同 {@link ListSignal#batch}.

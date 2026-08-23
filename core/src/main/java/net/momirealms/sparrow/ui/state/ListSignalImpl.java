@@ -36,7 +36,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
     @Override
     @NotNull
-    public ListSignal<E> onAdd(@NotNull Function<? super E, ? extends E> hook) {
+    public ListSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
         Objects.requireNonNull(hook, "hook");
         Function<E, E> current = this.adding;
         this.adding = current == null ? hook::apply : current.andThen(hook);
@@ -45,7 +45,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
     @Override
     @NotNull
-    public ListSignal<E> onRemoved(@NotNull Consumer<? super E> hook) {
+    public ListSignal<E> afterRemove(@NotNull Consumer<? super E> hook) {
         Objects.requireNonNull(hook, "hook");
         Consumer<E> current = this.removing;
         this.removing = current == null ? hook::accept : current.andThen(hook);

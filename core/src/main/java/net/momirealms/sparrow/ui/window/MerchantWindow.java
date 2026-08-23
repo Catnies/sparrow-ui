@@ -77,7 +77,7 @@ public interface MerchantWindow extends Window {
      *
      * @param handlers 新处理器列表
      */
-    void setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelectClick>> handlers);
+    void setTradeSelectHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelectClick>> handlers);
 
     /**
      * 返回交易选择处理器快照.
@@ -86,21 +86,21 @@ public interface MerchantWindow extends Window {
      */
     @NotNull
     @Unmodifiable
-    List<Consumer<MerchantTradeSelectClick>> getTradeSelectionHandlers();
+    List<Consumer<MerchantTradeSelectClick>> getTradeSelectHandlers();
 
     /**
      * 添加交易选择处理器.
      *
      * @param handler 要添加的处理器
      */
-    void addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
+    void addTradeSelectHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
 
     /**
      * 移除一个与给定对象相等的交易选择处理器.
      *
      * @param handler 要移除的处理器
      */
-    void removeTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
+    void removeTradeSelectHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
 
     /**
      * 商人界面中的一项纯展示交易.
@@ -315,7 +315,7 @@ public interface MerchantWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        Builder setTradeSelectionHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelectClick>> handlers);
+        Builder setTradeSelectHandlers(@NotNull List<? extends Consumer<? super MerchantTradeSelectClick>> handlers);
 
         /**
          * 添加初始交易选择处理器.
@@ -324,7 +324,7 @@ public interface MerchantWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        Builder addTradeSelectionHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
+        Builder addTradeSelectHandler(@NotNull Consumer<? super MerchantTradeSelectClick> handler);
 
         @Override
         @NotNull

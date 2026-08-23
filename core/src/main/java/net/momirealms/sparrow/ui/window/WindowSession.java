@@ -52,9 +52,9 @@ public interface WindowSession {
     /**
      * 替换会话结束时依次执行的处理器列表.
      *
-     * @param endHandlers 新处理器列表
+     * @param sessionEndHandlers 新处理器列表
      */
-    void setEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> endHandlers);
+    void setSessionEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> sessionEndHandlers);
 
     /**
      * 当前结束处理器列表的快照.
@@ -62,23 +62,23 @@ public interface WindowSession {
      * @return 不可变的处理器列表
      */
     @Unmodifiable
-    @NotNull List<Consumer<InventoryCloseEvent.Reason>> getEndHandlers();
+    @NotNull List<Consumer<InventoryCloseEvent.Reason>> getSessionEndHandlers();
 
     /**
      * 在现有结束处理器末尾追加一个处理器, 它在整段交互结束时恰好触发一次, 会话内跳转与返回绝不触发.
      * <p>参数为结束原因, 与 Bukkit 关闭原因同一套枚举: PLAYER 表示玩家主动离开, DISCONNECT 表示断线,
      * PLUGIN 表示插件结束(含 {@link #end()}), OPEN_NEW 表示会话外 Window 顶替.
      *
-     * @param endHandler 结束处理器
+     * @param sessionEndHandler 结束处理器
      */
-    void addEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> endHandler);
+    void addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler);
 
     /**
      * 移除一个与给定对象相等的结束处理器.
      *
-     * @param endHandler 要移除的结束处理器
+     * @param sessionEndHandler 要移除的结束处理器
      */
-    void removeEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> endHandler);
+    void removeSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler);
 
     /**
      * 此会话的所属玩家.

@@ -11,8 +11,8 @@ import java.util.function.Consumer;
 final class WindowSessionRetainedStack extends WindowSessionStack {
     private final List<Window> retained = new ArrayList<>(); // 被弹出的窗
 
-    WindowSessionRetainedStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
-        super(manager, viewer, endHandlers);
+    WindowSessionRetainedStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+        super(manager, viewer, sessionEndHandlers);
     }
 
     @NotNull

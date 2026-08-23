@@ -12,8 +12,8 @@ import java.util.function.Consumer;
 class WindowSessionStack extends AbstractWindowSession {
     private final List<Window> stack = new ArrayList<>(); // 根窗到栈顶, 只在玩家实体线程修改
 
-    WindowSessionStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
-        super(manager, viewer, endHandlers);
+    WindowSessionStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+        super(manager, viewer, sessionEndHandlers);
     }
 
     @NotNull

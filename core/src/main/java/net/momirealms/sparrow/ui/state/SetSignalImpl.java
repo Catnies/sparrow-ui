@@ -28,7 +28,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     @NotNull
-    public SetSignal<E> onAdd(@NotNull Function<? super E, ? extends E> hook) {
+    public SetSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
         Objects.requireNonNull(hook, "hook");
         Function<E, E> current = this.adding;
         this.adding = current == null ? hook::apply : current.andThen(hook);
@@ -37,7 +37,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     @NotNull
-    public SetSignal<E> onRemoved(@NotNull Consumer<? super E> hook) {
+    public SetSignal<E> afterRemove(@NotNull Consumer<? super E> hook) {
         Objects.requireNonNull(hook, "hook");
         Consumer<E> current = this.removing;
         this.removing = current == null ? hook::accept : current.andThen(hook);

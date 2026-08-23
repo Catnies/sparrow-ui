@@ -19,16 +19,16 @@ import java.util.function.Consumer;
 abstract class AbstractWindowSession implements WindowSession {
     final WindowManager manager;
     private final Player viewer;
-    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> endHandlers;
+    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers;
     private final Bindings bindings = new Bindings(); // 本会话持有的 Signal 绑定
 
     private volatile List<Window> chainSnapshot = List.of(); // 最近一次已应用的当前路径快照
     private final AtomicBoolean active = new AtomicBoolean(true); // 会话是否尚未结束
 
-    AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
+    AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
         this.manager = manager;
         this.viewer = viewer;
-        this.endHandlers = new HandlerList<>(endHandlers);
+        this.sessionEndHandlers = new HandlerList<>(sessionEndHandlers);
     }
 
     /**
@@ -124,7 +124,7 @@ abstract class AbstractWindowSession implements WindowSession {
                 SparrowUI.getInstance().handleException("Failed to close Window session current Window", throwable);
             }
         }
-        this.fireEndHandlers(reason);
+        this.fireSessionEndHandlers(reason);
         return EndResult.ENDED;
     }
 
@@ -170,8 +170,8 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     // 运行结束处理器.
-    private void fireEndHandlers(@NotNull InventoryCloseEvent.Reason reason) {
-        this.endHandlers.forEachIsolated(
+    private void fireSessionEndHandlers(@NotNull InventoryCloseEvent.Reason reason) {
+        this.sessionEndHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
                 "Failed to handle Window session end",
                 SparrowUI.getInstance()::handleException
@@ -231,25 +231,25 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     @Override
-    public void setEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> endHandlers) {
-        this.endHandlers.set(HandlerList.copyConsumers(endHandlers));
+    public void setSessionEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> sessionEndHandlers) {
+        this.sessionEndHandlers.set(HandlerList.copyConsumers(sessionEndHandlers));
     }
 
     @NotNull
     @Override
     @Unmodifiable
-    public List<Consumer<InventoryCloseEvent.Reason>> getEndHandlers() {
-        return this.endHandlers.snapshot();
+    public List<Consumer<InventoryCloseEvent.Reason>> getSessionEndHandlers() {
+        return this.sessionEndHandlers.snapshot();
     }
 
     @Override
-    public void addEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> endHandler) {
-        this.endHandlers.append(HandlerList.narrowConsumer(endHandler));
+    public void addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler) {
+        this.sessionEndHandlers.append(HandlerList.narrowConsumer(sessionEndHandler));
     }
 
     @Override
-    public void removeEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> endHandler) {
-        this.endHandlers.remove(HandlerList.narrowConsumer(endHandler));
+    public void removeSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler) {
+        this.sessionEndHandlers.remove(HandlerList.narrowConsumer(sessionEndHandler));
     }
 
     @NotNull

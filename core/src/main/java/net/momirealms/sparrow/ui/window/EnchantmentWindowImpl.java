@@ -19,7 +19,7 @@ import java.util.function.Consumer;
 final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> implements EnchantmentWindow {
     private static final int OPTION_COUNT = 3; // 原版附魔台固定提供三个按钮
 
-    private final HandlerList<Consumer<EnchantSelectClick>> enchantSelectionHandlers; // 按注册顺序分发的选择处理器
+    private final HandlerList<Consumer<EnchantSelectClick>> enchantSelectHandlers; // 按注册顺序分发的选择处理器
     private volatile EnchantOption[] options; // 最近在实体线程发布的写时复制选项快照
     private volatile int enchantmentSeed;     // 最近在实体线程应用的客户端符文种子
 
@@ -30,12 +30,12 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             @NotNull AbstractWindow.Settings settings,
             EnchantOption @NotNull [] options,
             int enchantmentSeed,
-            @NotNull List<Consumer<EnchantSelectClick>> enchantSelectionHandlers
+            @NotNull List<Consumer<EnchantSelectClick>> enchantSelectHandlers
     ) {
         super(manager, viewer, layout, settings);
         this.options = options.clone();
         this.enchantmentSeed = enchantmentSeed;
-        this.enchantSelectionHandlers = new HandlerList<>(enchantSelectionHandlers);
+        this.enchantSelectHandlers = new HandlerList<>(enchantSelectHandlers);
     }
 
     @Override
@@ -97,35 +97,35 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
     }
 
     @Override
-    public void setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
+    public void setEnchantSelectHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
         List<Consumer<EnchantSelectClick>> copy = HandlerList.copyConsumers(handlers);
         this.submit(
-                () -> this.enchantSelectionHandlers.set(copy),
-                "Failed to replace Enchantment Window selection handlers"
+                () -> this.enchantSelectHandlers.set(copy),
+                "Failed to replace Enchantment Window enchant-select handlers"
         );
     }
 
     @Override
     @NotNull
-    public List<Consumer<EnchantSelectClick>> getEnchantSelectionHandlers() {
-        return this.enchantSelectionHandlers.snapshot();
+    public List<Consumer<EnchantSelectClick>> getEnchantSelectHandlers() {
+        return this.enchantSelectHandlers.snapshot();
     }
 
     @Override
-    public void addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+    public void addEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
         Consumer<EnchantSelectClick> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
-                () -> this.enchantSelectionHandlers.append(copied),
-                "Failed to add Enchantment Window selection handler"
+                () -> this.enchantSelectHandlers.append(copied),
+                "Failed to add Enchantment Window enchant-select handler"
         );
     }
 
     @Override
-    public void removeEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+    public void removeEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
         Consumer<EnchantSelectClick> copied = HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler"));
         this.submit(
-                () -> this.enchantSelectionHandlers.remove(copied),
-                "Failed to remove Enchantment Window selection handler"
+                () -> this.enchantSelectHandlers.remove(copied),
+                "Failed to remove Enchantment Window enchant-select handler"
         );
     }
 
@@ -159,7 +159,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         }
         // 捕获按钮对应的非空选项, 后续处理器重入不会改变本轮参数
         EnchantSelectClick click = new EnchantSelectClick(this.viewer(), this, button, option);
-        this.enchantSelectionHandlers.forEachIsolated(
+        this.enchantSelectHandlers.forEachIsolated(
                 handler -> handler.accept(click),
                 "Failed to handle Enchantment Window selection",
                 this::report
@@ -183,7 +183,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         private @Nullable Pane lowerPane;
         private EnchantOption[] options = new EnchantOption[OPTION_COUNT]; // 三个初始按钮, null 表示禁用
         private int enchantmentSeed;
-        private List<Consumer<EnchantSelectClick>> enchantSelectionHandlers = new ArrayList<>();
+        private List<Consumer<EnchantSelectClick>> enchantSelectHandlers = new ArrayList<>();
 
         BuilderImpl() {
         }
@@ -194,7 +194,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
             this.lowerPane = source.lowerPane;
             this.options = source.options.clone();
             this.enchantmentSeed = source.enchantmentSeed;
-            this.enchantSelectionHandlers = new ArrayList<>(source.enchantSelectionHandlers);
+            this.enchantSelectHandlers = new ArrayList<>(source.enchantSelectHandlers);
         }
 
         @Override
@@ -228,15 +228,15 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
-            this.enchantSelectionHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
+        public EnchantmentWindow.Builder setEnchantSelectHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers) {
+            this.enchantSelectHandlers = new ArrayList<>(HandlerList.copyConsumers(handlers));
             return this;
         }
 
         @Override
         @NotNull
-        public EnchantmentWindow.Builder addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
-            this.enchantSelectionHandlers.add(HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler")));
+        public EnchantmentWindow.Builder addEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler) {
+            this.enchantSelectHandlers.add(HandlerList.narrowConsumer(Objects.requireNonNull(handler, "handler")));
             return this;
         }
 
@@ -270,7 +270,7 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
                     settings,
                     this.options,
                     this.enchantmentSeed,
-                    List.copyOf(this.enchantSelectionHandlers)
+                    List.copyOf(this.enchantSelectHandlers)
             );
         }
     }

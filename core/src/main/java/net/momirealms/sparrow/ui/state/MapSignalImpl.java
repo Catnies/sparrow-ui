@@ -40,7 +40,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     @NotNull
-    public MapSignal<K, V> onPut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook) {
+    public MapSignal<K, V> beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook) {
         Objects.requireNonNull(hook, "hook");
         BiFunction<K, V, V> current = this.putting;
         this.putting = current == null ? hook::apply : (key, value) -> hook.apply(key, current.apply(key, value));
@@ -49,7 +49,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     @NotNull
-    public MapSignal<K, V> onRemoved(@NotNull BiConsumer<? super K, ? super V> hook) {
+    public MapSignal<K, V> afterRemove(@NotNull BiConsumer<? super K, ? super V> hook) {
         Objects.requireNonNull(hook, "hook");
         BiConsumer<K, V> current = this.removing;
         this.removing = current == null ? hook::accept : current.andThen(hook);

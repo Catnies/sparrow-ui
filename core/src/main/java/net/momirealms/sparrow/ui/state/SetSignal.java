@@ -20,23 +20,23 @@ import java.util.function.Function;
 public sealed interface SetSignal<E> extends Signal<Set<E>>, Set<E> permits SetSignalImpl {
 
     /**
-     * 挂一个元素钩子, 元素存入<strong>之前</strong>调用, 返回值才是真正存进去的, 语义同 {@link ListSignal#onAdd}.
+     * 挂一个元素钩子, 元素存入<strong>之前</strong>调用, 返回值才是真正存进去的, 语义同 {@link ListSignal#beforeAdd}.
      * <p>{@code add} 先用原元素查重, 已有就不跑钩子; 钩子换出来的元素若与已有元素判等, 这次放入会落空.
      *
      * @param hook 收到调用方要放的元素, 返回真正存进去的
      * @return 本包装器
      */
     @NotNull
-    SetSignal<E> onAdd(@NotNull Function<? super E, ? extends E> hook);
+    SetSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook);
 
     /**
-     * 挂一个元素钩子, 元素移除<strong>之后</strong>调用, 语义同 {@link ListSignal#onRemoved}.
+     * 挂一个元素钩子, 元素移除<strong>之后</strong>调用, 语义同 {@link ListSignal#afterRemove}.
      *
      * @param hook 收到被移除的元素
      * @return 本包装器
      */
     @NotNull
-    SetSignal<E> onRemoved(@NotNull Consumer<? super E> hook);
+    SetSignal<E> afterRemove(@NotNull Consumer<? super E> hook);
 
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知, 语义同 {@link ListSignal#batch}.

@@ -24,7 +24,7 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
      * 挂一个元素钩子, 元素存入<strong>之前</strong>调用, 返回值才是真正存进去的, 原样返回就是不换.
      * <p>它是给 "把包装器注入到别人的字段里" 这种用法准备的, 订阅者只知道 "表变了", 钩子才知道谁来了.
      * 钩子在写入线程同步跑, 通知永远在钩子之后; 挂多个按挂的顺序串着跑, 前一个的返回值是后一个的入参.
-     * 替换类操作({@code set}、{@code ListIterator.set})先对旧元素跑 {@link #onRemoved} 的钩子, 再对新元素跑本钩子.
+     * 替换类操作({@code set}、{@code ListIterator.set})先对旧元素跑 {@link #afterRemove} 的钩子, 再对新元素跑本钩子.
      * <p>换值有一条边界: 调用方之后拿原对象来 {@code remove(Object)} / {@code contains}, 按 {@code equals} 找不到换过的那个.
      * <strong>钩子里不得订阅本 signal 再在回调里写它</strong>, 那是重入. 钩子是构造期配置, 要在把包装器交出去之前挂好.
      *
@@ -32,7 +32,7 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
      * @return 本包装器
      */
     @NotNull
-    ListSignal<E> onAdd(@NotNull Function<? super E, ? extends E> hook);
+    ListSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook);
 
     /**
      * 挂一个元素钩子, 元素从集合移除<strong>之后</strong>调用. 按下标、按迭代器移除时收到的是被存着的那个;
@@ -43,7 +43,7 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
      * @return 本包装器
      */
     @NotNull
-    ListSignal<E> onRemoved(@NotNull Consumer<? super E> hook);
+    ListSignal<E> afterRemove(@NotNull Consumer<? super E> hook);
 
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知.

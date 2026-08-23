@@ -15,8 +15,8 @@ final class WindowSessionTree extends AbstractWindowSession {
     private final IdentityHashMap<AbstractWindow<?>, AbstractWindow<?>> parents = new IdentityHashMap<>(8); // 成员到父窗, 根窗为 null
     private @Nullable AbstractWindow<?> cursor; // 当前位置, 恒指向当前窗
 
-    WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> endHandlers) {
-        super(manager, viewer, endHandlers);
+    WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+        super(manager, viewer, sessionEndHandlers);
     }
 
     @NotNull

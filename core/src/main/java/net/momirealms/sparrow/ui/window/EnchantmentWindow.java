@@ -48,7 +48,7 @@ public interface EnchantmentWindow extends Window {
      *
      * @param handlers 新处理器列表
      */
-    void setEnchantSelectionHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers);
+    void setEnchantSelectHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers);
 
     /**
      * 返回当前选择处理器快照.
@@ -57,21 +57,21 @@ public interface EnchantmentWindow extends Window {
      */
     @NotNull
     @Unmodifiable
-    List<Consumer<EnchantSelectClick>> getEnchantSelectionHandlers();
+    List<Consumer<EnchantSelectClick>> getEnchantSelectHandlers();
 
     /**
      * 追加选择处理器.
      *
      * @param handler 新处理器
      */
-    void addEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
+    void addEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
      * 移除首个匹配的选择处理器.
      *
      * @param handler 待移除的处理器
      */
-    void removeEnchantSelectionHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
+    void removeEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
      * 一个附魔按钮的客户端展示数据.
@@ -134,7 +134,7 @@ public interface EnchantmentWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        Builder setEnchantSelectionHandlers(
+        Builder setEnchantSelectHandlers(
                 @NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers
         );
 
@@ -145,7 +145,7 @@ public interface EnchantmentWindow extends Window {
          * @return 此 Builder
          */
         @NotNull
-        Builder addEnchantSelectionHandler(
+        Builder addEnchantSelectHandler(
                 @NotNull Consumer<? super EnchantSelectClick> handler
         );
 
