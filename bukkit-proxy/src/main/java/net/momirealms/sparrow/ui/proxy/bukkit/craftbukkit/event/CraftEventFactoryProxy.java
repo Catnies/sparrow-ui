@@ -11,7 +11,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 public interface CraftEventFactoryProxy {
     CraftEventFactoryProxy INSTANCE = ASMProxyFactory.create(CraftEventFactoryProxy.class);
 
-    @MethodInvoker(name = "handleInventoryCloseEvent", isStatic = true)
+    @MethodInvoker(name = "handleInventoryCloseEvent", isStatic = true, activeIf = "min_version=1.20.1")
     void handleInventoryCloseEvent(
             @Type(clazz = PlayerProxy.class) Object player,
             InventoryCloseEvent.Reason reason

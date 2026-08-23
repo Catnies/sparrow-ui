@@ -11,6 +11,6 @@ import java.util.stream.Stream;
 public interface IngredientProxy {
     IngredientProxy INSTANCE = ASMProxyFactory.create(IngredientProxy.class);
 
-    @MethodInvoker(name = "of", isStatic = true)
+    @MethodInvoker(name = "of", isStatic = true, activeIf = "min_version=1.20.1")
     Object of(@Type(name = "java.util.stream.Stream") Stream<?> items);
 }

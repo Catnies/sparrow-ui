@@ -21,46 +21,46 @@ public interface ItemStackProxy {
      * @param item NMS {@code ItemLike}
      * @return 新建的 NMS {@code ItemStack}
      */
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(@Type(name = "net.minecraft.world.level.ItemLike") Object item);
 
-    @FieldGetter(name = "EMPTY", isStatic = true)
+    @FieldGetter(name = "EMPTY", isStatic = true, activeIf = "min_version=1.20.1")
     Object getEMPTY();
 
-    @FieldGetter(name = "CODEC", isStatic = true)
+    @FieldGetter(name = "CODEC", isStatic = true, activeIf = "min_version=1.20.5")
     Codec<Object> getCODEC();
 
-    @MethodInvoker(name = "getBukkitStack", activeIf = "has_patch=paper")
+    @MethodInvoker(name = "getBukkitStack", activeIf = "min_version=1.20.1 && has_patch=paper")
     ItemStack getBukkitStack(Object target);
 
-    @MethodInvoker(name = "copy")
+    @MethodInvoker(name = "copy", activeIf = "min_version=1.20.1")
     Object copy(Object target);
 
-    @MethodInvoker(name = "getComponents")
+    @MethodInvoker(name = "getComponents", activeIf = "min_version=1.20.5")
     Object getComponents(Object target);
 
-    @MethodInvoker(name = "getItem")
+    @MethodInvoker(name = "getItem", activeIf = "min_version=1.20.1")
     Object getItem(Object target);
 
-    @MethodInvoker(name = "getItemHolder", activeIf = "!min_version=26.1")
+    @MethodInvoker(name = "getItemHolder", activeIf = "min_version=1.20.1 && max_version=1.21.11")
     Object getItemHolder(Object target);
 
     @MethodInvoker(name = "typeHolder", activeIf = "min_version=26.1")
     Object typeHolder(Object target);
 
-    @MethodInvoker(name = "is")
+    @MethodInvoker(name = "is", activeIf = "min_version=1.20.1 && max_version=1.21.11")
     boolean is(Object target, @Type(name = "net.minecraft.tags.TagKey") Object tag);
 
-    @MethodInvoker(name = "isEmpty")
+    @MethodInvoker(name = "isEmpty", activeIf = "min_version=1.20.1")
     boolean isEmpty(Object target);
 
-    @MethodInvoker(name = "matches", isStatic = true)
+    @MethodInvoker(name = "matches", isStatic = true, activeIf = "min_version=1.20.1")
     boolean matches(@Type(name = "net.minecraft.world.item.ItemStack") Object a, @Type(name = "net.minecraft.world.item.ItemStack") Object b);
 
-    @MethodInvoker(name = "isSameItemSameComponents", isStatic = true)
+    @MethodInvoker(name = "isSameItemSameComponents", isStatic = true, activeIf = "min_version=1.20.5")
     boolean isSameItemSameComponents(@Type(name = "net.minecraft.world.item.ItemStack") Object a, @Type(name = "net.minecraft.world.item.ItemStack") Object b);
 
-    @MethodInvoker(name = "transmuteCopy")
+    @MethodInvoker(name = "transmuteCopy", activeIf = "min_version=1.21")
     Object transmuteCopy(Object target, @Type(name = "net.minecraft.world.level.ItemLike") Object item);
 
     /**
@@ -71,6 +71,6 @@ public interface ItemStackProxy {
      * @param value 对应组件值
      * @return 被替换的旧组件值, 没有旧值时为 {@code null}
      */
-    @MethodInvoker(name = "set")
+    @MethodInvoker(name = "set", activeIf = "min_version=1.20.5")
     Object set(Object target, @Type(name = "net.minecraft.core.component.DataComponentType") Object component, Object value);
 }

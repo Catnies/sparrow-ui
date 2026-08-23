@@ -11,6 +11,6 @@ public interface ServerboundRenameItemPacketProxy extends PacketProxy {
     ServerboundRenameItemPacketProxy INSTANCE = ASMProxyFactory.create(ServerboundRenameItemPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundRenameItemPacket");
 
-    @MethodInvoker(name = "getName")
+    @MethodInvoker(name = "getName", activeIf = "min_version=1.20.1")
     String name(Object target);
 }

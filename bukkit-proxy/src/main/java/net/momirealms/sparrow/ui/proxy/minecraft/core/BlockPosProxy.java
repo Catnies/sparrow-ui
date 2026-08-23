@@ -10,6 +10,6 @@ public interface BlockPosProxy {
     BlockPosProxy INSTANCE = ASMProxyFactory.create(BlockPosProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.core.BlockPos");
 
-    @MethodInvoker(name = "asLong")
+    @MethodInvoker(name = "asLong", activeIf = "min_version=1.20.1")
     long asLong(Object target);
 }

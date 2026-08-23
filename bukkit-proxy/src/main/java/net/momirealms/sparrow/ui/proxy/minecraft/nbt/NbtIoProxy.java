@@ -12,9 +12,9 @@ import java.io.DataOutput;
 public interface NbtIoProxy {
     NbtIoProxy INSTANCE = ASMProxyFactory.create(NbtIoProxy.class);
 
-    @MethodInvoker(name = "write", isStatic = true)
+    @MethodInvoker(name = "write", isStatic = true, activeIf = "min_version=1.20.1")
     void write(@Type(name = "net.minecraft.nbt.CompoundTag") Object compoundTag, DataOutput output);
 
-    @MethodInvoker(name = "read", isStatic = true)
+    @MethodInvoker(name = "read", isStatic = true, activeIf = "min_version=1.20.1")
     Object read(DataInput input, @Type(clazz = NbtAccounterProxy.class) Object accounter);
 }

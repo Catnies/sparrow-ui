@@ -10,15 +10,15 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 public interface ContainerProxy {
     ContainerProxy INSTANCE = ASMProxyFactory.create(ContainerProxy.class);
 
-    @MethodInvoker(name = "getContainerSize")
+    @MethodInvoker(name = "getContainerSize", activeIf = "min_version=1.20.1")
     int getContainerSize(Object target);
 
-    @MethodInvoker(name = "getMaxStackSize")
+    @MethodInvoker(name = "getMaxStackSize", activeIf = "min_version=1.20.1")
     int getMaxStackSize(Object target);
 
-    @MethodInvoker(name = "getItem")
+    @MethodInvoker(name = "getItem", activeIf = "min_version=1.20.1")
     Object getItem(Object target, int slot);
 
-    @MethodInvoker(name = "setItem")
+    @MethodInvoker(name = "setItem", activeIf = "min_version=1.20.1")
     void setItem(Object target, int slot, @Type(clazz = ItemStackProxy.class) Object item);
 }

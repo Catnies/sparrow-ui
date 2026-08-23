@@ -10,12 +10,12 @@ public interface BlockEntityProxy {
     BlockEntityProxy INSTANCE = ASMProxyFactory.create(BlockEntityProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.entity.BlockEntity");
 
-    @MethodInvoker(name = "isRemoved")
+    @MethodInvoker(name = "isRemoved", activeIf = "min_version=1.20.1")
     boolean isRemoved(Object target);
 
-    @MethodInvoker(name = "getLevel")
+    @MethodInvoker(name = "getLevel", activeIf = "min_version=1.20.1")
     Object getLevel(Object target);
 
-    @MethodInvoker(name = "getBlockPos")
+    @MethodInvoker(name = "getBlockPos", activeIf = "min_version=1.20.1")
     Object getBlockPos(Object target);
 }

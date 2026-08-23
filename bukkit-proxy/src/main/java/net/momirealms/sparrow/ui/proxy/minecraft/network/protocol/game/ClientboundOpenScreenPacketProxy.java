@@ -12,7 +12,7 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface ClientboundOpenScreenPacketProxy extends PacketProxy {
     ClientboundOpenScreenPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundOpenScreenPacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(
             int containerId,
             @Type(clazz = MenuTypeProxy.class) Object menuType,

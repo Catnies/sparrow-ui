@@ -5,11 +5,11 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
-@ReflectionProxy(name = "net.minecraft.world.item.crafting.display.SlotDisplay$ItemStackSlotDisplay")
+@ReflectionProxy(name = "net.minecraft.world.item.crafting.display.SlotDisplay$ItemStackSlotDisplay", activeIf = "min_version=1.21.2")
 public interface ItemStackSlotDisplayProxy {
     ItemStackSlotDisplayProxy INSTANCE = ASMProxyFactory.create(ItemStackSlotDisplayProxy.class);
 
-    @ConstructorInvoker(activeIf = "!min_version=26.1")
+    @ConstructorInvoker(activeIf = "min_version=1.21.2 && max_version=1.21.11")
     Object newInstance(@Type(name = "net.minecraft.world.item.ItemStack") Object stack);
 
     @ConstructorInvoker(activeIf = "min_version=26.1")

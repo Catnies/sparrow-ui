@@ -12,27 +12,27 @@ public interface ServerboundContainerClickPacketProxy extends PacketProxy {
     ServerboundContainerClickPacketProxy INSTANCE = ASMProxyFactory.create(ServerboundContainerClickPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundContainerClickPacket");
 
-    @MethodInvoker(name = "containerId")
+    @MethodInvoker(name = "containerId", activeIf = "min_version=1.21.2")
     int containerId(Object target);
 
-    @MethodInvoker(name = "stateId")
+    @MethodInvoker(name = "stateId", activeIf = "min_version=1.21.2")
     int stateId(Object target);
 
-    @MethodInvoker(name = "slotNum")
+    @MethodInvoker(name = "slotNum", activeIf = "min_version=1.21.2")
     short slotNum(Object target);
 
-    @MethodInvoker(name = "buttonNum")
+    @MethodInvoker(name = "buttonNum", activeIf = "min_version=1.21.2")
     byte buttonNum(Object target);
 
     @MethodInvoker(name = "containerInput", activeIf = "min_version=26.1")
     Enum<?> containerInput(Object target);
 
-    @MethodInvoker(name = "clickType", activeIf = "!min_version=26.1")
+    @MethodInvoker(name = "clickType", activeIf = "min_version=1.21.2 && max_version=1.21.11")
     Enum<?> clickType(Object target);
 
-    @MethodInvoker(name = "changedSlots")
+    @MethodInvoker(name = "changedSlots", activeIf = "min_version=1.21.2")
     Int2ObjectMap<Object> changedSlots(Object target);
 
-    @MethodInvoker(name = "carriedItem")
+    @MethodInvoker(name = "carriedItem", activeIf = "min_version=1.21.2")
     Object carriedItem(Object target);
 }

@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface NbtAccounterProxy {
     NbtAccounterProxy INSTANCE = ASMProxyFactory.create(NbtAccounterProxy.class);
 
-    @MethodInvoker(name = "unlimitedHeap", isStatic = true)
+    @MethodInvoker(name = "unlimitedHeap", isStatic = true, activeIf = "min_version=1.20.2")
     Object unlimitedHeap();
 }

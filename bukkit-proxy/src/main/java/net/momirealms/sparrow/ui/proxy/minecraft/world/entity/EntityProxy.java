@@ -12,9 +12,9 @@ public interface EntityProxy {
     EntityProxy INSTANCE = ASMProxyFactory.create(EntityProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.entity.Entity");
 
-    @MethodInvoker(name = "isRemoved")
+    @MethodInvoker(name = "isRemoved", activeIf = "min_version=1.20.1")
     boolean isRemoved(Object target);
 
-    @MethodInvoker(name = "getUUID")
+    @MethodInvoker(name = "getUUID", activeIf = "min_version=1.20.1")
     UUID getUUID(Object target);
 }

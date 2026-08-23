@@ -14,7 +14,7 @@ import java.util.Collection;
 public interface ClientboundMapItemDataPacketProxy extends PacketProxy {
     ClientboundMapItemDataPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundMapItemDataPacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.5")
     Object newInstance(
             @Type(clazz = MapIdProxy.class) Object mapId,
             byte scale,

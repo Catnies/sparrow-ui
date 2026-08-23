@@ -7,11 +7,11 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
 import java.util.Optional;
 
-@ReflectionProxy(name = "net.minecraft.world.item.crafting.SelectableRecipe")
+@ReflectionProxy(name = "net.minecraft.world.item.crafting.SelectableRecipe", activeIf = "min_version=1.21.2")
 public interface SelectableRecipeProxy {
     SelectableRecipeProxy INSTANCE = ASMProxyFactory.create(SelectableRecipeProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.2")
     Object newInstance(
             @Type(name = "net.minecraft.world.item.crafting.display.SlotDisplay") Object optionDisplay,
             Optional<?> recipe

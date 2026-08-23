@@ -10,6 +10,6 @@ public interface LecternInventoryProxy {
     LecternInventoryProxy INSTANCE = ASMProxyFactory.create(LecternInventoryProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.block.entity.LecternBlockEntity$LecternInventory");
 
-    @MethodInvoker(name = "getLectern")
+    @MethodInvoker(name = "getLectern", activeIf = "min_version=1.20.1")
     Object getLectern(Object target);
 }

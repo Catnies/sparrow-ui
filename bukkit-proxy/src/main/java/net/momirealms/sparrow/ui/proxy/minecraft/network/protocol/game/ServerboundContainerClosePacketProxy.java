@@ -11,6 +11,6 @@ public interface ServerboundContainerClosePacketProxy extends PacketProxy {
     ServerboundContainerClosePacketProxy INSTANCE = ASMProxyFactory.create(ServerboundContainerClosePacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundContainerClosePacket");
 
-    @MethodInvoker(name = "getContainerId")
+    @MethodInvoker(name = "getContainerId", activeIf = "min_version=1.20.1")
     int containerId(Object target);
 }

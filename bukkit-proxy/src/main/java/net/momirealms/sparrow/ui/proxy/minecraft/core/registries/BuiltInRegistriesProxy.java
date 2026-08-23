@@ -9,6 +9,6 @@ public interface BuiltInRegistriesProxy {
     BuiltInRegistriesProxy INSTANCE = ASMProxyFactory.create(BuiltInRegistriesProxy.class);
     Object ITEM = INSTANCE.ITEM();
 
-    @FieldGetter(name = "ITEM", isStatic = true)
+    @FieldGetter(name = "ITEM", isStatic = true, activeIf = "min_version=1.20.1")
     Object ITEM();
 }

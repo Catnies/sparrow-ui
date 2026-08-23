@@ -11,9 +11,9 @@ import org.bukkit.inventory.ItemStack;
 public interface CraftItemStackProxy {
     CraftItemStackProxy INSTANCE = ASMProxyFactory.create(CraftItemStackProxy.class);
 
-    @MethodInvoker(name = "unwrap", isStatic = true)
+    @MethodInvoker(name = "unwrap", isStatic = true, activeIf = "min_version=1.20.1")
     Object unwrap(ItemStack item);
 
-    @MethodInvoker(name = "asCraftMirror", isStatic = true)
+    @MethodInvoker(name = "asCraftMirror", isStatic = true, activeIf = "min_version=1.20.1")
     ItemStack asCraftMirror(@Type(clazz = ItemStackProxy.class) Object item);
 }

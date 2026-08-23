@@ -5,13 +5,13 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "net.minecraft.world.item.crafting.display.RecipeDisplayId")
+@ReflectionProxy(name = "net.minecraft.world.item.crafting.display.RecipeDisplayId", activeIf = "min_version=1.21.2")
 public interface RecipeDisplayIdProxy {
     RecipeDisplayIdProxy INSTANCE = ASMProxyFactory.create(RecipeDisplayIdProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.2")
     Object newInstance(int index);
 
-    @MethodInvoker(name = "index")
+    @MethodInvoker(name = "index", activeIf = "min_version=1.21.2")
     int index(Object target);
 }

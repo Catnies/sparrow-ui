@@ -10,9 +10,9 @@ public interface CompoundContainerProxy {
     CompoundContainerProxy INSTANCE = ASMProxyFactory.create(CompoundContainerProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.CompoundContainer");
 
-    @FieldGetter(name = "container1")
+    @FieldGetter(name = "container1", activeIf = "min_version=1.20.1")
     Object getContainer1(Object target);
 
-    @FieldGetter(name = "container2")
+    @FieldGetter(name = "container2", activeIf = "min_version=1.20.1")
     Object getContainer2(Object target);
 }

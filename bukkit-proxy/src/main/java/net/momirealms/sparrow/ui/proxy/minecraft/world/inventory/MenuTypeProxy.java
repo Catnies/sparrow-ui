@@ -29,66 +29,66 @@ public interface MenuTypeProxy {
     Object STONECUTTER = INSTANCE.STONECUTTER();
     Object MERCHANT = INSTANCE.MERCHANT();
 
-    @FieldGetter(name = "GENERIC_9x1", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x1", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x1();
 
-    @FieldGetter(name = "GENERIC_9x2", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x2", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x2();
 
-    @FieldGetter(name = "GENERIC_9x3", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x3", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x3();
 
-    @FieldGetter(name = "GENERIC_9x4", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x4", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x4();
 
-    @FieldGetter(name = "GENERIC_9x5", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x5", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x5();
 
-    @FieldGetter(name = "GENERIC_9x6", isStatic = true)
+    @FieldGetter(name = "GENERIC_9x6", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_9x6();
 
-    @FieldGetter(name = "HOPPER", isStatic = true)
+    @FieldGetter(name = "HOPPER", isStatic = true, activeIf = "min_version=1.20.1")
     Object HOPPER();
 
-    @FieldGetter(name = "ANVIL", isStatic = true)
+    @FieldGetter(name = "ANVIL", isStatic = true, activeIf = "min_version=1.20.1")
     Object ANVIL();
 
-    @FieldGetter(name = "GENERIC_3x3", isStatic = true)
+    @FieldGetter(name = "GENERIC_3x3", isStatic = true, activeIf = "min_version=1.20.1")
     Object GENERIC_3x3();
 
-    @FieldGetter(name = "GRINDSTONE", isStatic = true)
+    @FieldGetter(name = "GRINDSTONE", isStatic = true, activeIf = "min_version=1.20.1")
     Object GRINDSTONE();
 
-    @FieldGetter(name = "SMITHING", isStatic = true)
+    @FieldGetter(name = "SMITHING", isStatic = true, activeIf = "min_version=1.20.1")
     Object SMITHING();
 
-    @FieldGetter(name = "BREWING_STAND", isStatic = true)
+    @FieldGetter(name = "BREWING_STAND", isStatic = true, activeIf = "min_version=1.20.1")
     Object BREWING_STAND();
 
-    @FieldGetter(name = "CARTOGRAPHY_TABLE", isStatic = true)
+    @FieldGetter(name = "CARTOGRAPHY_TABLE", isStatic = true, activeIf = "min_version=1.20.1")
     Object CARTOGRAPHY_TABLE();
 
-    @FieldGetter(name = "CRAFTER_3x3", isStatic = true)
+    @FieldGetter(name = "CRAFTER_3x3", isStatic = true, activeIf = "min_version=1.20.3")
     Object CRAFTER_3x3();
 
-    @FieldGetter(name = "CRAFTING", isStatic = true)
+    @FieldGetter(name = "CRAFTING", isStatic = true, activeIf = "min_version=1.20.1")
     Object CRAFTING();
 
-    @FieldGetter(name = "FURNACE", isStatic = true)
+    @FieldGetter(name = "FURNACE", isStatic = true, activeIf = "min_version=1.20.1")
     Object FURNACE();
 
-    @FieldGetter(name = "SMOKER", isStatic = true)
+    @FieldGetter(name = "SMOKER", isStatic = true, activeIf = "min_version=1.20.1")
     Object SMOKER();
 
-    @FieldGetter(name = "BLAST_FURNACE", isStatic = true)
+    @FieldGetter(name = "BLAST_FURNACE", isStatic = true, activeIf = "min_version=1.20.1")
     Object BLAST_FURNACE();
 
-    @FieldGetter(name = "ENCHANTMENT", isStatic = true)
+    @FieldGetter(name = "ENCHANTMENT", isStatic = true, activeIf = "min_version=1.20.1")
     Object ENCHANTMENT();
 
-    @FieldGetter(name = "STONECUTTER", isStatic = true)
+    @FieldGetter(name = "STONECUTTER", isStatic = true, activeIf = "min_version=1.20.1")
     Object STONECUTTER();
 
-    @FieldGetter(name = "MERCHANT", isStatic = true)
+    @FieldGetter(name = "MERCHANT", isStatic = true, activeIf = "min_version=1.20.1")
     Object MERCHANT();
 }

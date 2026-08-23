@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface ClientboundContainerClosePacketProxy extends PacketProxy {
     ClientboundContainerClosePacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerClosePacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(int containerId);
 }

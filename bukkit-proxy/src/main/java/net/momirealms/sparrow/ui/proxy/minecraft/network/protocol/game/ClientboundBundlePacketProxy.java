@@ -11,6 +11,6 @@ public interface ClientboundBundlePacketProxy extends PacketProxy {
     ClientboundBundlePacketProxy INSTANCE = ASMProxyFactory.create(ClientboundBundlePacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ClientboundBundlePacket");
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(Iterable<?> packets);
 }

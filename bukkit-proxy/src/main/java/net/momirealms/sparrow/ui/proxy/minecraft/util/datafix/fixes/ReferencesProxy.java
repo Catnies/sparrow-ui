@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface ReferencesProxy {
     ReferencesProxy INSTANCE = ASMProxyFactory.create(ReferencesProxy.class);
 
-    @FieldGetter(name = "ITEM_STACK", isStatic = true)
+    @FieldGetter(name = "ITEM_STACK", isStatic = true, activeIf = "min_version=1.20.1")
     DSL.TypeReference getITEM_STACK();
 }

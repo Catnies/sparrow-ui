@@ -7,16 +7,16 @@ import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
-@ReflectionProxy(name = "net.minecraft.world.inventory.RemoteSlot")
+@ReflectionProxy(name = "net.minecraft.world.inventory.RemoteSlot", activeIf = "min_version=1.21.2")
 public interface RemoteSlotProxy {
     RemoteSlotProxy INSTANCE = ASMProxyFactory.create(RemoteSlotProxy.class);
 
-    @MethodInvoker(name = "receive")
+    @MethodInvoker(name = "receive", activeIf = "min_version=1.21.2")
     void receive(Object target, @Type(clazz = HashedStackProxy.class) Object hashedStack);
 
-    @MethodInvoker(name = "matches")
+    @MethodInvoker(name = "matches", activeIf = "min_version=1.21.2")
     boolean matches(Object target, @Type(clazz = ItemStackProxy.class) Object item);
 
-    @MethodInvoker(name = "force")
+    @MethodInvoker(name = "force", activeIf = "min_version=1.21.2")
     void force(Object target, @Type(clazz = ItemStackProxy.class) Object item);
 }

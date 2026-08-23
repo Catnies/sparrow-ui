@@ -10,9 +10,9 @@ import java.util.stream.Stream;
 public interface RegistryProxy {
     RegistryProxy INSTANCE = ASMProxyFactory.create(RegistryProxy.class);
 
-    @MethodInvoker(name = "stream")
+    @MethodInvoker(name = "stream", activeIf = "min_version=1.20.1")
     Stream<?> stream(Object target);
 
-    @MethodInvoker(name = "getId")
+    @MethodInvoker(name = "getId", activeIf = "min_version=1.20.1")
     int getId(Object target, Object value);
 }

@@ -12,7 +12,7 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface ClientboundContainerSetSlotPacketProxy extends PacketProxy {
     ClientboundContainerSetSlotPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerSetSlotPacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(
             int containerId,
             int stateId,
@@ -20,6 +20,6 @@ public interface ClientboundContainerSetSlotPacketProxy extends PacketProxy {
             @Type(clazz = ItemStackProxy.class) Object item
     );
 
-    @MethodInvoker(name = "getItem")
+    @MethodInvoker(name = "getItem", activeIf = "min_version=1.20.1")
     Object getItem(Object target);
 }

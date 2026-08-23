@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface MapColorProxy {
     MapColorProxy INSTANCE = ASMProxyFactory.create(MapColorProxy.class);
 
-    @MethodInvoker(name = "getColorFromPackedId", isStatic = true)
+    @MethodInvoker(name = "getColorFromPackedId", isStatic = true, activeIf = "min_version=1.20.1")
     int getColorFromPackedId(int packedId);
 }

@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface BundlePacketProxy extends PacketProxy {
     BundlePacketProxy INSTANCE = ASMProxyFactory.create(BundlePacketProxy.class);
 
-    @MethodInvoker(name = "subPackets")
+    @MethodInvoker(name = "subPackets", activeIf = "min_version=1.20.1")
     Iterable<?> subPackets(Object target);
 }

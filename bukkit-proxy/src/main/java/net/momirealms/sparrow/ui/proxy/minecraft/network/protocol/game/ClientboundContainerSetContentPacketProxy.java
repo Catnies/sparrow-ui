@@ -13,7 +13,7 @@ import java.util.List;
 public interface ClientboundContainerSetContentPacketProxy extends PacketProxy {
     ClientboundContainerSetContentPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundContainerSetContentPacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.5")
     Object newInstance(
             int containerId,
             int stateId,

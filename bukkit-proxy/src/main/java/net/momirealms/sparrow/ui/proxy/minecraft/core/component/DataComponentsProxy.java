@@ -4,7 +4,7 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "net.minecraft.core.component.DataComponents")
+@ReflectionProxy(name = "net.minecraft.core.component.DataComponents", activeIf = "min_version=1.20.5")
 public interface DataComponentsProxy {
     DataComponentsProxy INSTANCE = ASMProxyFactory.create(DataComponentsProxy.class);
     Object CUSTOM_NAME = INSTANCE.CUSTOM_NAME();
@@ -13,18 +13,18 @@ public interface DataComponentsProxy {
     Object MAP_ID = INSTANCE.MAP_ID();
     Object BUNDLE_CONTENTS = INSTANCE.BUNDLE_CONTENTS();
 
-    @FieldGetter(name = "CUSTOM_NAME", isStatic = true)
+    @FieldGetter(name = "CUSTOM_NAME", isStatic = true, activeIf = "min_version=1.20.5")
     Object CUSTOM_NAME();
 
-    @FieldGetter(name = "TOOLTIP_DISPLAY", isStatic = true)
+    @FieldGetter(name = "TOOLTIP_DISPLAY", isStatic = true, activeIf = "min_version=1.21.5")
     Object TOOLTIP_DISPLAY();
 
-    @FieldGetter(name = "ITEM_MODEL", isStatic = true)
+    @FieldGetter(name = "ITEM_MODEL", isStatic = true, activeIf = "min_version=1.21.2")
     Object ITEM_MODEL();
 
-    @FieldGetter(name = "MAP_ID", isStatic = true)
+    @FieldGetter(name = "MAP_ID", isStatic = true, activeIf = "min_version=1.20.5")
     Object MAP_ID();
 
-    @FieldGetter(name = "BUNDLE_CONTENTS", isStatic = true)
+    @FieldGetter(name = "BUNDLE_CONTENTS", isStatic = true, activeIf = "min_version=1.20.5")
     Object BUNDLE_CONTENTS();
 }

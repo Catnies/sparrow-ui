@@ -10,6 +10,6 @@ import java.util.Collection;
 public interface MerchantOffersProxy {
     MerchantOffersProxy INSTANCE = ASMProxyFactory.create(MerchantOffersProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.5")
     Object newInstance(Collection<?> offers);
 }

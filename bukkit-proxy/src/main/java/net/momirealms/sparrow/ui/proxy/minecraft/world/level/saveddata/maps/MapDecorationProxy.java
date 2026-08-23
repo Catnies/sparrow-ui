@@ -11,7 +11,7 @@ import java.util.Optional;
 public interface MapDecorationProxy {
     MapDecorationProxy INSTANCE = ASMProxyFactory.create(MapDecorationProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.5")
     Object newInstance(
             @Type(name = "net.minecraft.core.Holder") Object type,
             byte x,

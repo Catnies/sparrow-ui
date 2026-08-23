@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface ItemStackTemplateProxy {
     ItemStackTemplateProxy INSTANCE = ASMProxyFactory.create(ItemStackTemplateProxy.class);
 
-    @MethodInvoker(name = "fromNonEmptyStack", isStatic = true)
+    @MethodInvoker(name = "fromNonEmptyStack", isStatic = true, activeIf = "min_version=26.1")
     Object fromNonEmptyStack(@Type(name = "net.minecraft.world.item.ItemStack") Object stack);
 }

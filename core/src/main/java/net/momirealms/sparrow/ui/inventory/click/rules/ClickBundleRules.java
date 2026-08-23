@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.click.rules;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.TypedInstanceProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentHolderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.tags.ItemTagsProxy;
@@ -24,7 +25,11 @@ public final class ClickBundleRules {
     // 点击语义里所有的收纳袋判定都走这里. 认的是 NMS 物品标签 #minecraft:bundles, 彩色收纳袋和数据包扩展同样命中,
     // 袋内数据由下面四条路径按 BUNDLE_CONTENTS 组件读. 空槽与空光标先短路掉, 普通空点击碰不到代理.
     public static boolean isBundle(@Nullable ItemStack item) {
-        return !ItemUtils.isNullOrEmpty(item) && ItemStackProxy.INSTANCE.is(ItemUtils.getItemStackHandle(item), ItemTagsProxy.BUNDLES);
+        if (ItemUtils.isNullOrEmpty(item)) return false;
+        Object itemStack = ItemUtils.getItemStackHandle(item);
+        return VersionHelper.isOrAbove26_1()
+                ? TypedInstanceProxy.INSTANCE.is(itemStack, ItemTagsProxy.BUNDLES)
+                : ItemStackProxy.INSTANCE.is(itemStack, ItemTagsProxy.BUNDLES);
     }
 
     // 使用原版 BundleContents 规则把槽位物品尽量转入光标 Bundle.

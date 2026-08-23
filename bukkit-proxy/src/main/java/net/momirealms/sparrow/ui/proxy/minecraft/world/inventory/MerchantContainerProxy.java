@@ -10,6 +10,6 @@ public interface MerchantContainerProxy {
     MerchantContainerProxy INSTANCE = ASMProxyFactory.create(MerchantContainerProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.inventory.MerchantContainer");
 
-    @FieldGetter(name = "merchant")
+    @FieldGetter(name = "merchant", activeIf = "min_version=1.20.1")
     Object getMerchant(Object target);
 }

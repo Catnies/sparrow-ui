@@ -11,18 +11,18 @@ public interface PlayerProxy {
     PlayerProxy INSTANCE = ASMProxyFactory.create(PlayerProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.entity.player.Player");
 
-    @FieldGetter(name = "containerMenu")
+    @FieldGetter(name = "containerMenu", activeIf = "min_version=1.20.1")
     Object containerMenu(Object target);
 
-    @FieldSetter(name = "containerMenu")
+    @FieldSetter(name = "containerMenu", activeIf = "min_version=1.20.1")
     void containerMenu(Object target, Object menu);
 
-    @FieldGetter(name = "inventoryMenu")
+    @FieldGetter(name = "inventoryMenu", activeIf = "min_version=1.20.1")
     Object inventoryMenu(Object target);
 
-    @FieldGetter(name = "inventory")
+    @FieldGetter(name = "inventory", activeIf = "min_version=1.20.1")
     Object inventory(Object target);
 
-    @FieldSetter(name = "inventory")
+    @FieldSetter(name = "inventory", activeIf = "min_version=1.20.1")
     void inventory(Object target, Object inventory);
 }

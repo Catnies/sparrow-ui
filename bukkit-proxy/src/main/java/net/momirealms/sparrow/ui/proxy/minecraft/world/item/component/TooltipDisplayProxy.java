@@ -5,7 +5,7 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
-@ReflectionProxy(name = "net.minecraft.world.item.component.TooltipDisplay")
+@ReflectionProxy(name = "net.minecraft.world.item.component.TooltipDisplay", activeIf = "min_version=1.21.5")
 public interface TooltipDisplayProxy {
     TooltipDisplayProxy INSTANCE = ASMProxyFactory.create(TooltipDisplayProxy.class);
 
@@ -16,7 +16,7 @@ public interface TooltipDisplayProxy {
      * @param hiddenComponents NMS {@code DataComponentType<?>} 的有序集合
      * @return NMS {@code TooltipDisplay}
      */
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.5")
     Object newInstance(
             boolean hideTooltip,
             @Type(name = "java.util.SequencedSet") Object hiddenComponents

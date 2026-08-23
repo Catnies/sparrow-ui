@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface InventoryProxy {
     InventoryProxy INSTANCE = ASMProxyFactory.create(InventoryProxy.class);
 
-    @MethodInvoker(name = "getTimesChanged")
+    @MethodInvoker(name = "getTimesChanged", activeIf = "min_version=1.20.1")
     int timesChanged(Object target);
 }

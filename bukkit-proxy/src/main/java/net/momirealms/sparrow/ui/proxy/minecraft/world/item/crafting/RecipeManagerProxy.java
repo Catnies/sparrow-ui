@@ -14,19 +14,19 @@ import java.util.function.Consumer;
 public interface RecipeManagerProxy {
     RecipeManagerProxy INSTANCE = ASMProxyFactory.create(RecipeManagerProxy.class);
 
-    @MethodInvoker(name = "getSynchronizedItemProperties")
+    @MethodInvoker(name = "getSynchronizedItemProperties", activeIf = "min_version=1.21.2")
     Map<?, ?> getSynchronizedItemProperties(Object target);
 
-    @MethodInvoker(name = "getSynchronizedStonecutterRecipes")
+    @MethodInvoker(name = "getSynchronizedStonecutterRecipes", activeIf = "min_version=1.21.2")
     Object getSynchronizedStonecutterRecipes(Object target);
 
-    @MethodInvoker(name = "getRecipeFromDisplay")
+    @MethodInvoker(name = "getRecipeFromDisplay", activeIf = "min_version=1.21.2")
     Object getRecipeFromDisplay(
             Object target,
             @Type(clazz = RecipeDisplayIdProxy.class) Object displayId
     );
 
-    @MethodInvoker(name = "listDisplaysForRecipe")
+    @MethodInvoker(name = "listDisplaysForRecipe", activeIf = "min_version=1.21.2")
     void listDisplaysForRecipe(
             Object target,
             @Type(clazz = ResourceKeyProxy.class) Object recipe,

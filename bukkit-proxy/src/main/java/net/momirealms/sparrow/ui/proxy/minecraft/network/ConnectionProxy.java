@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface ConnectionProxy {
     ConnectionProxy INSTANCE = ASMProxyFactory.create(ConnectionProxy.class);
 
-    @FieldGetter(name = "channel")
+    @FieldGetter(name = "channel", activeIf = "min_version=1.20.1")
     Object channel(Object target);
 }

@@ -12,7 +12,7 @@ public interface ClientboundMerchantOffersPacketProxy extends PacketProxy {
     ClientboundMerchantOffersPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundMerchantOffersPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ClientboundMerchantOffersPacket");
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(
             int containerId,
             @Type(name = "net.minecraft.world.item.trading.MerchantOffers") Object offers,

@@ -11,9 +11,9 @@ public interface SimpleContainerProxy extends ContainerProxy {
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.SimpleContainer");
     SimpleContainerProxy INSTANCE = ASMProxyFactory.create(SimpleContainerProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(int size);
 
-    @MethodInvoker(name = "getOwner")
+    @MethodInvoker(name = "getOwner", activeIf = "min_version=1.20.1")
     Object getOwner(Object target);
 }

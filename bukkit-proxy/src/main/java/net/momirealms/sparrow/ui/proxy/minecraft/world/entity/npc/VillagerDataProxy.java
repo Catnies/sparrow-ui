@@ -11,6 +11,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface VillagerDataProxy {
     VillagerDataProxy INSTANCE = ASMProxyFactory.create(VillagerDataProxy.class);
 
-    @MethodInvoker(name = "getMaxXpPerLevel", isStatic = true)
+    @MethodInvoker(name = "getMaxXpPerLevel", isStatic = true, activeIf = "min_version=1.20.1")
     int getMaxXpPerLevel(int level);
 }

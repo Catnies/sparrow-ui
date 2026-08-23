@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface ContainerSynchronizerProxy {
     ContainerSynchronizerProxy INSTANCE = ASMProxyFactory.create(ContainerSynchronizerProxy.class);
 
-    @MethodInvoker(name = "createSlot")
+    @MethodInvoker(name = "createSlot", activeIf = "min_version=1.21.2")
     Object createSlot(Object target);
 }

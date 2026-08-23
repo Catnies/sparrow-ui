@@ -14,7 +14,7 @@ public interface ClientboundUpdateRecipesPacketProxy extends PacketProxy {
     ClientboundUpdateRecipesPacketProxy INSTANCE = ASMProxyFactory.create(ClientboundUpdateRecipesPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ClientboundUpdateRecipesPacket");
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.2")
     Object newInstance(
             Map<?, ?> itemSets,
             @Type(name = "net.minecraft.world.item.crafting.SelectableRecipe$SingleInputSet")

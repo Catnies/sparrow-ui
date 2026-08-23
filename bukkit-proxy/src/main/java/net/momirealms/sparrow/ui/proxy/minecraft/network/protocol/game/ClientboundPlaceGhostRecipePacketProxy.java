@@ -10,7 +10,7 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface ClientboundPlaceGhostRecipePacketProxy extends PacketProxy {
     ClientboundPlaceGhostRecipePacketProxy INSTANCE = ASMProxyFactory.create(ClientboundPlaceGhostRecipePacketProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.21.2")
     Object newInstance(
             int containerId,
             @Type(name = "net.minecraft.world.item.crafting.display.RecipeDisplay") Object recipeDisplay

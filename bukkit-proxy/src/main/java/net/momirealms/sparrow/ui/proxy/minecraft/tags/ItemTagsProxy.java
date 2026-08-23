@@ -9,6 +9,6 @@ public interface ItemTagsProxy {
     ItemTagsProxy INSTANCE = ASMProxyFactory.create(ItemTagsProxy.class);
     Object BUNDLES = INSTANCE.BUNDLES();
 
-    @FieldGetter(name = "BUNDLES", isStatic = true)
+    @FieldGetter(name = "BUNDLES", isStatic = true, activeIf = "min_version=1.21.2")
     Object BUNDLES();
 }

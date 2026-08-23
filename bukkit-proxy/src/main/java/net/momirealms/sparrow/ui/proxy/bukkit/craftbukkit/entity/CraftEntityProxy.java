@@ -9,6 +9,6 @@ import org.bukkit.entity.Entity;
 public interface CraftEntityProxy {
     CraftEntityProxy INSTANCE = ASMProxyFactory.create(CraftEntityProxy.class);
 
-    @FieldGetter(name = "entity")
+    @FieldGetter(name = "entity", activeIf = "min_version=1.20.1")
     Object entity(Entity target);
 }

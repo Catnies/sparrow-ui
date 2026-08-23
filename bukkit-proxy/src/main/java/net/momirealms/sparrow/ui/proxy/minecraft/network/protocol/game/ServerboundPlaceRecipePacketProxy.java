@@ -11,12 +11,12 @@ public interface ServerboundPlaceRecipePacketProxy extends PacketProxy {
     ServerboundPlaceRecipePacketProxy INSTANCE = ASMProxyFactory.create(ServerboundPlaceRecipePacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundPlaceRecipePacket");
 
-    @MethodInvoker(name = "containerId")
+    @MethodInvoker(name = "containerId", activeIf = "min_version=1.21.2")
     int containerId(Object target);
 
-    @MethodInvoker(name = "recipe")
+    @MethodInvoker(name = "recipe", activeIf = "min_version=1.21.2")
     Object recipe(Object target);
 
-    @MethodInvoker(name = "useMaxItems")
+    @MethodInvoker(name = "useMaxItems", activeIf = "min_version=1.21.2")
     boolean useMaxItems(Object target);
 }

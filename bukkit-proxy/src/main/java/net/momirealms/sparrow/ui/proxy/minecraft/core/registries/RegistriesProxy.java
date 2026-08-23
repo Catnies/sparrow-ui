@@ -10,9 +10,9 @@ public interface RegistriesProxy {
     Object RECIPE = INSTANCE.RECIPE();
     Object ENCHANTMENT = INSTANCE.ENCHANTMENT();
 
-    @FieldGetter(name = "RECIPE", isStatic = true)
+    @FieldGetter(name = "RECIPE", isStatic = true, activeIf = "min_version=1.21")
     Object RECIPE();
 
-    @FieldGetter(name = "ENCHANTMENT", isStatic = true)
+    @FieldGetter(name = "ENCHANTMENT", isStatic = true, activeIf = "min_version=1.20.1")
     Object ENCHANTMENT();
 }

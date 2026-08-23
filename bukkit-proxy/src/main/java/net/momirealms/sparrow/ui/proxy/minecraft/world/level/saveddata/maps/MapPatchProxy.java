@@ -8,6 +8,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface MapPatchProxy {
     MapPatchProxy INSTANCE = ASMProxyFactory.create(MapPatchProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.1")
     Object newInstance(int startX, int startY, int width, int height, byte[] colors);
 }

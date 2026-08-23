@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface DataFixersProxy {
     DataFixersProxy INSTANCE = ASMProxyFactory.create(DataFixersProxy.class);
 
-    @MethodInvoker(name = "getDataFixer", isStatic = true)
+    @MethodInvoker(name = "getDataFixer", isStatic = true, activeIf = "min_version=1.20.1")
     DataFixer getDataFixer();
 }

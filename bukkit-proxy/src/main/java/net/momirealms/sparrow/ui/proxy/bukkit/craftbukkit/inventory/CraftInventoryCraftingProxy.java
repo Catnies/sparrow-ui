@@ -10,9 +10,9 @@ public interface CraftInventoryCraftingProxy {
     CraftInventoryCraftingProxy INSTANCE = ASMProxyFactory.create(CraftInventoryCraftingProxy.class);
     Class<?> CLASS = SparrowClass.find("org.bukkit.craftbukkit.inventory.CraftInventoryCrafting");
 
-    @MethodInvoker(name = "getResultInventory")
+    @MethodInvoker(name = "getResultInventory", activeIf = "min_version=1.20.1")
     Object getResultInventory(Object target);
 
-    @MethodInvoker(name = "getMatrixInventory")
+    @MethodInvoker(name = "getMatrixInventory", activeIf = "min_version=1.20.1")
     Object getMatrixInventory(Object target);
 }

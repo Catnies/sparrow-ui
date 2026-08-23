@@ -11,24 +11,24 @@ import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 public interface AbstractContainerMenuProxy {
     AbstractContainerMenuProxy INSTANCE = ASMProxyFactory.create(AbstractContainerMenuProxy.class);
 
-    @FieldGetter(name = "containerId")
+    @FieldGetter(name = "containerId", activeIf = "min_version=1.20.1")
     int containerId(Object target);
 
-    @MethodInvoker(name = "getStateId")
+    @MethodInvoker(name = "getStateId", activeIf = "min_version=1.20.1")
     int getStateId(Object target);
 
-    @MethodInvoker(name = "incrementStateId")
+    @MethodInvoker(name = "incrementStateId", activeIf = "min_version=1.20.1")
     int incrementStateId(Object target);
 
-    @MethodInvoker(name = "sendAllDataToRemote")
+    @MethodInvoker(name = "sendAllDataToRemote", activeIf = "min_version=1.20.1")
     void sendAllDataToRemote(Object target);
 
-    @MethodInvoker(name = "resumeRemoteUpdates")
+    @MethodInvoker(name = "resumeRemoteUpdates", activeIf = "min_version=1.20.1")
     void resumeRemoteUpdates(Object target);
 
-    @MethodInvoker(name = "getCarried")
+    @MethodInvoker(name = "getCarried", activeIf = "min_version=1.20.1")
     Object getCarried(Object target);
 
-    @MethodInvoker(name = "setCarried")
+    @MethodInvoker(name = "setCarried", activeIf = "min_version=1.20.1")
     void setCarried(Object target, @Type(clazz = ItemStackProxy.class) Object item);
 }

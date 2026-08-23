@@ -4,10 +4,10 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.ConstructorInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "net.minecraft.world.level.saveddata.maps.MapId")
+@ReflectionProxy(name = "net.minecraft.world.level.saveddata.maps.MapId", activeIf = "min_version=1.20.5")
 public interface MapIdProxy {
     MapIdProxy INSTANCE = ASMProxyFactory.create(MapIdProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.5")
     Object newInstance(int id);
 }

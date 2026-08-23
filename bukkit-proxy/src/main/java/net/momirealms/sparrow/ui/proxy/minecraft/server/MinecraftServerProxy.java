@@ -8,9 +8,9 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface MinecraftServerProxy {
     MinecraftServerProxy INSTANCE = ASMProxyFactory.create(MinecraftServerProxy.class);
 
-    @MethodInvoker(name = "getServer", isStatic = true)
+    @MethodInvoker(name = "getServer", isStatic = true, activeIf = "min_version=1.20.1")
     Object getServer();
 
-    @MethodInvoker(name = "getRecipeManager")
+    @MethodInvoker(name = "getRecipeManager", activeIf = "min_version=1.20.1")
     Object getRecipeManager(Object target);
 }

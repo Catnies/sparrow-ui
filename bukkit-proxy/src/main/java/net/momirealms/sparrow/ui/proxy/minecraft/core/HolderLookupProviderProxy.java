@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface HolderLookupProviderProxy {
     HolderLookupProviderProxy INSTANCE = ASMProxyFactory.create(HolderLookupProviderProxy.class);
 
-    @MethodInvoker(name = "createSerializationContext")
+    @MethodInvoker(name = "createSerializationContext", activeIf = "min_version=1.20.5")
     DynamicOps<Object> createSerializationContext(Object target, DynamicOps<Object> ops);
 }

@@ -9,6 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface NbtOpsProxy {
     NbtOpsProxy INSTANCE = ASMProxyFactory.create(NbtOpsProxy.class);
 
-    @FieldGetter(name = "INSTANCE", isStatic = true)
+    @FieldGetter(name = "INSTANCE", isStatic = true, activeIf = "min_version=1.20.1")
     DynamicOps<Object> getINSTANCE();
 }

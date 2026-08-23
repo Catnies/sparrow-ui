@@ -11,9 +11,9 @@ public interface ServerboundContainerButtonClickPacketProxy extends PacketProxy 
     ServerboundContainerButtonClickPacketProxy INSTANCE = ASMProxyFactory.create(ServerboundContainerButtonClickPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket");
 
-    @MethodInvoker(name = "containerId")
+    @MethodInvoker(name = "containerId", activeIf = "min_version=1.20.5")
     int containerId(Object target);
 
-    @MethodInvoker(name = "buttonId")
+    @MethodInvoker(name = "buttonId", activeIf = "min_version=1.20.5")
     int buttonId(Object target);
 }

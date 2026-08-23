@@ -16,12 +16,12 @@ public interface CraftInventorySaddledMountProxy {
             "org.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorse"
     );
 
-    @MethodInvoker(name = "getSaddleInventory")
+    @MethodInvoker(name = "getSaddleInventory", activeIf = "min_version=1.21.5")
     Object getSaddleInventory(Object target);
 
-    @MethodInvoker(name = "getArmorInventory")
+    @MethodInvoker(name = "getArmorInventory", activeIf = "min_version=1.21")
     Object getArmorInventory(Object target);
 
-    @MethodInvoker(name = "getMainInventory")
+    @MethodInvoker(name = "getMainInventory", activeIf = "min_version=1.21")
     Object getMainInventory(Object target);
 }

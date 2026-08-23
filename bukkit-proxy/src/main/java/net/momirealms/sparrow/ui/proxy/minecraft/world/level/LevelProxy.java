@@ -10,6 +10,6 @@ public interface LevelProxy {
     LevelProxy INSTANCE = ASMProxyFactory.create(LevelProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.world.level.Level");
 
-    @MethodInvoker(name = "getWorld")
+    @MethodInvoker(name = "getWorld", activeIf = "min_version=1.20.1")
     Object getWorld(Object target);
 }

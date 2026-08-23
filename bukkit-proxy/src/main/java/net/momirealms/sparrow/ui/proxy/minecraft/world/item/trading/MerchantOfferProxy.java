@@ -11,7 +11,7 @@ import java.util.Optional;
 public interface MerchantOfferProxy {
     MerchantOfferProxy INSTANCE = ASMProxyFactory.create(MerchantOfferProxy.class);
 
-    @ConstructorInvoker
+    @ConstructorInvoker(activeIf = "min_version=1.20.5")
     Object newInstance(
             @Type(name = "net.minecraft.world.item.trading.ItemCost") Object baseCostA,
             Optional<?> costB,

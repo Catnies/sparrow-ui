@@ -11,6 +11,6 @@ public interface ServerboundSelectTradePacketProxy extends PacketProxy {
     ServerboundSelectTradePacketProxy INSTANCE = ASMProxyFactory.create(ServerboundSelectTradePacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundSelectTradePacket");
 
-    @MethodInvoker(name = "getItem")
+    @MethodInvoker(name = "getItem", activeIf = "min_version=1.20.1")
     int getItem(Object target);
 }

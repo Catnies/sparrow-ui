@@ -10,15 +10,15 @@ import org.bukkit.Keyed;
 public interface CraftRegistryProxy {
     CraftRegistryProxy INSTANCE = ASMProxyFactory.create(CraftRegistryProxy.class);
 
-    @MethodInvoker(name = "getMinecraftRegistry", isStatic = true)
+    @MethodInvoker(name = "getMinecraftRegistry", isStatic = true, activeIf = "min_version=1.20.1")
     Object getMinecraftRegistry();
 
-    @MethodInvoker(name = "getMinecraftRegistry", isStatic = true)
+    @MethodInvoker(name = "getMinecraftRegistry", isStatic = true, activeIf = "min_version=1.20.1")
     Object getMinecraftRegistry(@Type(name = "net.minecraft.resources.ResourceKey") Object key);
 
-    @MethodInvoker(name = "bukkitToMinecraft", isStatic = true)
+    @MethodInvoker(name = "bukkitToMinecraft", isStatic = true, activeIf = "min_version=1.20.4")
     Object bukkitToMinecraft(Keyed bukkit);
 
-    @MethodInvoker(name = "bukkitToMinecraftHolder", isStatic = true)
+    @MethodInvoker(name = "bukkitToMinecraftHolder", isStatic = true, activeIf = "min_version=1.21.7")
     Object bukkitToMinecraftHolder(Keyed bukkit);
 }

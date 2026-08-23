@@ -8,9 +8,9 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface ComponentProxy {
     ComponentProxy INSTANCE = ASMProxyFactory.create(ComponentProxy.class);
 
-    @MethodInvoker(name = "empty", isStatic = true)
+    @MethodInvoker(name = "empty", isStatic = true, activeIf = "min_version=1.20.1")
     Object empty();
 
-    @MethodInvoker(name = "literal", isStatic = true)
+    @MethodInvoker(name = "literal", isStatic = true, activeIf = "min_version=1.20.1")
     Object literal(String text);
 }
