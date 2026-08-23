@@ -8,7 +8,8 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class Signals {
-    private static final long MIN_MILLIS_PERIOD = 50L;    // 毫秒时钟的周期下限, 一个 tick
+    private static final long MIN_MILLIS_PERIOD = 50L;              // 毫秒时钟的周期下限, 一个 tick
+    private static final long DEFAULT_COUNTDOWN_SAMPLE_TICKS = 20L;  // 倒计时默认每秒采样一次
     private static final WeakPeriodCache<TickingSignal> millisClocks = new WeakPeriodCache<>();  // 周期 -> 毫秒时钟
 
     private static volatile TickingSignal ticking; // 懒初始化的全局唯一实例
@@ -80,6 +81,55 @@ public final class Signals {
             throw new IllegalArgumentException("periodMillis must be at least " + MIN_MILLIS_PERIOD + ": " + periodMillis);
         }
         return millisClocks.get(periodMillis, period -> new TickingSignal(TickingSignal.paperMillisTicker(period)));
+    }
+
+    /**
+     * 倒计时, 值是距 {@code deadlineMillis} 还剩的毫秒数, 不小于 0, 每秒采样一次.
+     * <p>截止是<strong>墙钟毫秒</strong>(epoch), 与冷却、活动结束这类存库的时刻同一个域; 时钟只决定采样节奏.
+     * 有订阅期间每个采样周期通知一次, 值按当时的墙钟算; 剩余归零的那一拍再通知最后一次(值 0), 然后把采样时钟摘掉.
+     * 截止推后了就重新开始采样, 推到过去就立刻 0 并停. 没有订阅时不挂时钟, 读到的值实时算.
+     * <p><strong>有订阅期间只在截止失效时读一次截止并记下, 采样只用记下的那份</strong>, 截止来自
+     * {@code PlayerKeyedSignal.at(uuid)} 的句柄时, 玩家退出后采样不会再去碰句柄, 也就不会给离线玩家重建分区.
+     * <p>截止为 {@code null} 按已到期处理. 采样通知在全局区域调度线程上发出.
+     *
+     * <pre>{@code
+     * Signal<Long> cooldown = Signals.countdown(cooldownUntil.at(viewerId));
+     * Signal<Long> seconds = cooldown.mapDistinct(millis -> (millis + 999) / 1000);   // 每 DEFAULT_COUNTDOWN_SAMPLE_TICKS 只放行一次
+     * }</pre>
+     *
+     * @param deadlineMillis 截止时刻, epoch 毫秒
+     * @return 剩余毫秒数
+     */
+    @NotNull
+    public static Signal<Long> countdown(@NotNull Signal<Long> deadlineMillis) {
+        return countdown(deadlineMillis, DEFAULT_COUNTDOWN_SAMPLE_TICKS);
+    }
+
+    /**
+     * 同 {@link #countdown(Signal)}, 但每 {@code sampleTicks} 个 tick 采样一次.
+     *
+     * @param deadlineMillis 截止时刻, epoch 毫秒
+     * @param sampleTicks 采样周期, 必须为正
+     * @return 剩余毫秒数
+     * @throws IllegalArgumentException {@code sampleTicks} 不是正数
+     */
+    @NotNull
+    public static Signal<Long> countdown(@NotNull Signal<Long> deadlineMillis, long sampleTicks) {
+        return new CountdownSignal(AbstractSignal.require(deadlineMillis), AbstractSignal.require(everyTicks(sampleTicks)));
+    }
+
+    /**
+     * 同 {@link #countdown(Signal)}, 但按毫秒采样, 时钟是 {@link #everyMillis}.
+     * <p><strong>采样通知在异步线程上发出</strong>, 与 {@link AsyncSignal} 装载完成的线程同级, 订阅者回调必须线程安全.
+     *
+     * @param deadlineMillis 截止时刻, epoch 毫秒
+     * @param sampleMillis 采样周期毫秒数, 不小于 50
+     * @return 剩余毫秒数
+     * @throws IllegalArgumentException {@code sampleMillis} 小于 50
+     */
+    @NotNull
+    public static Signal<Long> countdownMillis(@NotNull Signal<Long> deadlineMillis, long sampleMillis) {
+        return new CountdownSignal(AbstractSignal.require(deadlineMillis), AbstractSignal.require(everyMillis(sampleMillis)));
     }
 
     /**
