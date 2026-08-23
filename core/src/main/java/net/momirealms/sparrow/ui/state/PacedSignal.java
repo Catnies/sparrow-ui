@@ -20,7 +20,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
     private volatile boolean active;                    // 有订阅期间为真, 拉取路径据此决定读快照还是透传
     private Subscription upstream;                      // 有订阅期间挂着
     @Nullable private Delayer.Handle pending;           // 还没触发的延时任务, 状态锁内读写
-    private long generation;                            // 每排一个任务推进一次, 任务带着代数触发, 不符即已被取代
+    private long generation;                            // 每排一个任务推进一次, 停表再推进一次; 任务带着代数触发, 不符即已被取代或属于上一段
 
     PacedSignal(AbstractSignal<T> source, long delay, Delayer delayer) {
         this.source = source;
@@ -112,6 +112,10 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
     // 延时任务到点时在状态锁内决定怎么办, 返回 true 表示向下游发出.
     abstract boolean onFireLocked();
 
+    // 最后一个订阅走了之后在状态锁内收尾, 只属于这一段的状态在这里清掉.
+    void onInactiveLocked() {
+    }
+
     // 是否还有任务等着触发. 状态锁内调用.
     final boolean waitingLocked() {
         return this.pending != null;
@@ -149,6 +153,9 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
             this.active = false;
             pending = this.pending;
             this.pending = null;
+            // 取消追不上执行时这个任务会在下一段里到点, 代数先推进一次, 它到点时就认不出自己了
+            this.generation++;
+            this.onInactiveLocked();
         }
         if (pending != null) {
             pending.cancel();

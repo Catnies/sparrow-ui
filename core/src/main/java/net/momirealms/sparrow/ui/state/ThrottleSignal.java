@@ -29,6 +29,12 @@ final class ThrottleSignal<T> extends PacedSignal<T> {
         return this.emitAndOpenWindowLocked();
     }
 
+    // 窗口随停表一起关掉, 窗口内攒下的待发也不带进下一段
+    @Override
+    void onInactiveLocked() {
+        this.trailing = false;
+    }
+
     // 上游确有变化才发出. 先排窗口到期的任务再拍快照, 排不进去时快照不动, 下次失效重试.
     private boolean emitAndOpenWindowLocked() {
         if (!this.sourceChangedLocked()) return false;
