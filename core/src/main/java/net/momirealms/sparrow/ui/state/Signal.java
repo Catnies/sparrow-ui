@@ -102,6 +102,60 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     <R> Signal<R> mapDistinct(@NotNull Function<? super T, ? extends R> mapper, @NotNull BiPredicate<? super R, ? super R> sameValue);
 
     /**
+     * 防抖, 上游每失效一次就把通知推后 {@code ticks} 个 tick, 连续失效只在最后一次之后通知一次.
+     * <p>有订阅期间 {@link #get()} 返回上一次通知时从上游拍下的快照, 等待期间读到的还是旧值;
+     * 没有订阅时退化为透传, 读到的就是上游当前值, 也不占调度任务.
+     * <p>通知在全局区域调度线程上发出. 发出时会读一次上游, 上游若是惰性 {@link #map} 它的 mapper 就在这里跑,
+     * <strong>读取必须廉价</strong>.
+     *
+     * <pre>{@code
+     * MutableSignal<String> input = Signal.of("");
+     * Signal<List<Entry>> results = input.debounce(6).mapDistinct(Catalog::search);
+     * }</pre>
+     *
+     * @param ticks 静默多少 tick 之后通知, 必须为正
+     * @return 防抖后的 signal
+     * @throws IllegalArgumentException {@code ticks} 不是正数
+     */
+    @NotNull
+    Signal<T> debounce(long ticks);
+
+    /**
+     * 同 {@link #debounce(long)}, 但以毫秒计, 任务挂在 Paper 异步调度器上.
+     * <p>通知在异步线程上发出, 与 {@link AsyncSignal} 装载完成的线程同级, <strong>订阅者回调必须线程安全</strong>.
+     *
+     * @param millis 静默多少毫秒之后通知, 必须为正
+     * @return 防抖后的 signal
+     * @throws IllegalArgumentException {@code millis} 不是正数
+     */
+    @NotNull
+    Signal<T> debounceMillis(long millis);
+
+    /**
+     * 节流, 两次通知之间至少隔 {@code ticks} 个 tick.
+     * <p>距上次通知已满间隔时这次失效立即通知; 未满时记下待发, 到点再通知一次, 间隔内的多次失效合并成那一次.
+     * 补发的那次也算一次通知, 下一个间隔从它开始数.
+     * <p>值语义与无订阅时的行为同 {@link #debounce(long)}. 立即通知在让上游失效的线程上发出, 补发在全局区域调度线程上发出.
+     *
+     * @param ticks 两次通知之间至少隔多少 tick, 必须为正
+     * @return 节流后的 signal
+     * @throws IllegalArgumentException {@code ticks} 不是正数
+     */
+    @NotNull
+    Signal<T> throttle(long ticks);
+
+    /**
+     * 同 {@link #throttle(long)}, 但以毫秒计, 补发挂在 Paper 异步调度器上.
+     * <p>补发在异步线程上发出, 与 {@link AsyncSignal} 装载完成的线程同级, <strong>订阅者回调必须线程安全</strong>.
+     *
+     * @param millis 两次通知之间至少隔多少毫秒, 必须为正
+     * @return 节流后的 signal
+     * @throws IllegalArgumentException {@code millis} 不是正数
+     */
+    @NotNull
+    Signal<T> throttleMillis(long millis);
+
+    /**
      * 创建一个异步数据源, {@link #get()} 立即返回占位值或最近完成的值, 重算由 {@code executor} 在后台执行.
      * <p>创建时即调度一次首载. 之后由 {@link AsyncSignal#dirty} 触发重载.
      * <p>装载失败与执行器拒绝任务都交给统一异常处理器, 不会抛给调用方, 也不会让读取失败, 详见 {@link AsyncSignal#dirty}.

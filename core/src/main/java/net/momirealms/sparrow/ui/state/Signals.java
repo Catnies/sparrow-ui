@@ -9,8 +9,20 @@ import java.util.function.Function;
 
 public final class Signals {
     private static volatile TickingSignal ticking; // 懒初始化的全局唯一实例
+    private static volatile Delayer tickDelayer = Delayer.paperTicks();       // 防抖与节流 tick 基入口用的调度器
+    private static volatile Delayer millisDelayer = Delayer.paperMillis();    // 毫秒基入口用的调度器
 
     private Signals() {
+    }
+
+    @NotNull
+    static Delayer tickDelayer() {
+        return tickDelayer;
+    }
+
+    @NotNull
+    static Delayer millisDelayer() {
+        return millisDelayer;
     }
 
     /**

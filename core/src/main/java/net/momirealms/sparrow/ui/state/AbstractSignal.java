@@ -25,7 +25,8 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         KeyedSignalImpl.SyncPartition,
         PartitionHandle,
         LensSignal,
-        TickingSignal
+        TickingSignal,
+        PacedSignal
 {
     private static final BiPredicate<Object, Object> DEFAULT_SAME_VALUE = Objects::equals;
 
@@ -164,6 +165,34 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         Objects.requireNonNull(mapper, "mapper");
         Objects.requireNonNull(sameValue, "sameValue");
         return new MapDistinctSignal<>(this, mapper, sameValue);
+    }
+
+    @Override
+    @NotNull
+    public Signal<T> debounce(long ticks) {
+        if (ticks <= 0) throw new IllegalArgumentException("ticks must be positive: " + ticks);
+        return new DebounceSignal<>(this, ticks, Signals.tickDelayer());
+    }
+
+    @Override
+    @NotNull
+    public Signal<T> debounceMillis(long millis) {
+        if (millis <= 0) throw new IllegalArgumentException("ticks must be positive: " + millis);
+        return new DebounceSignal<>(this, millis, Signals.millisDelayer());
+    }
+
+    @Override
+    @NotNull
+    public Signal<T> throttle(long ticks) {
+        if (ticks <= 0) throw new IllegalArgumentException("ticks must be positive: " + ticks);
+        return new ThrottleSignal<>(this, ticks, Signals.tickDelayer());
+    }
+
+    @Override
+    @NotNull
+    public Signal<T> throttleMillis(long millis) {
+        if (millis <= 0) throw new IllegalArgumentException("millis must be positive: " + millis);
+        return new ThrottleSignal<>(this, millis, Signals.millisDelayer());
     }
 
     // 当前订阅条目数.
