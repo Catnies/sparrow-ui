@@ -13,7 +13,7 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
-    private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 置脏请求合并, 渲染线程用 takeDirty() 取走
+    private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 合并到下一轮渲染
     private volatile VisualLayer layer;
 
     public CursorVisualImpl(@NotNull Bindings bindings, @NotNull VisualLayer layer) {
@@ -38,7 +38,6 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         this.dirty();
     }
 
-    // 求值光标视觉映射, 空光标按 null 输入, 放行时返回 null 表示按菜单实际光标显示.
     @Nullable
     public ResolvedVisual visualize(@NotNull ItemStack actual) {
         return this.layer.visualize(actual.isEmpty() ? null : actual);

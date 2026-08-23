@@ -9,7 +9,6 @@ import org.jetbrains.annotations.Nullable;
 
 @ApiStatus.Internal
 public final class InventoryVisualImpl extends AbstractSlotVisual implements InventoryVisual {
-    // 背景与两层映射之间没有不变量, 各自独立发布即可, 不必与它们同一次替换
     private volatile @Nullable ItemProvider background;
 
     public InventoryVisualImpl(@NotNull Bindings bindings, int size) {

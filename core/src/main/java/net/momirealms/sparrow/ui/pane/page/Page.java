@@ -37,9 +37,9 @@ import java.util.function.IntUnaryOperator;
  * @param <T> 序列里一条数据的类型
  */
 public final class Page<T> {
-    private static final IntConsumer NONE = ignoredIndex -> {}; // 没有装载动作的翻页用的空回调
+    private static final IntConsumer NONE = ignoredIndex -> {};
 
-    private final MutableSignal<Integer> requested = Signal.of(0); // 使用方要求的页码, 可能越界, 由 pageIndex 夹取
+    private final MutableSignal<Integer> requested = Signal.of(0); // pageIndex 会把请求夹到有效范围
     private final Signal<Integer> pageCount;
     private final Signal<Integer> pageIndex;
     private final Signal<List<T>> content;
@@ -51,9 +51,11 @@ public final class Page<T> {
      * 全量丢入的翻页声明, 内容当场定死, 每页条数相同.
      * <p>会复制一份, 之后改动传进来的那个 List 不影响翻页.
      *
+     * @param <T> 序列元素类型
      * @param content 完整内容
      * @param pageSize 一页显示多少条, 必须为正数
      * @return 分页
+     * @throws IllegalArgumentException 当 pageSize 不是正数时
      */
     @NotNull
     public static <T> Page<T> of(@NotNull List<? extends T> content, int pageSize) {
@@ -63,6 +65,7 @@ public final class Page<T> {
     /**
      * 全量丢入且每页条数不同的翻页声明, 每页条数由页码决定.
      *
+     * @param <T> 序列元素类型
      * @param content 完整内容, 会复制一份
      * @param pageSizeOf 给出第 n 页显示多少条, 必须返回正数
      * @return 分页
@@ -76,6 +79,7 @@ public final class Page<T> {
      * 异步按需装载的翻页声明, 翻到哪一页才在 {@code executor} 上装载哪一页, 总页数也在那里算.
      * <p>未装载完成的页显示空内容, 装载完成后自己刷新, 装载过的页留在缓存里.
      *
+     * @param <T> 序列元素类型
      * @param executor 执行装载的执行器
      * @param pageOf 装载第 n 页的内容, 在 executor 线程执行, 必须线程安全
      * @param pageCountOf 给出总页数, 在 executor 线程执行, 小于 1 时按 1 处理
@@ -100,9 +104,11 @@ public final class Page<T> {
      * 同 {@link #of(Signal, int)}, 接集合装饰器. {@code ListSignal} 既是 {@code List} 又是 {@code Signal<List>},
      * 这个重载替它选定跟着变更走的那一边.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列, 变更时翻页内容跟着变
      * @param pageSize 一页显示多少条, 必须为正数
      * @return 分页
+     * @throws IllegalArgumentException 当 pageSize 不是正数时
      */
     @NotNull
     public static <T> Page<T> of(@NotNull ListSignal<? extends T> source, int pageSize) {
@@ -112,9 +118,11 @@ public final class Page<T> {
     /**
      * 基础翻页声明, 每页条数相同, 总页数由序列长度算出来.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列
      * @param pageSize 一页显示多少条, 必须为正数
      * @return 分页
+     * @throws IllegalArgumentException 当 pageSize 不是正数时
      */
     @NotNull
     public static <T> Page<T> of(@NotNull Signal<? extends List<? extends T>> source, int pageSize) {
@@ -126,10 +134,9 @@ public final class Page<T> {
     }
 
     /**
-     * 异步装载翻页声明, 每页各是一个分区, 翻到哪一页才加载读取哪一页.
-     * <p>分区源用 {@link KeyedSignal#async} 建出来时, 未装载完成的页显示占位值, 装载完成后自己刷新.
-     * 想提前把下一页装上就读一次 {@code pages.get(index + 1)}; 想让某一页重新装载就 {@code pages.dirty(index)}.
+     * 使用按页分区的数据源, 当前页改变时切换到对应分区.
      *
+     * @param <T> 序列元素类型
      * @param pages 每页一个分区的数据源
      * @param pageCount 总页数, 小于 1 时按 1 处理
      * @return 分页
@@ -142,6 +149,7 @@ public final class Page<T> {
     /**
      * 同 {@link #of(Signal, IntUnaryOperator)}, 接集合装饰器, 跟着变更走.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列, 变更时翻页内容跟着变
      * @param pageSizeOf 给出第 n 页显示多少条, 必须返回正数
      * @return 分页
@@ -153,17 +161,15 @@ public final class Page<T> {
 
     /**
      * 每页条数不同的翻页声明, 每页条数由页码决定, 用来表达逐页变化的形状.
-     * <p>页数与切片都从 {@code pageSizeOf} 推出来, 因此两者不会算岔: 从第 0 页开始按它给的条数一页页排下去,
-     * 直到排完全部内容. 例如三行, 两行, 一行循环往复的菜单写成
-     * {@code index -> switch (index % 3) { case 0 -> 27; case 1 -> 18; default -> 9; }}.
+     * <p>页数与切片都从 {@code pageSizeOf} 计算, 从第 0 页开始排到内容用完.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列
      * @param pageSizeOf 给出第 n 页显示多少条, 必须返回正数
      * @return 分页
      */
     @NotNull
     public static <T> Page<T> of(@NotNull Signal<? extends List<? extends T>> source, @NotNull IntUnaryOperator pageSizeOf) {
-        // 从第 0 页开始按每页条数排下去, 排完内容用了几页就是几页.
         Signal<Integer> pageCount = source.map(list -> countOf(list.size(), pageSizeOf));
         Function<Signal<Integer>, Signal<List<T>>> contentOf = index -> Signals.combine(
                 source, index,
@@ -293,8 +299,6 @@ public final class Page<T> {
      * @throws IllegalArgumentException 当 {@code pageSizeOf} 给出非正数时
      */
     public static int offsetOf(int pageIndex, @NotNull IntUnaryOperator pageSizeOf) {
-        // 每页条数可以逐页不同, 起点只能把前面各页的条数一页页加过来.
-        // 例如 3, 2, 1 循环往复时, 第 3 页的起点是 3 + 2 + 1 = 6
         int offset = 0;
         for (int index = 0; index < pageIndex; index++) {
             offset += sizeAt(index, pageSizeOf);
@@ -302,14 +306,6 @@ public final class Page<T> {
         return offset;
     }
 
-    /**
-     * 读出某一页显示多少条.
-     *
-     * @param pageIndex 页码, 从 0 开始
-     * @param pageSizeOf 给出第 n 页显示多少条
-     * @return 该页显示多少条
-     * @throws IllegalArgumentException 当 {@code pageSizeOf} 给出非正数时
-     */
     private static int sizeAt(int pageIndex, IntUnaryOperator pageSizeOf) {
         int size = pageSizeOf.applyAsInt(pageIndex);
         if (size <= 0) {
@@ -318,19 +314,11 @@ public final class Page<T> {
         return size;
     }
 
-    /**
-     * 从整条序列里取出一页要显示的那一段.
-     *
-     * @param list 完整序列
-     * @param offset 这一页从第几条开始
-     * @param length 这一页最多放多少条
-     * @return 该页的内容, 是一份复制; 起点已经越过序列末尾时给出空的一段
-     */
     private static <T> List<T> slice(List<? extends T> list, int offset, int length) {
         int size = list.size();
         int from = Math.min(offset, size);
         int to = Math.min(from + length, size);
-        // 来源可能是活集合(ListSignal), 页内容要复制出来, 翻页之间才不会被后续变更改写
+        // 页内容独立于来源 List 的后续原地修改
         return new ArrayList<>(list.subList(from, to));
     }
 }

@@ -24,7 +24,7 @@ final class VisualDirtyAttachments {
     @NotNull
     Subscription attach(int slot, @NotNull Runnable invalidator) {
         this.reapDeadAttachments();
-        // 回执只被弱持有, 只能控制, 不影响回收.
+        // 订阅表弱持有回执, 调用方丢掉回执即退订
         Attachment attachment = new Attachment(invalidator);
         AttachmentReference reference = new AttachmentReference(attachment, this, slot, this.deadAttachments);
         attachment.reference = reference;
@@ -51,7 +51,7 @@ final class VisualDirtyAttachments {
         }
     }
 
-    // 逐槽通知, 某一槽的回调抛异常也照样走完剩下的槽位.
+    // 某个回调失败也会继续通知其余槽位
     void dirtyAll() {
         this.reapDeadAttachments();
         RuntimeException failure = null;
@@ -78,7 +78,7 @@ final class VisualDirtyAttachments {
         for (int index = 0; index < attachments.length; index++) {
             AttachmentReference reference = attachments[index];
             Attachment attachment = reference.get();
-            // 回执已经被回收, 顺手摘掉这条, 不必等引用队列
+            // 派发时顺手摘掉已经回收的回执
             if (attachment == null) {
                 reference.remove();
                 continue;
@@ -96,7 +96,7 @@ final class VisualDirtyAttachments {
         return failure;
     }
 
-    // 从槽位数组里摘掉一条订阅, 摘掉最后一条时该槽位回到没有订阅的状态.
+    // 从槽位快照中摘掉一条订阅
     private void removeAt(int slot, @NotNull AttachmentReference reference) {
         while (true) {
             AttachmentReference[] current = this.attachmentsBySlot.get(slot);
@@ -104,7 +104,6 @@ final class VisualDirtyAttachments {
                 return;
             }
             int index = indexOf(current, reference);
-            // 并发的另一次摘除已经处理过它
             if (index < 0) {
                 return;
             }
@@ -122,7 +121,7 @@ final class VisualDirtyAttachments {
         }
     }
 
-    // 回执被回收后引用队列里会留下它那条订阅, 借每次进出顺手摘干净.
+    // 每次进出订阅表时顺手清理死亡回执
     private void reapDeadAttachments() {
         Reference<? extends Attachment> reference;
         while ((reference = this.deadAttachments.poll()) != null) {
@@ -140,7 +139,7 @@ final class VisualDirtyAttachments {
     }
 
     private static final class Attachment implements Subscription {
-        private final AtomicReference<Runnable> invalidator;    // 置 null 即表示已退订
+        private final AtomicReference<Runnable> invalidator; // null 表示已退订
         @Nullable private volatile AttachmentReference reference;
 
         private Attachment(@NotNull Runnable invalidator) {
@@ -166,7 +165,7 @@ final class VisualDirtyAttachments {
     }
 
     private static final class AttachmentReference extends WeakReference<Attachment> {
-        private final WeakReference<VisualDirtyAttachments> owner; // 弱引用: 这条在引用队列里排队时不该钉住整份视觉配置
+        private final WeakReference<VisualDirtyAttachments> owner; // 引用队列中的条目不能钉住视觉配置
         private final int slot;
 
         private AttachmentReference(
@@ -180,7 +179,6 @@ final class VisualDirtyAttachments {
             this.slot = slot;
         }
 
-        // 从所属槽位摘掉自己, 订阅表本身已经没了就只清引用.
         private void remove() {
             VisualDirtyAttachments owner = this.owner.get();
             if (owner != null) {

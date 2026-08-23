@@ -74,6 +74,7 @@ public interface AnimationDefinition {
      * @param frames 帧序列, 每帧一个物品, 创建时逐帧拷贝
      * @return 动画描述, 总时长 = 帧数 × 周期
      * @throws IllegalArgumentException 当周期不是正数或帧序列为空时
+     * @throws ArithmeticException 当总时长超出 long 范围时
      */
     @NotNull
     static AnimationDefinition frames(int @NotNull [] slots, long periodTicks, @NotNull List<ItemStack> frames) {
@@ -82,6 +83,16 @@ public interface AnimationDefinition {
         return new StaggeredFramesAnimation(slots.clone(), periodTicks, 0L, providers, null, totalTicks);
     }
 
+    /**
+     * 使用 SlotSequence 指定槽位, 全部槽位同步播放一次帧序列.
+     *
+     * @param slots 参与的宿主槽位
+     * @param periodTicks 每帧持续的 tick 数
+     * @param frames 帧序列, 创建时逐帧拷贝
+     * @return 动画描述
+     * @throws IllegalArgumentException 当周期不是正数或帧序列为空时
+     * @throws ArithmeticException 当总时长超出 long 范围时
+     */
     @NotNull
     static AnimationDefinition frames(@NotNull SlotSequence slots, long periodTicks, @NotNull List<ItemStack> frames) {
         return frames(slots.toArray(), periodTicks, frames);
@@ -95,6 +106,7 @@ public interface AnimationDefinition {
      * @param cover 轮到前盖住槽位的物品, {@code null} 表示轮到前也放行(只保留时间轴)
      * @return 动画描述, 总时长 = 间隔 × (槽数 − 1)
      * @throws IllegalArgumentException 当间隔不是正数时
+     * @throws ArithmeticException 当总时长超出 long 范围时
      */
     @NotNull
     static AnimationDefinition reveal(int @NotNull [] order, long staggerTicks, @Nullable ItemStack cover) {
@@ -104,6 +116,16 @@ public interface AnimationDefinition {
                 cover == null ? null : ItemProvider.constant(cover), totalTicks);
     }
 
+    /**
+     * 使用 SlotSequence 指定顺序, 逐格放行真实内容.
+     *
+     * @param order 出现顺序
+     * @param staggerTicks 相邻两槽的出现间隔
+     * @param cover 轮到前显示的物品, {@code null} 表示放行
+     * @return 动画描述
+     * @throws IllegalArgumentException 当间隔不是正数时
+     * @throws ArithmeticException 当总时长超出 long 范围时
+     */
     @NotNull
     static AnimationDefinition reveal(@NotNull SlotSequence order, long staggerTicks, @Nullable ItemStack cover) {
         return reveal(order.toArray(), staggerTicks, cover);
@@ -119,6 +141,7 @@ public interface AnimationDefinition {
      * @param pendingCover 轮到前盖住槽位的物品, {@code null} 表示轮到前放行
      * @return 动画描述, 总时长 = 间隔 × (槽数 − 1) + 帧数 × 周期
      * @throws IllegalArgumentException 当周期不是正数, 间隔为负数或不是周期的整数倍, 或帧序列为空时
+     * @throws ArithmeticException 当总时长超出 long 范围时
      */
     @NotNull
     static AnimationDefinition staggeredFrames(
@@ -142,6 +165,18 @@ public interface AnimationDefinition {
                 pendingCover == null ? null : ItemProvider.constant(pendingCover), totalTicks);
     }
 
+    /**
+     * 使用 SlotSequence 指定顺序, 逐槽错峰播放一遍帧序列.
+     *
+     * @param order 起播顺序
+     * @param staggerTicks 相邻两槽的起播间隔
+     * @param periodTicks 每帧持续的 tick 数
+     * @param frames 帧序列, 创建时逐帧拷贝
+     * @param pendingCover 轮到前显示的物品, {@code null} 表示放行
+     * @return 动画描述
+     * @throws IllegalArgumentException 当周期不是正数, 间隔为负数或不是周期的整数倍, 或帧序列为空时
+     * @throws ArithmeticException 当总时长超出 long 范围时
+     */
     @NotNull
     static AnimationDefinition staggeredFrames(
             @NotNull SlotSequence order,
@@ -167,6 +202,15 @@ public interface AnimationDefinition {
         return new LoopFramesAnimation(slots.clone(), requirePositivePeriod(periodTicks), frameProviders(frames));
     }
 
+    /**
+     * 使用 SlotSequence 指定槽位, 同步循环播放帧序列.
+     *
+     * @param slots 参与的宿主槽位
+     * @param periodTicks 每帧持续的 tick 数
+     * @param frames 帧序列, 创建时逐帧拷贝
+     * @return 无限时长的动画描述
+     * @throws IllegalArgumentException 当周期不是正数或帧序列为空时
+     */
     @NotNull
     static AnimationDefinition loop(@NotNull SlotSequence slots, long periodTicks, @NotNull List<ItemStack> frames) {
         return loop(slots.toArray(), periodTicks, frames);

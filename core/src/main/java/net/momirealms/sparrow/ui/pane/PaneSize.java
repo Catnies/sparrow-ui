@@ -2,6 +2,13 @@ package net.momirealms.sparrow.ui.pane;
 
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Pane 的非负宽高, 槽位按行优先编号.
+ * 宽高为负数或面积超出 int 范围时构造失败.
+ *
+ * @param width 宽度
+ * @param height 高度
+ */
 public record PaneSize(int width, int height) {
 
     public PaneSize {
@@ -17,6 +24,8 @@ public record PaneSize(int width, int height) {
      * @param width 宽度
      * @param height 高度
      * @return Pane 尺寸
+     * @throws IllegalArgumentException 当宽度或高度为负数时
+     * @throws ArithmeticException 当宽度与高度的乘积超出 int 范围时
      */
     @NotNull
     public static PaneSize of(int width, int height) {

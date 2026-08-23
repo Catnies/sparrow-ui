@@ -8,6 +8,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * 描述 Window 标题动画的时间轴与帧内容.
+ */
 public interface TitleAnimationDefinition {
 
     /**
@@ -57,6 +60,7 @@ public interface TitleAnimationDefinition {
      * @param frames 帧序列, 创建时定死
      * @return 标题动画描述, 总时长 = 帧数 × 周期
      * @throws IllegalArgumentException 当周期不是正数或帧序列为空时
+     * @throws ArithmeticException 当总时长超出 long 范围时
      */
     @NotNull
     static TitleAnimationDefinition frames(long periodTicks, @NotNull List<Component> frames) {
@@ -90,8 +94,7 @@ public interface TitleAnimationDefinition {
         return periodTicks;
     }
 
-    // 帧序列在构造时定死, Component 不可变, 同一帧全程共用同一个实例.
-    // 帧里的 null 是"此刻放行"的保留语义, 列表里出现 null 一律当作调用方写错, 在这里就拒绝.
+    // 固定帧复用不可变 Component, null 保留给帧函数表达放行
     private static Component @NotNull [] frameSequence(@NotNull List<Component> frames) {
         if (frames.isEmpty()) {
             throw new IllegalArgumentException("frames 不能为空");

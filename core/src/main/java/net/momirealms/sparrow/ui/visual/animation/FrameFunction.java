@@ -4,6 +4,9 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * 按槽位和已播放时间计算一帧物品.
+ */
 @FunctionalInterface
 public interface FrameFunction {
 

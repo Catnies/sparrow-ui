@@ -53,7 +53,7 @@ public interface ElementSupplier {
     }
 
     /**
-     * 把 Inventory 按 ingredient 出现顺序循环铺入, 第 n 次出现(从 0 开始)的槽位连接 Inventory 槽
+     * 把 Inventory 按选中顺序循环铺入, 第 n 个槽位连接 Inventory 槽
      * {@code n % inventory.size()}. 零尺寸 Inventory 生成空槽位.
      *
      * @param inventory 要铺入的 Inventory
@@ -85,16 +85,15 @@ public interface ElementSupplier {
      * @param pane 子 Pane
      * @param offsetX 子 Pane 内的横向偏移
      * @param offsetY 子 Pane 内的纵向偏移
-     * @return Pane 连接生成器
+     * @return Pane 连接生成器, 选中区域超出子 Pane 时在生成元素阶段抛出 IndexOutOfBoundsException
      */
     @NotNull
     static ElementSupplier pane(@NotNull Pane pane, int offsetX, int offsetY) {
         return (slots, occurrence) -> {
-            // 选中区域保持原有二维形状, 相对坐标加偏移后映射到子 Pane 槽位
+            // 保持选中区域的二维形状
             int childX = slots.xAt(occurrence) - slots.minX() + offsetX;
             int childY = slots.yAt(occurrence) - slots.minY() + offsetY;
             int childSlot = pane.size().indexOf(childX, childY);
-            // 子槽位刚由 indexOf 完成边界检查, 使用免校验构造
             return Element.PaneLink.trusted(pane, childSlot);
         };
     }

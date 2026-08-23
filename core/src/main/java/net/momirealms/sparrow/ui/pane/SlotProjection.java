@@ -15,6 +15,7 @@ import java.util.function.Function;
 
 /**
  * 把一个 {@link Signal} 给出的序列持续写进某个 Pane 的一段槽位, 本类型只作为停止投影的句柄交给使用方.
+ * <p>创建入口会在返回前完成第一轮求值.
  */
 public final class SlotProjection implements AutoCloseable {
     private static final Executor ASYNC = command -> Bukkit.getAsyncScheduler().runNow(
@@ -28,7 +29,7 @@ public final class SlotProjection implements AutoCloseable {
     private final Function<Object, ? extends Element> toElement;
     private final Executor executor;
 
-    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.SCHEDULED); // 占住第一轮, 订阅在构造器里就挂上了
+    private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.SCHEDULED);
     private final Subscription binding;
     private volatile boolean closed;
 
@@ -97,7 +98,6 @@ public final class SlotProjection implements AutoCloseable {
         return ASYNC;
     }
 
-    // 建好投影并跑完第一轮.
     static SlotProjection create(
             Pane pane,
             SlotSequence slots,
@@ -109,7 +109,7 @@ public final class SlotProjection implements AutoCloseable {
             throw new IllegalArgumentException("slot sequence belongs to " + slots.paneSize() + ", expected " + pane.size());
         }
         SlotProjection projection = new SlotProjection(pane, slots, source, toElement, executor);
-        // 就地跑完第一轮, 调用方拿到手时区域已经是对的.
+        // 第一轮在调用线程完成, executor 只接后续失效
         projection.runRound();
         return projection;
     }
@@ -126,11 +126,11 @@ public final class SlotProjection implements AutoCloseable {
         this.source = source;
         this.toElement = toElement;
         this.executor = Objects.requireNonNull(executor, "executor");
-        // 绑定挂在 Pane 上, 于是 Pane 经这条绑定持有本投影: 使用方不接返回值也不会让投影悄悄失效
+        // Pane 持有绑定声明, 投影不会因调用方丢掉返回值而失效
         this.binding = pane.bind(source, ignoredHost -> this.onSourceDirty());
     }
 
-    // 序列失效, 没有求值在进行就排一轮, 已经在进行就记下跑完再来一轮.
+    // 在飞求值期间到达的失效合并成下一轮
     private void onSourceDirty() {
         while (true) {
             Phase current = this.phase.get();
@@ -153,9 +153,8 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    // 跑一轮求值, 跑的期间攒下的失效在结束时再排一轮.
     private void runRound() {
-        // 从这里往后到来的失效都要另起一轮, 本轮读到的序列已经是这一刻的了
+        // 本轮开始后的失效归入下一轮
         this.phase.set(Phase.SCHEDULED);
         try {
             this.evaluateReporting();
@@ -172,7 +171,7 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    // 提交一轮求值. 执行器拒绝任务时把状态放回 IDLE.
+    // 执行器拒绝任务时允许下一次失效重新提交
     private void submitRound() {
         try {
             this.executor.execute(this::runRound);
@@ -182,7 +181,7 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    // 序列的派生函数与 toElement 都是使用方的代码, 失败时报告一次并放弃本轮, 下次失效再试.
+    // 用户提供的派生函数失败时放弃本轮, 下次失效仍可重试
     private void evaluateReporting() {
         try {
             this.evaluate();
@@ -191,14 +190,13 @@ public final class SlotProjection implements AutoCloseable {
         }
     }
 
-    // 取出当前序列, 与 Pane 现有内容逐槽比对, 只写真正不一样的槽位.
     private void evaluate() {
         if (this.closed) return;
         Iterator<?> values = this.source.get().iterator();
         int length = this.slots.length();
-        // 每格都复查一次 closed, 关闭之后最多再写完手上这一格
+        // 关闭与写入竞争时最多再写当前一格
         for (int occurrence = 0; occurrence < length && !this.closed; occurrence++) {
-            // 序列先用完就把余下的槽位清空; 序列还有剩也就到此为止, 多出来的部分不要
+            // 序列不足时清空余下槽位, 超出区域的尾部数据忽略
             Element element = values.hasNext() ? this.toElement.apply(values.next()) : Element.empty();
             int slot = this.slots.slotAt(occurrence);
             if (!element.equals(this.pane.element(slot))) {
@@ -212,7 +210,7 @@ public final class SlotProjection implements AutoCloseable {
     }
 
     /**
-     * 停止投影, 不再跟随序列.
+     * 停止跟随序列.
      * <p>调用时若已经有一轮求值在写这片槽位, 它最多再写完手上那一格.
      * 已经写进去的内容原样留在 Pane 上, 重复调用安全.
      */
@@ -222,7 +220,6 @@ public final class SlotProjection implements AutoCloseable {
         this.binding.close();
     }
 
-    // 一轮求值的生命周期.
     private enum Phase {
         IDLE,       // 没有求值在飞
         SCHEDULED,  // 求值已排队或正在跑

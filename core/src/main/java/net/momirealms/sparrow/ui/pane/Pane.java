@@ -163,29 +163,14 @@ public sealed interface Pane permits AbstractPane {
     @NotNull
     Structure structure();
 
-    /**
-     * 返回 Pane 宽度.
-     *
-     * @return Pane 宽度
-     */
     default int width() {
         return this.size().width();
     }
 
-    /**
-     * 返回 Pane 高度.
-     *
-     * @return Pane 高度
-     */
     default int height() {
         return this.size().height();
     }
 
-    /**
-     * 返回 Pane 槽位总数.
-     *
-     * @return Pane 槽位总数
-     */
     default int area() {
         return this.size().area();
     }
@@ -195,6 +180,7 @@ public sealed interface Pane permits AbstractPane {
      *
      * @param slot 槽位编号
      * @return 槽位元素
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
     Element element(int slot);
@@ -211,23 +197,10 @@ public sealed interface Pane permits AbstractPane {
      */
     Element @NotNull [] elements();
 
-    /**
-     * 返回槽位是否不为空.
-     *
-     * @param slot 槽位编号
-     * @return 槽位有内容时为 true
-     */
     default boolean hasElement(int slot) {
         return this.element(slot) != Element.Empty.INSTANCE;
     }
 
-    /**
-     * 返回坐标对应槽位是否不为空.
-     *
-     * @param x 横向坐标
-     * @param y 纵向坐标
-     * @return 槽位有内容时为 true
-     */
     default boolean hasElement(int x, int y) {
         return this.hasElement(this.size().indexOf(x, y));
     }
@@ -237,6 +210,7 @@ public sealed interface Pane permits AbstractPane {
      *
      * @param slot 槽位编号
      * @return Item, 或 null
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
     default Item item(int slot) {
@@ -253,6 +227,7 @@ public sealed interface Pane permits AbstractPane {
      *
      * @param slot 槽位编号
      * @return 标志符, 或 null
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
     default String identifierAt(int slot) {
@@ -304,9 +279,11 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 替换指定槽位的元素.
+     * <p>传入同一个 Element 实例时保持静默, 需要强制刷新时调用 {@link #dirty(int)}.
      *
      * @param slot 槽位编号
      * @param element 新元素
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     void setElement(int slot, @NotNull Element element);
 
@@ -334,11 +311,13 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 为选中槽位生成元素, 全部生成成功后再一次写入 Pane.
-     * <p>{@code replaceExisting} 为 false 时只填充空槽位. Supplier 失败时 Pane 保持不变.</p>
+     * <p>{@code replaceExisting} 为 false 时只填充空槽位. Supplier 失败时 Pane 保持不变.
+     * 相同 Element 实例不会触发槽位通知.
      *
      * @param slots 要写入的槽位选择
      * @param supplier 元素生成器
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     void setElements(@NotNull SlotSequence slots, @NotNull ElementSupplier supplier, boolean replaceExisting);
 
@@ -376,6 +355,7 @@ public sealed interface Pane permits AbstractPane {
      * @param slot 当前 Pane 槽位
      * @param pane 子 Pane
      * @param paneSlot 子 Pane 槽位
+     * @throws IndexOutOfBoundsException 当任一槽号越界时
      */
     default void setPane(int slot, @NotNull Pane pane, int paneSlot) {
         this.setElement(slot, new Element.PaneLink(pane, paneSlot));
@@ -402,6 +382,7 @@ public sealed interface Pane permits AbstractPane {
      * @param pane 子 Pane
      * @param offsetX 子 Pane 横向偏移
      * @param offsetY 子 Pane 纵向偏移
+     * @throws IndexOutOfBoundsException 当选中区域超出子 Pane 时
      */
     default void setPane(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY) {
         this.setElements(
@@ -413,15 +394,19 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 按参数顺序把元素放入 Pane 中最靠前的空槽位.
+     * <p>空元素会跳过, 空槽不足时忽略放不下的尾部元素.
      *
      * @param elements 要添加的元素
+     * @throws NullPointerException 当数组包含 {@code null} 时
      */
     void addElements(Element @NotNull ... elements);
 
     /**
      * 按参数顺序把 Item 放入 Pane 中最靠前的空槽位.
+     * <p>空槽不足时忽略放不下的尾部 Item.
      *
      * @param items 要添加的 Item
+     * @throws NullPointerException 当数组包含 {@code null} 时
      */
     void addItems(Item @NotNull ... items);
 
@@ -429,6 +414,7 @@ public sealed interface Pane permits AbstractPane {
      * 标记选中槽位需要重新显示, 即使槽位中仍是同一个元素.
      *
      * @param slots 需要刷新的槽位选择
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     void dirty(@NotNull SlotSequence slots);
 
@@ -488,6 +474,7 @@ public sealed interface Pane permits AbstractPane {
      * @param endExclusive 结束槽位, 不包含
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IndexOutOfBoundsException 当范围超出 Pane 时
      */
     default void fill(int startInclusive, int endExclusive, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
@@ -507,6 +494,7 @@ public sealed interface Pane permits AbstractPane {
      * @param row 行号
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IndexOutOfBoundsException 当行号越界时
      */
     default void fillRow(int row, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
@@ -526,6 +514,7 @@ public sealed interface Pane permits AbstractPane {
      * @param column 列号
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IndexOutOfBoundsException 当列号越界时
      */
     default void fillColumn(int column, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
@@ -566,6 +555,8 @@ public sealed interface Pane permits AbstractPane {
      * @param height 矩形高度
      * @param item Item
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IllegalArgumentException 当矩形宽高不是正数时
+     * @throws IndexOutOfBoundsException 当矩形超出 Pane 时
      */
     default void fillRectangle(int x, int y, int width, int height, @NotNull Item item, boolean replaceExisting) {
         this.setElements(
@@ -586,6 +577,8 @@ public sealed interface Pane permits AbstractPane {
      * @param y 矩形左上角 y 坐标
      * @param child 子 Pane
      * @param replaceExisting 是否覆盖已有内容
+     * @throws IllegalArgumentException 当子 Pane 宽度或高度为 0 时
+     * @throws IndexOutOfBoundsException 当子 Pane 放不进指定位置时
      */
     default void fillRectangle(int x, int y, @NotNull Pane child, boolean replaceExisting) {
         this.setElements(
@@ -600,8 +593,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 返回本 Pane 的视觉配置: 两层视觉映射与空槽背景.
-     * <p>同一 Pane 始终返回同一个对象; 配置对显示这个 Pane 的所有 Window 生效.
+     * 返回本 Pane 的视觉配置, 配置对显示它的所有 Window 生效.
      *
      * @return 视觉配置
      */
@@ -611,7 +603,7 @@ public sealed interface Pane permits AbstractPane {
     /**
      * 返回当前的全局视觉映射.
      *
-     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按路径终点显示
+     * @return 全局视觉映射, 未设置时为 {@code null}
      */
     @Nullable
     default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
@@ -619,8 +611,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 设置 Pane 全局视觉映射. 映射盖在经过本 Pane 的显示路径上, 命中时路径终点不再参与显示;
-     * 输入是路径终点的同步可读内容, 约定见 {@link PaneVisual}. 返回 {@code null} 表示放行, 交给下一层.
+     * 设置 Pane 全局视觉映射, 输入和层级约定见 {@link PaneVisual}.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
@@ -629,8 +620,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 设置 Pane 全局视觉映射, 并指定 Provider 给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同, Provider 当场算得出结果时首帧就是真值, 用不到占位.
+     * 设置 Pane 全局视觉映射和异步结果就绪前的占位.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
@@ -640,8 +630,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射设置 Pane 全局视觉映射.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同.
+     * 使用直接返回 ItemStack 的映射设置 Pane 全局视觉.
      *
      * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
      */
@@ -650,10 +639,10 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 返回一个 Pane 槽位的显式视觉映射; 不含回退到的全局映射.
+     * 返回一个 Pane 槽位的显式视觉映射, 不含全局映射.
      *
      * @param slot Pane 槽位
-     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @return 逐槽视觉映射, 未设置时为 {@code null}
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
@@ -662,10 +651,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 替换一个 Pane 槽位的逐槽视觉映射, 它是本 Pane 层级最高的一层:
-     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
-     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
-     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
+     * 替换一个 Pane 槽位的视觉映射, 这一层优先于全局映射.
      *
      * @param slot Pane 槽位
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
@@ -676,8 +662,7 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 替换一个 Pane 槽位的逐槽视觉映射, 并指定 Provider 给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
+     * 替换一个 Pane 槽位的视觉映射和异步结果就绪前的占位.
      *
      * @param slot Pane 槽位
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
@@ -741,8 +726,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 声明一个额外参与本 Pane 所在 Window 的 Inventory.
-     * <p>它的槽位一个都不必被展示: 快速转移与双击收集寻找目标时照样会看到它.
-     * 用来表达"这块面板背后还连着别的容器", 例如分页仓库当前只展示第一页, 却希望 Shift 点击能落进其余几页.
+     * <p>参与的 Inventory 即使没有显示槽位, 也会进入快速转移与双击收集的候选集.
      * <p><strong>必须同时打开该 Inventory 的 {@link SparrowInventory#includeObscuredSlots(boolean)}.</strong>
      * <p><strong>声明只在本 Pane 处于当前显示路径上时生效.</strong>
      *
@@ -752,7 +736,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 取消一个逐个声明进来的额外参与 Inventory.
-     * <p>只认逐个声明的那些. 经 {@link #linkInventory(InventorySequence)} 整条带进来的要摘掉整条序列.
+     * <p>经 {@link #linkInventory(InventorySequence)} 声明的成员需要移除对应序列.
      *
      * @param inventory 要取消的 Inventory
      * @return 该 Inventory 原本已被逐个声明时返回 true
@@ -761,7 +745,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 返回逐个声明进来的那些额外参与 Inventory.
-     * <p>不含经 {@link #linkInventory(InventorySequence)} 整条带进来的成员.
+     * <p>结果不含经 {@link #linkInventory(InventorySequence)} 声明的序列成员.
      *
      * @return 按声明顺序排列的不可变快照
      */
@@ -769,9 +753,8 @@ public sealed interface Pane permits AbstractPane {
     List<SparrowInventory> linkedInventories();
 
     /**
-     * 声明一整个序列额外参与本 Pane 所在 Window, 语义同
-     * {@link #linkInventory(SparrowInventory)}, 只是成员随序列变化, 不必逐个声明.
-     * <p>参与集在每次规划时现取序列的成员, 因此中途增减成员立刻生效, 不需要重新声明.
+     * 声明一个动态 InventorySequence 额外参与本 Pane 所在 Window.
+     * <p>每次规划都会读取当前成员, 序列增减成员后无需重新声明.
      *
      * @param sequence 要额外带进参与集的序列
      */
@@ -787,7 +770,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 返回整条声明进来的那些额外参与序列.
-     * <p>不含逐个声明汇成的那条内部序列, 逐个声明的看 {@link #linkedInventories()}.
+     * <p>逐个声明的 Inventory 由 {@link #linkedInventories()} 返回.
      *
      * @return 按声明顺序排列的不可变快照
      */
@@ -795,7 +778,7 @@ public sealed interface Pane permits AbstractPane {
     Set<InventorySequence> linkedSequences();
 
     /**
-     * 返回本 Pane 带进参与集的全部序列.
+     * 返回本 Pane 带进参与集的全部 InventorySequence.
      *
      * @return 按声明顺序排列的不可变快照
      */
@@ -804,36 +787,40 @@ public sealed interface Pane permits AbstractPane {
     Set<InventorySequence> participatingSequences();
 
     /**
-     * 订阅一个槽位的更新, 并返回订阅时的元素和冻结状态.
+     * 订阅一个槽位的更新, 返回值同时带有订阅建立时的元素和冻结状态快照.
+     * <p>初始状态不回调 observer, 后续元素替换, 显式标脏或冻结状态变化时才通知.
      *
      * @param slot 槽位编号
      * @param observer 槽位更新观察者
      * @return 订阅和当前状态
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
     PaneSlotAttachment attach(int slot, @NotNull Observer<? super Pane> observer);
 
     /**
-     * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
+     * 在 Signal 后续失效时调用回调, Signal 经订阅节点弱持有本 Pane.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
      * <p>绑定由本对象持有, 本对象被回收时一并消失, {@code callback} 捕获的对象随本对象一起释放.
      *
      * @param signal 数据源
      * @param callback 失效回调
-     * @return 订阅凭证, 可用于提前解绑.
+     * @return 订阅凭证, 可用于提前解绑
      */
     @NotNull
     Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Pane> callback);
 
     /**
-     * 让选中槽位的内容一直跟随一个序列展示,序列的第 n 项写进选中槽位的第 n 个.
+     * 让选中槽位的内容一直跟随一个序列, 序列第 n 项写进第 n 个槽位.
      * <p>创建时就地求值一次, 之后每次序列失效都在 Paper 全局异步调度器上重算,
      * 因此序列的派生函数与 {@code toElement} 都只能读那些在异步域访问安全的数据.
      *
+     * @param <T> 序列元素类型
      * @param slots 投影负责的槽位, 必须属于本 Pane
      * @param source 序列来源
      * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
      * @return 投影, 可用来提前停止
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     @NotNull
     default <T> SlotProjection project(
@@ -845,14 +832,16 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 让选中槽位的内容一直跟随一个序列, 并指定在哪里求值.
-     * <p>要在 {@code toElement} 里读某个玩家的实体域数据时, 换成该玩家的实体调度.
+     * 让选中槽位的内容一直跟随一个序列, 后续失效在指定 executor 上重算.
+     * <p>第一轮仍在调用线程同步求值. {@code source} 与 {@code toElement} 必须能在调用线程和 executor 上安全执行.
      *
+     * @param <T> 序列元素类型
      * @param slots 投影负责的槽位, 必须属于本 Pane
      * @param source 序列来源
      * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
      * @param executor 执行求值的执行器
      * @return 投影, 可用来提前停止
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     @NotNull
     default <T> SlotProjection project(
@@ -866,10 +855,12 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 让选中槽位的内容一直跟随一个已经是 Element 的序列.
+     * <p>创建时在调用线程求值一次, 后续失效在 Paper 全局异步调度器上重算.
      *
      * @param slots 投影负责的槽位, 必须属于本 Pane
      * @param source 序列来源
      * @return 投影, 可用来提前停止
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     @NotNull
     default SlotProjection projectElements(
@@ -880,12 +871,14 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 让选中槽位的内容一直跟随一个已经是 Element 的序列, 并指定在哪里求值.
+     * 让选中槽位跟随一个 Element 序列, 后续失效在指定 executor 上重算.
+     * <p>第一轮仍在调用线程同步求值.
      *
      * @param slots 投影负责的槽位, 必须属于本 Pane
      * @param source 序列来源
      * @param executor 执行求值的执行器
      * @return 投影, 可用来提前停止
+     * @throws IllegalArgumentException 当槽位选择属于其他 PaneSize 时
      */
     @NotNull
     default SlotProjection projectElements(
@@ -897,7 +890,12 @@ public sealed interface Pane permits AbstractPane {
     }
 
     /**
-     * 通过 Structure 标志符填充槽位, 并创建 Pane.
+     * 通过 Structure 标志符填充槽位并创建 Pane.
+     * <p>同一标志符只保留最后一次静态内容, 投影或 Tab 声明. 构建时依次应用静态内容, 投影, Tab 和 modifiers.
+     * Structure 中不存在的标志符会在声明时抛出 IllegalArgumentException.
+     *
+     * @param <G> 构建出的 Pane 类型
+     * @param <B> Builder 自身类型
      */
     interface Builder<G extends Pane, B extends Builder<G, B>> {
 
@@ -1021,7 +1019,7 @@ public sealed interface Pane permits AbstractPane {
 
         /**
          * 把同一标志符的槽位按出现顺序循环连接到 Inventory.
-         * 标志符第 n 次出现(从 0 开始)的槽位展示并操作 Inventory 的 {@code n % inventory.size()} 槽位;
+         * 标志符第 n 次出现(从 0 开始)的槽位展示并操作 Inventory 的 {@code n % inventory.size()} 槽位.
          * 零尺寸 Inventory 生成空槽位.
          *
          * @param identifier 标志符
@@ -1045,7 +1043,9 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 让同一标志符的槽位一直跟随一个序列, 序列的第 n 项写进该标志符第 n 次出现的槽位.
          * <p>序列本身已经是 Element 时, 用 {@code addModifier(pane -> pane.projectElements(pane.slots(identifier), ...))}.
+         * <p>构建时在 build 调用线程求值一次, 后续失效在 Paper 全局异步调度器上重算.
          *
+         * @param <T> 序列元素类型
          * @param identifier 标志符
          * @param source 序列来源
          * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1061,6 +1061,7 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 让单字符标志的槽位一直跟随一个序列.
          *
+         * @param <T> 序列元素类型
          * @param identifier 单字符标志
          * @param source 序列来源
          * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1074,8 +1075,10 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让同一标志符的槽位一直跟随一个序列, 并指定在哪里求值.
+         * 让同一标志符的槽位跟随一个序列, 后续失效在指定 executor 上重算.
+         * <p>构建时的第一轮仍在 build 调用线程执行.
          *
+         * @param <T> 序列元素类型
          * @param identifier 标志符
          * @param source 序列来源
          * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1091,8 +1094,9 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让单字符标志的槽位一直跟随一个序列, 并指定在哪里求值.
+         * 让单字符标志的槽位跟随一个序列, 后续失效在指定 executor 上重算.
          *
+         * @param <T> 序列元素类型
          * @param identifier 单字符标志
          * @param source 序列来源
          * @param toElement 把序列里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1110,6 +1114,7 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 让同一标志符的槽位一直跟随一个翻页的当前页, 当前页第 n 条写进该标志符第 n 次出现的槽位.
          *
+         * @param <T> 当前页元素类型
          * @param identifier 标志符
          * @param page 翻页
          * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1125,6 +1130,7 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 让单字符标志的槽位一直跟随一个翻页的当前页.
          *
+         * @param <T> 当前页元素类型
          * @param identifier 单字符标志
          * @param page 翻页
          * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1138,8 +1144,10 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让同一标志符的槽位一直跟随一个翻页的当前页, 并指定在哪里求值.
+         * 让同一标志符的槽位跟随当前页, 后续失效在指定 executor 上重算.
+         * <p>构建时的第一轮仍在 build 调用线程执行.
          *
+         * @param <T> 当前页元素类型
          * @param identifier 标志符
          * @param page 翻页
          * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1155,8 +1163,9 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让单字符标志的槽位一直跟随一个翻页的当前页, 并指定在哪里求值.
+         * 让单字符标志的槽位跟随当前页, 后续失效在指定 executor 上重算.
          *
+         * @param <T> 当前页元素类型
          * @param identifier 单字符标志
          * @param page 翻页
          * @param toElement 把当前页里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1195,6 +1204,7 @@ public sealed interface Pane permits AbstractPane {
          * 让同一标志符的槽位一直跟随一个滚动的当前屏, 这一屏第 n 条写进该标志符第 n 次出现的槽位.
          * <p>槽位顺序跟着滚动方向走, 竖着滚按行, 横着滚按列.
          *
+         * @param <T> 当前屏元素类型
          * @param identifier 标志符
          * @param scroll 滚动
          * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1210,6 +1220,7 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 让单字符标志的槽位一直跟随一个滚动的当前屏.
          *
+         * @param <T> 当前屏元素类型
          * @param identifier 单字符标志
          * @param scroll 滚动
          * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1223,8 +1234,10 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让同一标志符的槽位一直跟随一个滚动的当前屏, 并指定在某个执行器求值.
+         * 让同一标志符的槽位跟随当前屏, 后续失效在指定 executor 上重算.
+         * <p>构建时的第一轮仍在 build 调用线程执行.
          *
+         * @param <T> 当前屏元素类型
          * @param identifier 标志符
          * @param scroll 滚动
          * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1240,8 +1253,9 @@ public sealed interface Pane permits AbstractPane {
         );
 
         /**
-         * 让单字符标志的槽位一直跟随一个滚动的当前屏, 并指定在哪里求值.
+         * 让单字符标志的槽位跟随当前屏, 后续失效在指定 executor 上重算.
          *
+         * @param <T> 当前屏元素类型
          * @param identifier 单字符标志
          * @param scroll 滚动
          * @param toElement 把这一屏里的一条数据变成一个 Element, 不得返回 {@code null}
@@ -1277,8 +1291,8 @@ public sealed interface Pane permits AbstractPane {
         B addIngredient(char identifier, @NotNull Scroll<? extends Item> scroll);
 
         /**
-         * 让同一标志符的槽位一直显示标签组当前选中的子 Pane: 区域保持二维形状连接过去, 切换标签时整片重铺.
-         * <p>子 Pane 盖不住的槽位显示为空; 切到已经选中的标签什么都不会发生.
+         * 让同一标志符的槽位一直显示标签组当前选中的子 Pane, 区域保持二维形状连接过去, 切换标签时整片重铺.
+         * <p>子 Pane 盖不住的槽位显示为空. 切到已经选中的标签什么都不会发生.
          *
          * @param identifier 标志符
          * @param tab 标签组
@@ -1376,7 +1390,7 @@ public sealed interface Pane permits AbstractPane {
         /**
          * 创建可独立修改的 Builder 副本.
          *
-         * @return Builder 副本
+         * @return 配置声明可独立修改的 Builder 副本
          */
         @NotNull
         B copy();
@@ -1385,6 +1399,7 @@ public sealed interface Pane permits AbstractPane {
          * 根据当前配置创建一个新 Pane.
          *
          * @return 新 Pane
+         * @throws IllegalStateException 当静态 ingredient 生成失败时
          */
         @NotNull
         G build();

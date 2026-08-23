@@ -126,6 +126,7 @@ public final class Structure {
      *
      * @param slot 槽位编号
      * @return 槽位标志符, 或 null
+     * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
     public String identifierAt(int slot) {
@@ -234,9 +235,9 @@ public final class Structure {
 
     // 只在创建 Structure 时使用, 负责读取模板并记录每个标志符的槽位.
     private static final class Compiler {
-        private final ArrayList<String> identifiers = new ArrayList<>(); // 内部编号到标志符文本
-        private final HashMap<String, Integer> identifierIndexes = new HashMap<>(); // 标志符文本到内部编号
-        private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>(); // 每个标志符按出现顺序记录的槽位
+        private final ArrayList<String> identifiers = new ArrayList<>();
+        private final HashMap<String, Integer> identifierIndexes = new HashMap<>();
+        private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>();
 
         // 先暂存第一行, 因读完它确定 Pane 宽度.
         private ParsedRow parseBuffered(String row, int rowIndex) {
@@ -250,12 +251,12 @@ public final class Structure {
         }
 
         /**
-         * 从左到右读取一行, 并把每个标志符交给 consumer.
+         * 从左到右读取一行, 把标志符编号, 模板列号和 Pane 列号交给 consumer.
          *
          * @param row 模板行文本
          * @param rowIndex 行号, 用于错误定位
-         * @param tokenConsumer 接收标志符的回调, (identifier 标志符内部编号, sourceColumn 模板中的原始列号, logicalColumn Pane 槽位列号)
-         * @return 该行的 Pane 槽位数量
+         * @param tokenConsumer 标志符回调
+         * @return Pane 槽位数量
          * @throws IllegalArgumentException 模板语法错误时抛出
          */
         private int parse(String row, int rowIndex, TriIntConsumer tokenConsumer) {
@@ -266,12 +267,11 @@ public final class Structure {
             while (sourceIndex < row.length()) {
                 int tokenSourceColumn = sourceColumn;
                 int codePoint = checkedCodePointAt(row, sourceIndex, rowIndex);
-                // 拒绝控制字符, 防止模板中混入不可见字符.
+                // 控制字符不能作为可见模板内容
                 if (Character.isISOControl(codePoint)) {
                     throw syntaxError(rowIndex, sourceColumn, "control characters are not allowed");
                 }
 
-                // 普通字符直接作为一个槽位标志符
                 if (codePoint != '`') {
                     String identifier = new String(Character.toChars(codePoint));
                     tokenConsumer.accept(this.identifier(identifier), tokenSourceColumn, logicalColumn++);
@@ -280,14 +280,13 @@ public final class Structure {
                     continue;
                 }
 
-                // 反引号内的多个字符组成一个标志符
+                // 反引号内的文本组成一个标志符
                 sourceIndex++;
                 sourceColumn++;
                 StringBuilder decoded = new StringBuilder();
                 boolean closed = false;
                 while (sourceIndex < row.length()) {
                     codePoint = checkedCodePointAt(row, sourceIndex, rowIndex);
-                    // 拒绝控制字符, 防止模板中混入不可见字符.
                     if (Character.isISOControl(codePoint)) {
                         throw syntaxError(rowIndex, sourceColumn, "control characters are not allowed");
                     }
@@ -300,7 +299,7 @@ public final class Structure {
                         closed = true;
                         break;
                     }
-                    // 反引号内只允许转义反引号与反斜杠本身
+                    // 引用标志符只接受反引号和反斜杠转义
                     if (codePoint == '\\') {
                         int escapeColumn = sourceColumn;
                         sourceIndex++;
@@ -405,7 +404,7 @@ public final class Structure {
         }
     }
 
-    // 读取一个 Unicode 字符, 拒绝不成对的 surrogate.
+    // 每个 Unicode code point 占一个槽位, surrogate 必须成对
     private static int checkedCodePointAt(String source, int index, int rowIndex) {
         char first = source.charAt(index);
         // 高 surrogate 后必须紧跟低 surrogate, 否则模板只包含半个字符
@@ -420,7 +419,7 @@ public final class Structure {
         return Character.codePointAt(source, index);
     }
 
-    // 构造带行号(从 0)和列号(从 1)的模板语法错误.
+    // 对外错误位置使用从 1 开始的行列号
     private static IllegalArgumentException syntaxError(int rowIndex, int sourceColumn, String message) {
         return new IllegalArgumentException(message + " at row " + (rowIndex + 1) + ", source column " + sourceColumn);
     }

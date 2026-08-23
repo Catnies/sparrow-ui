@@ -49,9 +49,11 @@ public final class Tab<K> {
      * 把若干个子 Pane 组成一组标签, 全部当场就是现成的.
      * <p>子 Pane 建出来就持续存活, 它身上挂的投影从建好那一刻起就在跟随数据源.
      *
-     * @param tabs 每个 key 对应一个子 Pane, 不能为空; 会复制一份, 之后改动传进来的那个 Map 不影响这组标签
+     * @param <K> 标签 key 类型
+     * @param tabs 每个 key 对应一个子 Pane, 不能为空. 会复制一份, 之后改动传进来的那个 Map 不影响这组标签
      * @param initial 一开始选中哪一个, 必须是 {@code tabs} 里有的 key
      * @return 标签组
+     * @throws IllegalArgumentException 当 tabs 为空或不含 initial 时
      */
     @NotNull
     public static <K> Tab<K> of(@NotNull Map<K, ? extends Pane> tabs, @NotNull K initial) {
@@ -60,13 +62,14 @@ public final class Tab<K> {
     }
 
     /**
-     * 把若干个还没建的子 Pane 组成一组标签, 某个标签第一次被选中显示时才建它的子 Pane.
-     * <p>没建的子 Pane 什么都不订阅, 比如挂着数据库投影的 Pane 在点开它之前不会去查;
-     * 建好之后缓存下来, 切走再切回来不重建, 已建的子 Pane 也继续跟随自己的数据源.
+     * 把子 Pane 的建造函数组成标签, 某个标签第一次显示时才创建并缓存对应 Pane.
+     * <p>已经创建的 Pane 切走后仍继续跟随自己的数据源.
      *
+     * @param <K> 标签 key 类型
      * @param tabs 每个 key 对应一个子 Pane 的建造函数, 不能为空, 不得返回 {@code null}
      * @param initial 一开始选中哪一个, 必须是 {@code tabs} 里有的 key
      * @return 标签组
+     * @throws IllegalArgumentException 当 tabs 为空或不含 initial 时
      */
     @NotNull
     public static <K> Tab<K> lazy(@NotNull Map<K, ? extends Supplier<? extends Pane>> tabs, @NotNull K initial) {

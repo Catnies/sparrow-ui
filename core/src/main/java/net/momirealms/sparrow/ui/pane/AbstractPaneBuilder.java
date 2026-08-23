@@ -19,15 +19,15 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
-    private final Structure structure; // Pane 布局
-    private final ElementSupplier[] ingredients; // 按 Structure 内部标志符编号保存绑定
-    private final ProjectionIngredient[] projections; // 与 ingredients 同下标, 建出 Pane 之后再挂上
-    private final Tab<?>[] tabIngredients; // 与 ingredients 同下标, 建出 Pane 之后连接选中子 Pane
-    private final ArrayList<Consumer<? super G>> modifiers; // Pane 创建后按顺序执行
-    private final LinkedHashSet<SparrowInventory> linkedInventories; // 额外参与的 Inventory, 按声明顺序
+    private final Structure structure;
+    private final ElementSupplier[] ingredients; // 三种内容数组都按 Structure 标志符编号索引
+    private final ProjectionIngredient[] projections;
+    private final Tab<?>[] tabIngredients;
+    private final ArrayList<Consumer<? super G>> modifiers;
+    private final LinkedHashSet<SparrowInventory> linkedInventories;
 
-    private ItemProvider background; // 空槽位背景, 可为 null
-    private boolean frozen;          // 是否禁止玩家交互
+    private ItemProvider background;
+    private boolean frozen;
 
     AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
@@ -267,7 +267,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     ) {
         @SuppressWarnings("unchecked")
         Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
-        // 横着滚的内容按列切, 槽位也按列主序喂, 第 n 条才落在第 n 个列位上
+        // 横向内容按列切片, 槽位也按列主序投影
         SlotPattern pattern = scroll.orientation() == Scroll.Orientation.HORIZONTAL ? SlotPatterns.COLUMN_MAJOR : null;
         return this.bindProjection(identifier, scroll.content(), erased, executor, pattern);
     }
@@ -305,9 +305,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Tab<?> tab) {
         Objects.requireNonNull(tab, "tab");
-        // 标志符在这里就解析, 用未知标志符立刻失败而不是拖到 build
         int identifierIndex = this.structure.identifierIndex(identifier);
-        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份
         this.tabIngredients[identifierIndex] = tab;
         this.ingredients[identifierIndex] = null;
         this.projections[identifierIndex] = null;
@@ -370,7 +368,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @Override
     @NotNull
     public final B setModifiers(@NotNull List<? extends Consumer<? super G>> modifiers) {
-        // 预先拒绝 null 修改器, 避免构建到一半才失败
+        // 先校验整批输入, 失败时保留原 modifiers
         for (int i = 0; i < modifiers.size(); i++) {
             if (modifiers.get(i) == null) {
                 throw new NullPointerException("modifiers must not contain null");
@@ -390,11 +388,10 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @Override
     @NotNull
     public final G build() {
-        // 先创建一份全空槽位数组
         Element[] elements = new Element[this.structure.size().area()];
         Arrays.fill(elements, Element.Empty.INSTANCE);
 
-        // 按标志符编号生成槽位内容, 失败时附加模板位置
+        // 静态 ingredient 失败时附加模板位置
         for (int identifierIndex = 0; identifierIndex < this.ingredients.length; identifierIndex++) {
             ElementSupplier supplier = this.ingredients[identifierIndex];
             if (supplier == null) {
@@ -469,7 +466,6 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     private B bindIngredient(String identifier, ElementSupplier supplier) {
         int identifierIndex = this.structure.identifierIndex(identifier);
         this.ingredients[identifierIndex] = supplier;
-        // 静态内容同样挤掉这个标志符上先声明的投影和标签组, 否则它们会在 build 末尾把它盖回去
         this.projections[identifierIndex] = null;
         this.tabIngredients[identifierIndex] = null;
         return this.self();
@@ -486,26 +482,21 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(toElement, "toElement");
         Objects.requireNonNull(executor, "executor");
-        // 标志符在这里就解析, 用未知标志符立刻失败而不是拖到 build
         int identifierIndex = this.structure.identifierIndex(identifier);
-        // 与其余 ingredient 同一套语义: 一个标志符只留最后声明的那一份, 顺手挤掉这个标志符上的静态内容和标签组
         this.projections[identifierIndex] = new ProjectionIngredient(source, toElement, executor, pattern);
         this.ingredients[identifierIndex] = null;
         this.tabIngredients[identifierIndex] = null;
         return this.self();
     }
 
-    // 让一片槽位跟随标签组当前选中的子 Pane, 切换标签时整片重铺.
-    // 绑定挂在宿主 Pane 上, 宿主经这条绑定持有铺放, 也随宿主一起结束; 铺放是纯结构操作, 在切换标签的调用线程上同步完成.
+    // 绑定由宿主 Pane 持有, 标签切换时在调用线程同步重铺
     private static void attachTab(AbstractPane pane, SlotSequence slots, Tab<?> tab) {
         Signal<Pane> selected = tab.pane();
         pane.bind(selected, host -> layTab(host, slots, selected.get()));
-        // 就地铺一轮, 调用方拿到手时区域已经是对的
         layTab(pane, slots, selected.get());
     }
 
-    // 把选中的子 Pane 铺进区域: 区域保持二维形状按相对坐标连接过去.
-    // 子 Pane 盖不住的槽位补空; 内容没变的槽位不写, 因此切到已经选中的标签零写入.
+    // 保持区域二维形状, 子 Pane 覆盖不到的位置补空
     private static void layTab(Pane host, SlotSequence slots, Pane selected) {
         PaneSize childSize = selected.size();
         int length = slots.length();
@@ -522,7 +513,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         }
     }
 
-    // 一条投影声明: 跟随哪个序列, 怎么把序列里的一条数据变成 Element, 以及在哪里求值.
+    // 一条投影声明, 跟随序列, 把序列里的一条数据变成 Element, 以及在哪里求值.
     // 它保存在与 ingredients 同下标的位置上, 因此是哪个标志符由下标决定.
     private record ProjectionIngredient(
             Signal<? extends List<?>> source,
@@ -532,7 +523,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     ) {
     }
 
-    // 在 Supplier 异常中加入标志符, 行, 列和槽位编号, 便于定位模板问题.
+    // 给 ingredient 异常补上模板位置
     private IllegalStateException instantiationFailure(int identifierIndex, int slot, RuntimeException cause) {
         int width = this.structure.size().width();
         int row = slot / width;

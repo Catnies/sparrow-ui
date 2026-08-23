@@ -3,6 +3,9 @@ package net.momirealms.sparrow.ui.visual.animation;
 import net.kyori.adventure.text.Component;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * 按已播放时间计算一帧标题.
+ */
 @FunctionalInterface
 public interface TitleFrameFunction {
 

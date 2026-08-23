@@ -7,7 +7,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 // 逐槽错峰的帧序列, 每槽未轮到时显示 pendingCover, 轮到后按周期走帧, 走完放行.
-// 帧序列为空即"轮到就放行" (逐格出现), 错峰为零即全槽同步.
+// 帧序列为空时轮到就放行(逐格出现), 错峰为零即全槽同步
 record StaggeredFramesAnimation(
         int @NotNull [] slots,
         long periodTicks,

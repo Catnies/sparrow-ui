@@ -27,18 +27,17 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.totalTicks = totalTicks;
     }
 
-    // 播放入场后挂上帧推进时钟. 凭证由播放自己持有, 宿主在场时经动画通道强持播放, 宿主消亡后时钟在下一拍自行解绑.
+    // 播放弱持有宿主, 宿主消亡后时钟在下一拍自行解绑
     public final void startClock(@NotNull Signal<Long> clock) {
         Subscription subscription = clock.onDirty(this::onTick);
         this.clock = subscription;
-        // 挂钟与并发终结(如关窗)竞争时, 晚到的一方负责把钟收掉
+        // 挂钟与并发结束竞争时, 晚到的一方关闭订阅
         if (this.finishReason != null) {
             subscription.close();
         }
     }
 
-    // 周期时钟回调, 到点自然结束, 未到点推进帧显示.
-    // 宿主已被回收时自我解绑, 不再钉住 tick 源.
+    // 到点自然结束, 宿主已被回收时自行停钟
     private void onTick() {
         H host = this.host.get();
         if (host == null || this.finishReason != null) {
@@ -63,7 +62,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.finish(FinishReason.CANCELLED);
     }
 
-    // 以给定原因结束, 负责摘层与回调.
+    // 结束顺序固定为停钟, 摘层, 回调
     public final void finish(@NotNull FinishReason reason) {
         List<Consumer<FinishReason>> pending;
         synchronized (this) {
@@ -81,7 +80,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         if (host != null) {
             this.detach(host);
         }
-        // 某个回调抛异常也照样触发剩下的, 攒起来交给终结方抛
+        // 某个回调失败也会继续触发剩余回调
         if (pending != null) {
             RuntimeException failure = null;
             for (int index = 0; index < pending.size(); index++) {
@@ -113,7 +112,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
             }
             finished = this.finishReason;
         }
-        // 回调放到锁外跑, 用户代码不该攥着实例锁
+        // 用户回调在锁外执行
         callback.accept(finished);
     }
 

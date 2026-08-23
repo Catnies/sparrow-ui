@@ -4,6 +4,9 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * 可主动标脏并跟随 Signal 失效的视觉配置.
+ */
 public interface Visual {
 
     /**

@@ -25,7 +25,7 @@ final class ActiveSlotAnimation extends ActivePlayback<AbstractSlotVisual> {
 
     private final AnimationDefinition animationDefinition;
     private final int[] orderBySlot; // 宿主槽位 -> orderIndex, -1 表示不参与
-    final int[] slots;               // 播放开始时从描述读出的槽位, 帧推进与摘除时逐槽标脏
+    final int[] slots;
 
     public ActiveSlotAnimation(@NotNull AbstractSlotVisual host, @NotNull AnimationDefinition animationDefinition, int @NotNull [] slots, int @NotNull [] orderBySlot, long startTick) {
         super(host, startTick, animationDefinition.totalTicks());

@@ -11,8 +11,8 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public record VisualLayer(
-        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer, // null 表示这一层没有配置, 求值时直接放行
-        @Nullable ImmediateItemProvider placeholder                                 // null 表示没有占位
+        @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer,
+        @Nullable ImmediateItemProvider placeholder
 ) {
     public static final VisualLayer NONE = new VisualLayer(null, null);
 
@@ -41,7 +41,7 @@ public record VisualLayer(
         return visualizer == null || this.placeholder == placeholder;
     }
 
-    // 同一个映射算同一份配置: 直接 Item 映射每次都要新包一层适配, 比到适配里面才认得出来.
+    // ItemStack 映射每次都会新建适配器, 来源身份取内部 delegate
     private static boolean sameVisualizer(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> left,
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> right
@@ -60,7 +60,7 @@ public record VisualLayer(
         return visualizer == null ? null : new ItemVisualizer(visualizer);
     }
 
-    // 直接 Item 映射的适配. 写成具名类型而不是 lambda, 重设同一个映射才认得出还是同一份配置.
+    // 具名适配器保留 delegate 身份, 供重设配置时比较
     private record ItemVisualizer(
             @NotNull Function<@Nullable ItemStack, @Nullable ItemStack> delegate
     ) implements Function<@Nullable ItemStack, @Nullable ItemProvider> {

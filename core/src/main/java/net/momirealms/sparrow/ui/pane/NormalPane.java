@@ -66,9 +66,6 @@ public final class NormalPane extends AbstractPane {
         return new Builder(structure);
     }
 
-    /**
-     * Pane Builder 的实现.
-     */
     private static final class Builder extends AbstractPaneBuilder<NormalPane, Builder> {
         private Builder(Structure structure) {
             super(structure);

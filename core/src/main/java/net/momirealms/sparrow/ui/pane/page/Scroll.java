@@ -45,10 +45,12 @@ public final class Scroll<T> {
      * 全量丢入的竖向滚动声明, 内容当场定死.
      * <p>会复制一份, 之后改动传进来的那个 List 不影响滚动.
      *
+     * @param <T> 序列元素类型
      * @param content 完整内容
      * @param width 一行放多少条, 必须为正数
      * @param rows 一次显示多少行, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 width 或 rows 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> vertical(@NotNull List<? extends T> content, int width, int rows) {
@@ -58,10 +60,12 @@ public final class Scroll<T> {
     /**
      * 同 {@link #vertical(Signal, int, int)}, 接集合装饰器, 跟着变更走.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列, 变更时滚动内容跟着变
      * @param width 一行放多少条, 必须为正数
      * @param rows 一次显示多少行, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 width 或 rows 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> vertical(@NotNull ListSignal<? extends T> source, int width, int rows) {
@@ -71,10 +75,12 @@ public final class Scroll<T> {
     /**
      * 竖向滚动声明, 按行宽把序列铺开, 一次显示 {@code rows} 行.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列
      * @param width 一行放多少条, 必须为正数
      * @param rows 一次显示多少行, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 width 或 rows 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> vertical(@NotNull Signal<? extends List<? extends T>> source, int width, int rows) {
@@ -91,10 +97,12 @@ public final class Scroll<T> {
      * 全量丢入的横向滚动声明, 内容当场定死.
      * <p>会复制一份, 之后改动传进来的那个 List 不影响滚动.
      *
+     * @param <T> 序列元素类型
      * @param content 完整内容
      * @param height 一列放多少条, 必须为正数
      * @param columns 一次显示多少列, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 height 或 columns 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> horizontal(@NotNull List<? extends T> content, int height, int columns) {
@@ -104,10 +112,12 @@ public final class Scroll<T> {
     /**
      * 同 {@link #horizontal(Signal, int, int)}, 接集合装饰器, 跟着变更走.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列, 变更时滚动内容跟着变
      * @param height 一列放多少条, 必须为正数
      * @param columns 一次显示多少列, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 height 或 columns 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> horizontal(@NotNull ListSignal<? extends T> source, int height, int columns) {
@@ -119,10 +129,12 @@ public final class Scroll<T> {
      * <p>内容的第 n 条落在列主序的第 n 个位置上, 先填满第一列再填第二列.
      * Builder 上的 {@code addIngredient} 会照这个顺序喂槽位, 手动投影时槽位序列要自己转成列主序.
      *
+     * @param <T> 序列元素类型
      * @param source 完整序列
      * @param height 一列放多少条, 必须为正数
      * @param columns 一次显示多少列, 必须为正数
      * @return 滚动
+     * @throws IllegalArgumentException 当 height 或 columns 不是正数时
      */
     @NotNull
     public static <T> Scroll<T> horizontal(@NotNull Signal<? extends List<? extends T>> source, int height, int columns) {
@@ -226,14 +238,6 @@ public final class Scroll<T> {
         return this.orientation;
     }
 
-    /**
-     * 从整条序列里取出一屏要显示的那一段.
-     *
-     * @param list 完整序列
-     * @param offset 这一屏从第几条开始
-     * @param length 这一屏最多放多少条
-     * @return 该屏的内容; 起点已经越过序列末尾时给出空的一段
-     */
     private static <T> List<T> slice(List<? extends T> list, int offset, int length) {
         int size = list.size();
         int from = Math.min(offset, size);

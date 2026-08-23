@@ -68,20 +68,19 @@ abstract non-sealed class AbstractPane implements Pane {
         Objects.requireNonNull(element, "element");
         SlotObserver[] observers;
         synchronized (this) {
-            // 元素未变化时不触发任何通知
+            // 同一 Element 实例不会触发通知
             Element previous = this.elements[slot];
             if (previous == element) {
                 return;
             }
             this.elements[slot] = element;
-            // 在锁内取出订阅快照, 保证通知与本次变更对应
             observers = this.snapshot(this.observers[slot]);
         }
-        // 回调在锁外发布, 避免观察者回调用户代码时死锁
+        // 用户回调在 Pane 锁外执行
         this.publish(observers);
     }
 
-    // 在锁外完成元素生成, 再在一次短锁中应用变更并发布订阅快照.
+    // 全部元素生成成功后再进入短锁应用
     @Override
     public final void setElements(
             @NotNull SlotSequence slots,
@@ -92,7 +91,7 @@ abstract non-sealed class AbstractPane implements Pane {
             throw new IllegalArgumentException("slot sequence belongs to " + slots.paneSize() + ", expected " + this.size());
         }
 
-        // 先在锁外生成全部元素, 任何失败都不会留下半批修改
+        // 先在锁外生成全部元素.
         int length = slots.length();
         Element[] replacements = new Element[length];
         for (int occurrence = 0; occurrence < length; occurrence++) {
@@ -102,7 +101,7 @@ abstract non-sealed class AbstractPane implements Pane {
 
         SlotObserver[][] changedObservers = new SlotObserver[length][];
         int[] indices = slots.unsafeSlots();
-        // 在同一次短锁中写入元素, 并保存需要通知的订阅快照
+        // 在同一次短锁中写入元素, 并保存需要通知的订阅快照.
         synchronized (this) {
             for (int occurrence = 0; occurrence < length; occurrence++) {
                 int slot = indices[occurrence];
@@ -118,13 +117,12 @@ abstract non-sealed class AbstractPane implements Pane {
                 }
             }
         }
-        // 回调可能执行用户代码, 因此必须在 Pane 锁外发布
         this.publish(changedObservers);
     }
 
     @Override
     public final void addElements(Element @NotNull ... newElements) {
-        // 预先拒绝 null 元素, 避免写入一半才失败
+        // 先校验整批输入, 失败时 Pane 保持不变
         for (Element element : newElements) {
             if (element == null) {
                 throw new NullPointerException("elements must not contain null");
@@ -249,7 +247,7 @@ abstract non-sealed class AbstractPane implements Pane {
     public final void linkInventory(@NotNull InventorySequence sequence) {
         Objects.requireNonNull(sequence);
         synchronized (this) {
-            // 自己那条不进声明集: 它由逐个声明的那组方法管, 摘不掉才不会与 linkedInventories 说法不一
+            // 逐个声明的内部序列由 linkedInventories 一组方法管理
             if (sequence == this.ownSequence || this.declaredSequences.contains(sequence)) {
                 return;
             }
@@ -283,12 +281,7 @@ abstract non-sealed class AbstractPane implements Pane {
         return this.participatingSequences;
     }
 
-    /**
-     * 返回本 Pane 自己那条序列, 逐个声明的 Inventory 都存在里面.
-     * <p>第一次逐个声明时才创建, 创建时就进参与集.
-     *
-     * @return 本 Pane 自己那条序列
-     */
+    // 第一次逐个声明 Inventory 时创建内部序列并加入参与集
     @NotNull
     private InventorySequence ownSequence() {
         InventorySequence current = this.ownSequence;
@@ -305,13 +298,6 @@ abstract non-sealed class AbstractPane implements Pane {
         return current;
     }
 
-    /**
-     * 复制一份加上给定序列的声明集.
-     *
-     * @param current 当前声明集
-     * @param sequence 要加入的序列
-     * @return 新的不可变声明集
-     */
     @NotNull
     private static Set<InventorySequence> withAdded(Set<InventorySequence> current, InventorySequence sequence) {
         LinkedHashSet<InventorySequence> updated = new LinkedHashSet<>(current);
@@ -319,13 +305,6 @@ abstract non-sealed class AbstractPane implements Pane {
         return Collections.unmodifiableSet(updated);
     }
 
-    /**
-     * 复制一份去掉给定序列的声明集.
-     *
-     * @param current 当前声明集
-     * @param sequence 要去掉的序列
-     * @return 新的不可变声明集
-     */
     @NotNull
     private static Set<InventorySequence> withRemoved(Set<InventorySequence> current, InventorySequence sequence) {
         LinkedHashSet<InventorySequence> updated = new LinkedHashSet<>(current);
@@ -337,14 +316,12 @@ abstract non-sealed class AbstractPane implements Pane {
     @Override
     public final synchronized PaneSlotAttachment attach(int slot, @NotNull Observer<? super Pane> observer) {
         Objects.requireNonNull(observer, "observer");
-        // 头插法把新订阅挂到链头
         SlotObserver head = this.observers[slot];
         SlotObserver subscription = new SlotObserver(this, slot, observer, head);
         if (head != null) {
             head.previous = subscription;
         }
         this.observers[slot] = subscription;
-        // 快照当前状态, 与订阅一起交还调用方
         return new PaneSlotAttachment(this.elements[slot], this.frozen, subscription);
     }
 
@@ -355,15 +332,13 @@ abstract non-sealed class AbstractPane implements Pane {
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
-    // 从槽位订阅链中断开指定节点, 并清除它持有的引用.
+    // 摘链后清空 Pane 与观察者引用
     private synchronized void remove(SlotObserver subscription) {
-        // 已断开的节点直接忽略, 保证重复 close 无副作用
         if (!subscription.active) {
             return;
         }
         subscription.active = false;
 
-        // 标准双向链摘链
         SlotObserver previous = subscription.previous;
         SlotObserver next = subscription.next;
         if (previous == null) {
@@ -374,20 +349,18 @@ abstract non-sealed class AbstractPane implements Pane {
         if (next != null) {
             next.previous = previous;
         }
-        // 清除引用, 让已关闭订阅持有的观察者和 Pane 可以被回收
         subscription.previous = null;
         subscription.next = null;
         subscription.observer = null;
         subscription.owner = null;
     }
 
-    // 复制一个槽位中仍然有效的订阅, 供锁外回调使用.
+    // 复制活订阅, 供锁外回调
     private SlotObserver[] snapshot(SlotObserver head) {
         if (head == null) {
             return null;
         }
 
-        // 先统计有效订阅数量
         int size = 0;
         for (SlotObserver current = head; current != null; current = current.next) {
             if (current.active) {
@@ -398,7 +371,6 @@ abstract non-sealed class AbstractPane implements Pane {
             return null;
         }
 
-        // 再按链表顺序收集快照
         SlotObserver[] snapshot = new SlotObserver[size];
         int index = 0;
         for (SlotObserver current = head; current != null; current = current.next) {
@@ -409,7 +381,6 @@ abstract non-sealed class AbstractPane implements Pane {
         return snapshot;
     }
 
-    // 复制所有槽位的订阅, 用于背景或冻结状态更改.
     private SlotObserver[][] snapshotAll() {
         SlotObserver[][] snapshots = new SlotObserver[this.observers.length][];
         for (int slot = 0; slot < snapshots.length; slot++) {
@@ -418,7 +389,6 @@ abstract non-sealed class AbstractPane implements Pane {
         return snapshots;
     }
 
-    // 发布一个槽位的订阅快照, 回调失败时抛出合并后的异常.
     private void publish(SlotObserver[] observers) {
         RuntimeException failure = this.notify(observers, null);
         if (failure != null) {
@@ -426,12 +396,10 @@ abstract non-sealed class AbstractPane implements Pane {
         }
     }
 
-    // 发布全部槽位的订阅快照.
     private void publish(SlotObserver[][] observers) {
         this.publish(observers, observers.length);
     }
 
-    // 发布前 length 个槽位的订阅快照.
     private void publish(SlotObserver[][] observers, int length) {
         RuntimeException failure = null;
         for (int index = 0; index < length; index++) {
@@ -442,13 +410,12 @@ abstract non-sealed class AbstractPane implements Pane {
         }
     }
 
-    // 通知快照中仍然有效的观察者, 并合并回调抛出的异常.
+    // 某个观察者失败也会继续通知快照中的其余观察者
     private RuntimeException notify(SlotObserver[] observers, RuntimeException failure) {
         if (observers == null) {
             return failure;
         }
         for (SlotObserver current : observers) {
-            // 订阅可能已关闭并被清除了引用
             Observer<? super Pane> observer = current.observer;
             if (observer == null) {
                 continue;
@@ -462,17 +429,14 @@ abstract non-sealed class AbstractPane implements Pane {
         return failure;
     }
 
-    /**
-     * 一次槽位订阅在双向链中的节点, 调用 close 可以直接断开该节点.
-     */
     private static final class SlotObserver implements Subscription {
-        private volatile AbstractPane owner; // 所属 Pane, 关闭后清除
-        private final int slot;             // 订阅的槽位编号
-        private volatile Observer<? super Pane> observer; // 更新观察者, 关闭后清除
+        private volatile AbstractPane owner;
+        private final int slot;
+        private volatile Observer<? super Pane> observer;
 
-        private SlotObserver previous;          // 更晚加入的订阅
-        private volatile SlotObserver next;     // 更早加入的订阅
-        private volatile boolean active = true; // 订阅是否仍在链上
+        private SlotObserver previous;
+        private volatile SlotObserver next;
+        private volatile boolean active = true;
 
         private SlotObserver(
                 AbstractPane owner,
@@ -493,7 +457,6 @@ abstract non-sealed class AbstractPane implements Pane {
 
         @Override
         public void close() {
-            // owner 在 remove 中被清除, 重复关闭时自然跳过
             AbstractPane owner = this.owner;
             if (owner != null) {
                 owner.remove(this);

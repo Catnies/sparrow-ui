@@ -34,6 +34,7 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
      * @param pane 子 Pane
      * @param slot 子 Pane 的槽位编号
      * @return Pane 连接元素
+     * @throws IndexOutOfBoundsException 当槽号超出子 Pane 范围时
      */
     @NotNull
     static PaneLink pane(@NotNull Pane pane, int slot) {
@@ -46,6 +47,7 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
      * @param inventory Inventory
      * @param slot Inventory 槽位编号
      * @return Inventory 连接元素
+     * @throws IndexOutOfBoundsException 当槽号超出 Inventory 范围时
      */
     @NotNull
     static InventoryLink inventory(@NotNull SparrowInventory inventory, int slot) {
@@ -73,10 +75,11 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
 
     /**
      * 把当前槽位连接到另一个 Pane 的指定槽位.
+     * <p>连接相等要求指向同一个 Pane 实例和同一槽位.
      */
     final class PaneLink implements Element {
-        private final Pane pane;  // 子 Pane
-        private final int slot; // 子 Pane 槽位编号
+        private final Pane pane;
+        private final int slot;
 
         /**
          * 创建到子 Pane 槽位的连接.
@@ -96,7 +99,7 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
             this.slot = slot;
         }
 
-        // 创建到子 Pane 槽位的连接, 跳过重复边界检查.
+        // slot 已由调用方校验
         static PaneLink trusted(Pane pane, int slot) {
             return new PaneLink(pane, slot, true);
         }
@@ -123,6 +126,7 @@ public sealed interface Element permits Element.Empty, Element.Item, Element.Pan
 
     /**
      * 把当前 Pane 槽位连接到 Inventory 的指定槽位.
+     * 槽号超出 Inventory 范围时构造失败.
      *
      * @param inventory Inventory
      * @param slot Inventory 槽位编号

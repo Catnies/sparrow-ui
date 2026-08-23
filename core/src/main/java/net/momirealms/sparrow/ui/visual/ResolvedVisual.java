@@ -10,9 +10,9 @@ import java.util.Objects;
 
 @ApiStatus.Internal
 public record ResolvedVisual(
-        @NotNull Object sourceKey,                  // 产出本结果的层配置对象, 同一层不变时保持稳定, 渲染层据此判断来源换没换
+        @NotNull Object sourceKey,                  // 同一配置保持稳定, 渲染层据此复用异步结果
         @NotNull ItemProvider provider,
-        @Nullable ImmediateItemProvider placeholder // 异步提供器首次成功结果前显示的占位, null 表示回退到调用方给的内容
+        @Nullable ImmediateItemProvider placeholder // null 表示回退到调用方给的内容
 ) {
     public ResolvedVisual {
         Objects.requireNonNull(sourceKey, "sourceKey");
