@@ -89,7 +89,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
      * 返回的是持有分区本身的 {@link PartitionHandle}, 跨越删除重建后持续有效.
      * 缓存是弱的, 句柄只在调用方或某条绑定还持有它时存活, 因此只读取过而没有绑定过的 key 不留痕迹.
      * 删除释放的是分区及其缓存值.
-     * <p><strong>取句柄不算一次取用</strong>: 它会把分区建出来接住转发, 但不会推动装载.
+     * <p><strong>取句柄不算一次取用, 也不算一次订阅</strong>: 它会把分区建出来, 但不会推动装载, 转发也要等句柄有了订阅者才挂.
      * 异步来源的首载因此发生在第一次读, 而不是取句柄的这一刻.
      */
     @Override
