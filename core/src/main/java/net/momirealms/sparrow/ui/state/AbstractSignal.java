@@ -28,7 +28,8 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         TickingSignal,
         PacedSignal,
         CountdownSignal,
-        CollectionSignal
+        CollectionSignal,
+        AbstractKeyedSignal.Keys
 {
     private static final BiPredicate<Object, Object> DEFAULT_SAME_VALUE = Objects::equals;
 

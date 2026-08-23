@@ -4,8 +4,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -18,7 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
 abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> {
     private final KeyStateStore<K, KeyState<K, T, P>> store;                                             // key -> (分区 & 句柄), 只放有分区的 key.
     private final WeakHashMap<K, WeakReference<PartitionHandle<K, T>>> detached = new WeakHashMap<>();   // 分区已删但仍有人持有的句柄, key 用句柄自己那份
-    private final Object detachedLock = new Object();                                                    // 保护 detached, 锁序固定为主表 compute 在外
+    private final Object detachedLock = new Object();                                                    // 保护 detached 与 keys 的首次创建, 锁序固定为主表 compute 在外
+    @Nullable private volatile Keys<K> keys;                                                             // 第一次 keys() 才建, 没建过时建行删行只多一次 volatile 读
 
     AbstractKeyedSignal(KeyStateStore<K, KeyState<K, T, P>> store) {
         this.store = Objects.requireNonNull(store, "store");
@@ -51,22 +56,26 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         }
         // 没有分区就在 compute 内补建, 该 key 若有寄放在旁表里的句柄一并接回来.
         AtomicReference<P> resolved = new AtomicReference<>();
+        boolean[] created = new boolean[1];
         this.store.compute(key, (k, existing) -> {
             if (existing != null) {
                 resolved.set(existing.partition);
                 return existing;
             }
-            P created = this.createPartition(k);
-            KeyState<K, T, P> target = new KeyState<>(created);
+            P fresh = this.createPartition(k);
+            KeyState<K, T, P> target = new KeyState<>(fresh);
             PartitionHandle<K, T> handle = this.takeDetached(k);
             if (handle != null) {
                 // 挂载完成后才随 KeyState 一起发布.
-                handle.attach(created);
+                handle.attach(fresh);
                 target.handleRef = new WeakReference<>(handle);
             }
-            resolved.set(created);
+            resolved.set(fresh);
+            created[0] = true;
             return target;
         });
+        // 派发放在 compute 之外, 回调里再碰同一张表才不会撞上它的重入限制
+        if (created[0]) this.keysChanged();
         P partition = resolved.get();
         this.afterPartitionAccess(partition);
         return partition;
@@ -106,7 +115,9 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         }
         // 句柄可能晚于分区出现(先 get 后 at), 也可能反过来; 补建与挂载在一次 compute 内原子完成.
         AtomicReference<PartitionHandle<K, T>> resolvedHandle = new AtomicReference<>();
+        boolean[] created = new boolean[1];
         this.store.compute(key, (k, existing) -> {
+            created[0] = existing == null;
             KeyState<K, T, P> target = existing != null ? existing : new KeyState<>(this.createPartition(k));
             PartitionHandle<K, T> handle = this.liveHandle(target);
             if (handle == null) {
@@ -122,6 +133,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
             resolvedHandle.set(handle);
             return target;
         });
+        if (created[0]) this.keysChanged();
         return resolvedHandle.get();
     }
 
@@ -168,6 +180,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     @Override
     public void remove(@NotNull K key) {
         Objects.requireNonNull(key, "key");
+        boolean[] removed = new boolean[1];
         this.store.computeIfPresent(key, (ignored, state) -> {
             // 分区终止会关闭它的全部订阅.
             state.partition.retire();
@@ -176,9 +189,36 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
                 handle.onPartitionEvicted(state.partition);
                 this.parkDetached(handle);
             }
+            removed[0] = true;
             // 主表只放有分区的 key, 条目整个删掉.
             return null;
         });
+        if (removed[0]) this.keysChanged();
+    }
+
+    @Override
+    @NotNull
+    public WeakKeyedControl<K> weakControl() {
+        return new Control<>(this);
+    }
+
+    @Override
+    @NotNull
+    public Signal<Set<K>> keys() {
+        Keys<K> current = this.keys;
+        if (current != null) return current;
+        synchronized (this.detachedLock) {
+            if (this.keys == null) {
+                this.keys = new Keys<>(this);
+            }
+            return this.keys;
+        }
+    }
+
+    // 建行或删行之后调用, 从没人要过 keys() 时只是一次 volatile 读.
+    private void keysChanged() {
+        Keys<K> current = this.keys;
+        if (current != null) current.changed();
     }
 
     // 当前已激活的分区数.
@@ -221,6 +261,71 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
 
         KeyState(P partition) {
             this.partition = partition;
+        }
+    }
+
+    // 弱持目标的控制句柄, 目标回收之后每个方法都是空操作.
+    static final class Control<K> implements WeakKeyedControl<K> {
+        private final WeakReference<AbstractKeyedSignal<K, ?, ?>> target;
+
+        private Control(AbstractKeyedSignal<K, ?, ?> target) {
+            this.target = new WeakReference<>(target);
+        }
+
+        @Override
+        public void dirty(@NotNull K key) {
+            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
+            if (signal != null) signal.dirty(key);
+        }
+
+        @Override
+        public void dirtyAll() {
+            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
+            if (signal != null) signal.dirtyAll();
+        }
+
+        @Override
+        public void remove(@NotNull K key) {
+            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
+            if (signal != null) signal.remove(key);
+        }
+
+        @Override
+        public void clear() {
+            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
+            if (signal != null) signal.clear();
+        }
+
+        @Override
+        public boolean isStale() {
+            return this.target.get() == null;
+        }
+    }
+
+    // 有分区的 key 的集合, 值是拉取时从主表复制的不可修改快照. 不持外部资源, 没有激活钩子.
+    static final class Keys<K> extends AbstractSignal<Set<K>> {
+        private final AbstractKeyedSignal<K, ?, ?> owner;
+        private final AtomicLong version = new AtomicLong();
+
+        private Keys(AbstractKeyedSignal<K, ?, ?> owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public Set<K> get() {
+            Set<K> snapshot = new HashSet<>();
+            this.owner.store.forEachKey(snapshot::add);
+            return Collections.unmodifiableSet(snapshot);
+        }
+
+        @Override
+        long version() {
+            return this.version.get();
+        }
+
+        private void changed() {
+            this.version.incrementAndGet();
+            this.notifyDirty();
         }
     }
 }

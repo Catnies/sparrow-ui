@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -50,6 +51,27 @@ public interface KeyedSignal<K, T> {
     void remove(@NotNull K key);
 
     void clear();
+
+    /**
+     * 本 signal 失效侧的弱控制句柄, 每次调用新建一个, 语义见 {@link WeakKeyedControl}.
+     * <p>signal 与登记表同寿命时不需要它, 直接调本 signal 即可; 要把本 signal 登记到比它活得久的总线、订阅、定时任务上时, 捕获这个句柄而不是 signal.
+     *
+     * @return 弱持本 signal 的控制句柄
+     */
+    @NotNull
+    WeakKeyedControl<K> weakControl();
+
+    /**
+     * 当前有分区的 key. 建分区(首次 {@code get} / {@code at} 到的 key)与 {@link #remove} 都让它失效, 分区的值变了它不失效.
+     * <p>值是一份不可修改的快照, 顺序不保证, 每次拉取按分区数复制一遍, 分区极多时慎用.
+     * <p><strong>它是 "有分区的 key", 不是业务上存在的 key</strong>: {@link #get} 一个没见过的 key 也会建分区并出现在这里.
+     * 房间、邀请、编辑会话这类由写入建行的用法, 它就是名单; 金币、统计这类由读取装载的缓存用法, 它只是缓存内省, 别当业务名单用.
+     * <p>{@link #clear} 逐个删分区, 会让它失效 N 次.
+     *
+     * @return 有分区的 key 的集合
+     */
+    @NotNull
+    Signal<Set<K>> keys();
 
     /**
      * 创建一个同步分区数据源.

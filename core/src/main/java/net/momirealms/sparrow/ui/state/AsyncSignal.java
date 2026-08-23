@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * 异步来源的响应式数据源, 值由后台执行器重算, 读取永不阻塞.
  *
@@ -15,4 +17,13 @@ public sealed interface AsyncSignal<T> extends Signal<T> permits AsyncSignalImpl
      * <p>执行器拒绝任务时, 会回滚到可再次调度的状态, 但并发登记的失效信号可能丢失, 需要重新调用.
      */
     void dirty();
+
+    /**
+     * 本 signal 失效侧的弱控制句柄, 每次调用新建一个, 语义见 {@link WeakAsyncControl}.
+     * <p>signal 与登记表同寿命时不需要它, 直接调 {@link #dirty} 即可; 要把本 signal 登记到比它活得久的总线、订阅、定时任务上时, 捕获这个句柄而不是 signal.
+     *
+     * @return 弱持本 signal 的控制句柄
+     */
+    @NotNull
+    WeakAsyncControl weakControl();
 }

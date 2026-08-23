@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -47,5 +48,18 @@ sealed class PlayerKeyedSignalImpl<T> implements PlayerKeyedSignal<T> permits Mu
     @Override
     public void clear() {
         this.delegate.clear();
+    }
+
+    // 弱持的必须是委托而不是本包装器: at(uuid) 句柄强持的是委托, 用户只留句柄时本对象会先被回收.
+    @Override
+    @NotNull
+    public WeakKeyedControl<UUID> weakControl() {
+        return this.delegate.weakControl();
+    }
+
+    @Override
+    @NotNull
+    public Signal<Set<UUID>> keys() {
+        return this.delegate.keys();
     }
 }
