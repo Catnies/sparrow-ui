@@ -75,6 +75,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
     /**
      * 分区被取用后的回调, 在取用返回之前执行.
      * <p>本回调对<strong>每次</strong>取用分区都会调用, 因此实现必须幂等.
+     * <p>取用指的是读写这个分区的值, {@link #at} 只取句柄不算.
      */
     void afterPartitionAccess(P partition) {
     }
@@ -88,6 +89,8 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
      * 返回的是持有分区本身的 {@link PartitionHandle}, 跨越删除重建后持续有效.
      * 缓存是弱的, 句柄只在调用方或某条绑定还持有它时存活, 因此只读取过而没有绑定过的 key 不留痕迹.
      * 删除释放的是分区及其缓存值.
+     * <p><strong>取句柄不算一次取用</strong>: 它会把分区建出来接住转发, 但不会推动装载.
+     * 异步来源的首载因此发生在第一次读, 而不是取句柄的这一刻.
      */
     @Override
     @NotNull
@@ -98,13 +101,11 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
         if (state != null) {
             PartitionHandle<K, T> live = this.liveHandle(state);
             if (live != null && live.isAttachedTo(state.partition)) {
-                this.afterPartitionAccess(state.partition);
                 return live;
             }
         }
         // 句柄可能晚于分区出现(先 get 后 at), 也可能反过来; 补建与挂载在一次 compute 内原子完成.
         AtomicReference<PartitionHandle<K, T>> resolvedHandle = new AtomicReference<>();
-        AtomicReference<P> resolvedPartition = new AtomicReference<>();
         this.store.compute(key, (k, existing) -> {
             KeyState<K, T, P> target = existing != null ? existing : new KeyState<>(this.createPartition(k));
             PartitionHandle<K, T> handle = this.liveHandle(target);
@@ -119,10 +120,8 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
             }
             handle.attach(target.partition);
             resolvedHandle.set(handle);
-            resolvedPartition.set(target.partition);
             return target;
         });
-        this.afterPartitionAccess(resolvedPartition.get());
         return resolvedHandle.get();
     }
 
