@@ -177,7 +177,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     @Override
     @NotNull
     public Signal<T> debounceMillis(long millis) {
-        if (millis <= 0) throw new IllegalArgumentException("ticks must be positive: " + millis);
+        if (millis <= 0) throw new IllegalArgumentException("millis must be positive: " + millis);
         return new DebounceSignal<>(this, millis, Signals.millisDelayer());
     }
 
