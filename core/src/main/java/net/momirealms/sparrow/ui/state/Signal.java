@@ -28,7 +28,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     T get();
 
     /**
-     * 订阅失效信号, <strong>不允许在回调里让同一个 signal 再次失效</strong>.
+     * 订阅失效信号, <strong>不允许在回调里让同一个 signal 再次失效</strong>, 这样做会抛出 {@link IllegalStateException}.
      * <p>通知不携带值, 也不触发求值. signal 弱持有监听器, <strong>订阅的存活由调用方持有的凭证决定</strong>,
      * 凭证不再被引用时订阅自动消亡并在后续派发时被剔除. 因此凭证必须存起来, 丢掉就等于退订.
      *
@@ -81,8 +81,8 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      * 派生, 上游每次失效都会立即重算并与缓存值判等,
      * 判为相同则吞掉失效不再向下游传播, 适合逐层降频分派.
      * <p>判等用 {@link Objects#equals}, 换一种判断方式用 {@link #mapDistinct(Function, BiPredicate)}.
-     * <p><strong>{@code mapper} 不得读取其他 signal.</strong> 本方法是整个模型里唯一在失效传播路径上
-     * 求值的节点, 求值期间持有本节点的重算锁. 需要多个来源时用 {@link #combine} 显式组合.
+     * <p>本方法是整个模型里唯一在失效传播路径上求值的节点, 所以 {@code mapper} 要廉价. 求值不持锁,
+     * 争用时它可能为同一个上游版本跑不止一次, 只有一份结果会被发布, 因此它必须是纯函数.
      *
      * @param mapper 纯函数, 在失效线程与拉取线程被执行
      * @return 派生 signal
@@ -92,7 +92,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
 
     /**
      * 同 {@link #mapDistinct(Function)}, 但用给定的判等函数比较派生值.
-     * <p>判等函数跑在失效线程与拉取线程上, 而且在本节点的重算锁内, 必须廉价, 也不得读取其他 signal.
+     * <p>判等函数跑在失效线程与拉取线程上, 与 {@code mapper} 受同一条约束, 必须廉价且是纯函数.
      *
      * @param mapper 纯函数, 在失效线程与拉取线程被执行
      * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
@@ -108,7 +108,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      *
      * @param placeholder 首载完成前的占位值, 允许为 {@code null}
      * @param executor 执行重算的执行器
-     * @param loader 重算函数, 在 executor 线程执行, 必须线程安全; 不得(直接或间接)使本 signal 失效, 同步执行器下会构成无界递归
+     * @param loader 重算函数, 在 executor 线程执行, 必须线程安全; 不得(直接或间接)使本 signal 失效, 这样做会抛出 {@link IllegalStateException}
      * @return 异步 signal
      */
     @NotNull
@@ -124,7 +124,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
      *
      * @param placeholder 首载完成前的占位值, 允许为 {@code null}
      * @param executor 执行重算的执行器
-     * @param loader 重算函数, 在 executor 线程执行, 必须线程安全; 不得(直接或间接)使本 signal 失效, 同步执行器下会构成无界递归.
+     * @param loader 重算函数, 在 executor 线程执行, 必须线程安全; 不得(直接或间接)使本 signal 失效, 这样做会抛出 {@link IllegalStateException}.
      * @param sameValue 判等函数, 语义见 {@link #of(Object, BiPredicate)}
      * @return 异步 signal
      */

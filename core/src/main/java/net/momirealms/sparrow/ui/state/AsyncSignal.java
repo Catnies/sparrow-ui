@@ -9,6 +9,7 @@ public sealed interface AsyncSignal<T> extends Signal<T> permits AsyncSignalImpl
 
     /**
      * 声明当前值已过期, 调度一次后台重载.
+     * <p>在本 signal 的装载函数里调用它会抛出 {@link IllegalStateException}, 那是一个自己喂自己的死循环.
      * <p>重载进行中再次标脏会在当前这轮完成后补跑一轮, 不会排队堆积.
      * 判等函数认为重载结果与旧值相同时不产生失效信号, 若重载抛出的异常, 旧值保持不变.
      * <p>执行器拒绝任务时, 会回滚到可再次调度的状态, 但并发登记的失效信号可能丢失, 需要重新调用.

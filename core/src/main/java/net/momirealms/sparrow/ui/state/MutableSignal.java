@@ -36,7 +36,7 @@ public sealed interface MutableSignal<T> extends Signal<T> permits MutableSignal
      * toggle("开关音效", sound);
      * }</pre>
      *
-     * <p>{@code getter} 跑在本 signal 的失效线程与拉取线程上, 并持有读侧视图的重算锁, 所以它必须是平凡的字段访问, 不能读取其他 signal.
+     * <p>{@code getter} 跑在本 signal 的失效线程与拉取线程上, 争用时可能被重跑, 所以它必须是平凡的字段访问.
      * <p><strong>getter 与 setter 被返回的 lens 持有整个生命周期, 禁止捕获 {@code Player}、{@code World}、{@code Window} 一类对象.</strong>
      * <p>lens 强持有本 signal. 接在分区句柄上时这条链一直连到整个 {@link KeyedSignal}.
      *

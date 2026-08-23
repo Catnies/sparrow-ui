@@ -33,6 +33,8 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     private final ReferenceQueue<Runnable> deadNodes = new ReferenceQueue<>(); // 绑定节点已被回收的弱条目
     private final Object activationLock = new Object();
     private volatile boolean retired;
+    // 正在派发本节点的线程. 只拿来跟本线程自己比, 若并发则有一定的概率在派发时标记会被别人盖掉, 那种情况下大半的重入抓不到, 只能靠某一层恰好撞上把递归拦下.
+    @Nullable private Thread dispatchingThread;
 
     // 当前值版本, 值可能变化时单调递增.
     abstract long version();
@@ -100,26 +102,38 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         this.sweepClosed();
     }
 
-    // 向所有活的订阅派发一次失效.
+    /**
+     * 向所有活的订阅派发一次失效.
+     *
+     * @throws IllegalStateException 本线程正在派发本节点时再次调用, 也就是回调里又让这个 signal 失效了
+     */
     protected final void notifyDirty() {
         if (this.retired) return;
-        boolean reap = false;
-        for (Entry entry : this.entries) {
-            if (entry.isClosed()) {
-                continue;
-            }
-            boolean alive = true;
-            try {
-                alive = entry.deliver();
-            } catch (RuntimeException exception) {
-                SparrowUI.getInstance().handleException("Failed to deliver a signal invalidation", exception);
-            }
-            if (!alive) {
-                // 本轮发现的死条目一起摘, 边派发边逐条摘表在订阅多的 signal 上是平方级
-                reap |= entry.markClosed();
-            }
+        if (this.dispatchingThread == Thread.currentThread()) {
+            throw new IllegalStateException("Reentrant invalidation: a listener invalidated this signal while it was still dispatching");
         }
-        if (reap) this.sweepClosed();
+        this.dispatchingThread = Thread.currentThread();
+        try {
+            boolean reap = false;
+            for (Entry entry : this.entries) {
+                if (entry.isClosed()) {
+                    continue;
+                }
+                boolean alive = true;
+                try {
+                    alive = entry.deliver();
+                } catch (RuntimeException exception) {
+                    SparrowUI.getInstance().handleException("Failed to deliver a signal invalidation", exception);
+                }
+                if (!alive) {
+                    // 本轮发现的死条目一起摘, 边派发边逐条摘表在订阅多的 signal 上是平方级
+                    reap |= entry.markClosed();
+                }
+            }
+            if (reap) this.sweepClosed();
+        } finally {
+            this.dispatchingThread = null;
+        }
     }
 
     // 把已经标关闭的条目一次性摘掉, 有多少条都只复制一遍订阅表.

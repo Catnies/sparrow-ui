@@ -1,7 +1,10 @@
 package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.Subscription;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
@@ -16,10 +19,8 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
     private final AbstractSignal<S> source;
     private final Function<? super S, ? extends T> mapper;
     private final BiPredicate<? super T, ? super T> sameValue;
-    private final Object recomputeLock = new Object();
-    private volatile Cached<T> cached;
-    private volatile long version;
-    private long notifiedVersion;   // 已向下游通知过的版本
+    private final AtomicReference<Cached<T>> cached = new AtomicReference<>();
+    private final AtomicLong notifiedVersion = new AtomicLong();   // 已向下游通知过的版本
     private Subscription upstream;
 
     MapDistinctSignal(AbstractSignal<S> source, Function<? super S, ? extends T> mapper, BiPredicate<? super T, ? super T> sameValue) {
@@ -30,40 +31,36 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
 
     @Override
     public T get() {
-        long sourceVersion = this.source.version();
-        Cached<T> current = this.cached;
-        if (current != null && current.sourceVersion() == sourceVersion) {
-            return current.value();
-        }
-        synchronized (this.recomputeLock) {
-            this.recomputeLocked();
-            return this.cached.value();
-        }
+        return this.align().value();
     }
 
     @Override
     long version() {
-        Cached<T> current = this.cached;
-        if (current == null || current.sourceVersion() != this.source.version()) {
-            synchronized (this.recomputeLock) {
-                this.recomputeLocked();
-            }
-        }
-        return this.version;
+        return this.align().version();
     }
 
-    // 把缓存与版本推进到上游当前版本, 值发生变化时递增版本. 已是最新时无操作.
-    private void recomputeLocked() {
-        long sourceVersion = this.source.version();
-        Cached<T> current = this.cached;
-        if (current != null && current.sourceVersion() == sourceVersion) {
-            return;
-        }
-        T value = this.mapper.apply(this.source.get());
-        boolean changed = current == null || !same(this.sameValue, current.value(), value);
-        this.cached = new Cached<>(value, sourceVersion);
-        if (changed) {
-            this.version++;
+    /**
+     * 把缓存推进到上游当前版本, 已经是最新时直接返回.
+     * <p>求值不持锁, 所以 {@code mapper} 可以读取任何 signal.
+     * 多个线程同时刷新时它可能为同一个上游版本跑不止一次, 而只有 CAS 成功的那一份结果会被发布, 所以它必须是纯函数.
+     *
+     * @return 与上游当前版本对齐的缓存记录
+     */
+    private Cached<T> align() {
+        while (true) {
+            long sourceVersion = this.source.version();
+            @Nullable Cached<T> current = this.cached.get();
+            if (current != null && current.sourceVersion() == sourceVersion) {
+                return current;
+            }
+            T value = this.mapper.apply(this.source.get());
+            boolean changed = current == null || !same(this.sameValue, current.value(), value);
+            long version = current == null ? 1L : current.version() + (changed ? 1L : 0L);
+            Cached<T> next = new Cached<>(value, sourceVersion, version);
+            // 只从读到的那一份往前推, 输给别人就重来, 缓存因此只会前进
+            if (this.cached.compareAndSet(current, next)) {
+                return next;
+            }
         }
     }
 
@@ -71,12 +68,8 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
     protected void onActive() {
         this.upstream = this.source.onDirty(this::onSourceDirty);
         try {
-            synchronized (this.recomputeLock) {
-                // 没有基线时首次订阅会把"从无到有"误判为值变化,
-                // 手动将 notifiedVersion 对齐为当前版本.
-                this.recomputeLocked();
-                this.notifiedVersion = this.version;
-            }
+            // 没有基线时首次订阅会把"从无到有"误判为值变化, 把 notifiedVersion 抬到当前版本.
+            this.notifiedVersion.accumulateAndGet(this.align().version(), Math::max);
         } catch (RuntimeException | Error exception) {
             // mapper 抛出时撤销上游挂载, 让 register 的回滚留下干净现场.
             this.upstream.close();
@@ -86,19 +79,19 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
     }
 
     private void onSourceDirty() {
-        // 上游失效是本节点唯一的活动时机, 而派发只在截断放行时才发生. 若不在这里清理,
-        // 一个罕有变化的节点(季节每年变四次)会为早已关闭的菜单长期保持激活, 每个 tick 都白重算.
+        // 上游失效是本节点唯一的活动时机, 而派发只在截断放行时才发生.
         this.reapDeadEntries();
-        boolean shouldNotify = false;
-        synchronized (this.recomputeLock) {
-            this.recomputeLocked();
-            if (this.version > this.notifiedVersion) {
-                this.notifiedVersion = this.version;
-                shouldNotify = true;
+        long version = this.align().version();
+        // 把 notifiedVersion 推过这个版本的那个线程负责派发, 别的线程直接走人, 一次变化只通知一遍
+        while (true) {
+            long notified = this.notifiedVersion.get();
+            if (version <= notified) {
+                return;
             }
-        }
-        if (shouldNotify) {
-            this.notifyDirty();
+            if (this.notifiedVersion.compareAndSet(notified, version)) {
+                this.notifyDirty();
+                return;
+            }
         }
     }
 
@@ -108,6 +101,6 @@ final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
         this.upstream = null;
     }
 
-    private record Cached<V>(V value, long sourceVersion) {
+    private record Cached<V>(V value, long sourceVersion, long version) {
     }
 }

@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -22,6 +23,8 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     private final BiPredicate<? super T, ? super T> sameValue;
     private final AtomicReference<Versioned<T>> state;
     private final AtomicInteger loadState = new AtomicInteger(UNLOADED);
+
+    @Nullable private Thread loadingThread; // 正在跑装载函数的线程
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader) {
         this(placeholder, executor, loader, defaultSameValue());
@@ -55,6 +58,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
 
     @Override
     public void dirty() {
+        if (this.loadingThread == Thread.currentThread()) {
+            throw new IllegalStateException("Reentrant invalidation: the loader invalidated this signal while it was still running");
+        }
         while (true) {
             if (this.isRetired()) {
                 return;
@@ -115,7 +121,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         RuntimeException failure = null;
         boolean pending;
         try {
-            changed = this.publishValue(this.loader.get());
+            changed = this.publishValue(this.runLoader());
         } catch (RuntimeException exception) {
             failure = exception;
         } finally {
@@ -135,6 +141,16 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         // 本方法整个跑在执行器线程上, 抛出去只会落到执行器的未捕获处理器, 或者直接被吞掉.
         if (failure != null) {
             SparrowUI.getInstance().handleException("Failed to load an async signal value", failure);
+        }
+    }
+
+    // 跑一次装载函数, 期间记下当前线程, 让 dirty() 能认出 loader 在自己脚下拆台.
+    private T runLoader() {
+        this.loadingThread = Thread.currentThread();
+        try {
+            return this.loader.get();
+        } finally {
+            this.loadingThread = null;
         }
     }
 
