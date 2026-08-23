@@ -20,8 +20,7 @@ final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSi
     private final BiPredicate<? super T, ? super T> sameValue;
     @Nullable private final AsyncSignalImpl.Polling polling;    // 全部分区共用, 每个分区只在自己有订阅时轮询
 
-    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, AsyncSignalImpl<T>>> store, @Nullable AsyncSignalImpl.Polling polling) {
-        super(store);
+    AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable AsyncSignalImpl.Polling polling) {
         this.placeholder = placeholder;
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");

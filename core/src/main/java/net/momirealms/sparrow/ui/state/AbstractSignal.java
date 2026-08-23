@@ -24,7 +24,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         AsyncSignalImpl,
         KeyedSignalImpl.SyncPartition,
         PartitionHandle,
-        LensSignal,
         TickingSignal,
         PacedSignal,
         CountdownSignal,

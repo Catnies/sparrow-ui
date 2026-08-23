@@ -15,7 +15,7 @@ import java.util.function.Function;
  * @param <S> 上游值类型
  * @param <T> 派生值类型
  */
-final class MapDistinctSignal<S, T> extends AbstractSignal<T> {
+sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSignal {
     private final AbstractSignal<S> source;
     private final Function<? super S, ? extends T> mapper;
     private final BiPredicate<? super T, ? super T> sameValue;

@@ -31,17 +31,14 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
 
     @Nullable private Thread loadingThread; // 正在跑装载函数的线程
 
-    @Nullable private final Polling polling;            // 轮询设置, 为 null 就是普通异步源
-    private volatile long lastCompletedNanos;           // 上一次装载结束的时刻, 成功失败都记, 激活刷新据此判断过没过期
-    @Nullable private Subscription clockSubscription;   // 有订阅期间挂在轮询时钟上, activationLock 内读写
-    private volatile long clockGeneration;              // 每挂一次时钟推进一次, 时钟回调带着自己那一段的代数, activationLock 内写
+    @Nullable private final PollingState polling;       // 轮询状态, 为 null 就是普通异步源
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable Polling polling) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.loader = Objects.requireNonNull(loader, "loader");
         this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
         this.state = new AtomicReference<>(new Versioned<>(placeholder, 0L));
-        this.polling = polling;
+        this.polling = polling == null ? null : new PollingState(polling);
     }
 
     // 调度首次初始化.
@@ -65,29 +62,30 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
 
     @Override
     protected void onActive() {
-        if (this.polling == null) return;
-        long generation = ++this.clockGeneration;
-        this.clockSubscription = this.polling.clock().link(this, () -> this.onPollTick(generation));
+        PollingState polling = this.polling;
+        if (polling == null) return;
+        long generation = ++polling.generation;
+        polling.clockSubscription = polling.settings.clock().link(this, () -> this.onPollTick(polling, generation));
         // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
-        if (this.loadState.get() == IDLE && System.nanoTime() - this.lastCompletedNanos >= this.polling.periodNanos()) {
+        if (this.loadState.get() == IDLE && System.nanoTime() - polling.lastCompletedNanos >= polling.settings.periodNanos()) {
             this.dirty();
         }
     }
 
     @Override
     protected void onInactive() {
-        if (this.clockSubscription != null) {
-            this.clockSubscription.close();
-            this.clockSubscription = null;
-        }
+        PollingState polling = this.polling;
+        if (polling == null || polling.clockSubscription == null) return;
+        polling.clockSubscription.close();
+        polling.clockSubscription = null;
     }
 
     // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
     // 清扫要顺着订阅链走到底: 装载结果判等不变时没有派发, 被持有的派生节点自己发现不了它的订阅者已经死光.
-    private void onPollTick(long generation) {
+    private void onPollTick(PollingState polling, long generation) {
         // 时钟派发前先把回调读了出来, 这期间停表再重开撤不回那次调用, 迟到的旧段回调看到的订阅数是新一段的, 不拦就多跑一次 loader.
         // 只是一次 volatile 读, 读完到 dirty() 之间恰好停表重开的话仍会多跑一次, 那与新一段激活时的补载同形, 不为它加锁.
-        if (generation != this.clockGeneration) return;
+        if (generation != polling.generation) return;
         this.reapDownstream();
         if (this.entryCount() == 0) return;
         this.dirty();
@@ -168,8 +166,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         } catch (RuntimeException exception) {
             failure = exception;
         } finally {
-            // 先记时刻再改状态, 看到 IDLE 的人一定看得到这次的时刻
-            this.lastCompletedNanos = System.nanoTime();
+            // 只有轮询用得上这个时刻. 先记再改状态, 看到 IDLE 的人一定看得到这次的时刻
+            PollingState polling = this.polling;
+            if (polling != null) polling.lastCompletedNanos = System.nanoTime();
             pending = this.loadState.getAndUpdate(current -> current == LOADING_DIRTY ? LOADING : IDLE) == LOADING_DIRTY;
         }
 
@@ -228,6 +227,18 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         @Override
         public boolean isStale() {
             return this.target.get() == null;
+        }
+    }
+
+    // 轮询才用得上的那部分状态, 普通异步源只留一个 null. 每个数据源一份, 里面的设置则是同一个 KeyedSignal 的各分区共用的.
+    private static final class PollingState {
+        private final Polling settings;
+        private volatile long lastCompletedNanos;           // 上一次装载结束的时刻, 成功失败都记, 激活刷新据此判断过没过期
+        @Nullable private Subscription clockSubscription;   // 有订阅期间挂在轮询时钟上, activationLock 内读写
+        private volatile long generation;                   // 每挂一次时钟推进一次, 时钟回调带着自己那一段的代数, activationLock 内写
+
+        private PollingState(Polling settings) {
+            this.settings = settings;
         }
     }
 

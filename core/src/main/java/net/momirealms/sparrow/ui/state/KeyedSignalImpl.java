@@ -19,11 +19,10 @@ final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalI
     private final BiPredicate<? super T, ? super T> sameValue;
 
     KeyedSignalImpl(Function<? super K, ? extends T> initial) {
-        this(initial, AbstractSignal.defaultSameValue(), KeyStateStore.generic());
+        this(initial, AbstractSignal.defaultSameValue());
     }
 
-    KeyedSignalImpl(Function<? super K, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue, KeyStateStore<K, KeyState<K, T, SyncPartition<K, T>>> store) {
-        super(store);
+    KeyedSignalImpl(Function<? super K, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue) {
         this.initial = Objects.requireNonNull(initial, "initial");
         this.sameValue = Objects.requireNonNull(sameValue, "sameValue");
     }

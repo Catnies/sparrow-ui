@@ -93,7 +93,7 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> MutableKeyedSignal<K, T> of(@NotNull Function<? super K, ? extends T> initial, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new KeyedSignalImpl<>(initial, sameValue, KeyStateStore.generic());
+        return new KeyedSignalImpl<>(initial, sameValue);
     }
 
     /**
@@ -121,7 +121,7 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> KeyedSignal<K, T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), null);
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, null);
     }
 
     /**
@@ -153,7 +153,7 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> KeyedSignal<K, T> polling(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodTicks, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), AsyncSignalImpl.Polling.everyTicks(periodTicks));
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyTicks(periodTicks));
     }
 
     /**
@@ -184,6 +184,6 @@ public interface KeyedSignal<K, T> {
      */
     @NotNull
     static <K, T> KeyedSignal<K, T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Function<? super K, ? extends T> loader, long periodMillis, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, KeyStateStore.generic(), AsyncSignalImpl.Polling.everyMillis(periodMillis));
+        return new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyMillis(periodMillis));
     }
 }

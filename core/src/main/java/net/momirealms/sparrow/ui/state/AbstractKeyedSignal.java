@@ -4,11 +4,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -20,14 +19,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <P> 分区实现类型
  */
 abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> {
-    private final KeyStateStore<K, KeyState<K, T, P>> store;                                             // key -> (分区 & 句柄), 只放有分区的 key.
+    // key -> (分区 & 句柄), 只放有分区的 key. 遍历是弱一致的, clear() 因此可以边遍历边删.
+    private final ConcurrentHashMap<K, KeyState<K, T, P>> store = new ConcurrentHashMap<>();
     private final WeakHashMap<K, WeakReference<PartitionHandle<K, T>>> detached = new WeakHashMap<>();   // 分区已删但仍有人持有的句柄, key 用句柄自己那份
     private final Object detachedLock = new Object();                                                    // 保护 detached 与 keys 的首次创建, 锁序固定为主表 compute 在外
     @Nullable private volatile Keys<K> keys;                                                             // 第一次 keys() 才建, 没建过时建行删行只多一次 volatile 读
-
-    AbstractKeyedSignal(KeyStateStore<K, KeyState<K, T, P>> store) {
-        this.store = Objects.requireNonNull(store, "store");
-    }
 
     /**
      * 创建一个新分区实现.
@@ -174,7 +170,9 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
 
     @Override
     public void dirtyAll() {
-        this.store.forEachValue(state -> this.dirtyPartition(state.partition));
+        for (KeyState<K, T, P> state : this.store.values()) {
+            this.dirtyPartition(state.partition);
+        }
     }
 
     @Override
@@ -223,32 +221,32 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
 
     // 当前已激活的分区数.
     final int partitionCount() {
-        int[] count = new int[1];
-        this.store.forEachValue(ignored -> count[0]++);
-        return count[0];
+        return this.store.size();
     }
 
     // 当前仍存活的 {@link PartitionHandle} 数, 主表与旁表一起算.
     final int handleCount() {
-        int[] count = new int[1];
-        this.store.forEachValue(state -> {
+        int count = 0;
+        for (KeyState<K, T, P> state : this.store.values()) {
             if (this.liveHandle(state) != null) {
-                count[0]++;
+                count++;
             }
-        });
+        }
         synchronized (this.detachedLock) {
             for (WeakReference<PartitionHandle<K, T>> reference : this.detached.values()) {
                 if (reference.get() != null) {
-                    count[0]++;
+                    count++;
                 }
             }
         }
-        return count[0];
+        return count;
     }
 
     @Override
     public void clear() {
-        this.store.forEachKey(this::remove);
+        for (K key : this.store.keySet()) {
+            this.remove(key);
+        }
     }
 
     /**
@@ -313,9 +311,7 @@ abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements
 
         @Override
         public Set<K> get() {
-            Set<K> snapshot = new HashSet<>();
-            this.owner.store.forEachKey(snapshot::add);
-            return Collections.unmodifiableSet(snapshot);
+            return Set.copyOf(this.owner.store.keySet());
         }
 
         @Override
