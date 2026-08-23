@@ -38,7 +38,7 @@ public final class RenderCell implements AutoCloseable {
 
     /**
      * 按渲染意图渲染, 仅允许所属消费方的实体调度调用.
-     * <p>Direct 意图与 ImmediateItemProvider 直接返回立即内容并作废当前 Provider;
+     * <p>Direct 意图与 ImmediateItemProvider 直接返回立即内容, 同时作废当前 Provider.
      * 异步 Provider 消费重算要求, 空闲时提交计算, 然后返回最近完成值或占位内容.
      *
      * @param intent 本轮渲染意图
@@ -114,7 +114,7 @@ public final class RenderCell implements AutoCloseable {
             this.completeNow(generation, future);
             return;
         }
-        // 经弱引用挂接完成回调: 用户长期持有 Future 也不会钉住整个 Window
+        // 完成回调只弱持有 RenderCell, 长期未完成的 Future 不会钉住 Window
         WeakReference<RenderCell> owner = new WeakReference<>(this);
         future.whenComplete((item, throwable) -> {
             RenderCell cell = owner.get();
@@ -138,7 +138,7 @@ public final class RenderCell implements AutoCloseable {
 
     // 异步完成的写回, 在完成计算的线程上执行.
     private void completeLater(long generation, @Nullable ItemStack item, @Nullable Throwable throwable) {
-        // 任务已被作废 (Provider 换了/重开/关闭/迟到)
+        // Provider 切换, 重开或关闭都会让旧任务失效
         if (!this.inFlightToken.compareAndSet(generation, 0L)) {
             return;
         }
@@ -156,20 +156,17 @@ public final class RenderCell implements AutoCloseable {
             }
             return;
         }
-        // 值先于通知: 消费方看到脏槽位重新渲染时必能读到新值
+        // 先发布结果再通知, 消费方重渲染时一定能读到新值
         this.lastCompleted = new Completed(generation, item);
         this.onDirty();
     }
 
-    /**
-     * 要求重算当前的路径.
-     * 当前 Provider 的数据变了, 下一次渲染重新提交计算.
-     */
+    // 下一次渲染重新计算当前 Provider.
     public void dirty() {
         this.recomputeRequested.set(true);
     }
 
-    // 失效通知本身失败时走同一个处理器: 是渲染失败还是通知失败, 栈迹已经分得清.
+    // 失效通知失败也交给渲染异常出口, 栈迹仍能区分失败位置.
     private void onDirty() {
         try {
             this.invalidator.run();
@@ -209,18 +206,15 @@ public final class RenderCell implements AutoCloseable {
         this.lastCompleted = null;
     }
 
-    /**
-     * 渲染意图, 消费方装配的"本轮显示什么"声明.
-     */
     public sealed interface Intent permits Intent.Projected, Intent.Direct {
 
         /**
          * 经投影渲染 Provider.
-         * <p>{@code sourceKey} 与 {@code provider} 分开: 前者回答"还是不是同一个来源",
-         * 后者只是本轮的调用入口. 消费方每轮新建 {@code provider} 不会被当成来源变化,
+         * <p>{@code sourceKey} 标识来源是否变化, {@code provider} 是本轮调用入口.
+         * 消费方每轮新建 {@code provider} 不会被当成来源变化,
          * 因此像视觉映射那样每次求值都产出新实例的装配方式也不会反复重算.
          *
-         * @param sourceKey 来源身份, 消费方必须为同一来源稳定地给出同一个对象; 换了对象即视为换了来源
+         * @param sourceKey 来源身份, 同一来源必须稳定地给出同一个对象. 对象改变即视为新来源
          * @param provider 本轮使用的 Provider
          * @param placeholder 首次成功结果前使用的占位提供器, {@code null} 表示没有
          * @param lastResort 没有占位提供器时的兜底内容, {@code null} 表示空物品
@@ -236,9 +230,6 @@ public final class RenderCell implements AutoCloseable {
                 Objects.requireNonNull(provider, "provider");
             }
 
-            /**
-             * 以 Provider 自身作为来源身份创建 Projected.
-             */
             public Projected(
                     @NotNull ItemProvider provider,
                     @Nullable ImmediateItemProvider placeholder,
@@ -248,11 +239,6 @@ public final class RenderCell implements AutoCloseable {
             }
         }
 
-        /**
-         * 直接显示立即值.
-         *
-         * @param value 本轮直接显示的内容
-         */
         record Direct(@NotNull ItemStack value) implements Intent {
             public Direct {
                 Objects.requireNonNull(value, "value");
@@ -260,7 +246,7 @@ public final class RenderCell implements AutoCloseable {
         }
     }
 
-    // 最近完成值与它的代数, 打包成一个引用一次性发布; 代数不匹配的值在读侧视为不存在.
+    // 结果与 generation 一次性发布, 读侧忽略不属于当前 generation 的值.
     private record Completed(long generation, @NotNull ItemStack item) {
     }
 }

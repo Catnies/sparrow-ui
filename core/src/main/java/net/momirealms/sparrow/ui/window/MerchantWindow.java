@@ -18,6 +18,7 @@ public interface MerchantWindow extends Window {
      * 设置商人等级.
      *
      * @param level 0 到 5 的等级
+     * @throws IllegalArgumentException 等级超出范围时
      */
     void setLevel(int level);
 
@@ -32,6 +33,7 @@ public interface MerchantWindow extends Window {
      * 设置经验条进度.
      *
      * @param progress -1.0 表示隐藏, 否则必须位于 0.0 到 1.0
+     * @throws IllegalArgumentException 进度不是有限数或超出范围时
      */
     void setProgress(double progress);
 
@@ -264,7 +266,7 @@ public interface MerchantWindow extends Window {
         Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -277,6 +279,7 @@ public interface MerchantWindow extends Window {
          *
          * @param level 0 到 5 的等级
          * @return 此 Builder
+         * @throws IllegalArgumentException 等级超出范围时
          */
         @NotNull
         Builder setLevel(int level);
@@ -286,6 +289,7 @@ public interface MerchantWindow extends Window {
          *
          * @param progress -1.0 表示隐藏, 否则必须位于 0.0 到 1.0
          * @return 此 Builder
+         * @throws IllegalArgumentException 进度不是有限数或超出范围时
          */
         @NotNull
         Builder setProgress(double progress);

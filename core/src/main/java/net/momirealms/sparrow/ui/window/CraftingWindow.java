@@ -32,7 +32,7 @@ public interface CraftingWindow extends RecipeBookWindow {
         Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder

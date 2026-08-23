@@ -30,11 +30,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * 由一名玩家查看的 Pane 会话.
- * <p>所有变更方法都可以从任意线程调用. 命令会按玩家串行执行, 并只在玩家实体线程修改
- * Pane, 菜单和协议状态. 查询方法返回最近一次已应用状态的线程安全快照.
- *
- * @apiNote 此类的唯一实现为 {@link AbstractWindow}, 请勿创建其他子类.
+ * 一名玩家正在查看的 Pane 窗口.
+ * <p>会触碰菜单或协议状态的命令按玩家串行送入实体线程. 其余方法的线程行为由各自说明,
+ * 查询方法会注明返回配置值还是最近一次已应用的快照.
+ * <p>实现由库内 Window 层级提供, 外部代码不应自行实现此接口.
  */
 public interface Window {
 
@@ -73,7 +72,7 @@ public interface Window {
     }
 
     /**
-     * 请求打开 Window, Stage 完成表示服务端打开流程已经执行, 不表示客户端已经显示.
+     * 请求打开 Window. CompletableFuture 完成表示服务端已执行打开流程, 不表示客户端已经显示.
      *
      * @return 打开请求的执行结果
      */
@@ -81,21 +80,21 @@ public interface Window {
 
     /**
      * 从本 Window 打开下一扇 Window, 本 Window 成为它的上一扇等着被返回.
-     * <p>本 Window 已在某个会话中时新窗口加入那个会话, 不在时两者组成一段新会话;
+     * <p>本 Window 已在某个会话中时新窗口加入那个会话, 不在时两者组成一段新会话.
      * 因此无论本 Window 原本是否属于会话, 新窗口都可以经 {@link #back()} 回到这里.
      *
      * @param next 要打开的下一扇 Window, 必须与本 Window 属于同一名玩家
-     * @return 打开后的 next; 玩家不可用或所在会话已结束等打不开的情况以 null 完成
+     * @return 打开后的 next, 玩家不可用或所在会话已结束等打不开的情况以 null 完成
      */
     @NotNull CompletableFuture<Window> navigate(@NotNull Window next);
 
     /**
      * 以本 Window 的查看者创建下一扇 Window 并打开它, 语义同 {@link #navigate(Window)}.
-     * <p>此方法先同步调用 {@link Builder#build(Player)}, 因而同样受其实体线程约束;
-     * 想把构建放到别的线程, 自己 build 完再用 {@link #navigate(CompletionStage)}.
+     * <p>Builder 会在调用线程同步构建, 因而同样受 {@link Builder#build(Player)} 的线程约束.
+     * 需要异步构建时, 先取得 CompletionStage 再调用 {@link #navigate(CompletionStage)}.
      *
      * @param next 下一扇 Window 的 Builder
-     * @return 打开后的 Window; 打不开时以 null 完成
+     * @return 打开后的 Window, 打不开时以 null 完成
      */
     @NotNull
     default CompletableFuture<Window> navigate(@NotNull Builder<?, ?> next) {
@@ -104,12 +103,12 @@ public interface Window {
 
     /**
      * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #navigate(Window)}.
-     * <p>构建在哪个线程完成由调用方决定, 方法只负责把打开送进玩家的实体线程.
+     * <p>构建线程由调用方决定, 构建完成后再由玩家实体线程执行打开流程.
      * <p>发起本次调用时本 Window 所在的位置会被记下. 构建结果到达时本 Window 已经关闭, 被顶替,
      * 或者不再是所在会话的当前窗, 本次导航就此作罢, 以 null 完成, 原会话与玩家正在看的菜单都不改变.
      *
      * @param next 构建中的下一扇 Window
-     * @return 打开后的 Window; 打不开时以 null 完成
+     * @return 打开后的 Window, 打不开时以 null 完成
      */
     @NotNull
     default CompletableFuture<Window> navigate(@NotNull CompletionStage<? extends Window> next) {
@@ -118,26 +117,26 @@ public interface Window {
 
     /**
      * 回到上一扇, 上一扇以原实例重新打开.
-     * <p>只有本 Window 是某个会话的当前窗且有上一扇时才发生返回; 位于根窗或不属于任何会话时
+     * <p>只有本 Window 是某个会话的当前窗且有上一扇时才发生返回. 位于根窗或不属于任何会话时
      * 不做任何事, 本 Window 保持打开.
      *
-     * @return 返回后的新当前窗; 没有发生返回时以 null 完成
+     * @return 返回后的新当前窗, 没有发生返回时以 null 完成
      */
     @NotNull CompletableFuture<Window> back();
 
     /**
      * 回到上一扇, 没有上一扇可回时关闭本 Window.
-     * <p>有上一扇时等同 {@link #back()}; 位于根窗或不属于任何会话时等同 {@link #close()},
+     * <p>有上一扇时等同 {@link #back()}. 位于根窗或不属于任何会话时等同 {@link #close()},
      * 根窗的关闭会照常结束所在会话. 通用"返回/关闭"按钮用这个.
      *
-     * @return 返回后的新当前窗; 走了关闭路径时以 null 完成
+     * @return 返回后的新当前窗, 走了关闭路径时以 null 完成
      */
     @NotNull CompletableFuture<Window> backOrClose();
 
     /**
      * 本 Window 所属的会话.
-     * <p>{@code build()} 后尚未打开时为 null; 经 {@link #open()} 直接打开时成为新根窗并在此刻创建会话;
-     * 经 {@link #navigate} 被打开时归属上一扇所在的会话; 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
+     * <p>{@code build()} 后尚未打开时为 null. 经 {@link #open()} 直接打开时成为新根窗并在此刻创建会话,
+     * 经 {@link #navigate} 被打开时归属上一扇所在的会话. 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
      *
      * @return 所属会话, 不属于任何会话时为 null
      */
@@ -146,8 +145,8 @@ public interface Window {
 
     /**
      * 随本 Window 携带的用户对象, 通常是构建它的菜单对象.
-     * <p>库只负责保管, 从不读取其中内容; 引用的寿命与本 Window 在会话中的留存一致,
-     * 因此 STACK 弹出即弃, RETAINED_STACK 与 TREE 保留到会话结束.
+     * <p>库只保管这份引用, 不读取其中内容. 会话类型决定会话持有本 Window 的时长.
+     * 调用方继续持有 Window 时, 用户对象也会随之保留.
      *
      * @return 携带的对象, 未设置时为 null
      */
@@ -157,6 +156,7 @@ public interface Window {
     /**
      * 以给定类型读取携带的用户对象.
      *
+     * @param <T> 期望类型
      * @param type 期望类型
      * @return 携带的对象, 未设置时为 null
      * @throws ClassCastException 携带对象不是该类型时
@@ -168,7 +168,7 @@ public interface Window {
 
     /**
      * 请求关闭 Window.
-     * closeable 只限制玩家主动关闭, 不限制插件命令.
+     * <p>closeable 只限制玩家主动关闭, 不限制插件命令.
      *
      * @return 关闭请求的执行结果
      */
@@ -176,7 +176,7 @@ public interface Window {
 
     /**
      * 设置动态标题来源并请求刷新.
-     * Supplier 会在玩家实体线程读取, 且不得返回 null.
+     * Supplier 在玩家实体线程读取, 返回 null 时显示空标题.
      *
      * @param titleSupplier 标题来源
      */
@@ -213,7 +213,7 @@ public interface Window {
 
     /**
      * 播放一次标题动画, 播放期间的标题帧盖住配置标题({@link #setTitle}/{@link #setTitleSupplier}),
-     * 帧返回 {@code null} 时放行显示配置标题, 播放结束后配置标题原样露出;
+     * 帧返回 {@code null} 时放行显示配置标题, 播放结束后配置标题原样露出.
      * 同窗多次播放按开始序后来者优先, 后开始的帧放行时逐层下落到更早开始的播放.
      * <p><strong>每一拍真正的标题变化都是一次同容器编号的菜单重开加全量内容重发</strong>,
      * 所以容器现在展示的内容越复杂, 方法越贵.
@@ -239,17 +239,19 @@ public interface Window {
      *
      * @param windowSlot 协议槽位(raw slot)
      * @return 该槽位被本 Window 冻结时返回 true
+     * @throws IndexOutOfBoundsException 槽位超出 Window 范围时
      */
     boolean frozenAt(int windowSlot);
 
     /**
      * 设置指定协议槽位是否被本 Window 冻结.
-     * 冻结后该槽位与路径经过已冻结 Pane 同待遇: 不参与点击语义, 不派发任何事件, 也不分派 Item 点击,
+     * 冻结后该槽位与路径经过已冻结 Pane 同待遇. 它不参与点击语义, 不派发事件, 也不分派 Item 点击,
      * 客户端预测会被纠正回来, 显示内容不受影响.
      * 与 {@link Pane#setFrozen} 相互独立, 任一生效该槽位即被冻结, 本方法的解冻只撤销窗口侧的这一份.
      *
      * @param windowSlot 协议槽位(raw slot)
      * @param frozen true 表示冻结
+     * @throws IndexOutOfBoundsException 槽位超出 Window 范围时
      */
     void frozenAt(int windowSlot, boolean frozen);
 
@@ -325,7 +327,7 @@ public interface Window {
     void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers);
 
     /**
-     * 当前打开处理器列表的快照.
+     * 当前关闭处理器列表的快照.
      *
      * @return 不可变的处理器列表
      */
@@ -346,7 +348,7 @@ public interface Window {
      *
      * @param signal 数据源
      * @param callback 失效回调
-     * @return 订阅凭证, 跨关闭与重开始终有效, 可用于提前解绑.
+     * @return 订阅凭证, 重新打开后仍有效, 可用于提前解绑
      */
     @NotNull
     Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback);
@@ -444,8 +446,8 @@ public interface Window {
     void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
-     * 返回本 Window 的槽位视觉配置: 两层视觉映射.
-     * <p>同一 Window 始终返回同一个对象; 配置只影响本 Window 的查看者,
+     * 返回本 Window 的两层槽位视觉配置.
+     * <p>同一 Window 始终返回同一个对象. 配置只影响本 Window 的查看者,
      * 并盖在显示路径的最外层, 先于沿途 Pane 与路径终点求值.
      *
      * @return 槽位视觉配置
@@ -456,7 +458,7 @@ public interface Window {
     /**
      * 返回当前的全局视觉映射.
      *
-     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按路径终点显示
+     * @return 全局视觉映射, 没有设置过时为 {@code null}, 表示按路径终点显示
      */
     @Nullable
     default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
@@ -464,9 +466,9 @@ public interface Window {
     }
 
     /**
-     * 设置 Window 全局视觉映射. 映射盖在本 Window 每条显示路径的最外层, 命中时沿途 Pane 与路径终点不再参与显示;
+     * 设置 Window 全局视觉映射. 映射盖在本 Window 每条显示路径的最外层, 命中时沿途 Pane 与路径终点不再参与显示.
      * 输入是路径终点的同步可读内容, 约定见 {@link WindowVisual}. 返回 {@code null} 表示放行, 交给下一层.
-     * <p>映射只改变本 Window 中的展示结果, 不影响槽位元素, 事务与点击语义; 光标不归它管.
+     * <p>映射只改变本 Window 中的展示结果, 不影响槽位元素, 事务与点击语义. 光标不归它管.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
@@ -476,7 +478,7 @@ public interface Window {
 
     /**
      * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同. 提供器当场算得出结果时首帧就是真值, 用不到占位.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
@@ -496,10 +498,10 @@ public interface Window {
     }
 
     /**
-     * 返回一个 Window 槽位的显式视觉映射; 不含回退到的全局映射.
+     * 返回一个 Window 槽位的显式视觉映射, 不含回退到的全局映射.
      *
      * @param windowSlot Window 槽位
-     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
+     * @return 该槽的逐槽视觉映射, 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @Nullable
@@ -508,7 +510,7 @@ public interface Window {
     }
 
     /**
-     * 替换一个 Window 槽位的逐槽视觉映射, 它是整条显示路径层级最高的一层:
+     * 替换一个 Window 槽位的逐槽视觉映射, 它是整条显示路径层级最高的一层.
      * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
      * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
      * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
@@ -536,7 +538,7 @@ public interface Window {
 
     /**
      * 使用直接返回 ItemStack 的映射替换一个 Window 槽位的逐槽视觉映射.
-     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     * 映射返回 {@code null} 表示放行, 返回空 ItemStack 表示覆盖为空视觉.
      *
      * @param windowSlot Window 槽位
      * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
@@ -548,7 +550,7 @@ public interface Window {
 
     /**
      * 返回只控制客户端光标的视觉配置与失效范围.
-     * <p>同一 Window 始终返回同一个对象; 标脏不会影响 Window 槽位或请求全量同步.
+     * <p>同一 Window 始终返回同一个对象. 标脏不会影响 Window 槽位或请求全量同步.
      *
      * @return 光标视觉配置与失效范围
      */
@@ -565,8 +567,8 @@ public interface Window {
 
     /**
      * 设置光标视觉映射.
-     * <p>参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
-     * 映射本身在渲染线程求值, 只挑出这次用哪个提供器, 重活放进返回的提供器里;
+     * <p>参数为实际光标副本, 空光标以 null 表示. 返回 null 时保留实际光标显示.
+     * 映射本身在渲染线程求值, 只挑出这次用哪个提供器, 重活放进返回的提供器里.
      * 提供器给出结果之前显示菜单实际光标, 光标内容变化会作废尚未完成的计算与已完成的结果.
      *
      * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示移除这一层
@@ -585,7 +587,7 @@ public interface Window {
 
     /**
      * 使用直接返回 ItemStack 的映射设置光标视觉映射.
-     * 参数为实际光标副本, 空光标以 null 表示; 返回 null 时保留实际光标显示.
+     * 参数为实际光标副本, 空光标以 null 表示. 返回 null 时保留实际光标显示.
      *
      * @param cursorVisualizer 光标物品映射, {@code null} 表示移除这一层
      */
@@ -594,8 +596,9 @@ public interface Window {
     }
 
     /**
-     * 通知 Window 对指定槽位的显示内容进行更新.
-     * <p>通知可以来自任意线程; 实际渲染和协议同步会合并到玩家实体 tick.
+     * 通知 Window 更新指定槽位的显示内容.
+     * <p>通知可以来自任意线程, 实际渲染和协议同步会合并到玩家实体 tick.
+     * 超出 Window 范围的槽位会被忽略.
      *
      * @param windowSlot Window 槽位
      */
@@ -618,7 +621,7 @@ public interface Window {
 
     /**
      * 读取某个 Window 槽位最近一次渲染记下的东西, 见 {@code RenderContext.remember}.
-     * <p>槽位越界、尚未渲染或没记过时返回 {@code null}.
+     * <p>槽位越界, 尚未渲染或没记过时返回 {@code null}.
      *
      * @param windowSlot Window 槽位
      * @return 记下的东西, 没有时为 {@code null}
@@ -657,7 +660,8 @@ public interface Window {
     Pane lowerPane();
 
     /**
-     * 返回下部 Pane 按默认布局引用的 ReferencingInventory.
+     * 尝试从下部 Pane 的首槽识别 ReferencingInventory.
+     * <p>下部 Pane 必须是 9x4, 且首槽连接该 Inventory 的槽位 0. 同形的自定义 Pane 也会匹配.
      *
      * @return 默认 ReferencingInventory
      */
@@ -667,7 +671,6 @@ public interface Window {
         if (lowerPane.width() != 9 || lowerPane.height() != 4) {
             return null;
         }
-        // 默认 lower 由首槽标识; 只有需要区分同形自定义 Pane 时才记录构建来源.
         return lowerPane.element(0) instanceof Element.InventoryLink(ReferencingInventory inventory, int slot) && slot == 0
                 ? inventory
                 : null;
@@ -686,6 +689,7 @@ public interface Window {
      *
      * @param windowSlot Window 槽位
      * @return 根 Pane 链接
+     * @throws IndexOutOfBoundsException 槽位超出 Window 范围时
      */
     @NotNull
     Element.PaneLink paneAt(int windowSlot);
@@ -695,6 +699,7 @@ public interface Window {
      *
      * @param hotbarSlot 快捷栏索引
      * @return 根 Pane 链接
+     * @throws IndexOutOfBoundsException 快捷栏索引超出 0-8 时
      */
     @NotNull
     Element.PaneLink paneAtHotbar(int hotbarSlot);
@@ -712,17 +717,17 @@ public interface Window {
      * 打开请求的执行结果.
      */
     enum OpenResult {
-        OPENED,
-        ALREADY_OPEN,
-        VIEWER_UNAVAILABLE
+        OPENED,              // 已执行打开流程
+        ALREADY_OPEN,        // Window 已经打开
+        VIEWER_UNAVAILABLE   // 玩家当前无法打开菜单
     }
 
     /**
      * 关闭请求的执行结果.
      */
     enum CloseResult {
-        CLOSED,
-        ALREADY_CLOSED
+        CLOSED,          // 已执行关闭流程
+        ALREADY_CLOSED   // Window 已经关闭
     }
 
     /**
@@ -743,6 +748,7 @@ public interface Window {
 
         /**
          * 设置动态标题来源.
+         * Supplier 返回 null 时显示空标题.
          *
          * @param titleSupplier 标题来源
          * @return 此 Builder
@@ -867,7 +873,7 @@ public interface Window {
         @NotNull B setSessionKind(@NotNull WindowSession.Kind kind);
 
         /**
-         * 追加一个会话结束处理器: 本 Window 成为根窗时装进新会话, 整段交互结束时恰好触发一次.
+         * 追加一个会话结束处理器. 本 Window 成为根窗时把它装进新会话, 整段交互结束时恰好触发一次.
          * 本 Window 经 {@link Window#navigate} 接入既有会话时此声明不生效.
          *
          * @param handler 结束处理器, 参数为结束原因
@@ -1000,7 +1006,7 @@ public interface Window {
         /**
          * 使用已设置的查看者创建 Window.
          * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
-         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
+         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包.
          *
          * @return 新的未打开 Window
          * @throws IllegalStateException 未设置查看者时抛出
@@ -1010,7 +1016,7 @@ public interface Window {
         /**
          * 为指定查看者创建 Window.
          * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
-         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包;
+         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包.
          *
          * @param viewer 查看者
          * @return 新的未打开 Window
@@ -1019,7 +1025,7 @@ public interface Window {
 
         /**
          * 为指定查看者创建并请求打开 Window.
-         * <p>此方法先同步调用 {@link #build(Player)}, 因而同样受其 Bukkit 背包线程约束.
+         * <p>此入口先在调用线程执行 {@link #build(Player)}, 因而同样受其 Bukkit 背包线程约束.
          *
          * @param viewer 查看者
          * @return 打开请求的执行结果

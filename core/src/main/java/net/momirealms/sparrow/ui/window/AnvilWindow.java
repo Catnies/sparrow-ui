@@ -40,7 +40,7 @@ public interface AnvilWindow extends Window {
 
     /**
      * 设置输入槽为空时是否以不可见占位物保持文本框可编辑.
-     * <p>启用后, 占位物会携带最近一次由客户端提交的重命名文本;
+     * <p>启用后, 占位物会携带最近一次由客户端提交的重命名文本.
      * 纠正客户端对空输入槽的点击预测时, 文本框不会被空名称重置.
      *
      * @param textFieldAlwaysEnabled 是否始终启用文本框
@@ -105,7 +105,7 @@ public interface AnvilWindow extends Window {
         @NotNull Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder

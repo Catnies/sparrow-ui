@@ -29,33 +29,17 @@ final class PlayerCommandLane {
         this.retiredHandler = retiredHandler;
     }
 
-    // 判断通道是否属于同一个 Player 实例
     boolean belongsTo(@NotNull Player player) {
         return this.player == player;
     }
 
-    /**
-     * 提交可在当前实体线程内联执行的命令.
-     *
-     * @param action 玩家仍可调度时执行的操作
-     * @param retiredAction 玩家实体退役后执行的替代操作
-     * @param <T> 操作结果类型
-     * @return 对应操作的完成阶段
-     */
+    // 当前线程拥有实体区域且通道空闲时允许内联执行.
     @NotNull
     <T> CompletionStage<T> submit(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
         return this.submit(action, retiredAction, true);
     }
 
-    /**
-     * 提交必须在后续 Entity tick 执行的命令.
-     * 用于 Bukkit 回调等不能在当前改变 Window 生命周期的场景.
-     *
-     * @param action 玩家仍可调度时执行的操作
-     * @param retiredAction 玩家实体退役后执行的替代操作
-     * @param <T> 操作结果类型
-     * @return 对应操作的完成阶段
-     */
+    // Bukkit 回调等场景需要把生命周期变化推迟到后续 Entity tick.
     @NotNull
     <T> CompletionStage<T> submitDeferred(@NotNull Callable<T> action, @NotNull Callable<T> retiredAction) {
         return this.submit(action, retiredAction, false);
@@ -63,7 +47,7 @@ final class PlayerCommandLane {
 
     /**
      * 在锁内决定命令是立即 drain, 安排实体调度还是按注销路径完成.
-     * 调度器调用发生在锁外, 避免 retired 回调与命令队列锁形成重入关系.
+     * 调度器调用放在锁外, retired 回调可以安全重入命令通道.
      *
      * @param action 玩家仍可调度时执行的操作
      * @param retiredAction 玩家实体不可用时执行的替代操作
@@ -78,7 +62,6 @@ final class PlayerCommandLane {
         boolean retireNow = false;
         boolean owned = this.scheduler.entity().isOwnedByCurrentRegion(this.player);
 
-        // 决定命令的走向
         synchronized (this) {
             if (this.retired) {
                 retireNow = true;
@@ -114,11 +97,7 @@ final class PlayerCommandLane {
         return command.stage();
     }
 
-    /**
-     * 注销命令通道: 之后不再接收新命令, 注销回调与尚未执行的命令都按 retired 路径收尾.
-     * <p>注销可以来自任意线程(过期通道被重连后的新 Player 顶掉时尤其如此), 因此收尾同样走 {@link #terminate}
-     * 的执行权交接, 不会落在正在执行的命令中间.
-     */
+    // 退役可以来自任意线程, terminate 会把收尾交给当前持有 drain 权的线程.
     void retire() {
         this.terminate(() -> this.retiredHandler.accept(this));
     }
@@ -127,7 +106,7 @@ final class PlayerCommandLane {
      * 关停通道并交出最后一条收尾命令, 之后不再接收新命令.
      * <p>通道空闲时由当前线程接管执行权后直接执行收尾, 正在别处 drain 时把收尾交给那条线程在退出前执行,
      * 两条走向都保证收尾不与通道里的命令并发. 通道已经关停时不再收尾, 先到的那次已经接手.
-     * <p>本方法不触发注销回调, 需要它的调用方自己放进 teardown.
+     * <p>注销回调由调用方放进 teardown.
      *
      * @param teardown 收尾命令
      */
@@ -151,7 +130,6 @@ final class PlayerCommandLane {
         this.completeRetired(pending);
     }
 
-    // 执行收尾命令并交还 drain 权.
     private void runTerminal(@NotNull Runnable teardown) {
         try {
             teardown.run();
@@ -162,11 +140,7 @@ final class PlayerCommandLane {
         }
     }
 
-    /**
-     * 在异步线程按注销路径完成给定命令.
-     *
-     * @param pending 要完成的命令
-     */
+    // retiredAction 在异步线程执行, 不占用调度器或注销调用栈.
     private void completeRetired(List<Command<?>> pending) {
         if (pending.isEmpty()) {
             return;
@@ -178,11 +152,7 @@ final class PlayerCommandLane {
         });
     }
 
-    /**
-     * 实体调度提交失败时注销通道, 并以异常完成所有待执行命令.
-     *
-     * @param failure 调度失败原因
-     */
+    // 调度提交失败会退役通道, 所有待执行命令以同一异常完成.
     void fail(@NotNull Throwable failure) {
         List<Command<?>> pending;
         synchronized (this) {
@@ -194,7 +164,7 @@ final class PlayerCommandLane {
             this.scheduled = false;
             pending = this.takePending();
         }
-        // 统一转到异步线程完成异常, 避免在调度器调用栈里触发调用方回调
+        // 异步完成 Future, 调用方回调不会进入调度器调用栈
         this.retiredHandler.accept(this);
         this.scheduler.async().runNow(() -> {
             for (int index = 0; index < pending.size(); index++) {
@@ -203,9 +173,7 @@ final class PlayerCommandLane {
         });
     }
 
-    /**
-     * 实体调度回调: 接管 drain 权并开始执行队列中的命令.
-     */
+    // 实体调度回调接管 drain 权.
     private void runScheduled() {
         synchronized (this) {
             this.scheduled = false;
@@ -259,9 +227,7 @@ final class PlayerCommandLane {
     }
 
     /**
-     * 取出并清空全部待执行命令, 只能在锁内调用.
-     *
-     * @return 待执行命令的不可变快照
+     * 取出全部待执行命令. <strong>必须持有 this 锁调用</strong>.
      */
     private List<Command<?>> takePending() {
         if (this.commands.isEmpty()) {
@@ -272,33 +238,28 @@ final class PlayerCommandLane {
         return List.copyOf(pending);
     }
 
-    // 队列中的一次命令
     private static final class Command<T> {
-        private final Callable<T> action; // 正常命令
-        private final Callable<T> retiredAction; // 实体不可用后的替代命令
-        private final CompletableFuture<T> completion = new CompletableFuture<>(); // 命令结果
+        private final Callable<T> action;
+        private final Callable<T> retiredAction;
+        private final CompletableFuture<T> completion = new CompletableFuture<>();
 
         private Command(Callable<T> action, Callable<T> retiredAction) {
             this.action = action;
             this.retiredAction = retiredAction;
         }
 
-        // 返回命令结果的只读完成阶段.
         private CompletionStage<T> stage() {
             return this.completion.minimalCompletionStage();
         }
 
-        // 按正常命令执行并完成结果
         private void run() {
             this.complete(this.action);
         }
 
-        // 按实体不可用路径执行并完成结果
         private void retire() {
             this.complete(this.retiredAction);
         }
 
-        // 以异常完成命令结果
         private void fail(Throwable throwable) {
             this.completion.completeExceptionally(throwable);
         }

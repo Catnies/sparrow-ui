@@ -64,9 +64,8 @@ final class BukkitInventoryBridge {
         try {
             Bukkit.getPluginManager().callEvent(event);
             if (event.isCancelled()) return false;
-            // 拖拽事件的 setCursor 写的是事件自己的字段而不是 InventoryView, 在这里回传.
-            // 事件构造时用的就是这份 newCursor, 值没变说明没人调过 setCursor —— 不写, 否则每次拖拽
-            // 都会被记成一次监听器写入, 候选作废后就再也不会重规划.
+            // setCursor 只写事件字段, 与构造值不同时才算监听器改过光标.
+            // 把未改动的值记入草稿会让候选在复核时失效.
             if (!ItemUtils.isContentEqual(newCursor, event.getCursor())) {
                 edits.cursor(event.getCursor());
             }

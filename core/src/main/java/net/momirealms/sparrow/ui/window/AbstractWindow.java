@@ -99,46 +99,45 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     ) {
     }
 
-    // 系统常量
-    private static final int INCOMING_PER_TICK = 128;               // 每 tick 最多处理的入站输入数, 防止单个玩家占满实体线程
-    private static final int CURSOR_AUDIT_INTERVAL = 20;            // 光标复核周期(tick), 定期纠正客户端的光标预测
-    private static final long PING_TIMEOUT_MILLIS = 30_000;         // 窗口状态 Ping 的超时时间, 超时未收到 Pong 就丢弃
-    private static final int STATE_ID_RING = 32768;                 // 原版 state id 取值范围
-    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());   // 空的 BitSet 脏位槽
+    private static final int INCOMING_PER_TICK = 128;       // 每 tick 的入站输入上限
+    private static final int CURSOR_AUDIT_INTERVAL = 20;    // 光标复核周期(tick)
+    private static final long PING_TIMEOUT_MILLIS = 30_000; // Window 状态确认超时
+    private static final int STATE_ID_RING = 32768;         // 原版 state id 取值范围
+    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());
 
     // 身份与固定配置, 构造后不变
     private final WindowManager manager;
     private final Player viewer;
     private final WindowLayout layout;
-    private final @Nullable Object data;                // 随窗携带的用户对象
-    private final WindowSession.Kind rootSessionKind;       // 成为链根时新会话的类型
+    private final @Nullable Object data;
+    private final WindowSession.Kind rootSessionKind; // 成为根窗时采用的会话类型
     private final List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
-    private final Bindings bindings = Bindings.suspended(); // 本 Window 持有的 Signal 绑定, 出生即挂起, 首次打开才挂上
+    private final Bindings bindings = Bindings.suspended(); // 声明跨重开保留, 订阅只在打开期挂载
 
     // 用户处理器
-    private final HandlerList<Runnable> openHandlers;   // 打开处理器
-    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;  // 关闭处理器
-    private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;   // 容器外点击处理器
-    private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;         // 窗口状态确认处理器
+    private final HandlerList<Runnable> openHandlers;
+    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;
+    private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;
+    private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;
 
     // 生命周期
-    private volatile boolean open;      // Window 是否处于打开状态
-    private volatile long generation;   // 当前打开代际, 用来隔离迟到的输入和通知
-    private volatile @Nullable AbstractWindowSession session; // 所属会话, 不在任何链上时为 null
-    private @Nullable M menuHandle;     // 当前菜单句柄, 关闭时为 null; 仅玩家实体线程访问
-    private @Nullable ScheduledTask tickTask; // 周期 tick 任务; 仅玩家实体线程访问
-    private long windowTick;            // 本次打开以来的 tick 计数; 仅玩家实体线程访问
+    private volatile boolean open;
+    private volatile long generation; // 每次打开都会递增, 用来隔离迟到输入与通知
+    private volatile @Nullable AbstractWindowSession session;
+    private @Nullable M menuHandle; // 关闭时为 null, 仅玩家实体线程访问
+    private @Nullable ScheduledTask tickTask; // 仅玩家实体线程访问
+    private long windowTick; // 本次打开以来的 tick 计数
 
     // 行为开关
-    private volatile boolean closeable; // 是否接受客户端主动关闭
-    private volatile boolean backOnPlayerClose; // 玩家主动关闭时所在会话是否返回来源窗口
-    private volatile boolean offhandFrozen; // 是否阻止玩家经此 Window 交换副手
+    private volatile boolean closeable;
+    private volatile boolean backOnPlayerClose;
+    private volatile boolean offhandFrozen;
 
     // 标题
-    private volatile Component title;   // 最近一次已应用的标题快照
-    private volatile Supplier<? extends Component> titleSupplier; // 动态标题来源
-    private @Nullable Component sentTitle; // 最近一次成功进入发送流程的标题; 仅玩家实体线程访问
-    private boolean titleDirty;         // 标题是否待重开; 仅玩家实体线程访问
+    private volatile Component title; // 最近一次已应用的配置标题
+    private volatile Supplier<? extends Component> titleSupplier;
+    private @Nullable Component sentTitle; // 最近一次进入发送流程的有效标题
+    private boolean titleDirty;
 
     // 标题动画
     private final Object titleAnimationLock = new Object(); // 只保护标题动画通道数组替换, 失效投递一律出了锁再做
@@ -157,7 +156,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private boolean forceReopen;    // 即使标题相同也必须重开菜单
 
     // 槽位视觉
-    private final WindowVisualImpl windowVisual;        // Window 槽位视觉配置与逐槽显示路径失效订阅
+    private final WindowVisualImpl windowVisual;
 
     // 光标
     private boolean cursorDirty;    // 光标是否需要重新核对
@@ -185,17 +184,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 窗口状态与 Ping/Pong 确认
     private final Int2ObjectArrayMap<PendingWindowState> pendingWindowStates = new Int2ObjectArrayMap<>(); // 等待 Pong 确认的窗口状态, Ping id -> 待确认状态
-    private volatile int serverWindowState; // 最近一次设置的服务器窗口状态
-    private volatile int clientWindowState; // 最近一次收到 Pong 确认的客户端窗口状态
+    private volatile int serverWindowState;
+    private volatile int clientWindowState;
 
-    /**
-     * 根据设置创建 Window.
-     *
-     * @param manager Window 管理器
-     * @param viewer 查看者
-     * @param layout 预编译的窗口布局
-     * @param settings Builder 整理好的行为设置
-     */
     AbstractWindow(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull WindowLayout layout, @NotNull Settings settings) {
         this.manager = manager;
         this.viewer = viewer;
@@ -261,35 +252,22 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.submit(this::notifyUpdateTitle, "Failed to refresh Window title");
     }
 
-    /**
-     * 更新本地配置标题快照.
-     *
-     * @param title 新标题
-     */
     void notifyUpdateTitle(Component title) {
         this.title = title;
         this.recomputeTitleDirty();
     }
 
-    // 按有效标题重算是否欠客户端一次重开, 配置标题写入与标题动画的帧推进、摘层共用这一条判定.
+    // 按有效标题重算是否欠客户端一次重开, 配置标题写入, 帧推进和摘层共用这一条判定.
     private void recomputeTitleDirty() {
         if (this.open) {
             this.titleDirty = !Objects.equals(this.sentTitle, this.effectiveTitle());
         }
     }
 
-    /**
-     * 重新读一次标题 supplier 并发布到本地快照, 已打开时安排重开标题.
-     */
     void notifyUpdateTitle() {
         this.notifyUpdateTitle(this.refreshTitle());
     }
 
-    /**
-     * 重新读一次标题 supplier 并写进本地快照, supplier 返回 null 时按空标题处理.
-     *
-     * @return 新标题
-     */
     private Component refreshTitle() {
         Component component = this.titleSupplier.get();
         this.title = component != null ? component : Component.empty();
@@ -338,7 +316,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return playing;
     }
 
-    // 标题动画的帧推进与摘层共用的失效投递: 排到实体线程重算标题是否待重开.
+    // 标题动画的帧推进与摘层共用这条失效投递, 由实体线程重算标题是否待重开.
     // titleDirty 仅实体线程访问, 时钟回调只许经这里投递, 不得直写.
     void notifyTitleAnimationChanged() {
         this.submit(this::recomputeTitleDirty, "Failed to update Window title animation");
@@ -627,12 +605,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * 更新服务器窗口状态, 并给客户端发一个独立 Ping.
-     * Ping id 随机生成并暂存状态, 收到同 id 的 Pong 才推进客户端状态快照.
-     *
-     * @param windowState 新的服务器窗口状态
-     */
+    // 每次更新分配独立 Ping id, 收到匹配的 Pong 才推进客户端状态快照.
     private void updateWindowStateOnEntity(int windowState) {
         this.serverWindowState = windowState;
         MenuHandle menu = this.menuHandle;
@@ -859,16 +832,16 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         boolean menuOpening = false;
 
         try {
-            // 绑定跟随打开期: 上一次关闭时摘掉的声明在这里重新挂上, 首帧渲染前必须就位
+            // 绑定只在打开期挂载, 首帧渲染前恢复上次关闭时摘掉的订阅
             this.bindings.resumeAll();
             for (int windowSlot = 0; windowSlot < this.layout.size(); windowSlot++) {
                 Element.PaneLink link = this.layout.paneAt(windowSlot);
                 paths[windowSlot] = new DisplayedSlotPath(this, windowSlot, link.pane(), link.slot());
             }
 
-            // build 可以发生在任意线程; 首帧渲染前在 viewer 实体线程刷新实际连接的 ReferencingInventory
+            // build 可以发生在任意线程. 首帧渲染前在 viewer 实体线程刷新实际连接的 ReferencingInventory
             this.refreshLinkedInventories(paths);
-            // 构造路径会标记初始 dirty; 全部路径就绪后统一渲染一次, 后续到达的通知留给首个 tick
+            // 路径构造会标记初始 dirty. 全部就绪后渲染首帧, 后续通知留给第一个 tick
             this.renderDirtySlots(this.takeDirtySlots(), paths, localSlots);
             this.prepareVirtualContent(menuHandle, localSlots);
 
@@ -937,7 +910,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         // PacketHandler 在 Paper 的限流器之前, 所以这里要自己限制包速率, 防止恶意刷包
-        // 溢出后按 UNKNOWN 原因强制关闭 Window;
+        // 溢出后按 UNKNOWN 原因强制关闭 Window
         if (menuHandle.hasInputOverflowed()) {
             SparrowUI.getInstance().handleException(
                     "Closing Window because its incoming packet queue overflowed",
@@ -974,11 +947,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.flush(false);
     }
 
-    /**
-     * 把已经通过 generation 筛选的协议输入分给对应的处理流程.
-     *
-     * @param input 待分发的协议输入
-     */
     private void handleInput(MenuInput input) {
         switch (input) {
             case MenuInput.Common.Interaction interaction ->    this.handleInteraction(interaction);
@@ -989,12 +957,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 校验交互是否属于当前容器状态, 解释成点击或拖拽后分发给 Pane 或容器外处理器.
-     * 不可信的输入会强制全量恢复; 正常的输入只复核客户端预测碰过的槽位.
-     *
-     * @param interaction 待处理的交互
-     */
+    // 不可信的输入触发全量恢复, 正常输入只复核客户端预测碰过的槽位.
     private void handleInteraction(MenuInput.Common.Interaction interaction) {
         M menu = this.menuHandle;
         // 不属于当前状态的输入就重置解释器, 强制全量同步
@@ -1014,8 +977,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理一次已经解释好的单击: Inventory 槽位先形成精确候选, 再依次派发 Bukkit 和 Sparrow 事件并提交.
-     * <p>无论是否算出候选, 每一次点击都会派发一次 Bukkit 事件; Item 和空槽位仍按原有顺序先过 Bukkit 事件再分派.
+     * 处理一次已经解释好的单击. Inventory 槽位先形成精确候选, 再依次派发 Bukkit 和 Sparrow 事件并提交.
+     * <p>通过输入与冻结检查后, 即使没有 Inventory 候选也会派发 Bukkit 事件.
+     * Item 和空槽位仍按原有顺序先过 Bukkit 事件再分派.
      * 语义动过的槽位已经标脏, 客户端预测会在同一 tick 的 flush 中被服务端渲染结果纠正.
      *
      * @param click 解释好的单击
@@ -1031,7 +995,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         ClickGuard guard = new ClickGuard(menu, click);
         if (rawSlot != InventoryView.OUTSIDE) {
             DisplayedSlotPath path = this.requirePath(rawSlot);
-            // Inventory 槽位先给语义引擎; 引擎不接管的(Item/空槽)走普通 Item 分派
+            // Inventory 槽位先给语义引擎, 引擎不接管的 Item/空槽再走普通 Item 分派
             BundleSelectionState bundleSelection = this.bundleSelections[rawSlot];
             boolean handled = ClickSemantics.handleClick(
                     this.semanticsContext,
@@ -1067,7 +1031,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!guard.refreshEventView() || !guard.allowBukkitClick(click, action) || !guard.stillValid()) {
             return;
         }
-        // 容器外点击: 先通知外部处理器, 未取消再交给语义引擎
+        // 容器外点击先通知外部处理器, 未取消再交给语义引擎
         WindowOutsideClick event = new WindowOutsideClick(this.viewer, this, click.clickType(), menu.cursor(), click.hotbarButton());
         this.outsideClickHandlers.forEachIsolated(
                 handler -> handler.accept(event),
@@ -1081,10 +1045,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 处理一次完成的 QUICK_CRAFT 拖拽: 先规划并按放入规则过滤, 再把真实分配候选交给 Bukkit 事件,
+     * 处理一次完成的 QUICK_CRAFT 拖拽. 先规划并按放入规则过滤, 再把真实分配候选交给 Bukkit 事件,
      * 最后把手势本身通知给途经的每个 Item.
-     * <p>未取消时, 参与的 Inventory 槽位构成一个事务; Item 槽位不参与分配.
-     * <p>Item 通知只看手势成不成立: 引擎是否接管, 分配是否被放入规则全部过滤, Bukkit 事件是否被取消, 都不影响它.
+     * <p>未取消时, 参与的 Inventory 槽位构成一个事务. Item 槽位不参与分配.
+     * <p>Item 通知只看手势能否成立. 引擎是否接管, 分配是否通过放入规则, Bukkit 事件是否取消, 都不影响它.
      *
      * @param drag 解释好的拖拽
      * @param menu 当前菜单
@@ -1101,7 +1065,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.dispatchItemDragClick(drag, cursor);
     }
 
-    // 把拖拽手势通知给途经的每个 Item. 手势本身不成立时不打扰 Item: 空光标没有东西可分发,
+    // 把拖拽手势通知给途经的每个 Item. 空光标没有东西可分发,
     // 非创造模式的中键拖拽在原版语义里不存在. 两个条件与 ClickPlanner 判定拖拽候选时一致.
     private void dispatchItemDragClick(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
         if (cursor.isEmpty() || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
@@ -1141,12 +1105,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         menu.resetBukkitEventView(this.protocolSlots(localSlots), pending, menu.cursor());
     }
 
-    /**
-     * 处理客户端发来的关闭包.
-     * 不允许关闭的 Window 会立刻用当前标题和全量内容重新打开, 而不是交给 Bukkit 的外部关闭处理器否决.
-     *
-     * @param packet 关闭包
-     */
+    // 不接受玩家关闭时, 立即重开当前菜单并重发全部内容.
     private void handleClose(MenuInput.Common.Close packet) {
         // 不是当前容器的关闭包, 直接忽略
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
@@ -1161,19 +1120,14 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 处理客户端的收纳袋选择包.
-     * 选择只转发给 Pane 槽位, 不同步客户端已经维护的本地选择状态.
-     *
-     * @param packet 收纳袋选择包
-     */
+    // 选择只转发给 Pane 槽位, 客户端已经维护的本地状态不再回发.
     private void handleBundleSelection(MenuInput.Common.BundleSelection packet) {
         this.clickInterpreter.reset();
         // 不是当前容器的包, 直接忽略
         if (this.menuHandle == null || packet.containerId() != this.menuHandle.containerId()) {
             return;
         }
-        // 槽位或选择索引不合法: 强制全量纠正
+        // 槽位或选择索引不合法时强制全量纠正
         if (packet.slot() < 0 || packet.slot() >= this.layout.protocolSize() || packet.selectedIndex() < -1) {
             this.forceFull = true;
             return;
@@ -1182,13 +1136,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.requirePath(packet.slot()).handleBundleSelect(new BundleSelectClick(this.viewer, this, packet.slot(), packet.selectedIndex()));
     }
 
-    /**
-     * 记录客户端在某个协议槽位(raw slot)看到的 Bundle 与实际选择.
-     * 重复选择同一项, 取消选择或越界索引都按原版规则清除.
-     *
-     * @param rawSlot Bundle 所在的协议槽位(raw slot)
-     * @param requestedIndex 客户端请求切换到的内部索引
-     */
+    // 重复选择同一项, 取消选择或越界索引都按原版规则清除.
     private void updateBundleSelection(int rawSlot, int requestedIndex) {
         ItemStack[] localSlots = this.localSlots;
         if (localSlots == null) {
@@ -1215,11 +1163,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.bundleSelections[rawSlot] = new BundleSelectionState(bundle.clone(), requestedIndex);
     }
 
-    /**
-     * 收到客户端 Pong: 找到对应的待确认窗口状态, 推进客户端状态并通知确认处理器.
-     *
-     * @param packet Pong 包
-     */
+    // 匹配的 Pong 推进客户端状态快照, 并通知确认处理器.
     private void handlePong(MenuInput.Common.Pong packet) {
         PendingWindowState pending = this.pendingWindowStates.remove(packet.id());
         if (pending == null) return;
@@ -1232,17 +1176,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         );
     }
 
-    /**
-     * 处理特殊 Window 类型的协议输入.
-     *
-     * @param input Window 专属输入
-     */
+    // 具体 Window 可以接管自己的协议输入.
     protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
     }
 
     /**
      * 让某个槽位上当前显示的 Item 直接处理这次点击.
-     * <p>这条路不经过 Bukkit 的 InventoryClickEvent;
+     * <p>这条路不经过 Bukkit 的 InventoryClickEvent.
      * Pane 冻结, 背景和空路径仍按 {@link DisplayedSlotPath} 的普通 Item 规则决定是否分发.
      *
      * @param windowSlot Window 槽位
@@ -1252,13 +1192,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.requirePath(windowSlot).handleClick(new ItemClick(clickType, this.viewer, this, this.semanticsContext.cursor(), windowSlot, -1));
     }
 
-    /**
-     * 返回指定 Window 槽位的显示路径.
-     *
-     * @param windowSlot Window 槽位
-     * @return 显示路径
-     * @throws IllegalStateException 槽位没有显示路径时抛出
-     */
     private DisplayedSlotPath requirePath(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
         if (paths == null || paths[windowSlot] == null) {
@@ -1269,7 +1202,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 确认候选经过事件或 Pre 后仍属于当前交互.
-     * 处理器可能已经关闭或重开 Window, 改变菜单状态, 或替换任一协议槽位的 InventoryLink / 冻结语义;
+     * 处理器可能已经关闭或重开 Window, 改变菜单状态, 或替换任一协议槽位的 InventoryLink / 冻结语义.
      * 任一条件变化都会让旧候选作废, 不重新规划.
      *
      * @param interactionGeneration 交互开始时的 generation
@@ -1309,12 +1242,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 && this.interactionPathRevision.get() == interactionPathRevision;
     }
 
-    /**
-     * 记下一个协议槽位的交互结构变了 (叶 Element 变化, InventoryLink 或 Frozen 操作).
-     * <p>这意味着这个槽位如果还有客户端已发出但服务端未收到的包, 一律按过时丢弃.
-     *
-     * @param windowSlot 结构发生变化的 Window 槽位
-     */
+    // 客户端尚未见过新结构时发出的点击会被当作过时输入.
     void notifyInteractionStructureChanged(int windowSlot) {
         if (windowSlot >= 0 && windowSlot < this.structureBarriers.length) {
             this.pendingStructureSlots.set(windowSlot);
@@ -1359,7 +1287,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 对指定路径数组里的连接Inventory逐一刷新, 同一个Inventory只刷新一次.
+     * 逐一刷新路径连接的 Inventory, 同一个 Inventory 只刷新一次.
      * <p>这个方法每 tick 都跑, 但要刷新的其实就那么一两个 Inventory, 而且几乎从不变化.
      * 所以名单收集一次就存下来, 只在显示路径重建过, 或者哪个 Pane 改了声明时才重新收集.
      *
@@ -1397,7 +1325,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             sequences.addAll(declared);
         });
 
-        // Pane 声明关联的 Inventory 一个槽位都没被展示, 但它同样参与点击, 外部变更也要吸收;
+        // Pane 声明的 Inventory 即使没有展示槽位, 也参与点击并吸收外部变化.
         ArrayList<Object> sequenceMembers = new ArrayList<>(sequences.size());
         for (InventorySequence sequence : sequences) {
             List<SparrowInventory> members = sequence.inventories();
@@ -1414,7 +1342,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 检查上次收集之后有没有哪个 Pane 改过声明, 或者哪个序列换过成员.
-     * <p>Pane 用写时复制保存声明, 序列每次增减成员也换一份新名单, 所以两边都比引用就够,不必逐个比内容.
+     * <p>Pane 用写时复制保存声明, 序列每次增减成员也换一份新名单, 两边比较引用即可.
      *
      * @return 需要重新收集时返回 true
      */
@@ -1437,21 +1365,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return false;
     }
 
-    /**
-     * 丢弃存下来的刷新名单.
-     * <p>显示路径重建之后, 路径终点连接的 Inventory 和路径经过的 Pane 都可能换了.
-     */
+    // 显示路径重建后, 路径终点与沿途 Pane 都可能换掉.
     void invalidateRefreshTargets() {
         this.refreshInventories = null;
     }
 
-    /**
-     * 遍历指定路径数组终点的 InventoryLink.
-     *
-     * @param paths 显示路径, 为 null 时不做任何事
-     * @param semanticOnly 是否只遍历参与点击的连接(跳过 Pane 冻结槽与 Window 虚拟槽位)
-     * @param action 对每个终点连接执行的操作
-     */
+    // semanticOnly 会跳过冻结路径与 Window 虚拟槽位.
     private void forEachLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
             boolean semanticOnly,
@@ -1473,13 +1392,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 遍历显示路径经过的每一层 Pane 所声明的额外参与 Inventory.
-     * <p>同一个 Inventory 可能被多个 Pane 声明, 因此会重复交给 {@code action}, 由调用方去重.
-     *
-     * @param paths 显示路径, 为 null 时不做任何事
-     * @param action 对每个声明的 Inventory 执行的操作
-     */
+    // 同一 Inventory 可能由多个 Pane 声明, 去重交给调用方.
     private void forEachPaneLinkedInventory(
             @Nullable DisplayedSlotPath[] paths,
             @NotNull Consumer<SparrowInventory> action
@@ -1495,12 +1408,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         });
     }
 
-    /**
-     * 遍历显示路径经过的每一层 Pane. 同一个 Pane 出现在多条路径上时会重复交给 {@code action}.
-     *
-     * @param paths 显示路径, 为 null 时不做任何事
-     * @param action 对每一层 Pane 执行的操作
-     */
     private void forEachPathPane(@Nullable DisplayedSlotPath[] paths, @NotNull Consumer<? super Pane> action) {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
@@ -1523,7 +1430,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (!this.open || menu == null || localSlots == null || paths == null) {
             return;
         }
-        // 视觉配置换了要重算; 完成通知只是把算好的结果刷出去, 不构成新的重算要求
+        // 视觉配置变化后重新计算. 完成通知只刷出已有结果, 不再触发计算
         boolean cursorVisualDirty = this.cursorVisual.takeDirty();
         if (cursorVisualDirty) this.cursorRenderCell.dirty();
         this.cursorDirty |= cursorVisualDirty || this.cursorCompletionPending.getAndSet(false);
@@ -1781,7 +1688,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         } catch (Throwable throwable) {
             failure = ThrowableUtils.combine(failure, throwable);
         }
-        // 绑定只在打开期有效: 摘掉当次订阅, 声明留到下次打开再挂
+        // 摘掉本次打开的订阅, 绑定声明留到下次打开再挂
         try {
             this.bindings.suspendAll();
         } catch (Throwable throwable) {
@@ -1834,7 +1741,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 把一个不需要返回结果的命令排到玩家的实体线程执行.
-     * 执行或调度失败会统一上报, 玩家实体不可用后命令会被忽略.
+     * 执行或调度失败会在此处上报, 玩家实体不可用后命令会被忽略.
      *
      * @param action 要执行的命令
      * @param failureMessage 失败时的报告文本
@@ -1883,7 +1790,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     /**
      * 按显示顺序收集去重后的连接 Inventory 及各自参与点击语义的槽位.
-     * 默认只包含经未冻结协议槽展示的 Inventory 槽位: Pane 冻结槽和 Window 虚拟槽位展示的槽位不参与,
+     * 默认只包含经未冻结协议槽展示的 Inventory 槽位. Pane 冻结槽和 Window 虚拟槽位展示的槽位不参与,
      * 未被 Pane 展示的槽位同样不参与, 转移与收集都不会穿透它们.
      * 开启 Inventory 的 includeObscuredSlots 后其未展示槽位也参与, 但 Pane 冻结槽展示的槽位始终不参与.
      *
@@ -1911,7 +1818,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     /**
-     * 把未展示槽位扩入参与集. 仅经冻结协议槽展示的槽位仍被排除: 穿透修复不随开关放开.
+     * 把未展示槽位扩入参与集. 仅经冻结协议槽展示的槽位仍被排除, 穿透修复不随开关放开.
      *
      * @param inventory 已有可见槽位的连接 Inventory
      * @param visibleSlots 经未冻结协议槽展示的槽位
@@ -1957,9 +1864,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return failure;
     }
 
-    /**
-     * ClickSemantics 的交互上下文
-     */
     private final class SemanticsContext implements ClickSemantics.Context {
 
         @Override
@@ -1980,7 +1884,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return AbstractWindow.this.requirePath(windowSlot).frozen();
         }
 
-        // 当场渲染而不是读本地快照: 双击的两个包可能落在同一 tick 里, 那时快照还停在第一个包之前的样子.
+        // 双击的两个包可能落在同一 tick, 本地快照此时还停在第一个包之前, 所以要当场渲染.
         @Override
         public boolean displayedEmptyAt(int windowSlot) {
             DisplayedSlotPath[] paths = AbstractWindow.this.paths;
@@ -1994,7 +1898,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             try {
                 return path.render().isEmpty();
             } catch (Throwable throwable) {
-                // 读不出这一格显示什么就当它有东西: 收集的前提是玩家看到一格空位, 存疑时不放行.
+                // 收集要求玩家看到空位, 无法确认显示内容时按非空处理.
                 SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);
                 return false;
             }
@@ -2072,7 +1976,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         private final long generation;
         private final int stateId;
         private final long pathRevision;
-        // 本次交互是否派发 Bukkit 事件, 开始时定下来: 重置事件状态副本, 实际派发和取回事件写入必须按同一个答案走
+        // 是否派发 Bukkit 事件在交互开始时定下, 重置副本与取回事件写入必须使用同一结果
         private final boolean fireBukkitEvents;
 
         // Bukkit 事件在没有插件监听时不派发, Paper 自己派发事件前也是这么判断的.
@@ -2094,7 +1998,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return this.fireBukkitEvents;
         }
 
-        // 派发 Bukkit 事件前先让 Bukkit 事件状态副本对齐服务端渲染结果; 渲染本身可能跑用户代码, 之后要重新复核.
+        // 派发 Bukkit 事件前先让事件副本对齐服务端渲染结果. 渲染可能运行用户代码, 之后还要复核状态.
         boolean refreshEventView() {
             // 不派发 Bukkit 事件就没人读这份副本, 那次渲染纯属白跑
             if (!this.fireBukkitEvents) return true;
@@ -2112,7 +2016,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         // 取走事件写进 Bukkit 事件状态副本的光标和槽位并合并进草稿. 这些写入会被下一次 refreshEventView 覆盖, 事件一返回就得取.
         void drainEventEdits(InteractionEdits edits) {
-            // 没派发事件就没有本次事件的写入; 副本里残留的是更早的外部写入, 不能算进这次交互
+            // 未派发事件时, 副本中的残留写入不属于本次交互
             if (!this.fireBukkitEvents) return;
             ItemStack cursor = this.menu.takeBukkitEventCursor();
             if (cursor != null) {
@@ -2133,9 +2037,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 单击的交互闸门: 先派发 Bukkit 点击事件, 再派发被直接连接 Inventory 的点击事件.
-     */
+    // 单击先经过 Bukkit, 再派发到直接连接的 Inventory.
     private final class ClickGuard extends InteractionGuard {
         private final ClickInterpreter.Result.SingleClick click;
 
@@ -2151,7 +2053,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             boolean allowed = this.allowBukkitClick(this.click, action);
             // 取消与否都要把 Bukkit 事件状态副本的写入记录清空, 否则这些写入会被下一个事件误当成自己的.
-            // 取消时它们不会被提交: 引擎见到 false 就整体放弃, 攒下的草稿一并作废.
+            // 取消后引擎放弃整份草稿, 其中的事件写入也不会提交.
             this.drainEventEdits(edits);
             if (!allowed) {
                 AbstractWindow.this.forceFull = true;
@@ -2178,9 +2080,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 拖拽的交互闸门: 只派发 Bukkit 拖拽事件, 拖拽候选没有单一事件目标.
-     */
+    // 拖拽候选没有单一 Inventory 事件目标, 这里只派发 Bukkit 拖拽事件.
     private final class DragGuard extends InteractionGuard {
         private final ClickType clickType;
 
@@ -2195,7 +2095,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 return false;
             }
             boolean allowed = this.allowBukkitDrag(this.clickType, newCursor, newItems, edits);
-            // 监听器也可能绕开事件自己的 setCursor, 直接写 InventoryView; 那份写入后到, 覆盖事件回传值.
+            // 监听器也可能绕开 setCursor 直接写 InventoryView, 后到的这份写入覆盖事件回传值.
             this.drainEventEdits(edits);
             if (!allowed) {
                 AbstractWindow.this.forceFull = true;
@@ -2205,21 +2105,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
     }
 
-    /**
-     * 等待客户端确认的窗口状态.
-     *
-     * @param state 服务器窗口状态
-     * @param createdAtMillis 创建时间(毫秒), 用于超时清理
-     */
     private record PendingWindowState(int state, long createdAtMillis) {
     }
 
-    /**
-     * 客户端本地 Bundle 选择及其对应的显示快照.
-     *
-     * @param observedBundle 选择发生时该协议槽位(raw slot)显示的 Bundle
-     * @param selectedIndex Bundle 内部选择索引
-     */
     private record BundleSelectionState(@NotNull ItemStack observedBundle, int selectedIndex) {
     }
 }

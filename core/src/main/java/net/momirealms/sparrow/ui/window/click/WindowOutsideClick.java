@@ -6,6 +6,9 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Window 外部点击处理器接收的可取消事件.
+ */
 public final class WindowOutsideClick {
     private final Player player;
     private final Window window;
@@ -15,7 +18,7 @@ public final class WindowOutsideClick {
     private boolean cancelled;
 
     /**
-     * Window 外部点击处理器接收的可取消事件.
+     * 创建一次容器外点击事件.
      *
      * @param player 发起点击的玩家
      * @param window 当前 Window

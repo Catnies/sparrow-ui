@@ -10,6 +10,7 @@ public interface SmokerWindow extends RecipeBookWindow {
      * 设置箭头已经完成的烹饪进度.
      *
      * @param progress 范围为 0.0 到 1.0 的进度
+     * @throws IllegalArgumentException 进度不是有限数或超出范围时
      */
     void setCookProgress(double progress);
 
@@ -24,6 +25,7 @@ public interface SmokerWindow extends RecipeBookWindow {
      * 设置剩余燃烧火焰的填充进度.
      *
      * @param progress 范围为 0.0 到 1.0 的进度
+     * @throws IllegalArgumentException 进度不是有限数或超出范围时
      */
     void setFuelProgress(double progress);
 
@@ -41,21 +43,59 @@ public interface SmokerWindow extends RecipeBookWindow {
 
     interface Builder extends RecipeBookWindow.Builder<SmokerWindow, Builder> {
 
+        /**
+         * 设置映射协议槽位(raw slot)0 的 1x1 输入 Pane.
+         *
+         * @param inputPane 输入 Pane
+         * @return 此 Builder
+         */
         @NotNull
         Builder setInputPane(@NotNull Pane inputPane);
 
+        /**
+         * 设置映射协议槽位(raw slot)1 的 1x1 燃料 Pane.
+         *
+         * @param fuelPane 燃料 Pane
+         * @return 此 Builder
+         */
         @NotNull
         Builder setFuelPane(@NotNull Pane fuelPane);
 
+        /**
+         * 设置映射协议槽位(raw slot)2 的 1x1 结果 Pane.
+         *
+         * @param resultPane 结果 Pane
+         * @return 此 Builder
+         */
         @NotNull
         Builder setResultPane(@NotNull Pane resultPane);
 
+        /**
+         * 设置控制玩家物品栏区域的 9x4 Pane. null 表示连接玩家 Bukkit Inventory.
+         *
+         * @param lowerPane 下部 Pane
+         * @return 此 Builder
+         */
         @NotNull
         Builder setLowerPane(@Nullable Pane lowerPane);
 
+        /**
+         * 设置初始烹饪进度.
+         *
+         * @param progress 范围为 0.0 到 1.0 的进度
+         * @return 此 Builder
+         * @throws IllegalArgumentException 进度不是有限数或超出范围时
+         */
         @NotNull
         Builder setCookProgress(double progress);
 
+        /**
+         * 设置初始剩余燃烧进度.
+         *
+         * @param progress 范围为 0.0 到 1.0 的进度
+         * @return 此 Builder
+         * @throws IllegalArgumentException 进度不是有限数或超出范围时
+         */
         @NotNull
         Builder setFuelProgress(double progress);
 

@@ -12,20 +12,11 @@ import java.util.List;
 final class ClickInterpreter {
     @Nullable private ActiveDrag activeDrag; // 正在进行中的拖拽行为, 没有时为 null, 仅实体线程访问
 
-    /**
-     * 解释一个已经通过 container/state 校验的 Click Container 输入.
-     * 普通点击会先终止未完成的拖拽, 避免跨包状态泄漏到另一种交互里.
-     *
-     * @param interaction 已解码的容器交互
-     * @param layout 当前 Window 布局
-     * @param generation 当前 Window generation
-     * @return 等待, 单次点击, 完整拖拽或拒绝结果
-     */
+    // 普通点击会清空未完成拖拽, 两种协议交互不共用状态.
     @NotNull
     Result interpret(@NotNull MenuInput.Common.Interaction interaction, @NotNull WindowLayout layout, long generation) {
         return switch (interaction) {
             case MenuInput.Common.Click click -> {
-                // 普通点击会终止还没完成的拖拽, 两种交互的状态不混用
                 this.reset();
                 yield ClickInterpreter.interpretSingleClick(click, layout);
             }
@@ -33,23 +24,12 @@ final class ClickInterpreter {
         };
     }
 
-    /**
-     * 丢掉还没完成的拖拽状态.
-     */
     void reset() {
         this.activeDrag = null;
     }
 
-    /**
-     * 校验并解释一次普通点击.
-     *
-     * @param packet 已解码的点击包
-     * @param layout 当前 Window 布局
-     * @return 单次点击结果; 按键, 热键栏编号或槽位不合法时返回拒绝
-     */
     private static Result interpretSingleClick(MenuInput.Common.Click packet, WindowLayout layout) {
         ClickType clickType = packet.clickType();
-        // 只认能单独成立的点击类型
         if (clickType == ClickType.CREATIVE) {
             return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
@@ -57,7 +37,6 @@ final class ClickInterpreter {
             return new Result.Rejected(Rejection.INVALID_BUTTON);
         }
 
-        // 槽位要么是容器外, 要么在协议范围内
         int rawSlot = packet.slot();
         if (rawSlot != InventoryView.OUTSIDE && (rawSlot < 0 || rawSlot >= layout.protocolSize())) {
             return new Result.Rejected(Rejection.INVALID_SLOT);
@@ -65,16 +44,8 @@ final class ClickInterpreter {
         return new Result.SingleClick(clickType, packet.hotbarButton(), rawSlot);
     }
 
-    /**
-     * 推进网络层已经解码好的拖拽状态机.
-     *
-     * @param step 拖拽的一步(开始, 添加槽位或结束)
-     * @param layout 当前 Window 布局
-     * @param generation 当前 Window generation
-     * @return 等待, 完整拖拽或拒绝结果
-     */
+    // START, ADD 和 END 必须使用同一按键并属于同一 Window generation.
     private Result interpretDrag(MenuInput.Common.DragStep step, WindowLayout layout, long generation) {
-        // 拖拽只认左键, 右键和中键, 其他按键直接拒绝
         if (!ClickInterpreter.isDragClick(step.clickType())) {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_BUTTON);
@@ -87,23 +58,10 @@ final class ClickInterpreter {
         };
     }
 
-    /**
-     * 判断点击类型能否用于拖拽.
-     *
-     * @param clickType 点击类型
-     * @return 能用于拖拽时返回 true
-     */
     private static boolean isDragClick(ClickType clickType) {
         return clickType == ClickType.LEFT || clickType == ClickType.RIGHT || clickType == ClickType.MIDDLE;
     }
 
-    /**
-     * 开始一次新拖拽.
-     *
-     * @param clickType 拖拽按键
-     * @param generation 当前 Window generation
-     * @return 正常开始时返回等待结果; 上一次拖拽还没结束又来了 START 时返回拒绝
-     */
     private Result startDrag(ClickType clickType, long generation) {
         // 如果上一次拖拽还没结束, 代表序列不可信
         if (this.activeDrag != null) {
@@ -115,15 +73,6 @@ final class ClickInterpreter {
         return Result.Pending.INSTANCE;
     }
 
-    /**
-     * 把一格加进进行中的拖拽.
-     *
-     * @param clickType 拖拽按键
-     * @param windowSlot 客户端声明的协议槽位(raw slot)
-     * @param generation 当前 Window generation
-     * @param layout 当前 Window 布局
-     * @return 正常添加时返回等待结果; 拖拽对不上或槽位越界时返回拒绝
-     */
     private Result addDrag(ClickType clickType, int windowSlot, long generation, WindowLayout layout) {
         ActiveDrag drag = this.activeDrag;
         // 按键或 generation 对不上, 说明这一步不属于当前拖拽
@@ -131,7 +80,6 @@ final class ClickInterpreter {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_DRAG_SEQUENCE);
         }
-        // 槽位必须在协议范围内
         if (windowSlot < 0 || windowSlot >= layout.protocolSize()) {
             this.reset();
             return new Result.Rejected(Rejection.INVALID_SLOT);
@@ -141,13 +89,6 @@ final class ClickInterpreter {
         return Result.Pending.INSTANCE;
     }
 
-    /**
-     * 结束进行中的拖拽并产出完整结果.
-     *
-     * @param clickType 拖拽按键
-     * @param generation 当前 Window generation
-     * @return 单槽左右键按原版回退为普通点击; 其他情况返回完整拖拽, 序列不合法时返回拒绝
-     */
     private Result completeDrag(ClickType clickType, long generation) {
         ActiveDrag drag = this.activeDrag;
         // 拖拽对不上, 或一格都没拖过就 END, 序列不可信
@@ -164,32 +105,16 @@ final class ClickInterpreter {
         return completed;
     }
 
-    /**
-     * 一次还没结束的拖拽.
-     */
     private static final class ActiveDrag {
-        private final ClickType clickType; // 发起拖拽的按键
+        private final ClickType clickType;
         private final long generation; // 拖拽开始时的 Window generation
         private final LinkedHashSet<Integer> slots = new LinkedHashSet<>(); // 拖过的槽位, 按加入顺序去重
 
-        /**
-         * 记录一次新拖拽的起点.
-         *
-         * @param clickType 发起拖拽的按键
-         * @param generation 拖拽开始时的 Window generation
-         */
         private ActiveDrag(ClickType clickType, long generation) {
             this.clickType = clickType;
             this.generation = generation;
         }
 
-        /**
-         * 判断后续步骤是否还属于这次拖拽.
-         *
-         * @param clickType 后续步骤的按键
-         * @param generation 后续步骤到达时的 Window generation
-         * @return 按键和 generation 都与起点一致时返回 true
-         */
         private boolean matches(ClickType clickType, long generation) {
             return this.clickType == clickType && this.generation == generation;
         }
@@ -204,20 +129,14 @@ final class ClickInterpreter {
         INVALID_DRAG_SEQUENCE  // 拖拽步骤的顺序或归属对不上
     }
 
-    /**
-     * 一个协议输入的解释结果.
-     */
     sealed interface Result permits Result.Pending, Result.SingleClick, Result.Drag, Result.Rejected {
 
-        /**
-         * 拖拽还没结束, 等后续协议输入.
-         */
         enum Pending implements Result {
             INSTANCE
         }
 
         /**
-         * 可以直接分派的单次点击; {@code rawSlot} 是协议槽位(raw slot),
+         * 可以直接分派的单次点击. {@code rawSlot} 是协议槽位(raw slot),
          * 也可能是 {@link InventoryView#OUTSIDE}.
          *
          * @param clickType 点击类型

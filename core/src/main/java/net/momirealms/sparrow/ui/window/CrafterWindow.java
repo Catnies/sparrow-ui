@@ -13,16 +13,18 @@ public interface CrafterWindow extends Window {
     /**
      * 设置输入槽的禁用状态.
      *
-     * @param slot 输入槽编号
+     * @param slot 输入槽编号, 范围为 [0, 9)
      * @param disabled true 表示禁用
+     * @throws IndexOutOfBoundsException 槽位超出范围时
      */
     void setSlotDisabled(int slot, boolean disabled);
 
     /**
      * 返回输入槽是否已禁用.
      *
-     * @param slot 输入槽编号
+     * @param slot 输入槽编号, 范围为 [0, 9)
      * @return 禁用时为 true
+     * @throws IndexOutOfBoundsException 槽位超出范围时
      */
     boolean isSlotDisabled(int slot);
 
@@ -84,7 +86,7 @@ public interface CrafterWindow extends Window {
         Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -95,9 +97,10 @@ public interface CrafterWindow extends Window {
         /**
          * 设置初始输入槽禁用状态.
          *
-         * @param slot 输入槽编号
+         * @param slot 输入槽编号, 范围为 [0, 9)
          * @param disabled true 表示禁用
          * @return 此 Builder
+         * @throws IndexOutOfBoundsException 槽位超出范围时
          */
         @NotNull
         Builder setSlotDisabled(int slot, boolean disabled);
@@ -107,6 +110,7 @@ public interface CrafterWindow extends Window {
          *
          * @param disabledSlots 按槽位编号排列的九个状态
          * @return 此 Builder
+         * @throws IllegalArgumentException 状态数量不是九个时
          */
         @NotNull
         Builder setDisabledSlots(boolean @NotNull ... disabledSlots);

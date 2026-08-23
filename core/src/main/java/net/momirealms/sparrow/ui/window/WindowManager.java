@@ -29,12 +29,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 集中管理活动 Window 与玩家命令通道, 负责打开、关闭与会话生命周期.
+ * 按玩家串行执行 Window 命令, 并维护活动窗口与会话.
  */
 public final class WindowManager implements Listener {
-    private final MenuFactory menuFactory;                                         // 创建菜单处理器
-    private final WindowScheduler scheduler;                                       // 实体与异步调度入口
-    private final BukkitInventoryBridge bukkitBridge;                              // 点击桥接到 Bukkit 事件
+    private final MenuFactory menuFactory;
+    private final WindowScheduler scheduler;
+    private final BukkitInventoryBridge bukkitBridge;
     private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>(); // 玩家 -> 当前窗
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();  // 玩家 -> 命令通道
     private final AtomicLong generations = new AtomicLong();                   // 打开代际, 隔离迟到输入
@@ -64,12 +64,7 @@ public final class WindowManager implements Listener {
         return manager;
     }
 
-    /**
-     * 请求开启 Window, 打开命令会进入该玩家的命令通道并在实体线程执行.
-     *
-     * @param window 要打开的 Window
-     * @return 打开结果阶段
-     */
+    // 打开命令经玩家通道串行送入实体线程.
     @NotNull
     CompletableFuture<Window.OpenResult> open(AbstractWindow<?> window) {
         return this.submit(
@@ -143,26 +138,11 @@ public final class WindowManager implements Listener {
         return Window.OpenResult.OPENED;
     }
 
-    /**
-     * 会话打开 Window 时使用的原语, 由会话在自己的导航命令内调用.
-     *
-     * @param window 要打开的 Window
-     * @param session 发起本次打开的会话
-     * @param back 本次打开是回到上一扇, 而不是步入下一扇
-     * @return 打开流程执行成功时返回 true
-     */
     boolean openInSession(AbstractWindow<?> window, AbstractWindowSession session, boolean back) {
         return this.openNow(window, session, back) == Window.OpenResult.OPENED;
     }
 
-    /**
-     * 请求从一个已经打开的 Window 出发打开下一扇 Window.
-     * source 是当前窗就沿它的会话推进, 不是就先让 source 成为新根窗, 因此新窗口总是可以返回 source.
-     *
-     * @param source 上一扇 Window
-     * @param next 要打开的下一扇 Window
-     * @return 打开后的 Window, 打不开时为 null
-     */
+    // source 不在会话中时先成为根窗, next 仍可经 back 返回 source.
     @NotNull
     CompletableFuture<Window> navigate(AbstractWindow<?> source, AbstractWindow<?> next) {
         return this.submit(
@@ -178,7 +158,7 @@ public final class WindowManager implements Listener {
      *
      * @param source 上一扇 Window
      * @param next 构建中的下一扇 Window
-     * @return 打开后的 Window; 打不开或出发窗已经离开原位置时以 null 完成
+     * @return 打开后的 Window, 打不开或出发窗已经离开原位置时以 null 完成
      */
     @NotNull
     CompletableFuture<Window> navigateLater(AbstractWindow<?> source, CompletionStage<? extends Window> next) {
@@ -204,17 +184,11 @@ public final class WindowManager implements Listener {
             return session.currentWindow() == source && session.navigateNow(next);
         }
 
-        // source 不在任何会话中就让它当根窗; 旧会话在 openNow 里照常按会话外打开结束
+    // source 不在任何会话中就让它当根窗, 旧会话在 openNow 里照常按会话外打开结束
         return AbstractWindowSession.create(this, source).navigateNow(next);
     }
 
-    /**
-     * 为 Window 启动玩家的实体线程上的周期 tick.
-     * 实体退役时通过 lane 的退役回调回收整个会话.
-     *
-     * @param window 要 tick 的 Window
-     * @return tick 任务, shutdown 后为 null
-     */
+    // 实体退役时由 lane 的退役回调回收整段会话.
     @Nullable
     ScheduledTask startTick(AbstractWindow<?> window) {
         if (this.shutdown.get()) {
@@ -234,12 +208,7 @@ public final class WindowManager implements Listener {
         return task;
     }
 
-    /**
-     * 请求关闭 Window, 关闭命令会进入该玩家的命令通道并在实体线程执行.
-     *
-     * @param window 要关闭的 Window
-     * @return 关闭结果阶段
-     */
+    // 关闭命令经玩家通道串行送入实体线程.
     @NotNull
     CompletableFuture<Window.CloseResult> close(AbstractWindow<?> window) {
         boolean wasOpen = window.isOpen();
@@ -260,14 +229,7 @@ public final class WindowManager implements Listener {
         return closed ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED;
     }
 
-    /**
-     * 当前窗关闭之后由会话决定去向, 玩家主动关闭且该窗口要求返回时回到上一扇, 其余情况会话以该原因结束.
-     * <p>只有正占用玩家活动窗口的会话参与决策, 因此当前窗之外成员的关闭与会话自身发起的结束都不会进入这里.
-     * 返回与结束都发生在关闭流程内, 与关闭本身同处一条命令.
-     *
-     * @param window 刚刚关闭的 Window
-     * @param reason 关闭原因
-     */
+    // 只有正占用玩家活动窗口的会话参与关闭后的返回或结束决策.
     private void afterCurrentWindowClosed(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
         AbstractWindowSession session = window.sessionImpl();
         if (session == null || session.currentWindow() != window) {
@@ -276,13 +238,7 @@ public final class WindowManager implements Listener {
         session.onChainTopClosed(window, reason);
     }
 
-    /**
-     * 请求回到上一扇.
-     *
-     * @param window 要离开的 Window
-     * @param closeAtRoot 没有上一层可回时是否改为关闭该 Window
-     * @return 返回后的新当前窗, 没有发生返回时为 null
-     */
+    // 请求回到上一扇
     @NotNull
     CompletableFuture<Window> back(AbstractWindow<?> window, boolean closeAtRoot) {
         return this.submit(
@@ -292,7 +248,7 @@ public final class WindowManager implements Listener {
         );
     }
 
-    // 会话当前窗有上一扇时返回; 其余情况(根窗, 不在会话里)按 closeAtRoot 决定关闭还是不做任何事.
+    // 有上一扇时返回, 其余情况按 closeAtRoot 决定关闭还是保持原样.
     @Nullable
     private Window backNow(AbstractWindow<?> window, boolean closeAtRoot) {
         AbstractWindowSession session = window.sessionImpl();
@@ -308,35 +264,17 @@ public final class WindowManager implements Listener {
         return null;
     }
 
-    /**
-     * 将普通 Window 命令串行化到玩家的实体线程.
-     * Shutdown 后不再调度, 立即执行 retiredAction 并以其结果完成.
-     *
-     * @param window 目标 Window
-     * @param action 正常调度时执行的命令
-     * @param retiredAction 无法调度时执行的替代命令
-     * @param <T> 命令结果类型
-     * @return 命令完成阶段
-     */
+    // 将普通 Window 命令串行化到玩家的实体线程.
     @NotNull
     <T> CompletableFuture<T> submit(AbstractWindow<?> window, Callable<T> action, Callable<T> retiredAction) {
         return this.submit(window.viewer(), action, retiredAction);
     }
 
-    /**
-     * 将命令串行化到玩家的实体线程.
-     * Shutdown 后不再调度, 立即执行 retiredAction 并以其结果完成.
-     *
-     * @param viewer 目标玩家
-     * @param action 正常调度时执行的命令
-     * @param retiredAction 无法调度时执行的替代命令
-     * @param <T> 命令结果类型
-     * @return 命令完成阶段
-     */
+    // shutdown 后不再调度, 直接以 retiredAction 的结果完成.
     @NotNull
     <T> CompletableFuture<T> submit(Player viewer, Callable<T> action, Callable<T> retiredAction) {
         if (!this.shutdown.get()) {
-            // 通道给的是只读阶段, toCompletableFuture 每次生成一个独立的 future:
+            // 通道给的是只读阶段, toCompletableFuture 每次生成独立 Future.
             // 调用方取消自己拿到的这一个, 既动不了队列里的命令, 也不影响别人的观察.
             return this.lane(viewer).submit(action, retiredAction).toCompletableFuture();
         }
@@ -389,7 +327,7 @@ public final class WindowManager implements Listener {
 
     /**
      * Bukkit 观测到容器关闭时, 若 InventoryView 属于某个活动 Window 则按外部关闭处理.
-     * 断线关闭已经由服务器接管, 事件返回后会继续完成容器生命周期, 因此必须在事件内同步通知 handler;
+     * 断线关闭已经由服务器接管, 事件返回后会继续完成容器生命周期, 因此必须在事件内同步通知 handler.
      * 其他原因仍延后到下一实体 tick, 保留 close handler 打开新 Window 的既有能力.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -474,12 +412,14 @@ public final class WindowManager implements Listener {
         );
     }
 
-    // 在插件禁用时直接按 PLUGIN 原因关闭所有活动 Window.
+    /**
+     * 关闭所有活动 Window 并停止接收新命令. 重复调用不会再次执行收尾.
+     */
     public void shutdown() {
         if (!this.shutdown.compareAndSet(false, true)) {
             return;
         }
-        // 逐个收尾正在开启的 Window , 已失联的通道直接本地收尾
+        // 逐个收尾正在开启的 Window, 已失联的通道只回收本地状态
         for (AbstractWindow<?> window : Set.copyOf(this.active.values())) {
             PlayerCommandLane lane = this.lanes.get(window.viewer().getUniqueId());
             if (lane == null || !lane.belongsTo(window.viewer())) {
@@ -504,7 +444,7 @@ public final class WindowManager implements Listener {
         }
     }
 
-    // 在玩家的命令通道内收尾一扇活动窗: 先结束会话再关闭 Window, 关闭流程因此不会再进入会话决策.
+    // 在玩家命令通道内先结束会话再关闭 Window, 关闭流程不会重新进入会话决策.
     private void shutdownNow(AbstractWindow<?> window) {
         AbstractWindowSession session = window.sessionImpl();
         if (session != null) {
@@ -543,20 +483,10 @@ public final class WindowManager implements Listener {
         return Set.copyOf(this.active.values());
     }
 
-    /**
-     * 返回 Bukkit Inventory 事件桥接器.
-     *
-     * @return Bukkit 事件桥接器
-     */
     BukkitInventoryBridge bukkitBridge() {
         return this.bukkitBridge;
     }
 
-    /**
-     * 返回创建菜单处理器的工厂.
-     *
-     * @return 菜单工厂
-     */
     MenuFactory menuFactory() {
         return this.menuFactory;
     }

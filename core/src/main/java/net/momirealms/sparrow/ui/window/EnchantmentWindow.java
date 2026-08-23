@@ -13,10 +13,11 @@ import java.util.function.Consumer;
 public interface EnchantmentWindow extends Window {
 
     /**
-     * 设置一个附魔选项; null 表示禁用该按钮.
+     * 设置一个附魔选项, null 表示禁用该按钮.
      *
      * @param index 选项索引, 范围为 [0, 3)
      * @param option 新选项或 null
+     * @throws IndexOutOfBoundsException 索引超出范围时
      */
     void setOption(int index, @Nullable EnchantOption option);
 
@@ -25,6 +26,7 @@ public interface EnchantmentWindow extends Window {
      *
      * @param index 选项索引, 范围为 [0, 3)
      * @return 当前选项或 null
+     * @throws IndexOutOfBoundsException 索引超出范围时
      */
     @Nullable
     EnchantOption getOption(int index);
@@ -100,7 +102,7 @@ public interface EnchantmentWindow extends Window {
         Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -109,11 +111,12 @@ public interface EnchantmentWindow extends Window {
         Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
-         * 设置一个初始附魔选项; null 表示禁用该按钮.
+         * 设置一个初始附魔选项, null 表示禁用该按钮.
          *
          * @param index 选项索引, 范围为 [0, 3)
          * @param option 初始选项或 null
          * @return 此 Builder
+         * @throws IndexOutOfBoundsException 索引超出范围时
          */
         @NotNull
         Builder setOption(int index, @Nullable EnchantOption option);

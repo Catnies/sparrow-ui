@@ -16,7 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 
 public interface CartographyWindow extends Window {
-    int MAP_SIZE = 128;
+    int MAP_SIZE = 128; // 地图画布的宽度和高度
 
     /**
      * 把图片转换为地图色并绘制到指定起点.
@@ -24,6 +24,7 @@ public interface CartographyWindow extends Window {
      * @param x 左上角 x 坐标
      * @param y 左上角 y 坐标
      * @param image 不越过 128x128 画布的图片
+     * @throws IllegalArgumentException 图片超出画布时
      * @throws IllegalStateException SparrowUI 尚未完成初始化
      */
     default void applyPatch(int x, int y, @NotNull BufferedImage image) {
@@ -121,7 +122,7 @@ public interface CartographyWindow extends Window {
      * @param startY 左上角 y 坐标
      * @param width 宽度
      * @param height 高度
-     * @param colors 按行排列的地图色
+     * @param colors 按行排列的地图色, 长度必须等于 {@code width * height}, 构造时复制
      */
     record MapPatch(int startX, int startY, int width, int height, byte @NotNull [] colors) {
         public MapPatch {
@@ -143,6 +144,11 @@ public interface CartographyWindow extends Window {
             }
         }
 
+        /**
+         * 返回地图色副本.
+         *
+         * @return 按行排列的地图色副本
+         */
         @Override
         public byte @NotNull [] colors() {
             return this.colors.clone();
@@ -201,7 +207,7 @@ public interface CartographyWindow extends Window {
         Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane; null 表示连接玩家 Bukkit Inventory.
+         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -223,6 +229,7 @@ public interface CartographyWindow extends Window {
          *
          * @param colors 16384 个地图色
          * @return 此 Builder
+         * @throws IllegalArgumentException 地图色数量不是 16384 时
          */
         @NotNull
         Builder setMap(byte @NotNull [] colors);
@@ -232,6 +239,7 @@ public interface CartographyWindow extends Window {
          *
          * @param image 初始图片
          * @return 此 Builder
+         * @throws IllegalArgumentException 图片尺寸不是 128x128 时
          * @throws IllegalStateException SparrowUI 尚未完成初始化
          */
         @NotNull

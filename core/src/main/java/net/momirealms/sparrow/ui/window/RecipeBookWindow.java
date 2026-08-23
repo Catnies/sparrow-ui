@@ -14,7 +14,7 @@ public interface RecipeBookWindow extends Window {
     /**
      * 向当前菜单发送指定配方的 ghost recipe.
      *
-     * <p>此操作不要求玩家已经解锁配方. Stage 完成表示协议包已经进入发送路径,
+     * <p>此操作不要求玩家已经解锁配方. CompletableFuture 完成表示协议包已经进入发送路径,
      * 不表示客户端已经显示或确认.</p>
      *
      * @param recipeId 配方资源标识符
@@ -54,7 +54,7 @@ public interface RecipeBookWindow extends Window {
     void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
 
     /**
-     * 配方书 Window 共用的类型化 Builder Interface.
+     * 配方书 Window 共用的类型化 Builder.
      *
      * @param <W> 创建的配方书 Window 类型
      * @param <B> 具体 Builder 类型

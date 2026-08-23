@@ -128,14 +128,11 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         );
     }
 
-    /**
-     * 在实体线程事务性替换 Trade 挂载和已发布快照.
-     */
+    // MenuHandle 先接受候选列表, 成功后再发布公开快照.
     private void replaceTrades(List<MerchantWindow.Trade> trades) {
         List<MerchantWindow.Trade> previous = this.trades;
         MerchantMenuHandle menuHandle = this.menuHandle();
 
-        // 先让UI完整准备候选挂载, 失败时 Window 仍保留旧快照
         if (menuHandle != null) {
             menuHandle.setTrades(trades);
         }
@@ -178,9 +175,6 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         );
     }
 
-    /**
-     * 创建并初始化一次 Merchant 菜单会话. 任一步骤失败都会关闭已创建的部分会话.
-     */
     @NotNull
     @Override
     protected MerchantMenuHandle createMenuHandle(@NotNull MenuFactory factory, long generation) {
@@ -223,7 +217,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     /**
      * 处理原版客户端的交易选择包.
      * <p>选择只发布一次 MerchantTradeSelectClick, 不给 Trade 的三个 Item 分派点击, 它们是纯展示的.
-     * 处理器内即使重入修改 Trade 列表, 本次调用仍使用入口快照; 重入触发的选择重置发生在本次索引提交之后, 照常覆盖它.
+     * 处理器内即使重入修改 Trade 列表, 本次调用仍使用入口快照. 重入触发的选择重置发生在本次索引提交之后, 照常覆盖它.
      */
     private void handleTradeSelection(MenuInput.WindowSpecific.TradeSelect selection) {
         MerchantMenuHandle menuHandle = this.menuHandle();
@@ -298,7 +292,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     /**
-     * Trade 的线程安全实现. 三个 Item 引用构建后固定, discount 与 available 使用原子字段跨线程发布;
+     * Trade 的线程安全实现. 三个 Item 引用构建后固定, discount 与 available 使用原子字段跨线程发布.
      * setter 只在值实际变化时于调用线程同步发送对应的 TradeChange.
      */
     static final class TradeImpl implements MerchantWindow.Trade {

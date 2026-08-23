@@ -17,11 +17,11 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> implements EnchantmentWindow {
-    private static final int OPTION_COUNT = 3; // 原版附魔台固定提供三个按钮
+    private static final int OPTION_COUNT = 3; // 原版附魔台协议固定三个按钮
 
-    private final HandlerList<Consumer<EnchantSelectClick>> enchantSelectHandlers; // 按注册顺序分发的选择处理器
+    private final HandlerList<Consumer<EnchantSelectClick>> enchantSelectHandlers;
     private volatile EnchantOption[] options; // 最近在实体线程发布的写时复制选项快照
-    private volatile int enchantmentSeed;     // 最近在实体线程应用的客户端符文种子
+    private volatile int enchantmentSeed;
 
     EnchantmentWindowImpl(
             @NotNull WindowManager manager,
@@ -144,7 +144,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
 
     @Override
     protected void handleWindowInput(@NotNull MenuInput.WindowSpecific input) {
-        // 非按钮输入和过期, 越界按钮都不属于当前附魔选择
         if (!(input instanceof MenuInput.WindowSpecific.ButtonClick(int containerId, int button))) {
             return;
         }
@@ -166,12 +165,6 @@ final class EnchantmentWindowImpl extends AbstractWindow<EnchantmentMenuHandle> 
         );
     }
 
-    /**
-     * 校验原版三个附魔按钮共用的索引范围.
-     *
-     * @param index 待校验索引
-     * @throws IndexOutOfBoundsException 当索引不在 [0, 3) 时
-     */
     private static void checkOptionIndex(int index) {
         if (index < 0 || index >= OPTION_COUNT) {
             throw new IndexOutOfBoundsException("enchantment option index out of bounds: " + index);

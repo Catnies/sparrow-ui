@@ -28,9 +28,9 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private @Nullable Player viewer;
     private Supplier<? extends Component> titleSupplier = Component::empty;
     private boolean closeable = true;
-    private List<Consumer<W>> openHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
-    private List<BiConsumer<W, InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
-    private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>(); // 每次 build 后绑定到当次 W
+    private List<Consumer<W>> openHandlers = new ArrayList<>();
+    private List<BiConsumer<W, InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
+    private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>();
     private boolean backOnPlayerClose;
     private @Nullable Object data;
     private WindowSession.Kind sessionKind = WindowSession.Kind.STACK;
@@ -62,23 +62,11 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         this.modifiers = new ArrayList<>(source.modifiers);
     }
 
-    /**
-     * 返回具体 Builder 自身, 用于公共链式方法保持精确类型.
-     *
-     * @return 具体 Builder
-     */
     protected abstract @NotNull B self();
 
     @Override
     public abstract @NotNull B clone();
 
-    /**
-     * 为指定玩家创建具体 Window.
-     *
-     * @param viewer 查看者
-     * @param settings 公共 Window 设置快照
-     * @return 新的具体 Window
-     */
     protected abstract @NotNull W createWindow(
             @NotNull Player viewer,
             @NotNull AbstractWindow.Settings settings
@@ -257,12 +245,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
 
-    /**
-     * 根据本次 Window 玩家创建引用该玩家背包的 ReferencingInventory.
-     *
-     * @param viewer 查看者
-     * @return 本次 Window 使用的 9x4 Pane
-     */
+    // 创建默认下部 Pane, 直接连接玩家背包的存储槽位.
     @NotNull
     protected static Pane viewerReferencingInventory(@NotNull Player viewer) {
         ReferencingInventory inventory = ReferencingInventory.fromPlayerStorageContents(viewer.getInventory());
@@ -275,12 +258,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         return pane;
     }
 
-    /**
-     * 复制本次 build 使用的公共设置.
-     *
-     * @param windowReference Window 创建后写入的本次 build 引用
-     * @return 独立的不可变设置快照
-     */
+    // 处理器经引用容器绑定到本次 build 创建的具体 Window.
     private AbstractWindow.Settings settings(@NotNull AtomicReference<W> windowReference) {
         List<Runnable> boundOpenHandlers = new ArrayList<>(this.openHandlers.size());
         for (int index = 0; index < this.openHandlers.size(); index++) {

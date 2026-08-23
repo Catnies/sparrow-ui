@@ -31,13 +31,7 @@ abstract class AbstractWindowSession implements WindowSession {
         this.sessionEndHandlers = new HandlerList<>(sessionEndHandlers);
     }
 
-    /**
-     * 按根窗的声明创建会话并把根收为第一个成员. 只在玩家实体线程调用.
-     *
-     * @param manager Window 管理器
-     * @param root 已经打开的根窗
-     * @return 新会话, 类型与结束处理器取自根窗的 Builder 声明
-     */
+    // 按根窗声明创建会话, 并把根窗收为第一个成员. 只在玩家实体线程调用.
     @NotNull
     static AbstractWindowSession create(@NotNull WindowManager manager, @NotNull AbstractWindow<?> root) {
         AbstractWindowSession session = switch (root.rootSessionKind()) {
@@ -49,13 +43,7 @@ abstract class AbstractWindowSession implements WindowSession {
         return session;
     }
 
-    /**
-     * 把打开成功的 Window 落地为当前位置.
-     * <p>由 {@link WindowManager} 在目标窗的 open handler 之前调用, handler 因此总能读到指向本窗的会话.
-     *
-     * @param opened 已经打开的目标 Window
-     * @param back 本次打开是回到上一扇
-     */
+    // open handler 触发前先落位, 回调读到的 current 已经是新 Window.
     void commitOpen(@NotNull AbstractWindow<?> opened, boolean back) {
         if (back) {
             this.stepBack();
@@ -102,7 +90,7 @@ abstract class AbstractWindowSession implements WindowSession {
 
     /**
      * 在玩家实体线程结束会话.
-     * 先迁移状态再关闭当前窗, 因此当前窗关闭不会重新进入本会话的决策; 结束处理器最后触发.
+     * 先迁移状态再关闭当前窗, 当前窗关闭不会重新进入本会话的决策. 结束处理器最后触发.
      *
      * @param reason 结束原因
      * @param closeCurrent 是否需要由本次结束关闭当前窗
@@ -128,13 +116,7 @@ abstract class AbstractWindowSession implements WindowSession {
         return EndResult.ENDED;
     }
 
-    /**
-     * 当前窗关闭之后决定去向: 玩家主动关闭且该窗口要求返回时回到上一扇, 其余情况会话以该原因结束.
-     * <p>返回不成立时按结束处理, 会话不会停在一个已经关闭的当前窗上.
-     *
-     * @param window 刚刚关闭的当前窗
-     * @param reason 关闭原因
-     */
+    // 玩家主动关闭且允许返回时回到上一扇, 其余情况结束整段会话.
     void onChainTopClosed(@NotNull AbstractWindow<?> window, @NotNull InventoryCloseEvent.Reason reason) {
         if (reason == InventoryCloseEvent.Reason.PLAYER && window.backOnPlayerClose() && this.backNow()) {
             return;
@@ -142,10 +124,7 @@ abstract class AbstractWindowSession implements WindowSession {
         this.endNow(reason, false);
     }
 
-    /**
-     * 调度器意外退役时回收会话本地状态, 不触发结束处理器.
-     * <p>与 {@link AbstractWindow#retireSession()} 同一处境: 已经没有可用的玩家实体线程来运行用户代码.
-     */
+    // 调度器退役后没有可用的玩家实体线程, 只回收状态, 不运行用户结束处理器.
     void retire() {
         if (this.deactivate()) {
             this.releaseMembers();
@@ -163,7 +142,7 @@ abstract class AbstractWindowSession implements WindowSession {
         }
     }
 
-    // 把会话迁移到已结束状态, 之后所有导航都不再接管; 本次调用完成迁移时返回 true.
+    // 把会话迁移到已结束状态, 之后所有导航都不再接管. 本次调用完成迁移时返回 true.
     // 结束可能同时来自会话自身, 关闭去向决策与 shutdown, 迁移必须原子, 释放成员与结束处理器才恰好跑一次.
     private boolean deactivate() {
         return this.active.compareAndSet(true, false);
@@ -190,27 +169,12 @@ abstract class AbstractWindowSession implements WindowSession {
      */
     abstract void stepBack();
 
-    /**
-     * 当前位置的 Window.
-     *
-     * @return 当前位置的 Window, 没有成员时为 null
-     */
     @Nullable
     abstract AbstractWindow<?> currentWindow();
 
-    /**
-     * 当前位置的上一层, 即 {@link #backNow()} 要回到的那一层.
-     *
-     * @return 上一扇 Window, 当前位置已是根窗时为 null.
-     */
     @Nullable
     abstract AbstractWindow<?> previousWindow();
 
-    /**
-     * 返回根窗到当前位置的路径.
-     *
-     * @return 当前路径, 根窗在前
-     */
     @NotNull
     abstract List<Window> currentPath();
 

@@ -7,9 +7,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 final class ActiveTitleAnimation extends ActivePlayback<AbstractWindow<?>> {
-    static final ActiveTitleAnimation[] NONE = new ActiveTitleAnimation[0]; // 空数组, 避免每次新建
+    static final ActiveTitleAnimation[] NONE = new ActiveTitleAnimation[0];
 
-    private final TitleAnimationDefinition animationDefinition; // 动画定义
+    private final TitleAnimationDefinition animationDefinition;
 
     ActiveTitleAnimation(@NotNull AbstractWindow<?> host, @NotNull TitleAnimationDefinition animationDefinition, long startTick) {
         super(host, startTick, animationDefinition.totalTicks());
