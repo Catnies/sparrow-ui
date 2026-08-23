@@ -10,10 +10,10 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.ref.WeakReference;
 import java.util.UUID;
 
-// Bukkit 槽号与 NMS 背包槽号一一对应, 前面是主背包与快捷栏, 后面那几格由 NMS 背包自己换算到装备上.
+// 每次访问都从玩家实体取得当前背包, 以适配重生后的背包替换.
 final class PlayerContainerStorage extends ContainerStorage {
-    private final WeakReference<HumanEntity> owner; // 背包主人, 跨死亡重生稳定
-    private final UUID ownerId;                     // 判等归属, 重生换掉背包对象也不变
+    private final WeakReference<HumanEntity> owner;
+    private final UUID ownerId; // 背包对象变化时槽位身份仍保持稳定
 
     PlayerContainerStorage(@NotNull HumanEntity owner, int size) {
         super(size, ContainerProxy.INSTANCE.getMaxStackSize(containerOf(owner)));

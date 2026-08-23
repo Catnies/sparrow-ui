@@ -12,10 +12,9 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-// 直接读写 NMS 容器的存储, 槽位数量, 堆叠上限与读写全部取自容器自己.
 abstract class ContainerStorage implements ExternalStorage {
-    private final int size;         // 被引用区段的槽位数量, 构造时取样
-    private final int maxStackSize; // 容器的堆叠上限, 构造时缓存
+    private final int size;
+    private final int maxStackSize;
 
     ContainerStorage(int size, int maxStackSize) {
         this.size = size;
@@ -25,7 +24,7 @@ abstract class ContainerStorage implements ExternalStorage {
     // 把一个 NMS 容器包成存储.
     @NotNull
     static ExternalStorage of(@NotNull Object container) {
-        // 大箱子那种把几个容器接起来的容器在这里就拆开, 每个容器各占一段.
+        // 复合容器展开为稳定的分段身份.
         if (!CompoundContainerProxy.CLASS.isInstance(container)) {
             return new FixedContainerStorage(container);
         }
@@ -44,8 +43,7 @@ abstract class ContainerStorage implements ExternalStorage {
         collectParts(CompoundContainerProxy.INSTANCE.getContainer2(container), parts);
     }
 
-    // 这一刻该读写的 NMS 容器, 每次访问都问一遍, 因为玩家背包那种会被换掉.
-    // 容器住在世界里, 世界放手之后本存储也跟着放手, 那之后问出来的是 null, 读到空, 写入丢弃.
+    // 每次访问重新解析容器, 玩家重生或世界卸载都可能使原引用失效.
     @Nullable
     abstract Object container();
 
@@ -60,7 +58,7 @@ abstract class ContainerStorage implements ExternalStorage {
         Object container = this.container();
         if (container == null) return null;
         Object handle = ContainerProxy.INSTANCE.getItem(container, slot);
-        // NMS 容器用空物品表示空槽, 这里换成外部存储约定的 null
+        // ExternalStorage 用 null 表示 NMS 空物品.
         if (ItemStackProxy.INSTANCE.isEmpty(handle)) return null;
         return CraftItemStackProxy.INSTANCE.asCraftMirror(handle);
     }
@@ -90,7 +88,6 @@ abstract class ContainerStorage implements ExternalStorage {
     public void write(int slot, @Nullable ItemStack item) {
         Object container = this.container();
         if (container == null) return;
-        // 传入实例的所有权归存储, 取出它的句柄直接放进容器, 不必再复制一份
         Object handle = item == null ? ItemStackProxy.EMPTY : ItemUtils.getItemStackHandle(item);
         ContainerProxy.INSTANCE.setItem(container, slot, handle);
     }

@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntPredicate;
 
-// 拖拽的规划器, 输入是手势经过的一串窗口槽, 输出是把光标按键位分摊下去的候选.
 final class DragPlanner {
 
     // 把一趟拖拽算成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
@@ -40,10 +39,7 @@ final class DragPlanner {
             return null;
         }
 
-        // 拖拽只认背后有 Inventory 且未冻结的窗口槽, Item 槽, 空槽和冻结槽直接从候选里剔除.
-        // 因此混合拖拽(一半 Item 槽一半 Inventory 槽)照常派发事件, 但 newItems 只有 Inventory 槽那一半,
-        // 被剔除的槽位在插件视角里凭空消失; 整趟拖拽全落在这些槽上时候选为空, 不派发 Bukkit 事件.
-        // 两者都是预期行为, 引擎接管不了的槽位没有分配结果可以呈现, 也没有事务可以取消.
+        // 只保留可交互的 Inventory 槽位, 并按物理身份去重.
         LinkedHashMap<SlotKey, DragLink> candidates = new LinkedHashMap<>();
         for (int windowIndex = 0; windowIndex < windowSlots.size(); windowIndex++) {
             int windowSlot = windowSlots.get(windowIndex);
@@ -89,7 +85,7 @@ final class DragPlanner {
             return null;
         }
 
-        // 左键均分, 右键每格一个, 创造模式中键每格塞满且不消耗光标
+        // 左键均分, 右键每格一个, 创造模式中键填满且不消耗光标.
         int perSlot = switch (clickType) {
             case LEFT -> cursor.getAmount() / targets.size();
             case RIGHT -> 1;
@@ -112,7 +108,7 @@ final class DragPlanner {
             ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
             deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
                     .add(new SlotChange(target.link().slot(), target.current(), after));
-            newItems.put(target.windowSlot(), after); // 前面复制过了, 不用再复制.
+            newItems.put(target.windowSlot(), after);
             if (!creative) {
                 budget -= placed;
                 placedTotal += placed;
@@ -147,7 +143,6 @@ final class DragPlanner {
         return Math.min(link.inventory().slotMaxStackSize(link.slot()), item.getMaxStackSize());
     }
 
-    // newCursor 与 newItems 是给 Bukkit 拖拽事件看的最终分配结果, 与 candidate 出自同一次计算.
     record PreparedDrag(
             @NotNull ClickCandidate candidate,
             @NotNull ItemStack newCursor,
@@ -161,7 +156,6 @@ final class DragPlanner {
     ) {
     }
 
-    // capacity 是这一格还能再吃下多少件, 已经扣掉了槽里现有的数量.
     private record DragTarget(
             int windowSlot,
             @NotNull ClickSemantics.LinkedSlot link,

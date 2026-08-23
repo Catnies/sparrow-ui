@@ -14,7 +14,6 @@ import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
-// 批量与单槽操作的规划算法, 槽位数学全集中在这里, 只读内容进, 槽位变更出.
 @ApiStatus.Internal
 public final class InventoryPlanner {
 
@@ -62,8 +61,7 @@ public final class InventoryPlanner {
         if (current == null || change == 0) {
             return null;
         }
-        // 减量只受下限 0 约束, 上限钳制只作用在增量上, 直接写入的超上限堆减 1 之后仍然保留超出的数量.
-        // 这里走 long 躲开 int 边界溢出.
+        // 超上限物品仍可减量, 只在增量时应用上限. long 计算避开 int 边界溢出.
         long desired = (long) current.getAmount() + change;
         int target;
         if (change < 0) {
@@ -149,7 +147,6 @@ public final class InventoryPlanner {
         for (int i = 0; i < order.size() && taken < upTo; i++) {
             int slot = order.slotAt(i);
             @Nullable ItemStack current = snapshot[slot];
-            // matcher 是调用方代码, 按约定只读不改, 因此直接把内部实例交给它, 不为一次判断复制一份
             if (current == null || !matcher.test(current)) {
                 continue;
             }
@@ -178,7 +175,7 @@ public final class InventoryPlanner {
         Object templateHandle = ItemUtils.getItemStackHandle(template);
         boolean[] touched = new boolean[snapshot.length];
 
-        // 第一遍只碰零头, 第二遍才动满堆; touched 保证同一个槽只落进其中一遍
+        // 两个 pass 分别处理未满堆和满堆, touched 防止同一槽重复进入.
         for (int pass = 0; pass < 2 && taken < upTo; pass++) {
             boolean wantFullStacks = pass == 1;
             for (int i = 0; i < order.size() && taken < upTo; i++) {
@@ -191,7 +188,7 @@ public final class InventoryPlanner {
                 if (fullStack != wantFullStacks) {
                     continue;
                 }
-                // 匹配槽只落进一个 pass, 过滤器因此至多被调一次; 调用方可以据此认领跨 Inventory 的同一 SlotKey
+                // 每个匹配槽只进入一个 pass, 过滤器至多调用一次.
                 if (includedSlot != null && !includedSlot.test(slot)) {
                     continue;
                 }

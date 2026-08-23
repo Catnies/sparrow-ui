@@ -1,23 +1,21 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * ReferencingInventory 的内容实际存放的地方, 读写一律以它为准.
- * <p>槽位坐标是存储自己的坐标(Bukkit 实现即 Bukkit 容器槽位).
- * <p>同一 Inventory 的所有访问必须串行, 串行由调用方负责, 框架不提供并发保障.
+ * {@link ReferencingInventory} 的权威内容存储, 槽位使用存储自身坐标.
+ * <p><strong>同一 Inventory 的所有访问必须由调用方串行执行</strong>.
  */
 @ApiStatus.Experimental
 public interface ExternalStorage {
 
     /**
-     * 直接封装一个 NMS 容器.
-     * <p>槽位数量、堆叠上限与读写都取自这个容器自己.
-     * 存活判断顺着容器问回它所属的方块实体或实体, 问不出来的一律当作还可用.
+     * 封装一个 NMS 容器, 使用它的槽位数量, 堆叠上限和读写规则.
      *
      * @param container {@code net.minecraft.world.Container} 实例
      * @return 该容器的外部存储
@@ -28,7 +26,7 @@ public interface ExternalStorage {
     }
 
     /**
-     * 存储的槽位数量, 构造后不得变化.
+     * 存储的槽位数量, <strong>构造后不得变化</strong>.
      *
      * @return 槽位数量
      */
@@ -36,7 +34,7 @@ public interface ExternalStorage {
 
     /**
      * 读取槽位现值.
-     * <p>可以返回内部活实例, 也可以返回副本. 引擎只读取不修改, 也不把它持有到本次操作之外.
+     * <p>可以返回内部活实例或副本. <strong>引擎只读取, 且不持有到本次操作之外</strong>.
      *
      * @param slot 存储槽位
      * @return 槽位现值, 空槽返回 {@code null}
@@ -46,8 +44,7 @@ public interface ExternalStorage {
 
     /**
      * 批量读取全部槽位现值, 供逐槽对比与规划基准构建.
-     * <p>返回数组归调用方本次使用, 元素契约与 {@link #read(int)} 相同.
-     * 默认实现逐槽 {@code read}; 有更廉价批量通道的实现(如 Bukkit 的 {@code getContents})应当覆写.
+     * <p>数组归调用方本次使用, 元素契约与 {@link #read(int)} 相同. 默认实现逐槽读取.
      *
      * @return 按存储槽位排列的现值数组, 空槽为 {@code null}
      */
@@ -61,7 +58,7 @@ public interface ExternalStorage {
 
     /**
      * 写入槽位内容.
-     * <p>传入实例是引擎为本次调用准备的独立对象, 所有权归存储, 可直接持有, 不必再复制.
+     * <p>传入实例的所有权交给存储, <strong>调用方不得继续修改或持有</strong>.
      *
      * @param slot 存储槽位
      * @param item 新内容, 清空槽位为 {@code null}
@@ -69,10 +66,8 @@ public interface ExternalStorage {
     void write(int slot, @Nullable ItemStack item);
 
     /**
-     * 判断槽位现值与给定内容是不是同一份东西.
-     * <p>引擎每 tick 都靠它逐槽比对来发现外部改动, 因此实现不应当为比对本身分配对象.
-     * 默认实现先 {@link #read(int)} 再比; 内容另有更贴近底层的表示时应当覆写, 直接在那一层比,
-     * 免得为了比一下就把每一格都包装成 Bukkit 物品.
+     * 判断槽位现值与期望内容是否相同.
+     * <p>刷新会逐槽调用本方法, 实现应尽量在底层表示上比较并避免分配对象.
      *
      * @param slot 存储槽位
      * @param expected 期望的内容, {@code null} 表示期望空槽
@@ -91,10 +86,9 @@ public interface ExternalStorage {
     int maxStackSize(int slot);
 
     /**
-     * 把存储槽位换算成 {@link SlotKey}, 两个 Inventory 落到同一个 SlotKey 时判定为同一个存储位置.
-     * <p>归属要按值判等并在存储活着的期间保持稳定, 不要交出每次取用都新建的包装对象.
-     * 拼起来的存储要把归属下放到真正存放这一格的那一层, 并把槽号换算到那一层的坐标里.
-     * <p>交出的槽号因此是那一层自己的坐标, SlotKey 只回答"是不是同一格", 读写一律用本存储的槽位.
+     * 返回槽位的物理身份, 相同 {@link SlotKey} 表示最终写入同一位置.
+     * <p><strong>归属在存储存活期间必须按值保持稳定</strong>. 拼接存储应返回最终分段的坐标;
+     * 该坐标只用于判等, 读写仍使用当前存储的槽位.
      *
      * @param slot 存储槽位
      * @return 该槽位的 SlotKey
@@ -105,9 +99,8 @@ public interface ExternalStorage {
     }
 
     /**
-     * 检查和内容存放的地方是不是还在.
-     * <p>ReferencingInventory 每次刷新都会执行, 若回答 {@code false}, Inventory 则就地删除.
-     * 之后读到的是空, 写入一律失败, 快速转移与双击收集也不把它当成目标.
+     * 检查内容所在的位置是否仍可访问.
+     * <p>返回 {@code false} 后, ReferencingInventory 会在刷新时退役, 随后的读取为空且写入失败.
      *
      * @return 还在时返回 true
      */

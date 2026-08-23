@@ -25,7 +25,7 @@ public record InventoryChange(
     }
 
     /**
-     * 从整笔事务的变更组里挑出属于某个 Inventory 的那一组变更.
+     * 从事务变更组中查找指定 Inventory 的变更.
      *
      * @param inventory 要查找的 Inventory
      * @param rootChanges 整笔事务的 Inventory 变更组
@@ -46,7 +46,7 @@ public record InventoryChange(
     }
 
     /**
-     * 从整笔事务的变更组里挑出属于某个 Inventory 的那一组槽位变更.
+     * 从事务变更组中查找指定 Inventory 的槽位变更.
      *
      * @param inventory 要查找的 Inventory
      * @param rootChanges 整笔事务的 Inventory 变更组
@@ -81,8 +81,6 @@ public record InventoryChange(
 
     /**
      * 返回满足给定条件的 Inventory 槽位变更.
-     * <p>例如 {@code slotChanges(SlotChange::isAdd)} 返回所有存在物品流入的槽位变更,
-     * {@code slotChanges(SlotChange::isRemoveOnly)} 返回只有物品流出的槽位变更.
      *
      * @param filter 变更需要满足的条件
      * @return 使用当前 Inventory 槽位坐标的不可修改变更列表
@@ -100,9 +98,7 @@ public record InventoryChange(
     }
 
     /**
-     * 判断当前 Inventory 是否只有物品流入.
-     * <p>至少需要一个槽位存在物品流入, 且不能有任何槽位存在物品流出.
-     * 内容没有变化的槽位不影响判断.
+     * 判断当前 Inventory 是否有物品流入且没有物品流出.
      *
      * @return 是否只有物品流入
      */
@@ -121,9 +117,7 @@ public record InventoryChange(
     }
 
     /**
-     * 判断当前 Inventory 是否只有物品流出.
-     * <p>至少需要一个槽位存在物品流出, 且不能有任何槽位存在物品流入.
-     * 内容没有变化的槽位不影响判断.
+     * 判断当前 Inventory 是否有物品流出且没有物品流入.
      *
      * @return 是否只有物品流出
      */

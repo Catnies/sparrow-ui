@@ -30,15 +30,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.IntPredicate;
 
-/**
- * 把一次交互算成精确候选.
- * <p>{@code write} 为 {@code false} 时只用于预估 {@link InventoryAction}, 规划全程走只读快照.
- * <p>规划读到的现场由 {@link InteractionOverlay} 决定, 首次规划时覆盖层是空的, 读的就是 Inventory
- * 的规划基准, Bukkit 闸门之后的重规划则读叠加了事件写入的现场.
- */
+// 将当前 Window 状态与事件覆盖计算成可校验的交互候选.
 final class ClickPlanner {
 
-    // 把一次单击算成候选. handled 说明这一格归不归引擎管, 与算不算得出候选是两回事.
+    // handled 表示语义归属, 候选为空仍可能由引擎接管.
     @NotNull
     static PreparedClick prepareClick(
             ClickSemantics.Context context,
@@ -54,22 +49,19 @@ final class ClickPlanner {
         if (windowSlot == InventoryView.OUTSIDE) {
             return new PreparedClick(false, ClickActions.outsideAction(overlay.cursorOr(context.cursor()), clickType), null);
         }
-        // 无法归类的点击对外恒报 UNKNOWN, 冻结与否改变不了"看不懂"这个事实; 事件闸门仍由执行器按冻结拦截,
-        // 冻结槽保持已接管, Item 分派同样不放行.
+        // 未知点击保持 UNKNOWN, 冻结只影响事件闸门.
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
             return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
         }
-        // 冻结槽彻底不参与交互, 不算候选, 不派发任何事件, 也不分派 Item 点击, 只让客户端预测被纠正回来.
+        // 冻结槽由引擎接管, 只纠正客户端预测.
         if (context.frozenAt(windowSlot)) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
         }
 
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-        // 背后没有 Inventory 的槽位一件真实物品都拿不出来, 双击收集要求被点的槽有物品可拿, 这里一律不成立.
         if (link == null) {
             return new PreparedClick(false, InventoryAction.NOTHING, null);
         }
-        // Inventory 级冻结是玩家侧只读, 点在冻结 Inventory 展示槽上的一切动作与冻结槽同待遇.
         if (link.inventory().frozen()) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
         }
@@ -150,8 +142,7 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 挑出这次真正落进槽位, 该拿去过放入规则的那件东西. 光标拿着收纳袋右键空槽时, 进槽的是袋子里掏出来的那一件,
-    // 反过来往袋子里塞东西不算放进这一格, 一律返回 null 表示不必过规则.
+    // Bundle 取出时校验袋内物品, 放入 Bundle 不触发槽位放入规则.
     @Nullable
     private static ItemStack placementInput(
             ClickType clickType,
@@ -189,7 +180,6 @@ final class ClickPlanner {
         if (target == null || source.physicalKey().equals(target.physicalKey())) {
             return null;
         }
-        // 快捷栏端也可能落在冻结的 Inventory 上, 玩家侧只读时两端谁冻结都不成立.
         if (target.inventory().frozen()) {
             return null;
         }
@@ -260,7 +250,7 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 交换是整堆搬过去, 接收端一格装不下就不成立, 不会替玩家拆堆.
+    // 交换保持整堆, 接收槽不拆分超限物品.
     private static boolean fitsReceiving(
             ClickSemantics.LinkedSlot target,
             @Nullable ItemStack incoming
@@ -336,13 +326,7 @@ final class ClickPlanner {
                 .build();
     }
 
-    /**
-     * 规划一次双击收集.
-     * <p>客户端的双击发的是 PICKUP 与 PICKUP_ALL 两个包, 第一个包拿起被点槽的物品, 第二个包才收集同类.
-     * 因此收集成立时被点的槽恰好是空的, 而玩家握着物品去双击时第一个包会把物品放回去, 那一格是满的.
-     *
-     * @return 被点的槽拿得出收集资格时返回候选, 否则返回 {@code null}
-     */
+    // 双击的第二个包只在被点槽显示为空且真实内容也为空时执行收集.
     @Nullable
     private static ClickCandidate prepareLinkedCollect(
             ClickSemantics.Context context,
@@ -390,7 +374,6 @@ final class ClickPlanner {
         for (int inventoryIndex = 0; inventoryIndex < domain.size() && collected < space; inventoryIndex++) {
             ClickSemantics.LinkedInventory linked = domain.get(inventoryIndex);
             SparrowInventory inventory = linked.inventory();
-            // 玩家侧只读的 Inventory 不作为收集来源, 也不进读集.
             if (inventory.frozen()) {
                 continue;
             }
@@ -400,7 +383,7 @@ final class ClickPlanner {
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    // 可见性判断排在去重之前, 同一个物理槽可能经另一个 Inventory 暴露, coveredSlots 要留给可见的那次
+                    // 先判断可见性, 再认领可能由多个 Inventory 暴露的物理槽.
                     slot -> linked.visible(slot) && coveredSlots.add(inventory.physicalKey(slot)),
                     inventory::slotMaxStackSize
             );
@@ -422,9 +405,7 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 规划一次 shift 点击, 按优先级挨个试每个不是源 Inventory 的目标, 跨目标累积, 直到源槽物品全部装完或目标试完.
-    // 每个问过的目标都要进读集. 目标装不装得下直接决定了后面的物品往哪走, 一个当时满着的目标之后被清空,
-    // 本次分配的结果就跟着变, 整个候选必须作废. 读集因此已经是最小集合, 按"有没有贡献"再收窄会漏.
+    // 每个检查过的 shift 目标都会影响后续分配, <strong>即使没有接收物品也必须进入读集</strong>.
     @Nullable
     private static ClickCandidate prepareShift(
             ClickSemantics.Context context,
@@ -459,7 +440,7 @@ final class ClickPlanner {
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
-                    // 可见性判断排在去重之前, 同一个物理槽可能经另一个 Inventory 暴露, coveredSlots 要留给可见的那次.
+                    // 先判断可见性, 再认领物理槽.
                     slot -> linked.visible(slot) && coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
             );
             if (!addPlan.deltas().isEmpty()) {
@@ -495,7 +476,6 @@ final class ClickPlanner {
         List<ClickSemantics.LinkedInventory> linked = context.linkedInventories();
         for (int inventoryIndex = 0; inventoryIndex < linked.size(); inventoryIndex++) {
             ClickSemantics.LinkedInventory candidate = linked.get(inventoryIndex);
-            // 玩家侧只读的 Inventory 不作为快速转移目标.
             if (candidate.inventory() != source && !candidate.inventory().frozen()) {
                 targets.add(candidate);
             }

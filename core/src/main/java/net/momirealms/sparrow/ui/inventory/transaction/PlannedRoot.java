@@ -10,9 +10,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-// 一次规划读到的 Inventory 内容, 同时决定这个 Inventory 怎么参与事务. 加锁, 校验, 构造新状态, 交换和落地
-// 这五步都由它自己给出做法, 事务引擎照着调用, 不用管面前是哪一种 Inventory.
-// 实现由持有内容的那个 Inventory 自己给出, 状态数组和 modCount 这些命门因此不必离开各自的类.
+// 封装一种 Inventory 的规划快照与提交协议.
 @ApiStatus.Internal
 public abstract class PlannedRoot {
     private final SparrowInventory inventory;
@@ -28,28 +26,28 @@ public abstract class PlannedRoot {
         return this.inventory;
     }
 
-    // 规划期看到的内容, 只用来读(规划读取, 事件 before 采样); 依据还成不成立一律问 isStale, 别自己拿数组比对.
+    // <strong>规划内容只读</strong>, 有效性由 isStale 判断.
     public final @Nullable ItemStack @NotNull [] planned() {
         return this.planned;
     }
 
-    // 本基准怎么参与提交临界区, 要加锁的交出锁凭证, 不加锁的返回 null.
+    // 需要加入提交临界区时返回全序锁凭证.
     @Nullable
     protected abstract StateLock stateLock();
 
-    // 规划依据是不是已经作废. 提交临界区内的乐观校验和候选复核的 ROOT_STATE 检查都问这一处.
+    // 判断规划依据是否已经失效.
     public abstract boolean isStale();
 
-    // 在提交临界区内算出应用变更后的新状态, 不需要换状态的返回 null; 只允许紧接着刚通过的 isStale 调用.
+    // <strong>只可在同一临界区通过 isStale 后调用</strong>.
     protected abstract @Nullable ItemStack @Nullable [] buildNextState(@NotNull List<SlotChange> deltas);
 
-    // 在提交临界区内把上一步的产物设为当前状态, 产物为 null 时什么都不做.
+    // 在提交临界区内发布上一步构造的状态.
     protected abstract void swapTo(@Nullable ItemStack @Nullable [] nextState);
 
-    // 状态提交后, post 派发前的落地动作; 调不调由引擎按事务属性决定(External 同步就免了回写).
+    // 状态提交后, Post 派发前执行外部落地.
     protected abstract void land(@NotNull List<SlotChange> deltas);
 
-    // 全序加锁凭证. 引擎按 order 升序逐把加锁, 跨 Inventory 的事务因此不会互相锁死.
+    // 引擎按 order 升序加锁, 为跨 Inventory 事务提供固定锁序.
     public record StateLock(@NotNull ReentrantLock lock, long order) {
     }
 }

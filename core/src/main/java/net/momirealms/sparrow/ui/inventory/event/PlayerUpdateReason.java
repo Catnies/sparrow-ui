@@ -7,13 +7,11 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
+/**
+ * 由玩家交互触发的事务原因.
+ */
 public interface PlayerUpdateReason extends UpdateReason {
 
-    /**
-     * 返回发起交互的玩家.
-     *
-     * @return 发起交互的玩家
-     */
     @NotNull
     Player player();
 

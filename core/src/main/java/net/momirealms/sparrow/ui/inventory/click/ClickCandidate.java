@@ -16,48 +16,28 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * 一次点击或拖拽形成的精确候选, 由已经算好的写集与提交前必须复核的前置条件组成.
- * <p>候选一旦形成就不再重新规划, 每过一道闸门就把这些前置条件复核一遍, 变了任何一条就整体作废.
- * 每条规划路径只声明自己关心的条件, 没声明的一律取"不复核".
- *
- * @param action 候选对应的 Bukkit 操作
- * @param eventTarget 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
- * @param reason 提交时使用的变更原因
- * @param scopes 候选的写集, 空写集表示只改光标等 Window 侧状态
- * @param plannedRoots 规划所依据的 Inventory 基准状态
- * @param expectedCursor 规划时的光标物品
- * @param checkCursor 是否需要复核光标
- * @param expectedOffhand 规划时的副手物品
- * @param checkOffhand 是否需要复核副手
- * @param requireCreative 是否要求提交时仍处于创造模式
- * @param draft 提交后要应用的容器外副作用, 规划期先填好光标, 副手和掉落物的最终值
- * @param afterCommit 提交成功后执行的 Window 侧收尾动作
- */
+// 已规划的写集及其提交前置条件, 每道用户代码闸门后都要重新校验.
 record ClickCandidate(
-        @NotNull InventoryAction action,
-        @Nullable ClickSemantics.LinkedSlot eventTarget,
-        @NotNull UpdateReason reason,
-        @NotNull List<TransactionScope> scopes,
-        @NotNull List<PlannedRoot> plannedRoots,
-        @NotNull ItemStack expectedCursor,
-        boolean checkCursor,
-        @Nullable ItemStack expectedOffhand,
-        boolean checkOffhand,
-        boolean requireCreative,
-        @NotNull InteractionDraft draft,
-        @NotNull Runnable afterCommit
+        @NotNull InventoryAction action,                    // 候选对应的 Bukkit 操作
+        @Nullable ClickSemantics.LinkedSlot eventTarget,    // 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
+        @NotNull UpdateReason reason,                       // 提交时使用的变更原因
+        @NotNull List<TransactionScope> scopes,             // 候选的写集, 空写集表示只改光标等 Window 侧状态
+        @NotNull List<PlannedRoot> plannedRoots,            // 规划所依据的 Inventory 基准状态
+        @NotNull ItemStack expectedCursor,                  // 规划时的光标物品
+        boolean checkCursor,                                // 是否需要复核光标
+        @Nullable ItemStack expectedOffhand,                // 规划时的副手物品
+        boolean checkOffhand,                               // 是否需要复核副手
+        boolean requireCreative,                            // 是否要求提交时仍处于创造模式
+        @NotNull InteractionDraft draft,                    // 提交后要应用的容器外副作用, 规划期先填好光标, 副手和掉落物的最终值
+        @NotNull Runnable afterCommit                       // 提交成功后执行的 Window 侧收尾动作
 ) {
 
-    // 开出一份建造器, 只带上每个候选都有的操作类型与变更原因.
     @NotNull
     static Builder plan(@NotNull InventoryAction action, @NotNull UpdateReason reason) {
         return new Builder(action, reason);
     }
 
-    // 把写集里记的 before 换回规划基准的真实内容. 覆盖层只改变规划期读到的现场, 容器里的真账没动过,
-    // 换回来之后 Pre, Post 处理器和净变化统计看到的才是这一格实际从什么变成什么.
-    // 提交只用 after, 并发校验只比对基准数组本身, 所以这一步不影响事务本身的结果.
+    // 覆盖层只改变规划输入, 事件中的 before 仍应来自真实规划基准.
     @NotNull
     ClickCandidate withRealBefore(@NotNull InteractionOverlay overlay) {
         if (overlay.isEmpty() || this.scopes.isEmpty()) {
@@ -92,8 +72,7 @@ record ClickCandidate(
         );
     }
 
-    // 先把外部容器的变更同步进各规划基准, 再复核候选是否仍然成立.
-    // 规划期的目标列表已经排除源 Inventory 并按身份去重, 每个 Inventory 在这里至多刷新一次.
+    // 同步引用存储后复核全部候选前提.
     @Nullable
     StaleReason revalidate(ClickSemantics.Context context) {
         for (int rootIndex = 0; rootIndex < this.plannedRoots.size(); rootIndex++) {
@@ -102,9 +81,7 @@ record ClickCandidate(
         return this.staleReason(context);
     }
 
-    // 不触发任何刷新, 只比对规划时记下的光标, 副手, 游戏模式和各 Inventory 的基准状态引用.
-    // 说明是哪个前置条件变了, 候选仍然成立时返回 null.
-    // 光标和副手只在规划时真的读过它们时才复核, 没读过的就不属于本次结论的前提.
+    // 只检查规划路径明确依赖的状态, 不触发刷新.
     @Nullable
     StaleReason staleReason(ClickSemantics.Context context) {
         if (this.checkCursor && !ItemUtils.isHandleContentEqual(context.unsafeCursor(), this.expectedCursor)) {
@@ -212,7 +189,7 @@ record ClickCandidate(
             return this;
         }
 
-        // 组装候选, 并对光标与副手做防御复制.
+        // 候选持有独立的光标与副手基准.
         @NotNull
         ClickCandidate build() {
             @Nullable ItemStack expectedCursor = this.expectedCursor;

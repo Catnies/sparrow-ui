@@ -14,12 +14,10 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * Inventory 在事务提交前发出的更新事件.
- * <p>{@link #slotChanges()} 使用当前订阅 Inventory 的槽位坐标,
- * {@link #rootChanges()} 则保留整笔事务涉及的所有 Inventory 变更.
+ * Inventory 在事务提交前发出的可编辑事件.
+ * <p>{@link #slotChanges()} 使用当前 Inventory 的坐标, {@link #rootChanges()} 包含整笔事务.
  */
 public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
-    // 为尚未参与事务的 Inventory 构造带规划基准的空写集, null 表示事件不支持纳入新的 Inventory, 生产不应该出现 null
     @Nullable private final Function<SparrowInventory, TransactionScope> includedScopes;
     @Nullable private final InteractionDraft interaction; // 触发本笔事务的交互副作用草稿, null 表示不是玩家交互
     private final Thread handlerThread;                 // 创建事件的处理器线程, setAfter 只允许它调用
@@ -38,7 +36,6 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         super(inventory, reason, scopes);
         this.includedScopes = includedScopes;
         this.interaction = interaction;
-        // 事件在派发方线程上构造后立即交给处理器, 构造线程就是处理器线程.
         this.handlerThread = Thread.currentThread();
         this.editable = editable;
     }
@@ -57,8 +54,8 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
 
     /**
      * 使用另一个 Inventory 的槽位坐标重写候选最终值.
-     * <p>{@code inventory} 必须是当前 {@link #rootChanges()} 中某个变更组的 {@link InventoryChange#inventory()}
-     * 返回的同一实例. 可以修改该 Inventory 内原事务没有写到的槽位; 想写一个还没参与的 Inventory,
+     * <p><strong>{@code inventory} 必须是当前 {@link #rootChanges()} 中变更组返回的同一实例</strong>.
+     * 可以修改该 Inventory 内原事务没有写到的槽位; 想写一个还没参与的 Inventory,
      * 先调用 {@link #include(SparrowInventory)} 把它纳入进来.
      *
      * @param inventory 本次事务已经参与的 Inventory
@@ -90,7 +87,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             throw new IllegalArgumentException("inventory is not participating in this transaction");
         }
 
-        // 该槽位已有变更时替换其候选最终值并保留原 before, 否则以规划基准状态为 before 追加新变更.
+        // 保留最初的 before, 只替换候选最终值.
         TransactionScope scope = scopes.get(rootIndex);
         @Nullable ItemStack[] planned = scope.planned();
         Objects.checkIndex(rootSlot, planned.length);
@@ -158,16 +155,8 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     }
 
     /**
-     * 返回本笔事务的交互副作用草稿, 用来改写提交后的光标, 副手和掉落物.
-     * <p>{@link #setAfter} 只能改容器里的内容, 光标不属于任何 Inventory. 缩小一个槽位的最终值时,
-     * 差额该不该回到光标, 只有处理器自己知道, 要在这里一并写清楚.
-     * <pre>{@code
-     * // 炉子这次只吃得下 10 个, 其余 54 个退回光标
-     * event.setAfter(0, null);
-     * InteractionDraft interaction = event.interaction();
-     * if (interaction != null) interaction.cursor(coal.asQuantity(54));
-     * }</pre>
-     * <p>返回的草稿与本笔事务的其他 Pre 处理器共用, 上一个处理器写下的结果就是这里读到的内容.
+     * 返回本笔事务共享的交互副作用草稿, 可改写提交后的光标, 副手和掉落物.
+     * <p>槽位差额不会自动反映到草稿中, 处理器需要同时写明两边的最终结果.
      *
      * @return 玩家交互触发的事务返回可编辑的副作用草稿; API 写入与外部同步返回 {@code null}
      * @throws IllegalStateException 当前同步处理器已经退出, 或从其他线程调用
@@ -185,8 +174,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         }
     }
 
-    // 关闭编辑窗口, 派发方在处理器返回后调用;
-    // 之后任何 setAfter 都会失败, 逃逸出去的事件引用就改不动事务了.
+    // 处理器退出后关闭编辑窗口, 逃逸的事件引用不能继续修改事务.
     @ApiStatus.Internal
     public void closeEditing() {
         this.editable = false;

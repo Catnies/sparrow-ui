@@ -5,6 +5,10 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * 一个逻辑槽位在事务前后的内容记录.
+ * <p>普通访问器返回副本, {@code unsafe} 访问器暴露事务内部的只读对象.
+ */
 public final class SlotChange {
     private final int slot;                   // 承载这条记录的 Inventory 坐标
     @Nullable private final ItemStack before; // 变更前的内部物品副本, 空槽为 null
@@ -23,8 +27,7 @@ public final class SlotChange {
 
     /**
      * 判断本次变更是否有物品流入槽位.
-     * <p>本方法与 {@link #isRemove()} 不互斥. 两个不相似的非空物品发生替换时,
-     * 槽位同时存在物品流入与流出, 两个方法都会返回 {@code true}.
+     * <p>不相似物品发生替换时, {@link #isRemove()} 也返回 {@code true}.
      *
      * @return {@link #addedAmount()} 大于 {@code 0} 时返回 {@code true}
      */
@@ -33,8 +36,7 @@ public final class SlotChange {
     }
 
     /**
-     * 判断本槽位是否只有物品流入, 没有物品流出.
-     * <p>不相似物品发生替换时同时存在两个方向的物品流, 本方法返回 {@code false}.
+     * 判断本槽位是否只有物品流入.
      *
      * @return {@link #isAdd()} 为 {@code true} 且 {@link #isRemove()} 为 {@code false} 时返回 {@code true}
      */
@@ -44,8 +46,7 @@ public final class SlotChange {
 
     /**
      * 判断本次变更是否有物品流出槽位.
-     * <p>本方法与 {@link #isAdd()} 不互斥. 两个不相似的非空物品发生替换时,
-     * 槽位同时存在物品流入与流出, 两个方法都会返回 {@code true}.
+     * <p>不相似物品发生替换时, {@link #isAdd()} 也返回 {@code true}.
      *
      * @return {@link #removedAmount()} 大于 {@code 0} 时返回 {@code true}
      */
@@ -54,8 +55,7 @@ public final class SlotChange {
     }
 
     /**
-     * 判断本槽位是否只有物品流出, 没有物品流入.
-     * <p>不相似物品发生替换时同时存在两个方向的物品流, 本方法返回 {@code false}.
+     * 判断本槽位是否只有物品流出.
      *
      * @return {@link #isRemove()} 为 {@code true} 且 {@link #isAdd()} 为 {@code false} 时返回 {@code true}
      */
@@ -65,8 +65,7 @@ public final class SlotChange {
 
     /**
      * 判断两个非空物品是否发生了不相似的替换.
-     * <p>替换同时包含旧物品流出和新物品流入, 因此本方法返回 {@code true} 时,
-     * {@link #isAdd()} 与 {@link #isRemove()} 也会返回 {@code true}.
+     * <p>替换同时计为旧物品流出和新物品流入.
      *
      * @return 两个非空物品是否发生了不相似的替换
      */
@@ -138,8 +137,7 @@ public final class SlotChange {
 
     /**
      * 零拷贝地返回变更前的物品, 原本为空槽时返回 {@code null}.
-     * <p>返回值属于事务记录内部. 调用方只能在当前调用栈内读取, 不得修改或保存引用;
-     * 违反约定会污染事件历史, 净变化计算以及后续读取结果.
+     * <p><strong>返回值只限当前调用栈读取, 不得修改或持有</strong>.
      *
      * @return 变更前的内部物品引用, 原本为空槽时为 {@code null}
      */
@@ -150,9 +148,7 @@ public final class SlotChange {
 
     /**
      * 零拷贝地返回变更后的物品, 清空槽位时返回 {@code null}.
-     * <p>该实例可能在提交后成为 Inventory 的实际槽位内容. 调用方只能在当前调用栈内读取,
-     * 不得修改或保存引用; 违反约定会绕过事务, 事件, Window 刷新和外部容器同步,
-     * 并污染事件历史与净变化计算.
+     * <p>该实例可能成为提交后的实际槽位内容. <strong>返回值只限当前调用栈读取, 不得修改或持有</strong>.
      *
      * @return 变更后的内部物品引用, 清空槽位时为 {@code null}
      */

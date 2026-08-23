@@ -14,13 +14,12 @@ public final class ClickActions {
     private ClickActions() {
     }
 
-    // 左键点击某个槽位的操作, 具体是"放下全部"还是"放下一部分"取决于实际结果, 所以要看规则算出的 outcome.
     @NotNull
     public static InventoryAction leftAction(@Nullable ItemStack current, ItemStack cursor, ClickOutcome outcome) {
         if (cursor.isEmpty()) {
             return InventoryAction.PICKUP_ALL;
         }
-        // 收纳袋在两个方向上都有专属操作, 光标是袋子表示把槽里的东西收进去, 槽里是袋子表示把光标塞进去.
+        // Bundle 的操作名取决于袋子位于光标还是槽位.
         if (current != null && ClickBundleRules.isBundle(cursor)) {
             return outcome.slotAfter() == null
                     ? InventoryAction.PICKUP_ALL_INTO_BUNDLE
@@ -45,10 +44,9 @@ public final class ClickActions {
         return InventoryAction.SWAP_WITH_CURSOR;
     }
 
-    // 右键点击某个槽位的操作, 右键的结果形状固定(取一半, 放一个, 交换), 光看两端物品就能定.
     @NotNull
     public static InventoryAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
-        // 收纳袋右键是逐件进出, 与左键的整袋收纳区分开; 袋子对袋子仍然只是交换.
+        // Bundle 右键使用逐件进出操作名.
         if (current == null && ClickBundleRules.isBundle(cursor)) {
             return InventoryAction.PLACE_FROM_BUNDLE;
         }
@@ -63,7 +61,6 @@ public final class ClickActions {
                 : InventoryAction.SWAP_WITH_CURSOR;
     }
 
-    // 点到窗口外, 手上没东西就什么也不会发生, 有东西则按左右键决定丢整堆还是丢一个.
     @NotNull
     public static InventoryAction outsideAction(ItemStack cursor, ClickType clickType) {
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {

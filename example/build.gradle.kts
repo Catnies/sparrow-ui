@@ -58,7 +58,7 @@ paper {
 }
 
 val exampleJar = tasks.shadowJar.flatMap { it.archiveFile }
-val minecraftVersions = listOf("1.21.8", "1.21.11", "26.1.2", "26.2")
+val minecraftVersions = listOf("1.20.4", "1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2")
 for (minecraftVersion in minecraftVersions) {
     tasks.register<RunServer>("runPaper_$minecraftVersion") {
         group = "run paper"

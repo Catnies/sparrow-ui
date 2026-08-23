@@ -14,30 +14,26 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// 一个 Inventory 的事务订阅器, 每个 Inventory 至多一个. 事务只按写集里属于本 Inventory 的那一组变更派发.
-// Post 的串行叫号也归它, 那个顺序是"每个 Inventory 一条"的事, 而这里正是每 Inventory 一份的派发对象.
 @ApiStatus.Internal
 public final class InventoryUpdateChannel {
-    private final SparrowInventory inventory; // 拥有本订阅器的 Inventory
-    private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();   // PreUpdateEvent 订阅者
-    private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>(); // PostUpdateEvent 订阅者
+    private final SparrowInventory inventory;
+    private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preSubscribers = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postSubscribers = new CopyOnWriteArrayList<>();
 
-    private volatile boolean serialPostDispatch;  // 开启后本 Inventory 的 Post 严格按提交顺序串行派发, 后到的提交线程阻塞等待
-    private final Object postGate = new Object(); // 只保护下面两个票号, 不保护任何内容状态
-    private long nextPostTicket;                  // 下一个待签发的票号, 只在提交临界区内自增
-    private long servingPostTicket;               // 正在派发的票号, 只在 postGate 内自增
+    private volatile boolean serialPostDispatch;
+    private final Object postGate = new Object(); // 只保护 Post 票号, 不保护 Inventory 状态
+    private long nextPostTicket;                  // 在提交临界区签发
+    private long servingPostTicket;               // 在 postGate 内推进
 
     public InventoryUpdateChannel(@NotNull SparrowInventory inventory) {
         this.inventory = inventory;
     }
 
-    // 添加一个 PreUpdate 处理器.
     @NotNull
     public Subscription subscribePre(@NotNull Observer<? super InventoryPreUpdateEvent> observer) {
         return this.subscribe(this.preSubscribers, observer);
     }
 
-    // 添加一个 PostUpdate 处理器.
     @NotNull
     public Subscription subscribePost(@NotNull Observer<? super InventoryPostUpdateEvent> observer) {
         return this.subscribe(this.postSubscribers, observer);
@@ -53,18 +49,16 @@ public final class InventoryUpdateChannel {
         return subscriber;
     }
 
-    // 事务开始时点一次名, 顺便决定这笔事务要不要给本 Inventory 派 Pre, 谁都不用通知时返回 null.
+    // 事务开始时冻结接收者名单, 本轮新增订阅不会进入当前事务.
     @Nullable
     TransactionNotification prepare(@NotNull UpdateReason reason, @NotNull TransactionScope scope, boolean includePre) {
-        // 赶在任何 Pre 处理器跑起来之前把两份名单一起抄下来, 处理器新增的订阅就影响不到本轮了
         List<InventoryUpdateSubscriber<InventoryPreUpdateEvent>> preRecipients = includePre ? List.copyOf(this.preSubscribers) : List.of();
         List<InventoryUpdateSubscriber<InventoryPostUpdateEvent>> postRecipients = List.copyOf(this.postSubscribers);
         if (preRecipients.isEmpty() && postRecipients.isEmpty()) {
             return null;
         }
 
-        // Pre 接收者只认原始事务里属于本 Inventory 的变更, 之后的编辑既不补派也不递归派 Pre;
-        // Post 名单则先留着, 等 Pre 全跑完再按最终变更筛, Pre 新增的槽位也能拿到提交后通知
+        // 空原始写集不派 Pre, Post 仍可覆盖 Pre 后新增的变更.
         if (scope.slotChanges().isEmpty()) {
             preRecipients = List.of();
         }
@@ -74,14 +68,13 @@ public final class InventoryUpdateChannel {
         return new TransactionNotification(this, reason, preRecipients, postRecipients);
     }
 
-    // 在提交临界区里领一个票号, 领到的先后就是提交的先后; 没开串行派发时返回 -1.
+    // 票号在提交临界区签发, 顺序与状态提交一致.
     long takePostTicket() {
-        // 能开串行派发的只有 VirtualInventory, 它提交时必然持着自己的写锁, 所以 nextPostTicket 自增不必再加同步
         if (!this.serialPostDispatch) return -1L;
         return this.nextPostTicket++;
     }
 
-    // 阻塞到自己的票号被叫到. 这里故意不响应中断, 排在后面的票要等这一次走完才轮得到.
+    // 等待期间延迟处理中断, 当前票完成后恢复中断状态.
     void awaitPostTurn(long ticket) {
         boolean interrupted = false;
         synchronized (this.postGate) {
@@ -98,7 +91,7 @@ public final class InventoryUpdateChannel {
         }
     }
 
-    // 叫下一个票号. 必须与 awaitPostTurn 在同一个 finally 里配对, 漏掉一次, 本 Inventory 之后的提交线程就全卡死了.
+    // <strong>必须在 awaitPostTurn 后的 finally 中调用</strong>, 否则后续 Post 会永久等待.
     void releasePostTurn() {
         synchronized (this.postGate) {
             this.servingPostTicket++;

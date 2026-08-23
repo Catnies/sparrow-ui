@@ -26,16 +26,8 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 /**
- * 内容放在 {@link ExternalStorage} 里的 Inventory 实现, 读写直达存储, 自己不留一份内容.
- * <p><strong>串行访问由调用方负责.</strong> 所有读写都必须在存储可合法访问的上下文中串行执行
- * (Bukkit 存储即容器的属主线程); 接入 Window 期间, 玩家实体线程就是事实上的串行化线程.
- * 本类不判断平台或存储的执行所有者, 也不调度到其线程. 平台抛出的访问异常会沿调用栈传播.
- * <p>并发校验看 modCount. 规划基准是当场逐槽读存储填出来的临时数组, 每次规划都重建一份, 只用来读内容.
- * <p>外部世界绕过本类直接改存储时, 靠与 lastKnown 逐槽比对发现, 以
- * {@link net.momirealms.sparrow.ui.inventory.event.UpdateReason.External} 的名义补派 post 事件并同步显示.
- * 比对由 Window 每 tick 一次的 {@link #refresh()} 和写入口的写前准备触发, 本类自己不注册调度任务.
- * <p>引用世界里的容器(方块, 实体)时只弱持有它, 不拦着它随区块卸载或者实体消失被回收, 世界放手之后本 Inventory 退役.
- * 世界里问不出宿主的容器(例如 Bukkit.createInventory 造的)没有别人持有, 由存储自己钉住, 用不着调用方另外留一份引用.
+ * 将逻辑槽位映射到 {@link ExternalStorage}, 存储保有权威内容, 本对象只留一份外部变更比对基准.
+ * <p><strong>调用方必须在存储所属线程串行访问</strong>. {@link #refresh()} 会吸收外部变更, 存储失效后本 Inventory 退役.
  */
 public final class ReferencingInventory extends SparrowInventory {
     private static final ExternalStorage RETIRED_STORAGE = new ExternalStorage() {
@@ -65,17 +57,17 @@ public final class ReferencingInventory extends SparrowInventory {
         }
     };
 
-    private ExternalStorage storage;                // 内容实际存放的地方, 读写一律以它为准, 退役后换成空壳
-    private @Nullable WeakReference<Inventory> referenced; // 被引用的 Bukkit 容器, 引用的不是 Bukkit 容器或者已退役时为 null
-    private final int[] storageSlots;               // 当前 Inventory 槽位 -> 存储槽位, 读写与比对共用
-    private final SlotKey[] slotKeys;               // 当前 Inventory 槽位 -> 判等身份, 只用来回答是不是同一格, 退役后改成只代表自己
-    private final @Nullable SlotOrder addOrder;     // 玩家存储区的 ADD 顺序按原版 quick-move 反向遍历, 其余情况为 null
+    private ExternalStorage storage; // 退役后换为 RETIRED_STORAGE
+    private @Nullable WeakReference<Inventory> referenced;
+    private final int[] storageSlots;           // 逻辑槽位 -> 存储读写坐标
+    private final SlotKey[] slotKeys;           // 逻辑槽位 -> 物理身份, 不可用于读写
+    private final @Nullable SlotOrder addOrder;
 
-    private final @Nullable ItemStack[] lastKnown;  // 上次见到的内容, 逐槽一份副本, 只用来发现外部改动, 退役后清空
-    private volatile boolean retired;               // 存储已经不在了, 之后读到空, 写入一律失败
-    private long modCount;                          // 并发校验用的计数, 自己写入或吸收外部变更后加一
+    private final @Nullable ItemStack[] lastKnown; // 外部变更比对基准
+    private volatile boolean retired;
+    private long modCount;
 
-    // 交给基类的状态数组只是拿来定槽位数量的, 内容读写全改道外部存储, 那个数组永远是空的, 也永远不会被交换.
+    // 基类状态数组只提供固定尺寸, 内容始终来自外部存储.
     private ReferencingInventory(
             ExternalStorage storage,
             @Nullable Inventory referenced,
@@ -140,7 +132,6 @@ public final class ReferencingInventory extends SparrowInventory {
         return new ReferencingInventory(storage, null, readLogicalContents(raw, slotMapping), slotMapping, null);
     }
 
-    // 三个 fromXxx 工厂共用的装配.
     static ReferencingInventory create(
             Inventory inventory,
             Function<Inventory, @Nullable ItemStack[]> contentsGetter,
@@ -173,7 +164,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>直接读取外部存储现值的副本.
+     * <p>返回外部存储现值的副本.
      */
     @Override
     @Nullable
@@ -184,7 +175,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>直接读取外部存储现值; 存储给出活视图时返回的就是活视图.
+     * <p>存储返回活视图时, 本方法也返回该活视图.
      */
     @Override
     @Nullable
@@ -196,7 +187,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>逐槽读取外部存储现值的副本.
+     * <p>逐槽返回外部存储现值的副本.
      */
     @Override
     public @Nullable ItemStack @NotNull [] snapshot() {
@@ -210,7 +201,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>返回按当前 Inventory 槽位排列的存储现值视图数组; 数组每次调用新建, 元素契约与存储的读取契约相同.
+     * <p>数组按逻辑槽位新建, 元素沿用存储的读取契约.
      */
     @Override
     public @Nullable ItemStack @NotNull [] unsafeSnapshot() {
@@ -219,7 +210,6 @@ public final class ReferencingInventory extends SparrowInventory {
 
     @Override
     public void refresh() {
-        // 存储没了就地退役, 这一轮不再去读它
         if (this.retired) return;
         if (!this.storage.alive()) {
             this.retire();
@@ -229,25 +219,21 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 让本 Inventory 退役, 内容存放的地方已经不在了, 这个 Inventory 从此不再可用.
-     * <p>可以直接调用(例如在方块破坏事件里), 也可以交给 {@link ExternalStorage#alive()} 让每 tick 的
-     * {@link #refresh()} 自己发现. 重复调用没有额外效果.
+     * 释放外部存储并使本 Inventory 退役. 后续读取为空且写入会冲突, 重复调用没有效果.
      */
     public void retire() {
         if (this.retired) {
             return;
         }
         this.retired = true;
-        // 推一下 modCount 作废全部在途规划基准; 退役之后新建的基准也会被 Live.isStale 一律判失效.
+        // 作废全部在途规划基准.
         this.modCount++;
-        // 之后不会再碰存储, 这里换成空壳, 读写路径也不必再多一道判空.
         this.storage = RETIRED_STORAGE;
         this.referenced = null;
-        // 判等身份改成只代表自己, 退役之后它和任何真实存储位置都不再是同一格.
+        // 退役槽位不再与任何真实存储位置判等.
         for (int slot = 0; slot < this.slotKeys.length; slot++) {
             this.slotKeys[slot] = new SlotKey(this, slot);
         }
-        // 比对基准也没有意义了, 顺手放掉那一份内容副本.
         Arrays.fill(this.lastKnown, null);
         this.visual().dirty();
         this.updateContentSignal();
@@ -261,7 +247,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>返回存储声明的堆叠上限.
+     * <p>返回外部存储声明的堆叠上限.
      */
     @Override
     public int slotMaxStackSize(int slot) {
@@ -271,7 +257,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>玩家存储区的 ADD 顺序走原版 quick-move 的反向顺序, 其余情况回退自然顺序.
+     * <p>玩家存储区按原版 quick-move 的反向顺序执行 ADD.
      */
     @Override
     @NotNull
@@ -284,8 +270,7 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * {@inheritDoc}
      *
-     * <p>返回外部存储给出的 SlotKey, 构造时逐槽算好,
-     * 两个 ReferencingInventory 最终写同一格时, SlotKey 相同.
+     * <p>返回构造时从外部存储取得的物理身份.
      */
     @Override
     @NotNull
@@ -293,14 +278,14 @@ public final class ReferencingInventory extends SparrowInventory {
         return this.slotKeys[slot];
     }
 
-    // 写之前先确认存储还在, 再比对一次把积压的外部变更派发出去, 接下来的规划才是基于最新内容算的.
+    // 写规划前同步外部变更并检查存储生命周期.
     @Override
     @ApiStatus.Internal
     public void prepareWrite() {
         this.refresh();
     }
 
-    // 逐槽读存储填出一个临时数组当规划内容, 并记下当前 modCount 作为日后判断失效的凭据.
+    // 规划基准由存储快照和当前 modCount 组成.
     @Override
     @NotNull
     @ApiStatus.Internal
@@ -308,12 +293,12 @@ public final class ReferencingInventory extends SparrowInventory {
         return new Live(this, this.readView(), this.modCount);
     }
 
-    // 把本写集落进外部存储, 顺带同步 lastKnown, 让自己写进去的内容在下一轮比对里保持一致.
+    // 写入存储并同步外部变更基准.
     private void liveApply(@NotNull List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             int storageSlot = this.storageSlots[delta.slot()];
-            // 现值已经和要写的内容相等就别动它, 等值覆盖会作废外部还拿着的那个引用
+            // 等值写入保留外部正在使用的物品实例.
             if (!this.storage.contentEquals(storageSlot, delta.unsafeAfter())) {
                 this.storage.write(storageSlot, delta.after());
             }
@@ -322,11 +307,10 @@ public final class ReferencingInventory extends SparrowInventory {
         this.modCount++;
     }
 
-    // 存储内容和 lastKnown 逐槽比一遍, 对不上的就认下来并以 External 原因补派 post 事件; 只记账不回写, 存储里的实例原样不动.
+    // 将外部存储与 lastKnown 的差异作为 External 事务派发, 不回写存储.
     private void reconcileFromStorage() {
         if (this.retired) return;
-        // 比对交给存储自己做. 绝大多数 tick 一格都没变, 这一趟因此不为比对分配任何东西;
-        // 只有对不上的那一格才去读现值, 由 SlotChange 记下前后两版
+        // 无差异时不分配变更列表或 Bukkit 物品包装.
         @Nullable List<SlotChange> deltas = null;
         for (int slot = 0; slot < this.lastKnown.length; slot++) {
             int storageSlot = this.storageSlots[slot];
@@ -343,8 +327,7 @@ public final class ReferencingInventory extends SparrowInventory {
             return;
         }
 
-        // 先记账再派发. lastKnown 改记现值(直接共用 SlotChange 里那份副本, 两边都不会去改它), modCount 加一,
-        // 这样 post 处理器在事件里重新发起写入时, 看到的已经是新版本.
+        // 先发布新基准, 让 Post 处理器发起的嵌套写入看到最新版本.
         for (int i = 0; i < deltas.size(); i++) {
             SlotChange delta = deltas.get(i);
             this.lastKnown[delta.slot()] = delta.unsafeAfter();
@@ -353,7 +336,7 @@ public final class ReferencingInventory extends SparrowInventory {
         TransactionResult result = InventoryTransactions.commitExternalSync(
                 new TransactionScope(new Live(this, this.readView(), this.modCount), deltas)
         );
-        // 调用方既然保证了串行访问, 这里就不该冲突; 真冲突了说明调用边界已经被破坏, 交给异常处理器上报
+        // 串行访问契约成立时, External 同步不会冲突.
         if (!(result instanceof TransactionResult.Committed)) {
             SparrowUI.getInstance().handleException(
                     "Failed to dispatch external changes of a ReferencingInventory",
@@ -362,8 +345,7 @@ public final class ReferencingInventory extends SparrowInventory {
         }
     }
 
-    // 读出存储全部内容并按当前槽位排列; 退役之后干脆不碰存储, 那个容器已经和服务端脱钩,
-    // 里面剩下的东西既不该出现在菜单里, 也不该当规划依据, 所以直接给一整排空槽位.
+    // 退役后不再访问存储, 直接返回固定尺寸的空视图.
     private @Nullable ItemStack @NotNull [] readView() {
         if (this.retired) {
             return new ItemStack[this.storageSlots.length];
@@ -371,7 +353,7 @@ public final class ReferencingInventory extends SparrowInventory {
         return this.mapView(this.storage.readAll());
     }
 
-    // 把存储原始内容按当前槽位顺序摆好, 元素零拷贝, 空物品折成 null.
+    // 按逻辑槽位重排存储内容, 元素保持零拷贝.
     @Nullable
     private ItemStack @NotNull [] mapView(@Nullable ItemStack[] raw) {
         @Nullable ItemStack[] view = new ItemStack[this.storageSlots.length];
@@ -381,7 +363,6 @@ public final class ReferencingInventory extends SparrowInventory {
         return view;
     }
 
-    // 取一份内容副本当 lastKnown 的初值, 之后的外部变更都是拿它做基准比出来的.
     private static @Nullable ItemStack[] readLogicalContents(@Nullable ItemStack[] raw, SlotOrder slotMapping) {
         @Nullable ItemStack[] logical = new ItemStack[raw.length];
         for (int slot = 0; slot < raw.length; slot++) {
@@ -408,8 +389,7 @@ public final class ReferencingInventory extends SparrowInventory {
         return storageSlots;
     }
 
-    // 构造时一次算好每个槽位的 SlotKey, 之后判断"是不是同一格"就不必再问存储.
-    // 它只回答身份: 接起来的存储交出的是段内本地槽号, 拿它当存储槽位去读写会整体错位.
+    // 物理身份在构造时固化, 与 storageSlots 的读写坐标分开保存.
     private static SlotKey[] slotKeys(ExternalStorage storage, SlotOrder slotMapping) {
         SlotKey[] slotKeys = new SlotKey[slotMapping.size()];
         for (int slot = 0; slot < slotKeys.length; slot++) {
@@ -418,7 +398,7 @@ public final class ReferencingInventory extends SparrowInventory {
         return slotKeys;
     }
 
-    // 玩家背包重排, 槽位 i 指向 Bukkit 容器槽位 (i + 9) % 36, 热键行(容器 0-8)因此落到本 Inventory 的 27-35, 也就是最后一行.
+    // 玩家主背包在前, 热键栏映射到最后九格.
     private static int[] reorderPlayerStorage(int[] slots) {
         int[] reordered = new int[slots.length];
         for (int i = 0; i < slots.length; i++) {
@@ -427,8 +407,7 @@ public final class ReferencingInventory extends SparrowInventory {
         return reordered;
     }
 
-    // 内容放在外部存储里时用的规划基准. planned 是新建时逐槽读存储填出来的临时数组, 只用来读内容,
-    // 校验则看新建时记下的 modCount, 之后任何写入或吸收外部变更都会让它对不上.
+    // 外部存储规划基准通过 modCount 检测写入与外部同步.
     private static final class Live extends PlannedRoot {
         private final ReferencingInventory owner;
         private final long modCountAtPlan;
@@ -447,7 +426,6 @@ public final class ReferencingInventory extends SparrowInventory {
 
         @Override
         public boolean isStale() {
-            // 已退役的 Inventory 没有任何基准还成立, 事务一律以 Conflicted 收场
             return this.owner.retired || this.owner.modCount != this.modCountAtPlan;
         }
 

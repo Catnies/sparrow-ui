@@ -20,14 +20,14 @@ import java.util.function.Predicate;
  * {@link #rootChanges()} 则保留整笔事务涉及的所有 Inventory 变更.
  */
 public abstract class InventoryUpdateEvent {
-    private final SparrowInventory inventory;              // 当前事件所属的 Inventory
-    private final UpdateReason reason;                     // 整笔事务的触发原因
-    private volatile List<TransactionScope> scopes;        // 整笔事务的完整写集
+    private final SparrowInventory inventory;
+    private final UpdateReason reason;
+    private volatile List<TransactionScope> scopes;
 
-    // 以下三项都从 scopes 派生, 第一次查询时计算, 候选快照被替换后重算.
-    @Nullable private volatile NetItems netItems;                 // 当前 Inventory 的净变化
-    @Nullable private volatile InventoryChange ownChange;         // 当前 Inventory 自己那一组变更
-    @Nullable private volatile List<InventoryChange> rootChanges; // 面向订阅者的完整变更视图
+    // Pre 改写 scopes 时清空以下惰性视图.
+    @Nullable private volatile NetItems netItems;
+    @Nullable private volatile InventoryChange ownChange;
+    @Nullable private volatile List<InventoryChange> rootChanges;
 
     InventoryUpdateEvent(
             @NotNull SparrowInventory inventory,
@@ -39,7 +39,7 @@ public abstract class InventoryUpdateEvent {
         this.scopes = List.copyOf(scopes);
     }
 
-    // 返回本事件当前展示的事务写集, 供事务引擎接纳 PreUpdateEvent 处理器留下的改写.
+    // 事务引擎通过当前写集接纳 Pre 处理器的修改.
     @NotNull
     @ApiStatus.Internal
     public final List<TransactionScope> scopes() {
@@ -88,7 +88,7 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
-     * 返回当前订阅 Inventory 自己的槽位变更.
+     * 返回当前订阅 Inventory 自己的槽位变更, 使用它的逻辑槽位坐标.
      *
      * @return 当前 Inventory 的槽位变更记录
      */
@@ -123,9 +123,7 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
-     * 判断当前 Inventory 是否只有物品流入.
-     * <p>至少需要一个槽位存在物品流入, 且不能有任何槽位存在物品流出.
-     * 内容没有变化的槽位不影响判断.
+     * 判断当前 Inventory 是否有物品流入且没有物品流出.
      *
      * @return 是否只有物品流入
      */
@@ -134,9 +132,7 @@ public abstract class InventoryUpdateEvent {
     }
 
     /**
-     * 判断当前 Inventory 是否只有物品流出.
-     * <p>至少需要一个槽位存在物品流出, 且不能有任何槽位存在物品流入.
-     * 内容没有变化的槽位不影响判断.
+     * 判断当前 Inventory 是否有物品流出且没有物品流入.
      *
      * @return 是否只有物品流出
      */
@@ -250,8 +246,7 @@ public abstract class InventoryUpdateEvent {
         return netItems;
     }
 
-    // 把一组槽位变更折算成整个 Inventory 的净增减,
-    // 同一批物品只是在两个槽位之间搬家时, 一边的流出会抵掉另一边的流入, 因此不算净变化.
+    // 同类物品在槽位间移动时, 流入与流出相互抵消.
     @NotNull
     private static NetItems calculateNetItems(@NotNull List<SlotChange> slotChanges) {
         List<NetItem> addedItems = new ArrayList<>();
@@ -280,7 +275,7 @@ public abstract class InventoryUpdateEvent {
         return new NetItems(change, List.copyOf(addedItems), List.copyOf(removedItems));
     }
 
-    // 把一次物品流动记到它自己那个方向上, 但先拿去抵消反方向已经记下的相同物品.
+    // 先抵消反方向的同类物品, 再按最大堆叠量记录净余量.
     private static void balance(@NotNull List<NetItem> sameDirection, @NotNull List<NetItem> oppositeDirection, @NotNull ItemStack template, int amount) {
         int remaining = amount;
         // 先与反方向相互抵消, 一进一出的那部分对整个 Inventory 没有净影响.
@@ -300,7 +295,7 @@ public abstract class InventoryUpdateEvent {
                 i++;
             }
         }
-        // 抵消不掉的部分先塞进同方向已有条目的剩余堆叠空间.
+        // 复用同方向记录的剩余堆叠空间.
         for (int i = 0; i < sameDirection.size() && remaining > 0; i++) {
             NetItem same = sameDirection.get(i);
             if (!ItemUtils.isSimilar(template, same.template())) {
@@ -312,7 +307,7 @@ public abstract class InventoryUpdateEvent {
                 remaining -= accepted;
             }
         }
-        // 仍有剩余就按最大堆叠拆成新条目, 让净变化的堆叠形状与真实物品保持一致.
+        // 新条目按物品上限分堆.
         while (remaining > 0) {
             int stackAmount = Math.min(remaining, template.getMaxStackSize());
             sameDirection.add(new NetItem(template, stackAmount));

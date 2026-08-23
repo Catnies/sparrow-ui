@@ -20,23 +20,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 把玩家在 Window 上的一次点击或拖拽, 翻译成 Inventory 上的一笔事务.
- * <p>Window 只负责把解析好的点击交进来, 由这里决定这次交互接管不接管, 以及沿途该派发哪些事件.
- * <p>调用方通过 {@link Context} 提供 Window 的当前状态, 通过 {@link InteractionGate} 接管事件派发.
+ * 将 Window 上的点击或拖拽转换为 Inventory 事务.
+ * <p>{@link Context} 提供当前状态, {@link InteractionGate} 连接事件派发.
  */
 public final class ClickSemantics {
 
     private ClickSemantics() {
     }
 
-    // 一个 Window 槽位背后连接的当前 Inventory 槽位, 可计算连接最终指向的 SlotKey.
+    // Window 槽位当前连接的 Inventory 槽位.
     public record LinkedSlot(@NotNull SparrowInventory inventory, int slot) {
         SlotKey physicalKey() {
             return this.inventory.physicalKey(this.slot);
         }
     }
 
-    // 参与点击语义的连接 Inventory 及其可见槽位, 只有经未冻结协议槽展示的槽位可见.
+    // 参与交互的 Inventory 及其可见逻辑槽位.
     public record LinkedInventory(@NotNull SparrowInventory inventory, @NotNull BitSet visibleSlots) {
         boolean visible(int slot) {
             return this.visibleSlots.get(slot);
@@ -45,7 +44,7 @@ public final class ClickSemantics {
 
     /**
      * 根据当前点击 Context 推导出正确的 Paper InventoryAction.
-     * 其他已支持但点了没效果的操作返回 {@link InventoryAction#NOTHING}.
+     * 已识别但没有效果的操作返回 {@link InventoryAction#NOTHING}.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 已解析的点击类型
@@ -60,8 +59,7 @@ public final class ClickSemantics {
             int hotbarButton,
             int windowSlot
     ) {
-        // 只要规划器算出的操作类型. write 传 false 表示全程走只读快照, 不同步外部容器, 也不留下候选.
-        // 预估发生在任何交互事件之前, 所以现场上还没有任何覆盖可言.
+        // 只读规划不刷新外部存储, 也不保留候选.
         return ClickPlanner.prepareClick(context, clickType, hotbarButton, windowSlot, null, -1, () -> {}, false, InteractionOverlay.forClick()).action();
     }
 
@@ -72,7 +70,7 @@ public final class ClickSemantics {
      * @param clickType 已解析的点击类型
      * @param hotbarButton NUMBER_KEY 的热键编号, 其他点击传 {@code -1}
      * @param windowSlot 协议槽位(raw slot)
-     * @return 语义已接管返回 {@code true}; 否则表示点的是装饰性 Item 或空槽, 与 Inventory 无关
+     * @return 语义已接管返回 {@code true}. 装饰性 Item 或空槽返回 {@code false}
      */
     public static boolean handleClick(
             @NotNull Context context,
@@ -85,8 +83,8 @@ public final class ClickSemantics {
 
     /**
      * 处理带 Window 本地 Bundle 选择状态与交互闸门的单击.
-     * <p>只要语义接管了这个槽位, {@link InteractionGate#allowClick} 一律会被调用一次,
-     * 即使这次点击算不出候选(冻结槽, 空操作, 被放入规则拒绝). 其余闸门方法仍然只在候选存在时调用.
+     * <p>语义接管且参与者启用了 Bukkit 事件时, {@link InteractionGate#allowClick} 会被调用一次,
+     * 即使这次点击没有候选. 冻结槽不会进入闸门.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 已解析的点击类型
@@ -96,7 +94,7 @@ public final class ClickSemantics {
      * @param selectedIndex 记录的 Bundle 内部索引, 没有选择时为 {@code -1}
      * @param afterCommit 右键事务提交后清理 Window 选择状态的回调
      * @param gate 派发事件并复核 Window 状态的交互闸门
-     * @return 语义已接管返回 {@code true}; {@code false} 表示交给 Item 分派
+     * @return 语义已接管返回 {@code true}, 交给 Item 分派时返回 {@code false}
      */
     @ApiStatus.Internal
     public static boolean handleClick(
@@ -112,7 +110,7 @@ public final class ClickSemantics {
         return ClickExecutor.handleClick(context, clickType, hotbarButton, windowSlot, observedBundle, selectedIndex, afterCommit, gate);
     }
 
-    // 候选形成后, 事务 Pre 之前, 向被 InventoryLink 直接连接的 Inventory 派发点击事件; edits 与前一道 Bukkit 事件共用一份.
+    // Sparrow 点击事件与 Bukkit 事件共享同一写入句柄.
     @ApiStatus.Internal
     public static boolean dispatchClickEvent(
             @NotNull SparrowInventory inventory,
@@ -123,7 +121,6 @@ public final class ClickSemantics {
             @NotNull InventoryAction action,
             @NotNull InteractionEdits edits
     ) {
-        // 没有订阅者时事件构造出来也无人可改, 直接放行; 引擎自己的复核不在这里, 短路不会跳过它们.
         if (!inventory.hasClickObservers()) {
             return true;
         }
@@ -132,7 +129,6 @@ public final class ClickSemantics {
         return !event.cancelled();
     }
 
-    // 向被 InventoryLink 直接连接的 Inventory 派发 Bundle 选择事件.
     @ApiStatus.Internal
     public static void dispatchBundleSelectEvent(@NotNull SparrowInventory inventory, int slot, @NotNull BundleSelectClick select) {
         inventory.publishBundleSelect(
@@ -141,7 +137,7 @@ public final class ClickSemantics {
     }
 
     /**
-     * 处理点到窗口外的点.
+     * 处理窗口外点击.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 点击类型(WINDOW_BORDER_LEFT 丢整堆, 其余丢一个)
@@ -152,7 +148,7 @@ public final class ClickSemantics {
 
     /**
      * 处理一次已经完成的拖拽分配. 所有碰到的当前 Inventory 槽位进入同一笔事务, 分不完的部分留在光标上.
-     * <p>拖拽经过的 Item 槽, 空槽和冻结槽不参与分配, 也不会出现在事件的分配结果里; 整趟拖拽全落在
+     * <p>拖拽经过的 Item 槽, 空槽和冻结槽不参与分配, 也不会出现在事件的分配结果里. 整趟拖拽全落在
      * 这些槽位上时本方法不派发任何事件.
      *
      * @param context 当前 Window 交互上下文
@@ -163,7 +159,6 @@ public final class ClickSemantics {
         ClickExecutor.handleDrag(context, clickType, windowSlots, InteractionGate.ALLOW_ALL);
     }
 
-    // 带交互闸门的拖拽, 闸门拿到的是经过放入规则过滤与重新分配后的最终光标和槽位候选.
     @ApiStatus.Internal
     public static void handleDrag(@NotNull Context context, @NotNull ClickType clickType, @NotNull List<Integer> windowSlots, @NotNull InteractionGate gate) {
         ClickExecutor.handleDrag(context, clickType, windowSlots, gate);
@@ -176,8 +171,7 @@ public final class ClickSemantics {
         Player viewer();
 
         /**
-         * 查出某个 Window 槽位背后连接的 Inventory 及其当前 Inventory 槽位;
-         * Item 与空槽背后没有 Inventory, 返回 {@code null}.
+         * 查出 Window 槽位当前连接的 Inventory 槽位.
          *
          * @param windowSlot Window 槽位
          * @return 连接的 Inventory 槽位, 没有连接时为 {@code null}
@@ -186,8 +180,7 @@ public final class ClickSemantics {
         LinkedSlot linkAt(int windowSlot);
 
         /**
-         * 判断某个 Window 槽位的显示路径是否经过已冻结 Pane;
-         * Pane 冻结槽不参与任何点击语义.
+         * 判断 Window 槽位的显示路径是否经过冻结 Pane.
          *
          * @param windowSlot Window 槽位
          * @return 路径经过已冻结 Pane 时返回 {@code true}
@@ -196,8 +189,7 @@ public final class ClickSemantics {
 
         /**
          * 判断某个 Window 槽位此刻渲染出来是不是一格空位.
-         * <p>问的是最终显示结果, 因此不区分这一格空着的原因是没有内容, 还是内容被渲染成了空气;
-         * 同样地, 背景与占位物品无论挂在哪一层, 只要玩家看得见就算这一格非空.
+         * <p>以最终显示结果为准, 背景和占位物品都算非空.
          *
          * @param windowSlot Window 槽位
          * @return 玩家看到的是一格空位时返回 {@code true}
@@ -205,8 +197,7 @@ public final class ClickSemantics {
         boolean displayedEmptyAt(int windowSlot);
 
         /**
-         * 查出数字键要交换的目标, 也就是当前 lower 快捷栏某个按键位置实际连接的那个 Inventory 槽位.
-         * 该位置不是 InventoryLink 或路径经过已冻结 Pane 时返回 {@code null}.
+         * 查出数字键对应的 lower 快捷栏 Inventory 槽位.
          *
          * @param hotbarButton 热键编号, 0 到 8
          * @return 连接的 Inventory 槽位, 不可交互时为 {@code null}
@@ -215,9 +206,8 @@ public final class ClickSemantics {
         LinkedSlot hotbarLink(int hotbarButton);
 
         /**
-         * 按显示顺序列出参与本次点击语义的全部 Inventory(去重)及各自的可见槽位, 快速转移与双击收集只在可见槽位里找目标;
-         * 只通过 Pane 冻结槽或 Window 虚拟槽位连接的 Inventory 不应包含在内, 已包含 Inventory 中
-         * 未经任何未冻结协议槽展示的槽位不属于可见集.
+         * 按显示顺序列出参与交互的 Inventory 及其未冻结可见槽位.
+         * <p>快速转移与双击收集只在这些槽位中选择目标.
          *
          * @return 参与语义的全部 Inventory 及可见槽位
          */
@@ -225,8 +215,7 @@ public final class ClickSemantics {
         List<LinkedInventory> linkedInventories();
 
         /**
-         * 光标上正拿着的物品副本;
-         * 没拿东西时返回空物品而不是 {@code null}.
+         * 返回光标物品副本, 空光标使用空物品而不是 {@code null}.
          *
          * @return 光标物品副本
          */
@@ -234,7 +223,7 @@ public final class ClickSemantics {
         ItemStack cursor();
 
         /**
-         * 光标上正拿着的物品, 不复制也不包装, 交出去的就是底层那一份.
+         * 返回光标物品的底层对象, 不复制也不包装.
          *
          * @return 光标物品的 NMS 句柄
          */
@@ -282,7 +271,7 @@ public final class ClickSemantics {
     }
 
     /**
-     * 候选形成后、事务提交前依次经过的交互闸门.
+     * 候选形成后, 事务提交前依次经过的交互闸门.
      * <p>语义引擎在每次派发前后都会自己复核 {@link #stillValid()} 并重新校验候选,
      * 实现只负责派发事件本身, 不需要重复检查 Window 状态.
      */
@@ -292,9 +281,9 @@ public final class ClickSemantics {
         };
 
         /**
-         * 派发 Bukkit 点击事件. 语义接管的每一次点击都会调用一次, 与是否算出候选无关; 只有冻结槽完全不派发.
-         * <p>没有候选时这次调用没有事务可以取消, 返回 {@code false} 只会让 Window 走一次全量恢复;
-         * 但通过 {@code edits} 写入的内容照样会攒成一笔事务提交.
+         * 派发 Bukkit 点击事件. 参与者启用了 Bukkit 事件时调用, 与是否算出候选无关. 冻结槽不会调用.
+         * <p>没有候选时这次调用没有事务可以取消, 返回 {@code false} 只会让 Window 走一次全量恢复.
+         * 通过 {@code edits} 写入的内容仍会组成一笔事务提交.
          *
          * @param action 本次点击对应的 Bukkit 操作, 没有候选时为实际估算出的操作
          * @param edits 把事件写入合并进本次交互草稿的句柄
@@ -321,7 +310,7 @@ public final class ClickSemantics {
          * 派发 Bukkit 拖拽事件. 拖拽经过的槽位里只要还剩一个引擎接管得了的, 就会派发一次.
          *
          * @param newCursor 候选提交后的光标物品
-         * @param newItems 候选提交后的协议槽位内容, 已经过放入规则过滤和重新分配;
+         * @param newItems 候选提交后的协议槽位内容, 已经过放入规则过滤和重新分配.
          *                 只包含背后有 Inventory 且未冻结的槽位, 同一趟拖拽经过的 Item 槽, 空槽和冻结槽不会出现在这里
          * @param edits 把事件写入合并进本次候选草稿的句柄
          * @return 事件没有被取消时返回 {@code true}
@@ -331,7 +320,7 @@ public final class ClickSemantics {
         }
 
         /**
-         * {@link #allowClick} 与 {@link #allowDrag} 会不会真的派发 Bukkit 事件.
+         * 返回 {@link #allowClick} 与 {@link #allowDrag} 是否实际派发 Bukkit 事件.
          * 返回 {@code false} 表示那一段只是放行, 中途没有任何用户代码跑过, 引擎据此省掉闸门之后的外部容器重同步.
          *
          * @return 本次交互会派发 Bukkit 事件时返回 {@code true}

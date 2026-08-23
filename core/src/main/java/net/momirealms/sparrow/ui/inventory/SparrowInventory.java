@@ -46,13 +46,9 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 /**
- * SparrowUI 所有受事务保护的 Inventory 的公共抽象, 可以把它理解成一个会自动通知变更的箱子.
- * <ul>
- *   <li>空槽只用 {@code null} 表示, Inventory 中不会保留 AIR 物品或数量不大于 0 的物品;</li>
- *   <li>除名称以 {@code unsafe} 开头的方法外, 读出的物品都是调用方拥有的内容副本, 修改返回值不会影响 Inventory;</li>
- *   <li>每次修改都走完整的规划, 询问, 提交和通知流程, 事件以整次修改为单位派发.</li>
- * </ul>
- * <p><strong>对象身份约定</strong>. 一笔事务写过的槽位, 提交后一律是新实例; 光标, 副手和事件负载都是副本.
+ * 受事务保护并可订阅内容变更的 Inventory 基类, 空槽使用 {@code null}.
+ * <p>普通读取返回副本. 名称以 {@code unsafe} 开头的入口会暴露内部对象, <strong>只读, 不得修改或持有</strong>.
+ * 内容相等的写入仍可产生事务和事件, 实现也可以保留原物品实例.
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
@@ -85,7 +81,7 @@ public abstract class SparrowInventory {
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
 
     SparrowInventory(@Nullable ItemStack @NotNull [] initial) {
-        // 逐个复制入参物品并把空物品折成 null.
+        // 初始内容复制后归 Inventory 独占, 空物品折为 null.
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
             slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
@@ -98,11 +94,6 @@ public abstract class SparrowInventory {
         this.placementRulesBySlot = placementRulesBySlot;
     }
 
-    /**
-     * 返回槽位数量, 创建后固定不变.
-     *
-     * @return 槽位数量
-     */
     public int size() {
         return this.state.length;
     }
@@ -124,6 +115,7 @@ public abstract class SparrowInventory {
 
     /**
      * 零物品拷贝地读出全部槽位, 直接返回当前内部状态数组.
+     * <p><strong>返回数组及其元素只读, 不得修改或持有</strong>.
      *
      * @return 按槽号排列的内部物品引用, 空槽位置为 {@code null}
      */
@@ -135,7 +127,7 @@ public abstract class SparrowInventory {
      * 返回指定类别的批量操作按什么顺序遍历槽位.
      *
      * @param category 操作类别
-     * @return 该类别使用的遍历顺序
+     * @return 对应类别使用的遍历顺序
      */
     @NotNull
     public SlotOrder iterationOrder(@NotNull OperationCategory category) {
@@ -156,9 +148,9 @@ public abstract class SparrowInventory {
 
     /**
      * 替换适用于所有未声明逐槽规则的槽位放入规则.
-     * 规则收到的是完整原始输入; 传入 {@code null} 表示这些槽位一律放行.
+     * 规则收到完整原始输入. 传入 {@code null} 表示这些槽位全部放行.
      * 规则异常会原样传播, 当前规划不会派发事件或提交事务.
-     * <p>规则拿到的是零拷贝的内部引用, 规则只能读取它, 不得修改或持有.
+     * <p><strong>规则拿到的是内部只读引用, 不得修改或持有</strong>.
      *
      * @param rule 新的全局放入规则, {@code null} 表示放行
      */
@@ -166,20 +158,15 @@ public abstract class SparrowInventory {
         this.placementRule = rule;
     }
 
-    /**
-     * 返回当前的全局放入规则.
-     *
-     * @return 全局放入规则; 没有设置过时为 {@code null}, 表示这些槽位一律放行
-     */
     @Nullable
     public Predicate<ItemStack> getPlacementRule() {
         return this.placementRule;
     }
 
     /**
-     * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则;
+     * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则.
      * 传入 {@code null} 会清除逐槽覆盖, 使该槽重新使用全局规则.
-     * <p>与全局规则一样, 规则拿到的是零拷贝的内部引用, 只能读取, 不得修改或保存;
+     * <p><strong>规则拿到的是内部只读引用, 不得修改或持有</strong>.
      * 详见 {@link #setPlacementRule(Predicate)}.
      *
      * @param slot 槽位序号
@@ -193,24 +180,16 @@ public abstract class SparrowInventory {
         this.placementRulesBySlot = placementRulesBySlot;
     }
 
-    /**
-     * 返回某个槽位的显式放入规则; 不含回退到的全局规则.
-     *
-     * @param slot 槽位序号
-     * @return 该槽的逐槽放入规则; 没有覆盖时为 {@code null}, 表示这个槽用的是全局规则
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
     @Nullable
     public Predicate<ItemStack> getPlacementRule(int slot) {
         Objects.checkIndex(slot, this.size());
         return this.placementRulesBySlot[slot];
     }
 
-    // 把当前两层放入规则定格成一个槽位过滤器, item 零拷贝跨槽复用同一个实例.
+    // 同一次规划固定使用一组规则快照.
     @NotNull
     @ApiStatus.Internal
     public IntPredicate placementPredicate(@NotNull ItemStack item) {
-        // 先抓住两层规则的当前版本, 规划途中有人换规则也不会让前后槽位用上不同标准
         @Nullable Predicate<ItemStack> placementRule = this.placementRule;
         @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
         return slot -> {
@@ -232,24 +211,15 @@ public abstract class SparrowInventory {
         return this.visual;
     }
 
-    /**
-     * 返回当前的全局视觉映射.
-     *
-     * @return 全局视觉映射; 没有设置过时为 {@code null}, 表示按真实内容显示
-     */
     @Nullable
     public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
         return this.visual.visualizerProvider();
     }
 
     /**
-     * 设置容器全局视觉映射. 映射函数接收槽位当前真实内容(空槽为 {@code null}),
-     * 返回该槽展示用的 {@link ItemProvider}; 返回 {@code null} 表示放行, 交给下一层.
-     * 非空槽按真实内容显示, 空槽回退 {@link #setBackground(ItemProvider) 容器背景}.
-     * <p>视觉配置是嵌套的层级. 逐槽映射在全局映射之上, 容器背景在最底层, 三者互不覆盖.
-     * <p>映射只改变 Window 中的展示结果, 不影响真实内容, 事务与点击语义.
-     * 设置后立即通知所有连接的显示端重新渲染; 同一映射可能被多个 Window 在各自线程并发调用, 应保持无状态或线程安全.
-     * 映射抛出的异常会传播到渲染层, 由 Window 上报并保留该槽上次显示的内容.
+     * 设置全局视觉映射. 映射接收真实内容, 返回 {@code null} 时继续使用真实内容或空槽背景.
+     * <p>逐槽映射优先于本映射. 映射只影响展示, <strong>必须支持多个 Window 线程并发调用</strong>.
+     * 异常交给渲染层上报, 该槽保留上次显示结果.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
@@ -259,7 +229,7 @@ public abstract class SparrowInventory {
 
     /**
      * 设置容器全局视觉映射, 并指定提供器给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同; 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     * <p>提供器当场给出结果时不会显示占位, 其余约定见 {@link #setVisualizerProvider(Function)}.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示该槽真实内容
@@ -269,8 +239,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射设置容器全局视觉映射.
-     * 映射接收槽位当前真实内容(空槽为 {@code null}).
+     * 使用直接返回 ItemStack 的函数设置全局视觉映射.
      *
      * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
      */
@@ -278,23 +247,13 @@ public abstract class SparrowInventory {
         this.visual.setVisualizerItem(visualizer);
     }
 
-    /**
-     * 返回某个槽位的显式视觉映射; 不含回退到的全局映射.
-     *
-     * @param slot 槽位序号
-     * @return 该槽的逐槽视觉映射; 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
     @Nullable
     public Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int slot) {
         return this.visual.visualizerProvider(slot);
     }
 
     /**
-     * 替换一个槽位的逐槽视觉映射, 它是该槽层级最高的一层.
-     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
-     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
-     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
+     * 设置一个槽位的视觉映射. 非空结果直接采用, {@code null} 结果继续使用全局映射.
      *
      * @param slot 槽位序号
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
@@ -305,7 +264,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 替换一个槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
+     * 设置一个槽位的视觉映射与首次结果前的占位.
      * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
      *
      * @param slot 槽位序号
@@ -318,8 +277,8 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射替换一个槽位的逐槽视觉映射.
-     * 映射返回 {@code null} 表示放行; 返回空 ItemStack 表示覆盖为空视觉.
+     * 使用直接返回 ItemStack 的函数设置一个槽位的视觉映射.
+     * 映射返回 {@code null} 表示放行. 返回空 ItemStack 表示覆盖为空视觉.
      *
      * @param slot 槽位序号
      * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
@@ -329,29 +288,14 @@ public abstract class SparrowInventory {
         this.visual.setVisualizerItem(slot, visualizer);
     }
 
-    /**
-     * 给所有空槽设置占位背景.
-     *
-     * @param background 空槽占位背景, {@code null} 表示清除背景
-     */
     public void setBackground(@Nullable ItemProvider background) {
         this.visual.background(background);
     }
 
-    /**
-     * 使用 ItemStack 给所有空槽设置占位背景.
-     *
-     * @param background 空槽占位背景
-     */
     public void setBackgroundItem(@NotNull ItemStack background) {
         this.visual.backgroundItem(background);
     }
 
-    /**
-     * 返回当前的空槽占位背景.
-     *
-     * @return 空槽占位背景; 没有设置过时为 {@code null}
-     */
     @Nullable
     public ItemProvider getBackground() {
         return this.visual.background();
@@ -361,7 +305,7 @@ public abstract class SparrowInventory {
      * 返回指定类别的操作挑选目标 Inventory 时使用的优先级, 数值越大越优先.
      *
      * @param category 操作类别
-     * @return 该类别的优先级
+     * @return 对应类别的优先级
      */
     public int operationPriority(@NotNull OperationCategory category) {
         return switch (category) {
@@ -396,11 +340,6 @@ public abstract class SparrowInventory {
         this.otherOperationPriority = priority;
     }
 
-    /**
-     * 把指定类别的优先级恢复成默认的 0.
-     *
-     * @param category 操作类别
-     */
     public void clearOperationPriority(@NotNull OperationCategory category) {
         switch (category) {
             case ADD -> this.addOperationPriority = 0;
@@ -409,28 +348,19 @@ public abstract class SparrowInventory {
         }
     }
 
-    /**
-     * 一次把全部三个类别的优先级恢复成默认的 0.
-     */
     public void clearOperationPriority() {
         this.addOperationPriority = 0;
         this.collectOperationPriority = 0;
         this.otherOperationPriority = 0;
     }
 
-    /**
-     * 返回未被 Pane 展示的槽位是否参与快速转移与双击收集.
-     *
-     * @return 未展示槽位是否参与点击语义
-     */
     public boolean includeObscuredSlots() {
         return this.includeObscuredSlots;
     }
 
     /**
      * 设置未被 Pane 展示的槽位是否参与快速转移与双击收集.
-     * 默认不参与, 点击语义只触及本 Inventory 经未冻结槽位展示的部分.
-     * 开启后未展示的槽位也会参与, 但 Pane 冻结槽展示的槽位始终不参与.
+     * <p>默认关闭. Pane 冻结槽展示的槽位始终不参与.
      *
      * @param includeObscuredSlots 未展示槽位是否参与点击语义
      */
@@ -438,19 +368,14 @@ public abstract class SparrowInventory {
         this.includeObscuredSlots = includeObscuredSlots;
     }
 
-    /**
-     * 返回本 Inventory 是否处于玩家侧只读状态.
-     *
-     * @return 是否玩家侧只读
-     */
     public boolean frozen() {
         return this.frozen;
     }
 
     /**
      * 返回本 Inventory 是否已经退役.
-     * <p>退役表示内容存放的地方已经不在了, 这个 Inventory 从此读到的是空, 写入一律失败, 也不再作为
-     * 快速转移与双击收集的目标. 只有 {@link ReferencingInventory} 会退役, 其余实现恒为 {@code false}.
+     * <p>退役后读取为空, 写入失败, 快速转移与双击收集也会排除它.
+     * 只有 {@link ReferencingInventory} 会退役, 其余实现恒为 {@code false}.
      *
      * @return 已经退役时返回 true
      */
@@ -460,9 +385,8 @@ public abstract class SparrowInventory {
 
     /**
      * 设置本 Inventory 是否玩家侧只读.
-     * 冻结后玩家经任何窗口对本 Inventory 的点击与拖拽一律不成立. 不算候选, 不派发任何事件,
-     * 也不作为快速转移与双击收集的来源或目标, 客户端预测会被纠正回来.
-     * 程序写入与外部同步不受影响, 对应的事件照常派发.
+     * <p>冻结后玩家交互不产生候选或事件, 也不把本 Inventory 作为转移来源或目标.
+     * 程序写入与外部同步仍然生效.
      *
      * @param frozen 是否玩家侧只读
      */
@@ -472,7 +396,7 @@ public abstract class SparrowInventory {
 
     /**
      * 涉及本 Inventory 的交互是否会派发 Bukkit 事件.
-     * <p>默认开启, 若交互涉及多个 Inventory 时,任一 Inventory 开启就会派发事件.
+     * <p>默认开启. 交互涉及多个 Inventory 时, 任一参与者开启即可触发事件.
      *
      * @return 是否应在交互时触发 Bukkit 的相关事件
      */
@@ -480,11 +404,6 @@ public abstract class SparrowInventory {
         return this.fireBukkitInventoryEvents;
     }
 
-    /**
-     * 涉及本 Inventory 的交互是否会派发 Bukkit 事件.
-     *
-     * @param fireBukkitInventoryEvents 是否应在交互时触发 Bukkit 的相关事件
-     */
     public void fireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
         this.fireBukkitInventoryEvents = fireBukkitInventoryEvents;
     }
@@ -504,6 +423,7 @@ public abstract class SparrowInventory {
 
     /**
      * 零拷贝地读取指定槽位的物品, 空槽返回 {@code null}.
+     * <p><strong>返回值只限当前调用栈读取, 不得修改或持有</strong>.
      *
      * @param slot 槽位序号, 从 0 开始
      * @return 槽内的内部物品引用, 空槽为 {@code null}
@@ -528,11 +448,6 @@ public abstract class SparrowInventory {
         return DEFAULT_MAX_STACK_SIZE;
     }
 
-    /**
-     * 每个槽位是否都装有达到有效堆叠上限的物品.
-     *
-     * @return 全部槽位都满时返回 {@code true}
-     */
     public boolean isFull() {
         ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
@@ -544,11 +459,6 @@ public abstract class SparrowInventory {
         return true;
     }
 
-    /**
-     * 判断 Inventory 是否没有任何物品.
-     *
-     * @return 全部槽位都为空时返回 {@code true}
-     */
     public boolean isEmpty() {
         ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
@@ -559,11 +469,6 @@ public abstract class SparrowInventory {
         return true;
     }
 
-    /**
-     * 判断 Inventory 是否至少有一个空槽.
-     *
-     * @return 存在空槽时返回 {@code true}
-     */
     public boolean hasEmptySlot() {
         ItemStack[] snapshot = this.unsafeSnapshot();
         for (int i = 0; i < snapshot.length; i++) {
@@ -576,7 +481,7 @@ public abstract class SparrowInventory {
 
     /**
      * 判断是否存在 matcher 选中的物品.
-     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有.
+     * <p><strong>matcher 拿到内部只读引用, 不得修改或持有</strong>.
      *
      * @param matcher 判断物品是否符合条件的只读函数
      * @return 至少有一个物品符合条件时返回 {@code true}
@@ -592,12 +497,6 @@ public abstract class SparrowInventory {
         return false;
     }
 
-    /**
-     * 判断是否存在与 template 相似的物品堆, 不比较数量.
-     *
-     * @param template 用于相似判断的物品样板
-     * @return 至少有一个相似物品堆时返回 {@code true}
-     */
     public boolean containsSimilar(@NotNull ItemStack template) {
         Object handle = ItemUtils.getItemStackHandle(template);
         return this.contains(item -> ItemUtils.isSimilarToHandle(item, handle));
@@ -605,7 +504,7 @@ public abstract class SparrowInventory {
 
     /**
      * 统计 matcher 选中的物品堆数量, 不累加堆内物品数量.
-     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有;
+     * <p><strong>matcher 拿到内部只读引用, 不得修改或持有</strong>.
      *
      * @param matcher 判断物品是否符合条件的只读函数
      * @return 符合条件的非空槽数量
@@ -622,35 +521,15 @@ public abstract class SparrowInventory {
         return count;
     }
 
-    /**
-     * 统计与 template 相似的物品堆数量, 不比较也不累加数量.
-     *
-     * @param template 用于相似判断的物品样板
-     * @return 相似物品堆所在的非空槽数量
-     */
     public int countSimilar(@NotNull ItemStack template) {
         Object handle = ItemUtils.getItemStackHandle(template);
         return this.count(item -> ItemUtils.isSimilarToHandle(item, handle));
     }
 
-    /**
-     * 判断指定槽位是否装有物品.
-     *
-     * @param slot 槽位序号, 从 0 开始
-     * @return 槽位非空时返回 {@code true}
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
     public boolean hasItem(int slot) {
         return this.itemAt(slot) != null;
     }
 
-    /**
-     * 返回指定槽位内的物品数量, 空槽返回 0.
-     *
-     * @param slot 槽位序号, 从 0 开始
-     * @return 槽内物品数量, 空槽为 0
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
     public int itemAmount(int slot) {
         ItemStack item = this.itemAt(slot);
         return item == null ? 0 : item.getAmount();
@@ -685,8 +564,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消;
-     * post 事件仍会正常派发.
+     * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消. post 事件仍会正常派发.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -700,8 +578,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 与 {@link #setItem(int, ItemStack)} 相同, 但跳过 pre 事件且无法被取消;
-     * post 事件仍会正常派发.
+     * 与 {@link #setItem(int, ItemStack)} 相同, 但跳过 pre 事件且无法被取消. post 事件仍会正常派发.
      *
      * @param slot 槽位序号, 从 0 开始
      * @param item 要覆盖进去的物品, {@code null} 表示清空
@@ -713,7 +590,6 @@ public abstract class SparrowInventory {
         return this.forceSetItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
-    // setItem 与 forceSetItem 共用的单槽覆盖写入, 差别只在 bypassPre 是否跳过 pre 观察者.
     private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
@@ -738,7 +614,6 @@ public abstract class SparrowInventory {
      */
     @NotNull
     public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
-        // 越界检查先于空输入短路生效, 行为不随物品内容摇摆
         Objects.checkIndex(slot, this.size());
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
@@ -781,7 +656,7 @@ public abstract class SparrowInventory {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable ItemStack[] planned = basis.planned();
-        // modifier 收到物品副本并在锁外执行; SlotChange 会再次复制返回值, 并把空物品转为 null
+        // modifier 在锁外运行, 输入与返回值都会复制.
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
         return this.commitScoped(reason, basis, List.of(new SlotChange(slot, planned[slot], modified)));
     }
@@ -838,7 +713,7 @@ public abstract class SparrowInventory {
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
-        // 整组槽位变更一次提交; 没提交成功视为一个都没放进去
+        // 整组槽位变更一次提交, 没提交成功视为一个都没放进去
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
@@ -871,14 +746,14 @@ public abstract class SparrowInventory {
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
-        // 整组槽位变更一次提交; 没提交成功视为一个都没收到
+        // 整组槽位变更一次提交, 没提交成功视为一个都没收到
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new CollectResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
 
     /**
      * 按 OTHER 遍历顺序移除 matcher 选中的物品, 最多移除 {@code upTo} 个, 整个移除过程作为一次事务提交.
-     * <p>matcher 拿到的是零拷贝的内部引用, 只能读取当前入参, 不得修改或持有.
+     * <p><strong>matcher 拿到内部只读引用, 不得修改或持有</strong>.
      *
      * @param reason 本次修改的原因
      * @param matcher 判断某个物品是否应被移除的函数
@@ -891,12 +766,12 @@ public abstract class SparrowInventory {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算要动哪些槽; matcher 由规划器在锁外逐个调用
+        // 在规划内容上计算要动哪些槽, matcher 由规划器在锁外逐个调用
         InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
-        // 整组槽位变更一次提交; 没提交成功视为一个都没移除
+        // 整组槽位变更一次提交, 没提交成功视为一个都没移除
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
@@ -929,7 +804,7 @@ public abstract class SparrowInventory {
 
     /**
      * 判断 Inventory 能否完整取出给定物品.
-     * <p>与 {@link #mayPlace(ItemStack)} 相对, {@code item} 既参与相似判断, 也提供需要取出的数量;
+     * <p>{@code item} 同时参与相似判断并提供需要取出的数量.
      * {@link #simulateCollect(ItemStack, int)} 的样板则只管相似判断, 数量单独由 {@code upTo} 指定.
      * <p>取出侧没有与放入规则对应的过滤, 结果只取决于 Inventory 里现有的内容.
      *
@@ -1046,14 +921,12 @@ public abstract class SparrowInventory {
 
     /**
      * 让 ReferencingInventory 同步最新内容.
-     * 自己持有数据的 Inventory 调用它没有效果;
-     * ReferencingInventory 的调用方必须保证当前线程可以访问外部容器;
-     * 平台拒绝访问时异常会直接传播.
+     * <p>其他实现调用无效果. <strong>调用 ReferencingInventory 时必须处于外部存储所属线程</strong>.
      */
     public void refresh() {
     }
 
-    // 写入口读取规划内容之前的钩子, ReferencingInventory 在这里同步外部内容; simulate 这类纯读路径不经过.
+    // 写规划钩子, ReferencingInventory 在这里同步外部内容.
     @ApiStatus.Internal
     public void prepareWrite() {
     }
@@ -1061,7 +934,7 @@ public abstract class SparrowInventory {
     /**
      * 把 SparrowInventory 包装成原生 CraftInventory, 同一个 Inventory 永远返回同一个包装实例.
      * CraftInventory 背后的 NMS Container 直接代理本 Inventory, 槽位写入会走 Sparrow 的事务流程.
-     * 与 Bukkit 容器绑定的信息(观看者, 持有者, 位置)一律为 "Null", 类型固定为 CHEST.
+     * 观看者, 持有者和位置均返回 {@code null}, 类型固定为 CHEST.
      *
      * @return CraftInventory
      */
@@ -1081,7 +954,6 @@ public abstract class SparrowInventory {
         return view;
     }
 
-    // 派发方构造事件之前先问这一句.
     @ApiStatus.Internal
     public boolean hasClickObservers() {
         return this.clickEvents.subscriptionCount() != 0;
@@ -1089,7 +961,7 @@ public abstract class SparrowInventory {
 
     /**
      * 订阅玩家点击本 Inventory 连接槽的事件.
-     * 事件在候选形成后、事务 Pre 前派发, 取消会阻止候选提交.
+     * 事件在候选形成后, 事务 Pre 前派发, 取消会阻止候选提交.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
@@ -1122,7 +994,7 @@ public abstract class SparrowInventory {
 
     /**
      * 订阅事务提交前的事件, 处理器可以取消整个事务, 当前 Inventory 没有槽位变更时不会通知.
-     * <p>恒在提交线程上同步调用, 同一次订阅可能被多个线程并发调用, 须自己保证线程安全.
+     * <p><strong>处理器在提交线程同步调用, 并且可能被多个线程并发调用</strong>.
      *
      * @param observer 事件处理器
      * @return 订阅凭证, 关闭后不再接收事件
@@ -1134,9 +1006,9 @@ public abstract class SparrowInventory {
 
     /**
      * 订阅事务提交后的事件, 没有槽位变更时不会通知.
-     * <p>处理器恒在提交线程上同步调用, 同一次订阅可能被多个提交线程并发调用, 须自己保证线程安全.
+     * <p><strong>处理器在提交线程同步调用, 并且可能被多个提交线程并发调用</strong>.
      * <p>不同事务的 Post 不保证按提交顺序到达, 需要判断新旧时使用 {@link InventoryPostUpdateEvent#version()}.
-     * 最外层事务返回前会完成本次 Post; Post 处理器里的嵌套事务会先返回, 它的 Post 排在当前完整批次之后,
+     * 最外层事务返回前会完成本次 Post. Post 处理器里的嵌套事务会先返回, 它的 Post 排在当前完整批次之后,
      * 并在最外层 Post 派发退出前完成.
      *
      * @param observer 事件处理器
@@ -1149,10 +1021,9 @@ public abstract class SparrowInventory {
 
     /**
      * 返回本 Inventory 的内容修订计数. 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
-     * <p>第一次调用时创建, 之后恒返回同一个实例; 它是给 Signal 管线用的失效载体, 计数值本身没有含义.
-     * <p><strong>递增在提交线程上同步派发</strong>, 所以下游的失效回调也跑在那里, 挂在它下面的
-     * {@link Signal#mapDistinct} 会把重算函数拖进事务的提交收尾; 开了串行 Post 派发的 Inventory 还会因此阻塞后续提交线程.
-     * 重算稍贵就别挂 {@code mapDistinct}, 改用 {@link Signal#map} 或 {@link Signal#combine} 这类只在拉取时求值的派生.
+     * <p>Signal 惰性创建且实例稳定, 数值只用来携带失效.
+     * <p><strong>失效在提交线程同步派发</strong>. {@link Signal#mapDistinct} 会把重算放进提交收尾,
+     * 较重的计算应使用拉取时求值的 {@link Signal#map} 或 {@link Signal#combine}.
      *
      * @return 内容修订计数
      */
@@ -1174,7 +1045,7 @@ public abstract class SparrowInventory {
         return signal;
     }
 
-    // 手动推一下内容修订计数, 给退役这类"内容不再是原来那样, 却没有任何槽位变更"的时刻用.
+    // 退役等无槽位事务的状态变化也需要使内容 Signal 失效.
     final void updateContentSignal() {
         MutableSignal<Long> signal = this.contentSignal;
         if (signal != null) {
@@ -1184,9 +1055,9 @@ public abstract class SparrowInventory {
 
     /**
      * 绑定到指定的 Signal, Signal 将会持有本类的弱引用.
-     * 当 Signal 被标脏时, 会触发传入的回调函数.
+     * Signal 失效时触发回调.
      * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
-     * <p>绑定由本对象持有, 本对象被回收时一并消失,{@code callback} 捕获的对象随本对象一起释放.
+     * <p>绑定由本对象持有, 本对象被回收时一并消失, {@code callback} 捕获的对象也随之释放.
      *
      * @param signal 数据源
      * @param callback 失效回调
@@ -1198,7 +1069,7 @@ public abstract class SparrowInventory {
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
-    // 取出承载事务订阅, 事件派发与 Post 串行叫号的通道; 第一次订阅或第一次配置串行派发时才建出来.
+    // 更新通道在首次订阅或配置串行 Post 时创建.
     @NotNull
     InventoryUpdateChannel updateChannel() {
         InventoryUpdateChannel channel = this.updateChannel;
@@ -1236,8 +1107,7 @@ public abstract class SparrowInventory {
         return this.openPlan();
     }
 
-    // 内容就在自己状态数组里时用的规划基准. planned 就是规划那一刻的状态数组本身, 同时兼任校验依据,
-    // 元素一经发布就固定, 换内容就是换数组, 比一下引用就知道期间有没有别人提交过.
+    // 内部状态数组同时充当规划快照与乐观校验凭据.
     private static final class Stm extends PlannedRoot {
 
         private Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
@@ -1262,7 +1132,7 @@ public abstract class SparrowInventory {
             @Nullable ItemStack[] next = this.planned().clone();
             for (int i = 0; i < deltas.size(); i++) {
                 SlotChange delta = deltas.get(i);
-                // 内容没变就保留原元素, 让"实例换了"严格等价于"内容变了".
+                // 等值写入保留原元素, 物品实例只随内容变化而更换.
                 @Nullable ItemStack after = delta.unsafeAfter();
                 @Nullable ItemStack current = next[delta.slot()];
                 next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;
@@ -1279,7 +1149,6 @@ public abstract class SparrowInventory {
 
         @Override
         protected void land(@NotNull List<SlotChange> deltas) {
-            // 内容就在状态数组里, 上一步换过数组就算落地了, 这里没别的事要做.
         }
     }
 }

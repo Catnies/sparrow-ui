@@ -16,16 +16,16 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-// 一个 Bukkit Inventory 的槽号与 NMS Container 槽号之间的关系, 也就决定了它能不能直接读写 NMS 容器.
+// Bukkit Inventory 与底层 NMS Container 的槽位布局.
 enum BukkitInventoryLayout {
-    // 槽号就是 getInventory() 那个容器的槽号
+    // Bukkit 与 NMS 槽号相同
     ALIGNED {
         @Override
         ExternalStorage build(@NotNull Inventory inventory, int size) {
             return ContainerStorage.of(CraftInventoryProxy.INSTANCE.getInventory(inventory));
         }
     },
-    // 玩家背包, 坐标同 ALIGNED, 但归属跟着玩家走
+    // 槽号相同, 槽位身份跟随玩家
     PLAYER {
         @Override
         @Nullable
@@ -34,7 +34,7 @@ enum BukkitInventoryLayout {
             return owner == null ? null : new PlayerContainerStorage(owner, size);
         }
     },
-    // 结果格接着合成格, 而 getInventory() 只给出合成格
+    // 结果格位于合成格之前
     CRAFTING {
         @Override
         ExternalStorage build(@NotNull Inventory inventory, int size) {
@@ -44,13 +44,13 @@ enum BukkitInventoryLayout {
             );
         }
     },
-    // 鞍接着护甲再接着主仓, 而 getInventory() 只给出主仓
+    // 鞍, 护甲和主仓依次拼接
     SADDLED_MOUNT {
         @Override
         @Nullable
         ExternalStorage build(@NotNull Inventory inventory, int size) {
             Object main = CraftInventorySaddledMountProxy.INSTANCE.getMainInventory(inventory);
-            // 鞍与护甲的容器每次取出来都是新的, 归属得从主仓问出那只坐骑
+            // 鞍与护甲容器每次读取都会重建, 槽位身份取自坐骑.
             UUID mount = mountOf(main);
             if (mount == null) {
                 return null;
@@ -62,7 +62,7 @@ enum BukkitInventoryLayout {
             );
         }
     },
-    // 哪种排布都不是
+    // 未知排布
     FOREIGN {
         @Override
         @Nullable
@@ -81,21 +81,18 @@ enum BukkitInventoryLayout {
         }
     };
 
-    // 交出这个 Bukkit 容器背后的 NMS 存储, 认不出排布时交出 null.
+    // 返回布局匹配的 NMS 存储, 未知或尺寸不符时回退 Bukkit 通道.
     @Nullable
     static ExternalStorage storageOf(@NotNull Inventory inventory, int size) {
         ExternalStorage storage = LAYOUTS.get(inventory.getClass()).build(inventory, size);
-        // 段长和被引用区段对不上, 说明这个实现的排布另有讲究, 交回 Bukkit 通道
         return storage != null && storage.size() == size ? storage : null;
     }
 
-    // 按这一层的排布把各段包出来.
     @Nullable
     abstract ExternalStorage build(@NotNull Inventory inventory, int size);
 
-    // 认出这个实现类的槽位排布.
     private static BukkitInventoryLayout layoutOf(Class<?> type) {
-        // 玩家背包的坐标和 ALIGNED 一样, 单独认出来是因为归属要跟着玩家走, 重生换了背包对象也得判等
+        // 玩家背包使用玩家身份, 重生后仍能判定为相同槽位.
         if (CraftInventoryPlayerProxy.CLASS != null && CraftInventoryPlayerProxy.CLASS.isAssignableFrom(type)) {
             return PLAYER;
         }
@@ -103,7 +100,7 @@ enum BukkitInventoryLayout {
         if (owner == null) {
             return FOREIGN;
         }
-        // 结果格那一族的 getContents 只给出原料格, 而原料格就是 getInventory() 那个容器, 槽号照样对得上
+        // ResultInventory 的内容区仍与 getInventory() 的槽号对齐.
         if (owner == CraftInventoryProxy.CLASS || owner == CraftResultInventoryProxy.CLASS) {
             return ALIGNED;
         }
@@ -116,15 +113,13 @@ enum BukkitInventoryLayout {
         return FOREIGN;
     }
 
-    // 重写过 getItem 或 setItem 的那一层自带一套坐标, 两个都没重写就还是 CraftInventory 那一套.
+    // <strong>读写方法必须由同一层声明</strong>, 才能确认两边使用同一套槽号.
     @Nullable
     private static Class<?> slotCoordinateOwner(Class<?> type) {
         if (!CraftInventoryProxy.CLASS.isAssignableFrom(type)) return null;
-        // getItem 与 setItem 的直接实现类如果是同一个实现, 那么就将这个实现类返回.
         try {
             Class<?> reader = type.getMethod("getItem", int.class).getDeclaringClass();
             Class<?> writer = type.getMethod("setItem", int.class, ItemStack.class).getDeclaringClass();
-            // 两个方法分属两层意味着读和写各按各的坐标走, 可能是自定义实现.
             return reader == writer ? reader : null;
         } catch (NoSuchMethodException exception) {
             throw new IllegalStateException("Bukkit inventory " + type.getName() + " has no slot accessors", exception);

@@ -5,17 +5,20 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
+/**
+ * Inventory 事务的提交结果. Cancelled 与 Conflicted 都不会写入任何参与者.
+ */
 public sealed interface TransactionResult {
 
     /**
-     * pre 阶段被观察者取消, 一格都没写.
+     * 玩家侧冻结检查或 pre 阶段取消了事务, 没有槽位被写入.
      */
     enum Cancelled implements TransactionResult {
         INSTANCE
     }
 
     /**
-     * 提交时发现规划基准已经被别的事务换掉, 整笔放弃重来, 一格都没写.
+     * 提交条件或规划基准已经失效, 没有槽位被写入.
      */
     enum Conflicted implements TransactionResult {
         INSTANCE

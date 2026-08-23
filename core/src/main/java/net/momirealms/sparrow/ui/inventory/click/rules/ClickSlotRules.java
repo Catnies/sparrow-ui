@@ -6,7 +6,6 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-// 单槽点击的槽位数学, 涵盖拿起, 放置, 劈半, 合并与整堆交换.
 @ApiStatus.Internal
 public final class ClickSlotRules {
 
@@ -99,7 +98,6 @@ public final class ClickSlotRules {
         if (cursor.getAmount() > effectiveLimit(slotLimit, cursor)) {
             return null;
         }
-        // 两端内容对调, 数量与组件都不变.
         return new ClickOutcome(cursor, current);
     }
 

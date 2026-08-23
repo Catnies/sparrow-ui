@@ -13,13 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
-/**
- * 交互事件把自己的写入合并进当前候选草稿的句柄.
- * <p>同一次交互中的 Bukkit 事件, Sparrow 事件和 Pre 处理器写的是同一份草稿, 上一个监听器留下的结果就是下一个看到的内容.
- * <p>Bukkit 闸门期间是例外, 那时句柄挂着一层 {@link InteractionOverlay}, 写入攒进覆盖层, 表达的是
- * "这一格现在就是这个值", 由随后的重规划当成输入读走, 原版就是先派发事件再执行点击. 闸门结束后
- * 句柄换回最终值语义, 覆盖层里没有被新结论消费掉的部分在 {@link #settle} 里追加成最终值.
- */
+// 交互事件共用的写入句柄. Bukkit 覆盖阶段记录规划输入, 之后记录提交结果.
 @ApiStatus.Internal
 public final class InteractionEdits {
     @Nullable private final ClickSemantics.Context context; // 解析 Window 槽位用的交互上下文, 一律丢弃的句柄为 null
@@ -49,16 +43,14 @@ public final class InteractionEdits {
 
     /**
      * 把事件写入的光标合并进本次交互.
-     * <p>点击的 Bukkit 闸门期间写进来的是光标现在的内容, 由重规划当成输入; 其余位置写进来的都是提交后的
-     * 最终值, 与并发检测使用的规划期原值无关. 事务没能提交时这次写入一并作废.
+     * <p>Bukkit 点击闸门中作为重规划输入, 其余阶段作为提交后的最终值.
      *
      * @param cursor 事件写给光标的物品, {@code null} 表示光标为空
      * @return 本次交互存在落点时返回 {@code true}
      */
     public boolean cursor(@Nullable ItemStack cursor) {
         if (this.context == null) return false;
-        // 无论草稿是不是刚建的都记一次. 候选自己不复核光标(shift, 数字键, 换副手)时,
-        // 这是唯一能发现 "监听器写了最终值, 又有人直接换掉菜单实际光标"的地方.
+        // 无光标前提的候选也要记录监听器写入时的基准.
         this.rememberCursor();
         ItemStack after = ItemUtils.copyOrEmpty(cursor);
         InteractionOverlay overlay = this.overlay;
@@ -76,9 +68,7 @@ public final class InteractionEdits {
 
     /**
      * 把事件写入的槽位内容合并进本次交互.
-     * <p>Bukkit 闸门期间写进来的是这一格现在的内容, 由重规划当成输入; 之后写进来的是提交后的最终值,
-     * 此时 Window 槽位背后的 Inventory 还没参与本笔事务的会自动纳入, 与原有参与者一起成功或一起回滚.
-     * 两种情况都不经过槽级放入规则过滤.
+     * <p>Bukkit 闸门中作为重规划输入, 之后作为最终值; 新 Inventory 会加入同一事务.
      *
      * @param windowSlot 被写入的 Window 槽位
      * @param item 事件写给该槽位的物品, 空物品表示清空槽位
@@ -86,12 +76,10 @@ public final class InteractionEdits {
      */
     public boolean slot(int windowSlot, @Nullable ItemStack item) {
         ClickSemantics.Context context = this.context;
-        // 冻结槽在语义上不参与交互; Item 槽与空槽背后根本没有 Inventory 可写.
         if (context == null || context.frozenAt(windowSlot)) {
             return false;
         }
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
-        // 玩家侧只读的 Inventory 同样拒收, 这笔写入并进写集之后整笔玩家事务会被冻结兜底取消.
         if (link == null || link.inventory().frozen()) {
             return false;
         }
@@ -120,8 +108,7 @@ public final class InteractionEdits {
         this.overlay = null;
     }
 
-    // 把闸门留下的现场覆盖结算进本句柄的草稿. 新结论已经把某一格算进写集时, 覆盖只是它的规划输入,
-    // 到此为止. 结论没碰过的格子则是一次独立的改动, 追加成最终值随同一笔事务提交.
+    // 新候选未消费的槽位覆盖作为独立最终值进入同一事务.
     void settle(@NotNull InteractionOverlay overlay, @Nullable ClickCandidate target) {
         List<TransactionScope> scopes = target == null ? List.of() : target.scopes();
         overlay.forEachSlot((inventory, slot, item) -> {
@@ -129,8 +116,7 @@ public final class InteractionEdits {
                 this.write(inventory, slot, item);
             }
         });
-        // 点击事件写的光标是新结论的输入, 结论自己算出了光标就以结论为准, 覆盖已经被消费掉了;
-        // 拖拽的分配在派发之前就算好, 事件写的光标本来就是最终值, 一律落地.
+        // 点击光标覆盖已被重规划消费, 拖拽光标覆盖本身就是最终值.
         @Nullable ItemStack cursor = overlay.cursor();
         @Nullable ItemStack planned = target == null ? null : target.draft().cursor();
         if (cursor != null && (planned == null || !overlay.cursorIsInput())) {
@@ -148,8 +134,7 @@ public final class InteractionEdits {
         return this.interaction;
     }
 
-    // 复核光标还是第一次写入那一刻的样子, 靠它抓住"监听器写完最终值之后又有人直接换掉菜单光标"
-    // 两者同时生效的话, 后应用的草稿会把那次改动悄悄盖掉. 没有候选的交互和不复核光标的候选都拿它兜底.
+    // 防止最终值覆盖监听器写入后发生的光标变更.
     @Nullable
     ClickCandidate.StaleReason staleCursor() {
         ItemStack expectedCursor = this.expectedCursor;
@@ -164,7 +149,7 @@ public final class InteractionEdits {
     private void rememberCursor() {
         ClickSemantics.Context context = this.context;
         if (this.expectedCursor == null && context != null) {
-            this.expectedCursor = context.cursor(); // 返回副本, 直接存下即可.
+            this.expectedCursor = context.cursor();
         }
     }
 
