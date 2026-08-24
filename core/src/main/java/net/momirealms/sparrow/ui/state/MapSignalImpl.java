@@ -115,16 +115,16 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this.putOne(key, value);
     }
 
-    // 放一个映射, 返回旧值; 有效变更才通知. 有钩子时先读旧值, 先摘旧再放新.
+    // 放一个映射, 返回旧值; 等值映射保留已存实例, 有效变更才通知. 有钩子时先摘旧再放新.
     private V putOne(K key, V value) {
+        V old = this.delegate.get(key);
+        if (old != null && old.equals(value)) return old;
         if (!this.hooked()) {
-            V old = this.delegate.put(key, value);
+            old = this.delegate.put(key, value);
             // 旧值为 null 时分不清 "原来没有" 与 "原来映射到 null", 一律按变了算
             if (old == null || !old.equals(value)) this.changed();
             return old;
         }
-        V old = this.delegate.get(key);
-        if (old != null && old.equals(value)) return old;
         if (old != null) this.removed(key, old);
         this.delegate.put(key, this.putting(key, value));
         this.changed();
