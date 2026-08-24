@@ -82,7 +82,8 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     @Override
     protected void onInactive() {
         PollingState polling = this.polling;
-        if (polling == null || polling.clockSubscription == null) return;
+        if (polling == null) return;
+        assert polling.clockSubscription != null;
         polling.clockSubscription.close();
         polling.clockSubscription = null;
     }

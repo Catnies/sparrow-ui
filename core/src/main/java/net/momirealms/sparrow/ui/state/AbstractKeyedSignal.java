@@ -178,6 +178,11 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
     @Override
     public void remove(@NotNull K key) {
         Objects.requireNonNull(key, "key");
+        if (this.removeRow(key)) this.keysChanged();
+    }
+
+    // 删掉一行, 不派发. 返回本次是否真的删掉了.
+    private boolean removeRow(K key) {
         boolean[] removed = new boolean[1];
         this.store.computeIfPresent(key, (ignored, state) -> {
             // 分区终止会关闭它的全部订阅.
@@ -191,7 +196,7 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
             // 主表只放有分区的 key, 条目整个删掉.
             return null;
         });
-        if (removed[0]) this.keysChanged();
+        return removed[0];
     }
 
     @Override
@@ -244,9 +249,11 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
 
     @Override
     public void clear() {
+        boolean removed = false;
         for (K key : this.store.keySet()) {
-            this.remove(key);
+            removed |= this.removeRow(key);
         }
+        if (removed) this.keysChanged();
     }
 
     /**
@@ -304,6 +311,7 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
     static final class Keys<K> extends AbstractSignal<Set<K>> {
         private final AbstractKeyedSignal<K, ?, ?> owner;
         private final AtomicLong version = new AtomicLong();
+        @Nullable private volatile Versioned<Set<K>> cached;
 
         private Keys(AbstractKeyedSignal<K, ?, ?> owner) {
             this.owner = owner;
@@ -311,7 +319,15 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
 
         @Override
         public Set<K> get() {
-            return Set.copyOf(this.owner.store.keySet());
+            // 先读版本再复制, 两次之间又建行删行的话记下的版本偏旧, 下次拉取会再复制一遍
+            long version = this.version.get();
+            Versioned<Set<K>> current = this.cached;
+            if (current != null && current.version() == version) {
+                return current.value();
+            }
+            Set<K> snapshot = Set.copyOf(this.owner.store.keySet());
+            this.cached = new Versioned<>(snapshot, version);
+            return snapshot;
         }
 
         @Override

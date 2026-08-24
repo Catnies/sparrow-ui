@@ -63,10 +63,10 @@ public sealed interface KeyedSignal<K, T> permits MutableKeyedSignal, PlayerKeye
 
     /**
      * 当前有分区的 key. 建分区(首次 {@code get} / {@code at} 到的 key)与 {@link #remove} 都让它失效, 分区的值变了它不失效.
-     * <p>值是一份不可修改的快照, 顺序不保证, 每次拉取按分区数复制一遍, 分区极多时慎用.
+     * <p>值是一份不可修改的快照, 顺序不保证; 按版本缓存, 只有建行删行之后的第一次拉取才真的按分区数复制一遍.
      * <p><strong>它是 "有分区的 key", 不是业务上存在的 key</strong>: {@link #get} 一个没见过的 key 也会建分区并出现在这里.
      * 房间、邀请、编辑会话这类由写入建行的用法, 它就是名单; 金币、统计这类由读取装载的缓存用法, 它只是缓存内省, 别当业务名单用.
-     * <p>{@link #clear} 逐个删分区, 会让它失效 N 次.
+     * <p>{@link #clear} 逐个删分区, 但只在全部删完之后让它失效一次.
      *
      * @return 有分区的 key 的集合
      */
