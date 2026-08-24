@@ -87,7 +87,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         Subscription[] previous = this.memberUpstream;
         Subscription[] attached = null;
         if (previous != null) {
-            attached = attachAll(members, this, this::onUpstreamDirty);
+            attached = this.linkAll(members, this::onUpstreamDirty);
         }
         // 版本之和抛出时整笔换成员作废: 新转发当场撤掉, 对齐结果与上一批转发都维持原状,
         // 否则逻辑上还对着旧成员, 转发却已经改听新成员, 而换回旧成员走的是快路径, 不会再重挂.
@@ -147,12 +147,12 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
     protected void onActive() {
         Subscription[] discarded = null;
         synchronized (this.mergeLock) {
-            this.sourcesUpstream = this.sources.link(this, this::onUpstreamDirty);
+            this.sourcesUpstream = this.linkTo(this.sources, this::onUpstreamDirty);
             try {
                 this.alignLocked();
                 Aligned current = this.aligned;
                 assert current != null; // alignLocked 一定会留下一次对齐结果
-                this.memberUpstream = attachAll(current.members(), this, this::onUpstreamDirty);
+                this.memberUpstream = this.linkAll(current.members(), this::onUpstreamDirty);
                 // 上一句之前发生的成员失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
                 discarded = this.alignLocked();
             } catch (RuntimeException | Error exception) {

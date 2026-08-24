@@ -68,7 +68,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
     @Override
     protected void onActive() {
         // 先挂上游再拍基线, 挂载前后到达的失效都不会漏; 订阅前的变化并进基线, 不补发
-        this.upstream = this.source.link(this, this::onSourceDirty);
+        this.upstream = this.linkTo(this.source, this::onSourceDirty);
         try {
             synchronized (this.stateLock) {
                 if (this.sourceChangedLocked()) {

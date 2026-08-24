@@ -13,6 +13,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -55,6 +56,7 @@ public final class WindowManager implements Listener {
     }
 
     @NotNull
+    @ApiStatus.Internal
     public static WindowManager create() {
         Plugin plugin = SparrowUI.getInstance().getPlugin();
         WindowManager manager = new WindowManager(plugin);

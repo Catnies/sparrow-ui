@@ -40,7 +40,7 @@ final class MappedSignal<S, T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        this.upstream = this.source.link(this, this::notifyDirty);
+        this.upstream = this.linkTo(this.source, this::notifyDirty);
     }
 
     @Override

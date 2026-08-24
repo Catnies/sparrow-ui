@@ -58,15 +58,41 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 派生节点订阅上游用这个, 与 {@link #onDirty} 只差一点: 条目记下谁是下游, {@link #reapDownstream} 才能顺着订阅链走下去.
+     * 派生节点订阅上游, 条目记下本节点是它的下游, {@link #reapDownstream} 才能顺着订阅链走下去.
      *
-     * @param downstream 订阅本节点的派生节点
+     * @param source 要订阅的上游
      * @param listener 失效回调
      * @return 订阅凭证, 与 onDirty 的一样弱
      */
     @NotNull
-    final Subscription link(@NotNull AbstractSignal<?> downstream, @NotNull Runnable listener) {
-        return this.register(listener, downstream);
+    final Subscription linkTo(@NotNull AbstractSignal<?> source, @NotNull Runnable listener) {
+        return source.register(listener, this);
+    }
+
+    /**
+     * 同 {@link #linkTo}, 一次订阅一批上游.
+     *
+     * @param sources 要订阅的上游
+     * @param listener 失效回调
+     * @return 与 sources 同下标的订阅凭证
+     */
+    @NotNull
+    final Subscription[] linkAll(AbstractSignal<?>[] sources, @NotNull Runnable listener) {
+        Subscription[] subscriptions = new Subscription[sources.length];
+        int linked = 0;
+        try {
+            for (int index = 0; index < sources.length; index++) {
+                subscriptions[index] = this.linkTo(sources[index], listener);
+                linked++;
+            }
+        } catch (RuntimeException | Error exception) {
+            // 中途有谁激活失败就倒序撤销已经挂上的那些, 再把异常原样抛出
+            for (int index = linked - 1; index >= 0; index--) {
+                subscriptions[index].close();
+            }
+            throw exception;
+        }
+        return subscriptions;
     }
 
     @NotNull
@@ -269,33 +295,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 给一批来源挂上同一个失效回调.
-     *
-     * @param sources 要挂的来源
-     * @param downstream 订阅这批来源的派生节点
-     * @param listener 失效回调
-     * @return 与 sources 同下标的订阅凭证
-     */
-    @NotNull
-    static Subscription[] attachAll(AbstractSignal<?>[] sources, @NotNull AbstractSignal<?> downstream, @NotNull Runnable listener) {
-        Subscription[] subscriptions = new Subscription[sources.length];
-        int attached = 0;
-        try {
-            for (int index = 0; index < sources.length; index++) {
-                subscriptions[index] = sources[index].link(downstream, listener);
-                attached++;
-            }
-        } catch (RuntimeException | Error exception) {
-            // 中途有谁激活失败就倒序撤销已经挂上的那些, 再把异常原样抛出
-            for (int index = attached - 1; index >= 0; index--) {
-                subscriptions[index].close();
-            }
-            throw exception;
-        }
-        return subscriptions;
-    }
-
-    /**
      * 关闭一批凭证, 为 {@code null} 时无操作.
      *
      * @param subscriptions 订阅凭证
@@ -366,7 +365,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     private static final class BindingNode implements Subscription, Runnable {
         @Nullable private volatile Runnable callback;               // 关闭后置 null
         @Nullable private volatile Subscription entry;              // 注册后填入, 关闭后置 null
-        @Nullable private volatile AbstractSignal<?> downstream;    // 经 link 订阅的派生节点, 用户订阅为 null, 关闭后置 null
+        @Nullable private volatile AbstractSignal<?> downstream;    // 经 linkTo 订阅的派生节点, 用户订阅为 null, 关闭后置 null
         private volatile boolean closed;
 
         private BindingNode(@NotNull Runnable callback, @Nullable AbstractSignal<?> downstream) {
