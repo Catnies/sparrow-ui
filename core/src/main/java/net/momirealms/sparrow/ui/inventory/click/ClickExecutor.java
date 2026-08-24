@@ -116,6 +116,7 @@ final class ClickExecutor {
         markAllDirty(context, windowSlots);
     }
 
+    // 原版只对左右边框点击定义了丢物语义, 其余类型(如创造模式窗外中键的 CLONE)一律无操作.
     static void handleOutsideClick(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType
@@ -127,7 +128,7 @@ final class ClickExecutor {
         if (clickType == ClickType.WINDOW_BORDER_LEFT) {
             context.cursor(ItemUtils.EMPTY);
             context.drop(cursor.clone());
-        } else {
+        } else if (clickType == ClickType.WINDOW_BORDER_RIGHT) {
             int left = cursor.getAmount() - 1;
             context.cursor(left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY);
             context.drop(ItemUtils.copyWithAmount(cursor, 1));

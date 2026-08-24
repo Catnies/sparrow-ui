@@ -140,7 +140,7 @@ public final class ClickSemantics {
      * 处理窗口外点击.
      *
      * @param context 当前 Window 交互上下文
-     * @param clickType 点击类型(WINDOW_BORDER_LEFT 丢整堆, 其余丢一个)
+     * @param clickType 点击类型(WINDOW_BORDER_LEFT 丢整堆, WINDOW_BORDER_RIGHT 丢一个, 其余类型按原版无操作)
      */
     public static void handleOutsideClick(@NotNull Context context, @NotNull ClickType clickType) {
         ClickExecutor.handleOutsideClick(context, clickType);
