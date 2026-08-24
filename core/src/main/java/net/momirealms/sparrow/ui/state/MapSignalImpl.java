@@ -603,9 +603,12 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         @Override
         public void remove() {
-            K key = this.last.getKey();
-            V value = this.last.getValue();
+            Map.Entry<K, V> last = this.last;
+            if (last == null) throw new IllegalStateException();
+            K key = last.getKey();
+            V value = last.getValue();
             this.it.remove();
+            this.last = null;
             MapSignalImpl.this.removedThenChanged(key, value);
         }
 
