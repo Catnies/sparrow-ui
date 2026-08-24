@@ -20,6 +20,7 @@ public interface Item {
      *
      * @return 空 Item
      */
+    @NotNull
     static Item empty() {
         return EMPTY;
     }
@@ -30,6 +31,7 @@ public interface Item {
      * @param itemStack 显示模板
      * @return 静态 Item
      */
+    @NotNull
     static Item simple(@NotNull ItemStack itemStack) {
         return new StaticItem(ItemProvider.constant(itemStack));
     }
@@ -40,6 +42,7 @@ public interface Item {
      * @param itemProvider 显示内容来源
      * @return 静态 Item
      */
+    @NotNull
     static Item simple(@NotNull ItemProvider itemProvider) {
         return new StaticItem(itemProvider);
     }
@@ -49,6 +52,7 @@ public interface Item {
      *
      * @return 新的 Builder
      */
+    @NotNull
     static ItemBuilder builder() {
         return new ItemBuilder();
     }

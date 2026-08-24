@@ -9,6 +9,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.plugin.Plugin;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +31,7 @@ public class SparrowUI implements Listener {
 
     private SparrowUI() {}
 
+    @NotNull
     public static SparrowUI getInstance() {
         return INSTANCE;
     }
@@ -41,7 +43,7 @@ public class SparrowUI implements Listener {
      * @param plugin 要设置的插件实例
      * @throws IllegalStateException 如果插件实例已设置
      */
-    public void setUp(Plugin plugin) {
+    public void setUp(@NotNull Plugin plugin) {
         Objects.requireNonNull(plugin, "plugin");
         if (this.plugin != null) {
             throw new IllegalStateException("Plugin is already set");
@@ -63,6 +65,7 @@ public class SparrowUI implements Listener {
      * @return 插件实例
      * @throws IllegalStateException 如果插件实例未设置且无法推断
      */
+    @NotNull
     public Plugin getPlugin() {
         if (this.plugin == null) {
             Plugin discovered = tryFindPlugin().orElseThrow(() -> new IllegalStateException(
@@ -208,6 +211,7 @@ public class SparrowUI implements Listener {
      *
      * @return Window 管理器
      */
+    @NotNull
     public WindowManager windowManager() {
         if (this.windowManager == null) {
             this.getPlugin();

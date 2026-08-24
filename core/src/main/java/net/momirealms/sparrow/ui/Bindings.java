@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui;
 
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -9,6 +10,10 @@ import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
+/**
+ * 宿主持有的 Signal 绑定容器, 由 Window, Pane, Inventory 与 Visual 共用.
+ */
+@ApiStatus.Internal
 public final class Bindings {
     private final CopyOnWriteArrayList<Binding> bindings = new CopyOnWriteArrayList<>(); // 写入由 suspendLock 保护
     private final Object suspendLock = new Object();

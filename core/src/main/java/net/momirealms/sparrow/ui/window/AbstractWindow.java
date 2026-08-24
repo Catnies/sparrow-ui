@@ -700,17 +700,6 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         return this.cursorVisual;
     }
 
-    @Nullable
-    @Override
-    public Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider() {
-        return this.cursorVisual.visualizerProvider();
-    }
-
-    @Override
-    public void setCursorVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider) {
-        this.cursorVisual.setVisualizerProvider(cursorVisualizerProvider);
-    }
-
     @Override
     public void notifyUpdate(int windowSlot) {
         if (windowSlot < 0 || windowSlot >= this.layout.size()) {
@@ -1570,8 +1559,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     // 渲染只给客户端看的光标物品副本, 如失败则回退到菜单实际光标.
-    private MenuHandle.CursorSnapshot renderCursor(ItemStack actualCursor) {
-        ItemStack actual = ItemUtils.copyOrEmpty(actualCursor);
+    // actual 直接留用 menu.cursor() 给出的那份副本, <strong>调用方交出所有权后不得再碰它</strong>.
+    private MenuHandle.CursorSnapshot renderCursor(@NotNull ItemStack actual) {
         try {
             // 光标内容变了, 基于旧内容算出的异步视觉一并作废
             MenuHandle.CursorSnapshot previous = this.localCursor;

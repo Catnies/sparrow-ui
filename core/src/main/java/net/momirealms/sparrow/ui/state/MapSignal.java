@@ -15,8 +15,7 @@ import java.util.function.BiFunction;
  * 没有元素钩子时, 非空 {@code putAll} 总会通知, 每个映射都相同也一样.
  * {@code map} / {@code mapDistinct} 的 mapper <strong>必须返回不可变结果</strong>.
  * {@code keySet()} / {@code values()} / {@code entrySet()} 与 {@code Map.Entry.setValue} 都写穿并通知.
- * <p>{@code compute} 把映射到 {@code null} 的条目重算成 {@code null} 而移除时, 判断不了有没有删掉东西, 可能漏通知;
- * 要用 {@code null} 值就别指望那一次通知.
+ * <p>{@code compute} 把映射到 {@code null} 的条目重算成 {@code null} 而移除时, 判断不了有没有删掉东西, 可能漏通知, 因为无法判断;
  * <p><strong>包装器强持被包装的 {@code Map}</strong>. key 与值禁止放 {@code Player} / {@code Entity} / {@code World}.
  *
  * @param <K> key 类型

@@ -291,6 +291,18 @@ public interface Window {
     void backOnPlayerClose(boolean backOnPlayerClose);
 
     /**
+     * 绑定到指定的 Signal, 当 Signal 被标脏时, 会触发传入的回调函数.
+     * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
+     * <p><strong>绑定跟随打开期</strong>, 首次打开时才挂上订阅, 关闭时摘掉, 重新打开时按声明重新挂上.
+     *
+     * @param signal 数据源
+     * @param callback 失效回调
+     * @return 订阅凭证, 重新打开后仍有效, 可用于提前解绑
+     */
+    @NotNull
+    Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback);
+
+    /**
      * 替换打开后依次执行的处理器列表.
      *
      * @param openHandlers 新处理器列表
@@ -340,18 +352,6 @@ public interface Window {
      * @param closeHandler 关闭处理器, 参数为关闭原因
      */
     void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
-
-    /**
-     * 绑定到指定的 Signal, 当 Signal 被标脏时, 会触发传入的回调函数.
-     * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
-     * <p><strong>绑定跟随打开期</strong>, 首次打开时才挂上订阅, 关闭时摘掉, 重新打开时按声明重新挂上.
-     *
-     * @param signal 数据源
-     * @param callback 失效回调
-     * @return 订阅凭证, 重新打开后仍有效, 可用于提前解绑
-     */
-    @NotNull
-    Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback);
 
     /**
      * 移除一个与给定对象相等的关闭处理器.
@@ -563,7 +563,9 @@ public interface Window {
      * @return 光标视觉映射, 没有设置过时为 {@code null}, 表示按菜单实际光标显示
      */
     @Nullable
-    Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider();
+    default Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider() {
+        return this.cursorVisual().visualizerProvider();
+    }
 
     /**
      * 设置光标视觉映射.
@@ -573,7 +575,9 @@ public interface Window {
      *
      * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示移除这一层
      */
-    void setCursorVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider);
+    default void setCursorVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider) {
+        this.cursorVisual().setVisualizerProvider(cursorVisualizerProvider);
+    }
 
     /**
      * 设置光标视觉映射, 并指定提供器给出结果前显示的占位.
