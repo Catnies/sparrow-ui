@@ -32,7 +32,7 @@ public final class VersionHelper {
     private static final boolean v26_1_2;
     private static final boolean v26_2;
 
-    // 多写几个候选名: 无混淆映射的版本缺少部分 Main 类
+    // 无混淆发行版可能缺少某些 Main 类, 候选名称覆盖这些差异.
     private static final Class<?> UNOBFUSCATED_CLAZZ = ReflectionUtils.getClazz(
             "net.minecraft.obfuscate.DontObfuscate",
             "net.minecraft.data.Main",
@@ -43,7 +43,7 @@ public final class VersionHelper {
     );
 
     static {
-        // 一次性解析 version.json, 并探测运行平台特征供后续 isXxx 查询
+        // 版本与平台特征只在类初始化时探测一次.
         try (InputStream inputStream = UNOBFUSCATED_CLAZZ.getResourceAsStream("/version.json")) {
             if (inputStream == null) {
                 throw new IOException("Failed to load version.json");
@@ -73,7 +73,7 @@ public final class VersionHelper {
             // 12104 = 1.21.4
             version = parseVersionToInteger(versionString);
 
-            // 版本特征位: 达到某版本即置位, 供兼容层按版本切换实现
+            // 兼容层读取预计算标志, 热路径不再解析版本字符串.
             v1_21_8 = version >= 12108;
             v1_21_9 = version >= 12109;
             v1_21_10 = version >= 12110;
@@ -96,8 +96,15 @@ public final class VersionHelper {
         }
     }
 
+    /**
+     * 将一至三段点分数字编码为可直接比较的整数.
+     * <p>编码公式为 {@code first * 10000 + second * 100 + third}, 缺少的段按 0 处理.
+     *
+     * @param versionString 点分数字版本, 例如 {@code 1.21.10} 或 {@code 26.1}
+     * @return 编码后的版本整数
+     */
     public static int parseVersionToInteger(String versionString) {
-        // 逐段解析点分数字, 只取前三段
+        // 按字符累计当前数字段.
         int v1 = 0;
         int v2 = 0;
         int v3 = 0;
@@ -121,12 +128,12 @@ public final class VersionHelper {
                 }
             }
         }
-        // 处理最后一个数字部分
-        if (part == 0) {  // 没有点号：如 "26"
+        // 循环结束时最后一段还没有写入对应槽位.
+        if (part == 0) {  // 例如 26
             v1 = currentNumber;
-        } else if (part == 1) {  // 一个点号：如 "26.1"
+        } else if (part == 1) {  // 例如 26.1
             v2 = currentNumber;
-        } else if (part == 2) {  // 两个点号：如 "1.2.3"
+        } else if (part == 2) {  // 例如 1.2.3
             v3 = currentNumber;
         }
         return 10000 * v1 + v2 * 100 + v3;
@@ -151,7 +158,7 @@ public final class VersionHelper {
     }
 
     /**
-     * 返回编码后的完整版本号整数, 编码规则见 parseVersionToInteger.
+     * 返回编码后的完整版本号整数, 编码规则见 {@link #parseVersionToInteger(String)}.
      *
      * @return 版本整数, 例如 1.21.10 -> 12110
      */
@@ -182,7 +189,7 @@ public final class VersionHelper {
     /**
      * 判断服务端是否为 Folia 分支.
      *
-     * @return 是 Folia 时返回 true
+     * @return 是 Folia 时返回 {@code true}
      */
     public static boolean isFolia() {
         return folia;
@@ -191,7 +198,7 @@ public final class VersionHelper {
     /**
      * 判断服务端是否为 Paper 或基于 Paper 的发行版.
      *
-     * @return 是 Paper 系服务端时返回 true
+     * @return 是 Paper 系服务端时返回 {@code true}
      */
     public static boolean isPaper() {
         return paper;
@@ -200,7 +207,7 @@ public final class VersionHelper {
     /**
      * 判断服务端是否为 Canvas 分支.
      *
-     * @return 是 Canvas 时返回 true
+     * @return 是 Canvas 时返回 {@code true}
      */
     public static boolean isCanvas() {
         return canvas;
@@ -209,7 +216,7 @@ public final class VersionHelper {
     /**
      * 判断服务端是否为 Leaves 分支.
      *
-     * @return 是 Leaves 时返回 true
+     * @return 是 Leaves 时返回 {@code true}
      */
     public static boolean isLeaves() {
         return leaves;
@@ -218,7 +225,7 @@ public final class VersionHelper {
     /**
      * 判断服务端是否运行在 Mojang 官方映射(无混淆)环境.
      *
-     * @return 是 Mojmap 环境时返回 true
+     * @return 是 Mojmap 环境时返回 {@code true}
      */
     public static boolean isMojmap() {
         return mojmap;
@@ -227,7 +234,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 1.21.8.
      *
-     * @return 不低于 1.21.8 时返回 true
+     * @return 不低于 1.21.8 时返回 {@code true}
      */
     public static boolean isOrAbove1_21_8() {
         return v1_21_8;
@@ -236,7 +243,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 1.21.9.
      *
-     * @return 不低于 1.21.9 时返回 true
+     * @return 不低于 1.21.9 时返回 {@code true}
      */
     public static boolean isOrAbove1_21_9() {
         return v1_21_9;
@@ -245,7 +252,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 1.21.10.
      *
-     * @return 不低于 1.21.10 时返回 true
+     * @return 不低于 1.21.10 时返回 {@code true}
      */
     public static boolean isOrAbove1_21_10() {
         return v1_21_10;
@@ -254,7 +261,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 1.21.11.
      *
-     * @return 不低于 1.21.11 时返回 true
+     * @return 不低于 1.21.11 时返回 {@code true}
      */
     public static boolean isOrAbove1_21_11() {
         return v1_21_11;
@@ -263,7 +270,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 26.1.
      *
-     * @return 不低于 26.1 时返回 true
+     * @return 不低于 26.1 时返回 {@code true}
      */
     public static boolean isOrAbove26_1() {
         return v26_1;
@@ -272,7 +279,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 26.1.1.
      *
-     * @return 不低于 26.1.1 时返回 true
+     * @return 不低于 26.1.1 时返回 {@code true}
      */
     public static boolean isOrAbove26_1_1() {
         return v26_1_1;
@@ -281,7 +288,7 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 26.1.2.
      *
-     * @return 不低于 26.1.2 时返回 true
+     * @return 不低于 26.1.2 时返回 {@code true}
      */
     public static boolean isOrAbove26_1_2() {
         return v26_1_2;
@@ -290,17 +297,16 @@ public final class VersionHelper {
     /**
      * 判断服务端版本是否不低于 26.2.
      *
-     * @return 不低于 26.2 时返回 true
+     * @return 不低于 26.2 时返回 {@code true}
      */
     public static boolean isOrAbove26_2() {
         return v26_2;
     }
 
     /**
-     * 收集当前服务端所具备的补丁标识.
-     * 该列表会用于初始化代理层, 以便根据具体发行版差异加载不同兼容逻辑.
+     * 返回代理层用于选择发行版兼容逻辑的补丁标识.
      *
-     * @return 当前服务端命中的补丁名称列表, 如 paper, folia 等
+     * @return 新的补丁名称列表, 可能包含 {@code paper}, {@code folia}, {@code leaves} 或 {@code canvas}
      */
     public static List<String> getPatches() {
         List<String> patches = new ArrayList<>();

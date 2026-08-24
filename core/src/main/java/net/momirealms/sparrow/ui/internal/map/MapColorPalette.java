@@ -13,6 +13,7 @@ public final class MapColorPalette {
     private MapColorPalette() {
     }
 
+    // 先读取运行中服务端的实际地图色, 再装配构建期生成的候选索引.
     public static synchronized void initialize() {
         if (profile != null) {
             return;
@@ -26,6 +27,7 @@ public final class MapColorPalette {
         profile = MapColorProfile.load(colors);
     }
 
+    // profile 完整构造后才由 volatile 字段发布, 转换线程不会看到半初始化数据.
     public static byte @NotNull [] imageToBytes(@NotNull BufferedImage image) {
         MapColorProfile current = profile;
         if (current == null) {

@@ -31,7 +31,6 @@ import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import net.momirealms.sparrow.ui.util.UnmodifiableBitSet;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
 import net.momirealms.sparrow.ui.visual.ResolvedVisual;
@@ -103,7 +102,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private static final int CURSOR_AUDIT_INTERVAL = 20;    // 光标复核周期(tick)
     private static final long PING_TIMEOUT_MILLIS = 30_000; // Window 状态确认超时
     private static final int STATE_ID_RING = 32768;         // 原版 state id 取值范围
-    private static final BitSet EMPTY_DIRTY_SLOTS = new UnmodifiableBitSet(new BitSet());
+    private static final BitSet EMPTY_DIRTY_SLOTS = new BitSet();
 
     // 身份与固定配置, 构造后不变
     private final WindowManager manager;

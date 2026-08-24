@@ -23,12 +23,14 @@ public final class MapColorProfileGenerator {
             throw new IllegalArgumentException("Expected the map color profile output directory");
         }
 
+        // 每个 RGB 分块可以独立穷举, 生成时并行计算所有候选集合.
         int[] colors = MapColorProfileGenerator.paperColors();
         byte[][] blockCandidates = new byte[MapColorProfile.BLOCK_COUNT][];
         IntStream.range(0, MapColorProfile.BLOCK_COUNT).parallel().forEach(block ->
                 blockCandidates[block] = MapColorProfileGenerator.generateBlockCandidates(block, colors)
         );
 
+        // 运行时 offset 使用无符号 short, 扁平候选表不能超过 65535 项.
         int candidateCount = 0;
         for (int block = 0; block < blockCandidates.length; block++) {
             candidateCount += blockCandidates[block].length;
@@ -37,6 +39,7 @@ public final class MapColorProfileGenerator {
             throw new IllegalStateException("Map color profile has too many candidates: " + candidateCount);
         }
 
+        // 将每块候选压成 offsets + candidates, 运行时只需两次数组寻址.
         char[] offsets = new char[MapColorProfile.BLOCK_COUNT + 1];
         byte[] candidates = new byte[candidateCount];
         int offset = 0;
@@ -48,12 +51,14 @@ public final class MapColorProfileGenerator {
         }
         offsets[offsets.length - 1] = (char) offset;
 
+        // 穷举全部 24 位 RGB 后固定输出摘要, 映射变化必须显式更新基准.
         MapColorProfile profile = new MapColorProfile(colors, offsets, candidates);
         String cacheMd5 = MapColorProfileGenerator.cacheMd5(profile);
         if (!EXPECTED_CACHE_MD5.equals(cacheMd5)) {
             throw new IllegalStateException("Generated map color cache MD5 " + cacheMd5 + ", expected " + EXPECTED_CACHE_MD5);
         }
 
+        // 二进制布局与 MapColorProfile.read 的读取顺序保持一致.
         Path outputDirectory = Path.of(arguments[0]);
         Files.createDirectories(outputDirectory);
         Path output = outputDirectory.resolve("map-color-profile.bin");
@@ -82,6 +87,7 @@ public final class MapColorProfileGenerator {
     }
 
     private static byte[] generateBlockCandidates(int block, int[] colors) {
+        // 候选只保留在这个 8x8x8 分块内至少胜出一次的地图色.
         boolean[] used = new boolean[MapColorProfile.COLOR_COUNT];
         int redStart = (block >>> 10) << MapColorProfile.BLOCK_SHIFT;
         int greenStart = (block >>> 5 & 31) << MapColorProfile.BLOCK_SHIFT;
@@ -112,6 +118,7 @@ public final class MapColorProfileGenerator {
     }
 
     private static int match(int red, int green, int blue, int[] colors) {
+        // 生成阶段全表扫描, 为运行时的分块候选表提供基准结果.
         int bestId = 0;
         int bestDistance = -1;
         for (int id = MapColorProfile.FIRST_COLOR; id < colors.length; id++) {

@@ -22,14 +22,14 @@ public final class ReflectionUtils {
 
     static {
         try {
-            // 通过 Unsafe 取出 JDK 内部 IMPL_LOOKUP, 获得可解包任意成员的特权 Lookup
+            // Unsafe 可以直接读取 IMPL_LOOKUP, 供后续跨模块解包成员.
             Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
             unsafeField.setAccessible(true);
             UNSAFE = (Unsafe) unsafeField.get(null);
             Field implLookup = MethodHandles.Lookup.class.getDeclaredField("IMPL_LOOKUP");
             @SuppressWarnings("deprecation") long offset = UNSAFE.staticFieldOffset(implLookup);
             LOOKUP = (MethodHandles.Lookup) UNSAFE.getObject(MethodHandles.Lookup.class, offset);
-            // 预取 JDK 内部方法句柄, 供 unreflectSetter 为 final 字段构造写句柄
+            // final 字段 setter 的后备路径依赖这些 JDK 内部句柄.
             Class<?> clazz$MethodHandleNatives = Class.forName("java.lang.invoke.MethodHandleNatives");
             Class<?> clazz$MemberName = Class.forName("java.lang.invoke.MemberName");
             methodHandle$MethodHandleNatives$refKindIsSetter = LOOKUP.unreflect(clazz$MethodHandleNatives.getDeclaredMethod("refKindIsSetter", byte.class));
@@ -44,12 +44,11 @@ public final class ReflectionUtils {
     private ReflectionUtils() {}
 
     /**
-     * 按给定的全限定类名列表依次尝试加载类, 并返回第一个成功加载的结果.
-     * 适合处理不同平台, 版本或混淆映射下可能变化的类名.
+     * 按顺序尝试候选类名, 返回第一个成功加载的类.
+     * <p>候选值为 {@code null} 或发生任意加载错误时继续尝试下一项.
      *
      * @param classes 候选类名列表, 按优先级从前到后匹配
-     * @return 首个成功加载的 Class 对象, 全部失败时返回 null
-     * @apiNote 候选项中单个元素为 null 时, 会被内部单类加载方法视为失败并继续尝试下一个名称
+     * @return 首个成功加载的 Class, 全部失败时返回 {@code null}
      */
     public static Class<?> getClazz(String... classes) {
         for (String className : classes) {
@@ -62,11 +61,10 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 根据单个全限定类名尝试加载类, 加载失败时吞掉异常并返回 null.
+     * 尝试加载一个类, 任意加载错误都返回 {@code null}.
      *
      * @param clazz 需要加载的类全限定名
-     * @return 成功时返回对应的 Class 对象, 失败时返回 null
-     * @apiNote 该方法捕获所有 Throwable, ClassNotFoundException, LinkageError 等错误也会被折叠为 null
+     * @return 加载到的 Class, 或 {@code null}
      */
     public static Class<?> getClazz(String clazz) {
         try {
@@ -77,11 +75,10 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 判断指定类名对应的类是否存在并可被当前类加载器加载.
+     * 判断指定类名能否由当前类加载器完成加载.
      *
      * @param clazz 目标类的全限定名
-     * @return 类可以成功加载时返回 true, 否则返回 false
-     * @apiNote 加载阶段的各种错误统一视为不存在
+     * @return 加载成功时返回 {@code true}
      */
     public static boolean classExists(@NotNull final String clazz) {
         try {
@@ -93,14 +90,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 判断指定的公共方法是否存在.
-     * 基于 Class.getMethod, 因此只会查找当前类及其父类, 接口中可见的公共方法.
+     * 判断类及其父类或接口中是否存在参数完全匹配的公共方法.
+     * <p>返回类型不参与匹配.
      *
      * @param clazz 目标类
      * @param method 目标方法名
      * @param parameterTypes 参数类型列表, 需要与方法签名完全一致
-     * @return 找到匹配的公共方法时返回 true, 否则返回 false
-     * @apiNote 不检查返回值类型, 也不匹配私有或受保护方法
+     * @return 存在匹配方法时返回 {@code true}
+     * @throws SecurityException 当安全策略拒绝读取公共方法时
      */
     public static boolean methodExists(@NotNull final Class<?> clazz, @NotNull final String method, @NotNull final Class<?>... parameterTypes) {
         try {
@@ -112,13 +109,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按字段名获取当前类中声明的字段, 并尝试设置为可访问.
+     * 按名称查找当前类声明的字段并开放访问权限.
+     * <p>搜索范围不包含父类.
      *
      * @param clazz 目标类
      * @param field 字段名
-     * @return 找到时返回已执行 setAccessible(true) 的字段对象, 未找到时返回 null
-     * @throws SecurityException 当 JVM 安全策略阻止访问控制修改时抛出
-     * @apiNote 仅查找当前类声明的字段, 不会向父类继续搜索
+     * @return 已开放访问权限的字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getDeclaredField(final Class<?> clazz, final String field) {
@@ -130,12 +127,12 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按多个候选字段名获取当前类中声明的字段, 按声明顺序返回第一个名称命中的字段.
+     * 按反射返回顺序查找当前类声明的字段, 返回首个名称匹配项.
+     * <p>返回字段保持原访问权限.
      *
      * @param clazz 目标类
      * @param possibleNames 候选字段名列表
-     * @return 命中时返回字段对象, 未命中时返回 null
-     * @apiNote 该重载不会调用 setAccessible(true), 返回的字段保持原有访问性
+     * @return 首个匹配字段, 未找到时返回 {@code null}
      */
     @Nullable
     public static Field getDeclaredField(@NotNull Class<?> clazz, @NotNull String... possibleNames) {
@@ -149,13 +146,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按声明顺序获取当前类中指定索引位置的字段, 并尝试设置为可访问.
+     * 按 {@link Class#getDeclaredFields()} 的返回顺序获取字段并开放访问权限.
+     * <p>反射字段顺序由 JVM 决定, 不适合作为稳定协议.
      *
      * @param clazz 目标类
      * @param index 字段索引, 基于 getDeclaredFields() 的返回顺序从 0 开始
-     * @return 命中时返回字段对象, 索引越界时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
-     * @apiNote 反射返回的字段顺序依赖 JVM 实现, 不适合作为长期稳定协议
+     * @return 指定字段, 索引越界时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getDeclaredField(final Class<?> clazz, final int index) {
@@ -170,12 +167,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按声明顺序获取当前类中第 index 个实例字段, 并尝试设置为可访问.
+     * 按反射返回顺序获取当前类的第 index 个实例字段并开放访问权限.
+     * <p>字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param index 实例字段索引, 仅统计非 static 字段
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定实例字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getInstanceDeclaredField(final Class<?> clazz, final int index) {
@@ -192,13 +190,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按类型和索引获取当前类中声明的静态字段, 并尝试设置为可访问.
+     * 按反射返回顺序获取当前类中指定类型的第 index 个静态字段.
+     * <p>返回字段已开放访问权限, 字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param type 字段类型, 需要完全相等匹配
      * @param index 同类型静态字段中的序号, 从 0 开始
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定静态字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getStaticDeclaredField(final Class<?> clazz, final Class<?> type, final int index) {
@@ -217,14 +216,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按类型和索引获取公共静态字段, 并尝试设置为可访问.
-     * 基于 Class.getFields() 搜索, 因此会包含从父类继承的公共字段.
+     * 按反射返回顺序获取指定类型的第 index 个公共静态字段.
+     * <p>搜索范围包含继承字段, 返回字段已开放访问权限, 字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param type 字段类型, 需要完全相等匹配
      * @param index 同类型公共静态字段中的序号, 从 0 开始
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定公共静态字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getStaticField(final Class<?> clazz, final Class<?> type, final int index) {
@@ -243,13 +242,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按类型和索引获取当前类中声明的字段, 并尝试设置为可访问.
+     * 按反射返回顺序获取当前类中指定类型的第 index 个字段.
+     * <p>返回字段已开放访问权限, 字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param type 字段类型, 需要完全相等匹配
      * @param index 同类型字段中的序号, 从 0 开始
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getDeclaredField(final Class<?> clazz, final Class<?> type, int index) {
@@ -266,14 +266,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按声明逆序和类型获取当前类中声明的字段, 并尝试设置为可访问.
-     * 从 getDeclaredFields() 的末尾向前遍历, 适合优先命中后声明字段的场景.
+     * 从 {@link Class#getDeclaredFields()} 末尾向前获取指定类型的第 index 个字段.
+     * <p>返回字段已开放访问权限, 字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param type 字段类型, 需要完全相等匹配
      * @param index 逆序遍历下同类型字段中的序号, 从 0 开始
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getDeclaredFieldBackwards(final Class<?> clazz, final Class<?> type, int index) {
@@ -292,13 +292,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按类型和索引获取当前类中声明的实例字段, 并尝试设置为可访问.
+     * 按反射返回顺序获取当前类中指定类型的第 index 个实例字段.
+     * <p>返回字段已开放访问权限, 字段顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param type 字段类型, 需要完全相等匹配
      * @param index 同类型实例字段中的序号, 从 0 开始
-     * @return 命中时返回字段对象, 未找到时返回 null
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 指定实例字段, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Field getInstanceDeclaredField(@NotNull Class<?> clazz, final Class<?> type, int index) {
@@ -315,11 +316,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取当前类声明的全部字段, 并统一设置为可访问.
+     * 返回当前类声明的全部字段, 每个字段均已开放访问权限.
      *
      * @param clazz 目标类
      * @return 包含全部声明字段的列表, 顺序与 getDeclaredFields() 返回顺序一致
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @NotNull
     public static List<Field> getDeclaredFields(final Class<?> clazz) {
@@ -331,11 +332,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取当前类声明的全部实例字段, 并统一设置为可访问.
+     * 返回当前类声明的全部实例字段, 每个字段均已开放访问权限.
      *
      * @param clazz 目标类
      * @return 包含所有非静态字段的列表
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @NotNull
     public static List<Field> getInstanceDeclaredFields(@NotNull Class<?> clazz) {
@@ -349,12 +350,12 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取当前类声明的全部指定类型字段, 并统一设置为可访问.
+     * 返回当前类声明的全部指定类型字段, 每个字段均已开放访问权限.
      *
      * @param clazz 目标类
      * @param type 目标字段类型, 需要完全相等匹配
-     * @return 所有命中的字段组成的列表
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 全部匹配字段
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @NotNull
     public static List<Field> getDeclaredFields(@NotNull final Class<?> clazz, @NotNull final Class<?> type) {
@@ -368,12 +369,12 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取当前类声明的全部指定类型实例字段, 并统一设置为可访问.
+     * 返回当前类声明的全部指定类型实例字段, 每个字段均已开放访问权限.
      *
      * @param clazz 目标类
      * @param type 目标字段类型, 需要完全相等匹配
-     * @return 所有命中的非静态字段列表
-     * @throws SecurityException 当修改字段访问性被拒绝时抛出
+     * @return 全部匹配实例字段
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @NotNull
     public static List<Field> getInstanceDeclaredFields(@NotNull Class<?> clazz, @NotNull Class<?> type) {
@@ -387,15 +388,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共方法中按返回值类型, 候选方法名和参数类型查找目标方法.
-     * 搜索范围基于 Class.getMethods(), 因此包含继承而来的公共方法.
+     * 在当前类及继承的公共方法中匹配返回类型, 候选名称与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类. 返回方法保持原访问权限.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param possibleMethodNames 候选方法名列表
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回方法对象, 未命中时返回 null
-     * @apiNote 返回的方法不会主动调用 setAccessible(true), 但 getMethods() 返回的公共方法本身通常可访问
+     * @return 首个匹配方法, 未找到时返回 {@code null}
      */
     @Nullable
     public static Method getMethod(final Class<?> clazz, Class<?> returnType, final String[] possibleMethodNames, final Class<?>... parameterTypes) {
@@ -422,13 +422,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共方法中按候选方法名和参数类型查找目标方法.
+     * 在当前类及继承的公共方法中匹配候选名称与参数签名.
+     * <p>参数类型要求完全相同, 返回类型不参与匹配.
      *
      * @param clazz 目标类
      * @param possibleMethodNames 候选方法名列表
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回方法对象, 未命中时返回 null
-     * @apiNote 搜索范围包含父类和接口中的公共方法
+     * @return 首个匹配方法, 未找到时返回 {@code null}
      */
     @Nullable
     public static Method getMethod(final Class<?> clazz, final String[] possibleMethodNames, final Class<?>... parameterTypes) {
@@ -451,12 +451,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共方法中按返回值类型和参数类型查找目标方法.
+     * 在当前类及继承的公共方法中匹配返回类型与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回方法对象, 未命中时返回 null
+     * @return 首个匹配方法, 未找到时返回 {@code null}
      */
     @Nullable
     public static Method getMethod(final Class<?> clazz, Class<?> returnType, final Class<?>... parameterTypes) {
@@ -477,13 +478,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共实例方法中按返回值类型和参数类型查找目标方法.
-     * 与 getMethod(Class, Class, Class...) 的区别是会跳过所有静态方法.
+     * 在当前类及继承的公共实例方法中匹配返回类型与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回实例方法对象, 未命中时返回 null
+     * @return 首个匹配实例方法, 未找到时返回 {@code null}
      */
     @Nullable
     public static Method getInstanceMethod(final Class<?> clazz, Class<?> returnType, final Class<?>... parameterTypes) {
@@ -507,15 +508,15 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在当前类声明的方法中按返回值类型, 候选方法名和参数类型查找目标方法, 并尝试设置为可访问.
+     * 在当前类声明的方法中匹配返回类型, 候选名称与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类. 返回方法已开放访问权限.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param possibleMethodNames 候选方法名列表
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回已执行 setAccessible(true) 的方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
-     * @apiNote 搜索范围仅限当前类声明的方法, 不包含继承方法
+     * @return 首个匹配方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getDeclaredMethod(final Class<?> clazz, Class<?> returnType, final String[] possibleMethodNames, final Class<?>... parameterTypes) {
@@ -542,13 +543,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在当前类声明的方法中按返回值类型和参数类型查找目标方法, 并尝试设置为可访问.
+     * 在当前类声明的方法中匹配返回类型与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类. 返回方法已开放访问权限.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回已执行 setAccessible(true) 的方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
+     * @return 首个匹配方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getDeclaredMethod(final Class<?> clazz, Class<?> returnType, final Class<?>... parameterTypes) {
@@ -569,14 +571,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按返回值类型和序号获取公共方法, 并尝试设置为可访问.
+     * 按反射返回顺序获取指定返回类型的第 index 个公共方法.
+     * <p>搜索范围包含继承方法, 返回方法已开放访问权限. 方法顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param index 命中方法中的序号, 从 0 开始
-     * @return 命中时返回方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
-     * @apiNote 序号基于 getMethods() 的返回顺序, 不保证跨 JVM 版本稳定
+     * @return 指定方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getMethod(final Class<?> clazz, Class<?> returnType, int index) {
@@ -593,13 +595,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共静态方法中按返回值类型和参数类型查找目标方法, 并尝试设置为可访问.
+     * 在当前类及继承的公共静态方法中匹配返回类型与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类. 返回方法已开放访问权限.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回静态方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
+     * @return 首个匹配静态方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getStaticMethod(final Class<?> clazz, Class<?> returnType, final Class<?>... parameterTypes) {
@@ -623,14 +626,15 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 在公共静态方法中按返回值类型, 候选方法名和参数类型查找目标方法, 并尝试设置为可访问.
+     * 在当前类及继承的公共静态方法中匹配返回类型, 候选名称与参数签名.
+     * <p>参数类型要求完全相同, 返回类型允许匹配期望类型的子类. 返回方法已开放访问权限.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param possibleNames 候选方法名列表
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回静态方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
+     * @return 首个匹配静态方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getStaticMethod(final Class<?> clazz, Class<?> returnType, String[] possibleNames, final Class<?>... parameterTypes) {
@@ -660,13 +664,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按序号获取公共静态方法, 并尝试设置为可访问.
+     * 按反射返回顺序获取第 index 个公共静态方法并开放访问权限.
+     * <p>搜索范围包含继承方法, 方法顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param index 静态方法序号, 从 0 开始
-     * @return 命中时返回静态方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
-     * @apiNote 序号基于 getMethods() 的返回顺序, 不保证稳定
+     * @return 指定静态方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     public static Method getStaticMethod(final Class<?> clazz, int index) {
         int i = 0;
@@ -682,13 +686,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按序号获取公共方法, 并尝试设置为可访问.
+     * 按反射返回顺序获取第 index 个公共方法并开放访问权限.
+     * <p>搜索范围包含继承方法, 方法顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param index 公共方法序号, 从 0 开始
-     * @return 命中时返回方法对象, 未命中时返回 null
-     * @throws SecurityException 当修改方法访问性被拒绝时抛出
-     * @apiNote 结果包含继承方法, 顺序依赖反射实现
+     * @return 指定方法, 未找到时返回 {@code null}
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
      */
     @Nullable
     public static Method getMethod(final Class<?> clazz, int index) {
@@ -703,14 +707,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按候选方法名和参数类型获取公共方法, 未找到时抛出异常.
+     * 按候选名称与参数签名查找公共方法, 未找到时抛出异常.
      *
      * @param clazz 目标类
      * @param possibleMethodNames 候选方法名列表
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
      * @return 找到的公共方法对象
-     * @throws NoSuchMethodException 当所有候选名称都未匹配到对应方法时抛出
-     * @apiNote 异常消息中包含候选名称, 参数类型和类名, 便于定位版本差异问题
+     * @throws NoSuchMethodException 当所有候选名称都未匹配时
      */
     public static Method getMethodOrElseThrow(final Class<?> clazz, final String[] possibleMethodNames, final Class<?>[] parameterTypes) throws NoSuchMethodException {
         Method method = getMethod(clazz, possibleMethodNames, parameterTypes);
@@ -722,22 +725,20 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取所有满足返回值类型和参数签名的公共方法列表.
+     * 返回所有满足返回类型与参数签名的公共方法.
+     * <p>搜索范围包含继承方法, 参数类型要求完全相同, 返回类型允许匹配期望类型的子类.
      *
      * @param clazz 目标类
      * @param returnType 期望返回值类型, 使用 isAssignableFrom 判断兼容性
      * @param parameterTypes 参数类型列表, 需要逐项完全匹配
-     * @return 所有命中方法组成的列表, 没有匹配项时返回空列表
-     * @apiNote 返回结果不会主动设置可访问性, 且包含继承自父类或接口的公共方法
+     * @return 全部匹配方法, 没有时返回空列表
      */
     @NotNull
     public static List<Method> getMethods(@NotNull Class<?> clazz, @NotNull Class<?> returnType, @NotNull Class<?>... parameterTypes) {
         List<Method> list = new ArrayList<>();
         for (Method method : clazz.getMethods()) {
-            // 返回值类型兼容且参数个数一致才继续逐项比对参数类型
             if (!returnType.isAssignableFrom(method.getReturnType()) || method.getParameterCount() != parameterTypes.length) continue;
             Class<?>[] types = method.getParameterTypes();
-            // 参数逐项完全匹配才加入结果
             outer: {
                 for (int i = 0; i < types.length; i++) {
                     if (types[i] != parameterTypes[i]) {
@@ -751,13 +752,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 把反射对象设置为可访问并原样返回, 便于链式调用.
+     * 开放反射对象的访问权限并原样返回.
      *
-     * @param o 需要开放访问权限的反射对象, 例如 Field, Method, Constructor
+     * @param o Field, Method 或 Constructor 等反射对象
      * @param <T> 反射对象类型
-     * @return 已执行 setAccessible(true) 的原对象
-     * @throws SecurityException 当 JVM 安全策略阻止修改访问性时抛出
-     * @apiNote 在强模块封装环境下, 该方法也可能触发 InaccessibleObjectException
+     * @return 同一个反射对象
+     * @throws SecurityException 当安全策略拒绝修改访问权限时
+     * @throws InaccessibleObjectException 当目标模块未向调用方开放对应包时
      */
     @NotNull
     public static <T extends AccessibleObject> T setAccessible(@NotNull final T o) {
@@ -766,11 +767,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取指定公共构造方法, 基于 Class.getConstructor.
+     * 查找参数签名完全匹配的公共构造器.
      *
      * @param clazz 目标类
      * @param parameterTypes 构造参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回构造器对象, 未找到或访问受限时返回 null
+     * @return 匹配构造器, 未找到或安全策略拒绝访问时返回 {@code null}
      */
     @Nullable
     public static Constructor<?> getConstructor(Class<?> clazz, Class<?>... parameterTypes) {
@@ -782,12 +783,13 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取指定声明构造方法, 并尝试设置为可访问.
-     * 基于 Class.getDeclaredConstructor, 因此可以匹配私有或受保护构造器.
+     * 查找参数签名完全匹配的声明构造器并开放访问权限.
+     * <p>搜索范围包含私有和受保护构造器.
      *
      * @param clazz 目标类
      * @param parameterTypes 构造参数类型列表, 需要逐项完全匹配
-     * @return 命中时返回已执行 setAccessible(true) 的构造器对象, 未找到或访问受限时返回 null
+     * @return 匹配构造器, 未找到或安全策略拒绝访问时返回 {@code null}
+     * @throws InaccessibleObjectException 当目标模块未向调用方开放对应包时
      */
     @Nullable
     public static Constructor<?> getDeclaredConstructor(Class<?> clazz, Class<?>... parameterTypes) {
@@ -799,14 +801,14 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按索引获取声明构造器, 并尝试设置为可访问.
-     * 基于 getDeclaredConstructors() 的返回结果, 因此包含非公共构造器.
+     * 按反射返回顺序获取声明构造器并开放访问权限.
+     * <p>搜索范围包含非公共构造器, 构造器顺序由 JVM 决定.
      *
      * @param clazz 目标类
      * @param index 构造器索引, 基于 getDeclaredConstructors() 的返回顺序从 0 开始
-     * @return 命中时返回构造器对象, 访问受限时返回 null
-     * @throws IndexOutOfBoundsException 当 index 不在有效范围内时抛出
-     * @apiNote 构造器顺序依赖反射实现, 不适合作为稳定协议
+     * @return 指定构造器, 安全策略拒绝访问时返回 {@code null}
+     * @throws IndexOutOfBoundsException 当 index 不在有效范围内时
+     * @throws InaccessibleObjectException 当目标模块未向调用方开放对应包时
      */
     @Nullable
     public static Constructor<?> getConstructor(Class<?> clazz, int index) {
@@ -822,12 +824,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 获取目标类唯一的公共构造器.
+     * 返回目标类唯一的公共构造器.
      *
      * @param clazz 目标类
      * @return 唯一的公共构造器
-     * @throws RuntimeException 当公共构造器数量不等于 1 时抛出
-     * @apiNote 只统计 getConstructors() 返回的公共构造器, 不包含私有构造器
+     * @throws RuntimeException 当公共构造器数量不等于 1 时
      */
     @NotNull
     public static Constructor<?> getTheOnlyConstructor(Class<?> clazz) {
@@ -839,12 +840,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 把字段解包为 getter 形式的 MethodHandle.
-     * 首次解包因访问限制失败时, 先对字段执行 setAccessible(true) 再重试.
+     * 将字段解包为 getter MethodHandle, 访问失败时开放字段权限后重试.
      *
      * @param field 目标字段
      * @return 可用于读取字段值的 MethodHandle
-     * @throws IllegalAccessException 当重试后仍无法访问该字段时抛出
+     * @throws IllegalAccessException 当重试后仍无法访问字段时
      */
     public static MethodHandle unreflectGetter(Field field) throws IllegalAccessException {
         try {
@@ -856,20 +856,18 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 把字段解包为 setter 形式的 MethodHandle.
-     * 标准解包因访问限制失败时, 会退回基于 JDK 内部 MemberName 和 getDirectField 的绕过逻辑,
-     * 尝试为 final 等受限字段构造写句柄.
+     * 将字段解包为 setter MethodHandle, 标准解包失败时尝试 JDK 内部后备路径.
+     * <p><strong>后备路径依赖 Unsafe, MemberName 与 getDirectField, 升级 JDK 后必须重新验证.</strong>
      *
      * @param field 目标字段
-     * @return 成功时返回可写入字段的 MethodHandle, 全部尝试失败时返回 null
-     * @apiNote 该方法依赖 JDK 内部实现细节和 Unsafe, 在不同 Java 版本上存在兼容性风险
+     * @return 可写入字段的 MethodHandle, 全部尝试失败时返回 {@code null}
      */
     @Nullable
     public static MethodHandle unreflectSetter(Field field) {
         try {
             return LOOKUP.unreflectSetter(field);
         } catch (IllegalAccessException e) {
-            // 标准解包被拒绝时, 走 MemberName + getDirectField 内部路径绕过 final 限制
+            // MemberName 以 setter 模式创建, getDirectField 可为 final 字段生成写句柄.
             try {
                 Object memberName = methodHandle$constructor$MemberName.invoke(field, true);
                 Object refKind = methodHandle$MemberName$getReferenceKind.invoke(memberName);
@@ -882,12 +880,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 把方法解包为 MethodHandle.
-     * 首次解包因访问限制失败时, 先对方法执行 setAccessible(true) 再重试.
+     * 将方法解包为 MethodHandle, 访问失败时开放方法权限后重试.
      *
      * @param method 目标方法
      * @return 对应的 MethodHandle
-     * @throws IllegalAccessException 当重试后仍无法访问该方法时抛出
+     * @throws IllegalAccessException 当重试后仍无法访问方法时
      */
     public static MethodHandle unreflectMethod(Method method) throws IllegalAccessException {
         try {
@@ -899,12 +896,11 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 把构造器解包为 MethodHandle.
-     * 首次解包因访问限制失败时, 先对构造器执行 setAccessible(true) 再重试.
+     * 将构造器解包为 MethodHandle, 访问失败时开放构造器权限后重试.
      *
      * @param constructor 目标构造器
      * @return 对应的 MethodHandle
-     * @throws IllegalAccessException 当重试后仍无法访问该构造器时抛出
+     * @throws IllegalAccessException 当重试后仍无法访问构造器时
      */
     public static MethodHandle unreflectConstructor(Constructor<?> constructor) throws IllegalAccessException {
         try {
@@ -916,13 +912,12 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按类, 字段名和字段类型查找 VarHandle.
-     * 先通过 privateLookupIn 创建针对目标类的私有查找上下文, 再执行字段查找.
+     * 使用目标类的私有 Lookup 按名称和类型查找实例字段 VarHandle.
      *
      * @param clazz 声明字段的类
      * @param name 字段名
      * @param type 字段类型
-     * @return 成功时返回对应的 VarHandle, 未找到或访问失败时返回 null
+     * @return 对应 VarHandle, 未找到或访问失败时返回 {@code null}
      */
     public static VarHandle findVarHandle(Class<?> clazz, String name, Class<?> type) {
         try {
@@ -934,10 +929,10 @@ public final class ReflectionUtils {
     }
 
     /**
-     * 按字段对象直接查找对应的 VarHandle.
+     * 使用字段声明类的私有 Lookup 查找实例字段 VarHandle.
      *
      * @param field 目标字段
-     * @return 成功时返回对应的 VarHandle, 未找到或访问失败时返回 null
+     * @return 对应 VarHandle, 未找到或访问失败时返回 {@code null}
      */
     public static VarHandle findVarHandle(Field field) {
         try {
