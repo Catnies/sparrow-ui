@@ -373,11 +373,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this.delegate.toString();
     }
 
-    /**
-     * 三个视图的共同骨架: 读直接代理, 删一律回到本对象的逐条移除, 每个视图只说自己的元素怎么对应到条目.
-     *
-     * @param <T> 视图元素类型
-     */
+    // 三个视图共用读操作和批量删除, 具体视图只提供条目到元素的转换.
     private abstract class View<T> implements Collection<T> {
 
         // 只读操作代理的目标
@@ -385,9 +381,6 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         // 视图元素怎么从条目里取
         abstract T elementOf(Map.Entry<K, V> entry);
-
-        // 一个视图元素对应哪些条目
-        abstract boolean matches(Map.Entry<K, V> entry, Object element);
 
         @Override
         public int size() {
@@ -470,11 +463,6 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         }
 
         @Override
-        public boolean remove(Object o) {
-            return MapSignalImpl.this.removeEntries(entry -> this.matches(entry, o));
-        }
-
-        @Override
         public boolean removeAll(@NotNull Collection<?> c) {
             return MapSignalImpl.this.removeEntries(entry -> c.contains(this.elementOf(entry)));
         }
@@ -522,11 +510,6 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return entry.getKey();
         }
 
-        @Override
-        boolean matches(Map.Entry<K, V> entry, Object element) {
-            return Objects.equals(entry.getKey(), element);
-        }
-
         // 按 key 删只用删一条
         @Override
         public boolean remove(Object o) {
@@ -544,11 +527,6 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         @Override
         V elementOf(Map.Entry<K, V> entry) {
             return entry.getValue();
-        }
-
-        @Override
-        boolean matches(Map.Entry<K, V> entry, Object element) {
-            return Objects.equals(entry.getValue(), element);
         }
 
         // Collection.remove 只删第一个等值的
@@ -576,8 +554,8 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         }
 
         @Override
-        boolean matches(Map.Entry<K, V> entry, Object element) {
-            return entry.equals(element);
+        public boolean remove(Object o) {
+            return MapSignalImpl.this.removeEntries(entry -> entry.equals(o));
         }
     }
 
