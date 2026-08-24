@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
+import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -9,7 +10,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.plugin.Plugin;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,7 +26,7 @@ public class SparrowUI implements Listener {
     private boolean warningsEnabled = Boolean.parseBoolean(System.getProperty(WARNINGS_PROPERTY, "true"));
     private Consumer<? super String> warningHandler = msg -> this.getPlugin().getComponentLogger().warn(msg);
     private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
-    private final List<Runnable> disableHandlers = new ArrayList<>();
+    private final HandlerList<Runnable> disableHandlers = new HandlerList<>(List.of());
 
     private SparrowUI() {}
 
@@ -188,7 +188,7 @@ public class SparrowUI implements Listener {
      * @param runnable 当插件禁用时执行的 {@link Runnable} 任务
      */
     public void addDisableHandler(Runnable runnable) {
-        this.disableHandlers.add(runnable);
+        this.disableHandlers.append(runnable);
     }
 
     /**
@@ -199,7 +199,7 @@ public class SparrowUI implements Listener {
     @EventHandler
     private void handlePluginDisable(PluginDisableEvent event) {
         if (event.getPlugin().equals(this.plugin)) {
-            this.disableHandlers.forEach(Runnable::run);
+            this.disableHandlers.forEachIsolated(Runnable::run, "Failed to run a disable handler", this::handleException);
         }
     }
 

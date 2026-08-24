@@ -140,16 +140,12 @@ final class PlayerCommandLane {
         }
     }
 
-    // retiredAction 在异步线程执行, 不占用调度器或注销调用栈.
+    // retiredAction 在当前线程执行并完成 Future.
+    // 插件停用时 Paper 会取消本插件的全部异步任务, 完成路径必须留在调用线程内.
     private void completeRetired(List<Command<?>> pending) {
-        if (pending.isEmpty()) {
-            return;
+        for (int index = 0; index < pending.size(); index++) {
+            pending.get(index).retire();
         }
-        this.scheduler.async().runNow(() -> {
-            for (int index = 0; index < pending.size(); index++) {
-                pending.get(index).retire();
-            }
-        });
     }
 
     // 调度提交失败会退役通道, 所有待执行命令以同一异常完成.
@@ -164,13 +160,10 @@ final class PlayerCommandLane {
             this.scheduled = false;
             pending = this.takePending();
         }
-        // 异步完成 Future, 调用方回调不会进入调度器调用栈
         this.retiredHandler.accept(this);
-        this.scheduler.async().runNow(() -> {
-            for (int index = 0; index < pending.size(); index++) {
-                pending.get(index).fail(failure);
-            }
-        });
+        for (int index = 0; index < pending.size(); index++) {
+            pending.get(index).fail(failure);
+        }
     }
 
     // 实体调度回调接管 drain 权.
