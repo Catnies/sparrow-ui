@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.pane.page;
 import net.momirealms.sparrow.ui.state.ListSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.Signals;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -138,8 +139,8 @@ public final class Scroll<T> {
         this.orientation = orientation;
         this.lineCount = source.map(list -> Math.max(1, (list.size() + lineLength - 1) / lineLength));
         this.maxLine = this.lineCount.map(count -> Math.max(0, count - visibleLines));
-        this.line = Signal.combine(this.requested, this.maxLine, (req, max) -> Math.clamp(req, 0, max));
-        this.content = Signal.combine(source, this.line, (list, line) -> slice(list, line * lineLength, lineLength * visibleLines));
+        this.line = Signals.combine(this.requested, this.maxLine, (req, max) -> Math.clamp(req, 0, max));
+        this.content = Signals.combine(source, this.line, (list, line) -> slice(list, line * lineLength, lineLength * visibleLines));
         this.contentSize = this.content.map(List::size);
     }
 

@@ -14,7 +14,7 @@ import java.util.function.Function;
  * @param <K> 分区 key 类型
  * @param <T> 值类型, 允许为 {@code null}
  */
-public interface KeyedSignal<K, T> {
+public sealed interface KeyedSignal<K, T> permits MutableKeyedSignal, PlayerKeyedSignal, AbstractKeyedSignal {
 
     /**
      * 读取指定分区的当前值.

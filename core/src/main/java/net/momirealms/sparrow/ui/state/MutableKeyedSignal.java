@@ -4,7 +4,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.UnaryOperator;
 
-public interface MutableKeyedSignal<K, T> extends KeyedSignal<K, T> {
+public sealed interface MutableKeyedSignal<K, T> extends KeyedSignal<K, T> permits MutablePlayerKeyedSignal, KeyedSignalImpl {
 
     /**
      * 返回指定分区的句柄, 语义同 {@link KeyedSignal#at}, 另外可以经它写入这个分区.

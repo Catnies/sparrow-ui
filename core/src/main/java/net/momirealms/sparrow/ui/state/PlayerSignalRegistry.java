@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
 
-final class PlayerSignalRegistry implements Listener {
+final class PlayerSignalRegistry {
     private static final Object LOCK = new Object();
     private static final Set<KeyedSignal<UUID, ?>> SIGNALS = Collections.newSetFromMap(new WeakHashMap<>()); // 弱集合, 注册表不钉住数据源
     private static boolean listenerRegistered;

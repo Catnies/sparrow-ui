@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @param <T> 值类型
  * @param <P> 分区实现类型
  */
-abstract class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> {
+abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> implements KeyedSignal<K, T> permits KeyedSignalImpl, AsyncKeyedSignalImpl {
     // key -> (分区 & 句柄), 只放有分区的 key. 遍历是弱一致的, clear() 因此可以边遍历边删.
     private final ConcurrentHashMap<K, KeyState<K, T, P>> store = new ConcurrentHashMap<>();
     private final WeakHashMap<K, WeakReference<PartitionHandle<K, T>>> detached = new WeakHashMap<>();   // 分区已删但仍有人持有的句柄, key 用句柄自己那份

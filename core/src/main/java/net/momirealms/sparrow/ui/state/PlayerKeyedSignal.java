@@ -13,7 +13,7 @@ import java.util.function.Function;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
+public sealed interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> permits MutablePlayerKeyedSignal, PlayerKeyedSignalImpl {
 
     default T get(@NotNull Player player) {
         return this.get(player.getUniqueId());

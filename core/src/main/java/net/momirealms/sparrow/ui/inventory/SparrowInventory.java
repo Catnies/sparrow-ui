@@ -26,6 +26,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.visual.InventoryVisual;
 import net.momirealms.sparrow.ui.visual.InventoryVisualImpl;
@@ -1023,7 +1024,7 @@ public abstract class SparrowInventory {
      * 返回本 Inventory 的内容修订计数. 每笔改动本 Inventory 的事务提交后递增一次, 并向下游发出失效.
      * <p>Signal 惰性创建且实例稳定, 数值只用来携带失效.
      * <p><strong>失效在提交线程同步派发</strong>. {@link Signal#mapDistinct} 会把重算放进提交收尾,
-     * 较重的计算应使用拉取时求值的 {@link Signal#map} 或 {@link Signal#combine}.
+     * 较重的计算应使用拉取时求值的 {@link Signal#map} 或 {@link Signals#combine}.
      *
      * @return 内容修订计数
      */

@@ -1,12 +1,10 @@
 package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.util.TriFunction;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 import java.util.concurrent.Executor;
-import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -267,27 +265,4 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
         return signal;
     }
 
-    /**
-     * 组合来源, 任一来源失效即失效, 值在拉取时以两个来源的快照重算.
-     *
-     * @param combiner 纯函数, 可在任意线程被执行
-     * @return 组合 signal
-     */
-    @NotNull
-    static <A, B, R> Signal<R> combine(@NotNull Signal<A> a, @NotNull Signal<B> b, @NotNull BiFunction<? super A, ? super B, ? extends R> combiner) {
-        Objects.requireNonNull(combiner, "combiner");
-        return new CombinedSignal<>(new AbstractSignal<?>[]{AbstractSignal.require(a), AbstractSignal.require(b)}, values -> {
-            @SuppressWarnings("unchecked") R result = combiner.apply((A) values[0], (B) values[1]);
-            return result;
-        });
-    }
-
-    @NotNull
-    static <A, B, C, R> Signal<R> combine(@NotNull Signal<A> a, @NotNull Signal<B> b, @NotNull Signal<C> c, @NotNull TriFunction<? super A, ? super B, ? super C, ? extends R> combiner) {
-        Objects.requireNonNull(combiner, "combiner");
-        return new CombinedSignal<>(new AbstractSignal<?>[]{AbstractSignal.require(a), AbstractSignal.require(b), AbstractSignal.require(c)}, values -> {
-            @SuppressWarnings("unchecked") R result = combiner.apply((A) values[0], (B) values[1], (C) values[2]);
-            return result;
-        });
-    }
 }

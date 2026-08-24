@@ -11,7 +11,7 @@ import java.util.function.UnaryOperator;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public interface MutablePlayerKeyedSignal<T> extends PlayerKeyedSignal<T>, MutableKeyedSignal<UUID, T> {
+public sealed interface MutablePlayerKeyedSignal<T> extends PlayerKeyedSignal<T>, MutableKeyedSignal<UUID, T> permits MutablePlayerKeyedSignalImpl {
 
     @Override
     @NotNull

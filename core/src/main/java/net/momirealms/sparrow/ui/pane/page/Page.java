@@ -122,7 +122,7 @@ public final class Page<T> {
             throw new IllegalArgumentException("pageSize must be positive: " + pageSize);
         }
         Signal<Integer> pageCount = source.map(list -> Math.max(1, (list.size() + pageSize - 1) / pageSize));
-        return new Page<>(pageCount, index -> Signal.combine(source, index, (list, pageIndex) -> slice(list, pageIndex * pageSize, pageSize)), NONE, NONE);
+        return new Page<>(pageCount, index -> Signals.combine(source, index, (list, pageIndex) -> slice(list, pageIndex * pageSize, pageSize)), NONE, NONE);
     }
 
     /**
@@ -165,7 +165,7 @@ public final class Page<T> {
     public static <T> Page<T> of(@NotNull Signal<? extends List<? extends T>> source, @NotNull IntUnaryOperator pageSizeOf) {
         // 从第 0 页开始按每页条数排下去, 排完内容用了几页就是几页.
         Signal<Integer> pageCount = source.map(list -> countOf(list.size(), pageSizeOf));
-        Function<Signal<Integer>, Signal<List<T>>> contentOf = index -> Signal.combine(
+        Function<Signal<Integer>, Signal<List<T>>> contentOf = index -> Signals.combine(
                 source, index,
                 (list, pageIndex) -> {
                     return slice(list, offsetOf(pageIndex, pageSizeOf), sizeAt(pageIndex, pageSizeOf));
@@ -176,7 +176,7 @@ public final class Page<T> {
 
     private Page(Signal<Integer> pageCount, Function<Signal<Integer>, Signal<List<T>>> contentOf, IntConsumer refreshAt, IntConsumer prefetchAt) {
         this.pageCount = pageCount;
-        this.pageIndex = Signal.combine(this.requested, pageCount, (req, count) -> Math.clamp(req, 0, count - 1));
+        this.pageIndex = Signals.combine(this.requested, pageCount, (req, count) -> Math.clamp(req, 0, count - 1));
         this.content = contentOf.apply(this.pageIndex);
         this.contentSize = this.content.map(List::size);
         this.refreshAt = refreshAt;
