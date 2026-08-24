@@ -79,8 +79,6 @@ sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSigna
     }
 
     private void onSourceDirty() {
-        // 上游失效是本节点唯一的活动时机, 而派发只在截断放行时才发生.
-        this.reapDeadEntries();
         long version = this.align().version();
         // 把 notifiedVersion 推过这个版本的那个线程负责派发, 别的线程直接走人, 一次变化只通知一遍
         while (true) {

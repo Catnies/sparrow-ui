@@ -85,8 +85,6 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
     }
 
     private void onSourceDirty() {
-        // 下游全死时这里就是清扫机会, 清到空会走 onInactive 把任务与上游一起收掉
-        this.reapDeadEntries();
         boolean emit;
         synchronized (this.stateLock) {
             if (!this.active) return;

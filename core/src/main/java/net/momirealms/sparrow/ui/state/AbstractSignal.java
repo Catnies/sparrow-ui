@@ -59,6 +59,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 
     /**
      * 派生节点订阅上游, 条目记下本节点是它的下游, {@link #reapDownstream} 才能顺着订阅链走下去.
+     * 回调之前先清一次死条目, 会截断失效的节点才有机会发现自己的订阅者已经走光.
      *
      * @param source 要订阅的上游
      * @param listener 失效回调
@@ -66,7 +67,12 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
      */
     @NotNull
     final Subscription linkTo(@NotNull AbstractSignal<?> source, @NotNull Runnable listener) {
-        return source.register(listener, this);
+        // 死条目本来靠派发时投递失败就地剔除, 而判等不变、成员没换、发出被推后这些节点可能长期不派发,
+        // 只有在上游失效这个唯一的活动时机主动清一次才发现得了下游已经走光; 清到空就退订, 上游的调度任务跟着停.
+        return source.register(() -> {
+            this.reapDeadEntries();
+            listener.run();
+        }, this);
     }
 
     /**
