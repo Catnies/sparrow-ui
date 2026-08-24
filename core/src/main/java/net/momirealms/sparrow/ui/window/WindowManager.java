@@ -413,7 +413,7 @@ public final class WindowManager implements Listener {
     }
 
     /**
-     * 关闭所有活动 Window 并停止接收新命令. 重复调用不会再次执行收尾.
+     * 关闭所有活动 Window 并停止接收新命令, 重复调用不会再次执行收尾.
      */
     public void shutdown() {
         if (!this.shutdown.compareAndSet(false, true)) {

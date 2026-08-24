@@ -50,7 +50,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         this.window = window;
         this.windowSlot = windowSlot;
         this.rootPane = rootPane;
-        this.rootSlot = rootPane.size().checkSlot(rootSlot);
+        this.rootSlot = rootSlot;
         this.renderContext = new RenderContext(window, windowSlot, this::remember);
         this.renderCell = new RenderCell(
                 this.renderContext,
@@ -74,7 +74,6 @@ final class DisplayedSlotPath implements AutoCloseable {
      * 中途任何订阅失败, 新路径只关掉自己刚建的那几层, 沿用的层仍旧归旧路径, 旧路径继续工作.
      */
     void resolve() {
-        this.requireOpen();
         this.beginResolve();
         try {
             this.resolveLayers();

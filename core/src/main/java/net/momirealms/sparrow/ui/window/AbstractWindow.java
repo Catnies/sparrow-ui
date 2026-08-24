@@ -121,7 +121,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;
 
     // 生命周期
-    private volatile boolean open;
+    private volatile boolean open;      // 如果为 ture, 则 menuHandle, paths 与 localSlots 一定非空
     private volatile long generation; // 每次打开都会递增, 用来隔离迟到输入与通知
     private volatile @Nullable AbstractWindowSession session;
     private @Nullable M menuHandle; // 关闭时为 null, 仅玩家实体线程访问
@@ -749,7 +749,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @Override
     public Object rememberedAt(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
-        if (paths == null || windowSlot < 0 || windowSlot >= paths.length || paths[windowSlot] == null) {
+        if (paths == null || windowSlot < 0 || windowSlot >= paths.length) {
             return null;
         }
         return paths[windowSlot].remembered();
@@ -1209,7 +1209,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     private DisplayedSlotPath requirePath(int windowSlot) {
         DisplayedSlotPath[] paths = this.paths;
-        if (paths == null || paths[windowSlot] == null) {
+        if (paths == null) {
             throw new IllegalStateException("window slot has no displayed Pane path: " + windowSlot);
         }
         return paths[windowSlot];
@@ -1394,9 +1394,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
             DisplayedSlotPath path = paths[windowSlot];
-            if (path == null) {
-                continue;
-            }
+            assert path != null;
             if (semanticOnly && (windowSlot >= this.layout.protocolSize() || path.frozen())) {
                 continue;
             }
@@ -1426,10 +1424,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private void forEachPathPane(@Nullable DisplayedSlotPath[] paths, @NotNull Consumer<? super Pane> action) {
         if (paths == null) return;
         for (int windowSlot = 0; windowSlot < paths.length; windowSlot++) {
-            DisplayedSlotPath path = paths[windowSlot];
-            if (path != null) {
-                path.forEachPane(action);
-            }
+            paths[windowSlot].forEachPane(action);
         }
     }
 
@@ -1530,21 +1525,18 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 windowSlot >= 0;
                 windowSlot = dirty.nextSetBit(windowSlot + 1)
         ) {
-            DisplayedSlotPath path = paths[windowSlot];
-            if (path != null) {
-                try {
-                    ItemStack rendered = path.render();
-                    if (windowSlot < this.bundleSelections.length) {
-                        BundleSelectionState selection = this.bundleSelections[windowSlot];
-                        if (selection != null && !ItemUtils.isContentEqual(selection.observedBundle(), rendered)) {
-                            this.bundleSelections[windowSlot] = null;
-                        }
+            try {
+                ItemStack rendered = paths[windowSlot].render();
+                if (windowSlot < this.bundleSelections.length) {
+                    BundleSelectionState selection = this.bundleSelections[windowSlot];
+                    if (selection != null && !ItemUtils.isContentEqual(selection.observedBundle(), rendered)) {
+                        this.bundleSelections[windowSlot] = null;
                     }
-                    localSlots[windowSlot] = rendered;
-                } catch (Throwable throwable) {
-                    SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);
-                    localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemUtils.EMPTY : localSlots[windowSlot];
                 }
+                localSlots[windowSlot] = rendered;
+            } catch (Throwable throwable) {
+                SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);
+                localSlots[windowSlot] = localSlots[windowSlot] == null ? ItemUtils.EMPTY : localSlots[windowSlot];
             }
         }
     }
@@ -1857,7 +1849,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         int protocolSize = this.layout.protocolSize();
         for (int windowSlot = 0; windowSlot < protocolSize; windowSlot++) {
             DisplayedSlotPath path = paths[windowSlot];
-            if (path == null || !path.frozen()) {
+            if (!path.frozen()) {
                 continue;
             }
             Element.InventoryLink link = path.inventoryLink();
@@ -1914,10 +1906,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             if (paths == null || windowSlot < 0 || windowSlot >= paths.length) {
                 return true;
             }
-            @Nullable DisplayedSlotPath path = paths[windowSlot];
-            if (path == null) {
-                return true;
-            }
+            DisplayedSlotPath path = paths[windowSlot];
             try {
                 return path.render().isEmpty();
             } catch (Throwable throwable) {

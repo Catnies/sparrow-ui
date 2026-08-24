@@ -76,18 +76,12 @@ public class SparrowUI implements Listener {
         return this.plugin;
     }
 
-    @SuppressWarnings({"CallToPrintStackTrace", "UnstableApiUsage"})
+    @SuppressWarnings("UnstableApiUsage")
     private Optional<Plugin> tryFindPlugin() {
         ClassLoader classLoader = getClass().getClassLoader();
-
-        try {
-            if (classLoader instanceof ConfiguredPluginClassLoader pluginClassLoader) {
-                return Optional.ofNullable(pluginClassLoader.getPlugin());
-            }
-        } catch (Throwable t) {
-            t.printStackTrace();
+        if (classLoader instanceof ConfiguredPluginClassLoader pluginClassLoader) {
+            return Optional.ofNullable(pluginClassLoader.getPlugin());
         }
-
         return Optional.empty();
     }
 
