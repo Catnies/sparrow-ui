@@ -165,12 +165,18 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
     public V replace(K key, V value) {
         if (!this.hooked()) {
             V old = this.delegate.replace(key, value);
-            if (old != null && !old.equals(value)) this.changed();
-            return old;
+            if (old != null) {
+                if (!old.equals(value)) this.changed();
+                return old;
+            }
+            // 旧值为 null 分不清 "没替换" 与 "替换了 null 值映射", 后者按实际变更通知
+            if (value != null && this.delegate.containsKey(key)) this.changed();
+            return null;
         }
         V old = this.delegate.get(key);
-        if (old == null || old.equals(value)) return old;
-        this.removed(key, old);
+        // 旧值为 null 时只有确实存着 null 值映射才继续替换
+        if (Objects.equals(old, value) || (old == null && !this.delegate.containsKey(key))) return old;
+        if (old != null) this.removed(key, old);
         this.delegate.replace(key, this.putting(key, value));
         this.changed();
         return old;
@@ -184,9 +190,10 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return replaced;
         }
         V current = this.delegate.get(key);
-        if (current == null || !current.equals(oldValue)) return false;
-        if (current.equals(newValue)) return true;
-        this.removed(key, current);
+        // null 旧值按 Map 契约参与匹配, 只在 key 确实存在时算命中
+        if (!Objects.equals(current, oldValue) || (current == null && !this.delegate.containsKey(key))) return false;
+        if (Objects.equals(current, newValue)) return true;
+        if (current != null) this.removed(key, current);
         boolean replaced = this.delegate.replace(key, current, this.putting(key, newValue));
         if (replaced) this.changed();
         return replaced;
@@ -269,9 +276,18 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     public V remove(Object key) {
-        if (!this.delegate.containsKey(key)) return null;
+        if (this.delegate.get(key) == null) {
+            // key 不存在, 或映射到 null. 后者只在允许 null 值的 delegate 上出现, 用二参 remove 原子确认后照常通知;
+            // 并发 map 读到 null 恒为 "没删到", 不跑钩子也不通知.
+            if (this.delegate.containsKey(key) && this.delegate.remove(key, null)) {
+                this.removedThenChanged(key, null);
+            }
+            return null;
+        }
         V old = this.delegate.remove(key);
-        this.removedThenChanged(key, old);
+        if (old != null) {
+            this.removedThenChanged(key, old);
+        }
         return old;
     }
 
@@ -312,10 +328,18 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         }
     }
 
-    // 删掉一个 key 的映射, 过钩子并通知; 没有这个 key 时什么也不做.
+    // 删掉一个 key 的映射, 过钩子并通知; 没有这个 key 或并发下没删到时什么也不做.
     private boolean removeKey(Object key) {
-        if (!this.delegate.containsKey(key)) return false;
-        this.removedThenChanged(key, this.delegate.remove(key));
+        if (this.delegate.get(key) == null) {
+            if (this.delegate.containsKey(key) && this.delegate.remove(key, null)) {
+                this.removedThenChanged(key, null);
+                return true;
+            }
+            return false;
+        }
+        V old = this.delegate.remove(key);
+        if (old == null) return false;
+        this.removedThenChanged(key, old);
         return true;
     }
 
@@ -337,6 +361,8 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             Map.Entry<K, V> entry = doomed.get(i);
             if (this.delegate.remove(entry.getKey(), entry.getValue())) gone.add(entry);
         }
+        // 并发下候选可能全部落空, 一条没删掉就不算删除
+        if (gone.isEmpty()) return false;
         this.allRemovedThenChanged(gone);
         return true;
     }
