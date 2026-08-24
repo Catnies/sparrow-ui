@@ -53,15 +53,6 @@ public sealed interface KeyedSignal<K, T> permits MutableKeyedSignal, PlayerKeye
     void clear();
 
     /**
-     * 本 signal 失效侧的弱控制句柄, 每次调用新建一个, 语义见 {@link WeakKeyedControl}.
-     * <p>signal 与登记表同寿命时不需要它, 直接调本 signal 即可; 要把本 signal 登记到比它活得久的总线、订阅、定时任务上时, 捕获这个句柄而不是 signal.
-     *
-     * @return 弱持本 signal 的控制句柄
-     */
-    @NotNull
-    WeakKeyedControl<K> weakControl();
-
-    /**
      * 当前有分区的 key. 建分区(首次 {@code get} / {@code at} 到的 key)与 {@link #remove} 都让它失效, 分区的值变了它不失效.
      * <p>值是一份不可修改的快照, 顺序不保证; 按版本缓存, 只有建行删行之后的第一次拉取才真的按分区数复制一遍.
      * <p><strong>它是 "有分区的 key", 不是业务上存在的 key</strong>: {@link #get} 一个没见过的 key 也会建分区并出现在这里.

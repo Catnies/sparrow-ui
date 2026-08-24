@@ -26,7 +26,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         PartitionHandle,
         TickingSignal,
         PacedSignal,
-        CountdownSignal,
         CollectionSignal,
         AbstractKeyedSignal.Keys
 {

@@ -6,7 +6,6 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.ref.WeakReference;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -98,12 +97,6 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         this.reapDownstream();
         if (this.entryCount() == 0) return;
         this.dirty();
-    }
-
-    @Override
-    @NotNull
-    public WeakAsyncControl weakControl() {
-        return new Control(this);
     }
 
     @Override
@@ -216,26 +209,6 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
             if (this.state.compareAndSet(current, new Versioned<>(value, current.version() + 1))) {
                 return true;
             }
-        }
-    }
-
-    // 弱持目标的控制句柄, 目标回收之后每个方法都是空操作.
-    static final class Control implements WeakAsyncControl {
-        private final WeakReference<AsyncSignalImpl<?>> target;
-
-        private Control(AsyncSignalImpl<?> target) {
-            this.target = new WeakReference<>(target);
-        }
-
-        @Override
-        public void dirty() {
-            AsyncSignalImpl<?> signal = this.target.get();
-            if (signal != null) signal.dirty();
-        }
-
-        @Override
-        public boolean isStale() {
-            return this.target.get() == null;
         }
     }
 

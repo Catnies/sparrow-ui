@@ -201,12 +201,6 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
 
     @Override
     @NotNull
-    public WeakKeyedControl<K> weakControl() {
-        return new Control<>(this);
-    }
-
-    @Override
-    @NotNull
     public Signal<Set<K>> keys() {
         Keys<K> current = this.keys;
         if (current != null) return current;
@@ -266,44 +260,6 @@ abstract sealed class AbstractKeyedSignal<K, T, P extends AbstractSignal<T>> imp
 
         KeyState(P partition) {
             this.partition = partition;
-        }
-    }
-
-    // 弱持目标的控制句柄, 目标回收之后每个方法都是空操作.
-    static final class Control<K> implements WeakKeyedControl<K> {
-        private final WeakReference<AbstractKeyedSignal<K, ?, ?>> target;
-
-        private Control(AbstractKeyedSignal<K, ?, ?> target) {
-            this.target = new WeakReference<>(target);
-        }
-
-        @Override
-        public void dirty(@NotNull K key) {
-            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
-            if (signal != null) signal.dirty(key);
-        }
-
-        @Override
-        public void dirtyAll() {
-            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
-            if (signal != null) signal.dirtyAll();
-        }
-
-        @Override
-        public void remove(@NotNull K key) {
-            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
-            if (signal != null) signal.remove(key);
-        }
-
-        @Override
-        public void clear() {
-            AbstractKeyedSignal<K, ?, ?> signal = this.target.get();
-            if (signal != null) signal.clear();
-        }
-
-        @Override
-        public boolean isStale() {
-            return this.target.get() == null;
         }
     }
 
