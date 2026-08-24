@@ -18,6 +18,7 @@ abstract sealed class CollectionSignal<T> extends AbstractSignal<T> permits List
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知.
      * <p>只合并本线程的变更, 别的线程这期间的变更照常各自通知. {@code changes} 抛出时已经落地的变更保留并仍通知一次.
+     * <p>{@code changes} 与随后通知都抛出时, batch 最终抛出通知异常, {@code changes} 的异常不会保留.
      * 通知在 {@code changes} 返回之后发出, 期间的变更一定被覆盖到, 至多多发一次.
      *
      * @param changes 要合并的一批变更
