@@ -269,8 +269,8 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     public V remove(Object key) {
+        if (!this.delegate.containsKey(key)) return null;
         V old = this.delegate.remove(key);
-        if (old == null) return null;
         this.removedThenChanged(key, old);
         return old;
     }
