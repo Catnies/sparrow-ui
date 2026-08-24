@@ -16,21 +16,22 @@ import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 
 final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<T> {
+    // 加载状态机
     private static final int UNLOADED = 0;      // 尚未调度过任何加载
     private static final int IDLE = 1;          // 没有进行中的加载
     private static final int LOADING = 2;       // 一轮加载进行中
     private static final int LOADING_DIRTY = 3; // 加载中又登记了失效, 本轮完成后补跑一轮
+    // 调度参数
     private static final int MAX_SCHEDULE_ATTEMPTS = 2;     // 首次提交, 外加为并发登记的失效补一次.
     private static final long MILLIS_PER_TICK = 50L;
-
+    // 加载函数与已发布状态
     private final Executor executor;
     private final Supplier<? extends T> loader;
     private final BiPredicate<? super T, ? super T> sameValue;
     private final AtomicReference<Versioned<T>> state;
     private final AtomicInteger loadState = new AtomicInteger(UNLOADED);
-
+    // 当前加载
     @Nullable private Thread loadingThread; // 正在跑装载函数的线程
-
     @Nullable private final PollingState polling;       // 轮询状态, 为 null 就是普通异步源
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable Polling polling) {

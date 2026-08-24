@@ -60,6 +60,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * </ol>
  */
 public final class StoneAppraisalMenu {
+    // 输入槽与奖励池
     private static final int INPUT_SLOT = 13; // 模板里 X 的位置
     private static final List<Ore> ORES = List.of(
             new Ore(Material.COAL, "煤炭", NamedTextColor.DARK_GRAY, 30),
@@ -72,12 +73,15 @@ public final class StoneAppraisalMenu {
             new Ore(Material.DIAMOND, "钻石", NamedTextColor.AQUA, 1)
     );
     private static final int TOTAL_WEIGHT = totalWeight();
+
+    // 转盘节奏
     // 转盘每一步的起始时刻: 间隔从 2 tick 一路拉到 9 tick, 于是看上去由快到慢
     private static final long[] STEP_STARTS = {0, 2, 4, 6, 8, 10, 13, 16, 19, 23, 27, 32, 38, 45, 53, 62};
     private static final long HOLD_TICKS = 20;                                            // 停在结果上停留多久
     private static final long TOTAL_TICKS = STEP_STARTS[STEP_STARTS.length - 1] + HOLD_TICKS;
     private static final int[] ANIMATED_SLOTS = {INPUT_SLOT};
 
+    // 当前菜单状态
     private final Player viewer;
     private final VirtualInventory input;                // 只有一格, 单件上限
     private final NormalPane pane;                       // 动画宿主

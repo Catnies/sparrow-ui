@@ -76,7 +76,7 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
         if (forceFull) {
             this.dataDirty = true;
         } else if (dirtySlots.get(0) || dirtySlots.get(1)) {
-            // 客户端应用任一输入槽纠正时会重新计算铁砧结果; 结果槽必须随后覆盖, cost data 再在批次末尾覆盖.
+            // 输入槽纠正会触发客户端本地重算, 随后覆盖结果槽和 cost data.
             this.forceRemoteSlot(2);
             this.dataDirty = true;
         }
@@ -134,7 +134,7 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
                 return this.shared;
             }
             if (this.projected == null) {
-                this.projected = ItemStackProxy.INSTANCE.copy(this.shared); // 独立 NMS ItemStack
+                this.projected = ItemStackProxy.INSTANCE.copy(this.shared); // 带本次文本的独立 NMS ItemStack
                 ItemStackProxy.INSTANCE.set(this.projected, DataComponentsProxy.CUSTOM_NAME, ComponentProxy.INSTANCE.literal(this.renameText));
             }
             return this.projected;

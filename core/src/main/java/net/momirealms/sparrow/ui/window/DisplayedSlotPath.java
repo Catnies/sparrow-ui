@@ -31,18 +31,20 @@ import java.util.function.Consumer;
 final class DisplayedSlotPath implements AutoCloseable {
     private static final RenderCell.Intent EMPTY_INTENT = new RenderCell.Intent.Direct(ItemUtils.EMPTY);
 
+    // 路径起点
     private final Window window;    // 所属 Window
     private final int windowSlot;   // 本路径服务的 Window 槽位
     private final Pane rootPane;      // 路径起点的根 Pane
     private final int rootSlot;     // 路径起点在根 Pane 中的槽位
+    // 渲染与视觉订阅
     private final RenderContext renderContext;  // 该 Window 槽位专用的渲染上下文
     private final RenderCell renderCell; // 失效驱动的渲染投影
     private final Subscription windowVisualSubscription; // 本 Window 槽位视觉配置变化的失效订阅
+    // 解析生命周期
     private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.RESOLVING);
     private PathState current;  // 当前已解析出的路径
-
-    @Nullable
-    private volatile Object remembered;   // 最近一次渲染记下的东西, 终点 Item 换了或关闭了 Window 就清理
+    // 临时数据
+    @Nullable private volatile Object remembered;   // 最近一次渲染记下的东西, 终点 Item 换了或关闭了 Window 就清理
 
     DisplayedSlotPath(@NotNull Window window, int windowSlot, @NotNull Pane rootPane, int rootSlot) {
         this.window = window;
@@ -597,6 +599,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      * 所以沿用到下一次解析的层照样有效.
      */
     private static final class PathState implements AutoCloseable {
+        // Pane 路径与逐层订阅
         private Pane[] panes = new Pane[4]; // 根 Pane -> 最深层 Pane
         private int[] paneSlots = new int[4];
         private PaneSlotAttachment[] paneAttachments = new PaneSlotAttachment[4];
@@ -605,6 +608,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         private int depth;
         private int ownedFrom; // 关闭时从这一层开始取消订阅, 更靠前的层已经交给新路径
 
+        // 终点元素
         private Element leafElement;
 
         // Item 部分, 与 Inventory 链接互斥
@@ -616,6 +620,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         private Subscription inventorySubscription;
         private Subscription inventoryVisualSubscription;
 
+        // 终点状态与生命周期
         private boolean frozen;
         // 终点订阅用它过滤关闭竞态, 同时保证 close 幂等
         private volatile boolean resourcesClosed;

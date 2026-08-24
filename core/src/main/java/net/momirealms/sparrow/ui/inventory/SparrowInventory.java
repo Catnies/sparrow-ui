@@ -56,27 +56,27 @@ public abstract class SparrowInventory {
     private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果, 变更列表为空, 也不派发事件
     private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
 
+    // 事务身份与固定协作组件
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
     private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
     private final Bindings bindings = new Bindings();                   // 本 Inventory 持有的 Signal 绑定
     private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
-
+    // 内容状态与放入规则
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
     @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
     @Nullable private volatile Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
-
-    // 三类操作各自挑选目标 Inventory 时用的优先级, 属于弱一致的配置, 没设置过就是 0.
+    // 玩家操作配置
     private volatile int addOperationPriority;
     private volatile int collectOperationPriority;
     private volatile int otherOperationPriority;
     private volatile boolean includeObscuredSlots; // 未被 Pane 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
     private volatile boolean frozen; // 玩家侧只读, 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
     private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
-
+    // 交互事件
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
-
+    // 懒加载的订阅通道与外部视图
     @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅和退役递增
     @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新或开启串行 Post 时创建
     @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.

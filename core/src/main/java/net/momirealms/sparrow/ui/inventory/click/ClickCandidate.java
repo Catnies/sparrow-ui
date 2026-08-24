@@ -117,15 +117,19 @@ record ClickCandidate(
 
     // 候选的建造器, 什么都不设就是"什么都不复核".
     static final class Builder {
+        // Bukkit 操作与事件目标
         private final InventoryAction action;
         private final UpdateReason reason;
         @Nullable private ClickSemantics.LinkedSlot eventTarget;
+        // 事务写集与读集
         private List<TransactionScope> scopes = List.of();
         private List<PlannedRoot> reads = List.of();
+        // 提交前置条件
         @Nullable private ItemStack expectedCursor;
         @Nullable private ItemStack expectedOffhand;
         private boolean checkOffhand;
         private boolean requireCreative;
+        // 提交后的容器外变更
         @Nullable private InteractionDraft draft;
         private Runnable afterCommit = () -> {};
 

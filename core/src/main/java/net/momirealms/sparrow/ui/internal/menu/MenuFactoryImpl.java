@@ -15,9 +15,8 @@ import java.util.function.BiConsumer;
 /**
  * Paper 容器协议适配器.
  *
- * <p>调用方必须保证菜单创建方法与生成的 {@link MenuHandle} 方法运行在玩家实体线程.
- * 此类只负责构造协议菜单, 实际网络写入由
- * {@link PacketListener} 切换到 Netty event loop.</p>
+ * <p><strong>菜单创建和生成的 MenuHandle 必须在玩家实体线程调用.</strong>
+ * {@link PacketListener} 将实际网络写入切换到 Netty event loop.
  */
 @SuppressWarnings("UnstableApiUsage")
 public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
@@ -32,9 +31,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         this.packets = new PacketListener(plugin, SparrowUI.getInstance()::handleException);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public MenuHandle normal(@NotNull Player viewer, int rows, long generation) {
@@ -49,9 +45,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public MenuHandle hopper(@NotNull Player viewer, long generation) {
@@ -66,18 +59,12 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @NotNull
     @Override
     public AnvilMenuHandle anvil(@NotNull Player viewer, long generation) {
         return new AnvilMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public MenuHandle dispenser(@NotNull Player viewer, long generation) {
@@ -92,9 +79,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public MenuHandle dropper(@NotNull Player viewer, long generation) {
@@ -109,63 +93,42 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public MenuHandle grindstone(@NotNull Player viewer, long generation) {
         return new GrindstoneMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public MenuHandle smithing(@NotNull Player viewer, long generation) {
         return new SmithingMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public BrewingMenuHandle brewing(@NotNull Player viewer, long generation) {
         return new BrewingMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public CartographyMenuHandle cartography(@NotNull Player viewer, long generation) {
         return new CartographyMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public CrafterMenuHandle crafter(@NotNull Player viewer, long generation) {
         return new CrafterMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public RecipeBookMenuHandle crafting(@NotNull Player viewer, long generation) {
         return new CraftingMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public FurnaceMenuHandle furnace(@NotNull Player viewer, long generation) {
@@ -179,9 +142,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public FurnaceMenuHandle smoker(@NotNull Player viewer, long generation) {
@@ -195,9 +155,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public FurnaceMenuHandle blastFurnace(@NotNull Player viewer, long generation) {
@@ -211,27 +168,18 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         );
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public EnchantmentMenuHandle enchantment(@NotNull Player viewer, long generation) {
         return new EnchantmentMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation) {
         return new StonecutterMenuHandleImpl(this.packets, viewer, generation);
     }
 
-    /**
-     * {@inheritDoc}
-     */
     @Override
     @NotNull
     public MerchantMenuHandle merchant(
@@ -257,7 +205,6 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
         this.packets.close();
     }
 
-    // 返回供 OpenScreen 和菜单代理使用的 NMS MenuType 句柄.
     private static Object normalMenuType(int rows) {
         return switch (rows) {
             case 1 -> MenuTypeProxy.GENERIC_9x1;

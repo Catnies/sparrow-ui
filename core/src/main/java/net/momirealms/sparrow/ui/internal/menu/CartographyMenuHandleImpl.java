@@ -27,25 +27,32 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Paper 制图台菜单句柄, 负责虚拟地图, 地图数据包和客户端预览输入.
+ * 将虚拟画布, 图标和制图台预览投影到客户端协议.
  */
 @SuppressWarnings("UnstableApiUsage")
 final class CartographyMenuHandleImpl extends ContainerMenuHandle implements CartographyMenuHandle {
+    // 协议槽位与虚拟地图编号
     private static final int MAP_SIZE = CartographyWindow.MAP_SIZE;
     private static final int MAP_SLOT = 0;
     private static final int VIEW_SLOT = 1;
     private static final int RESULT_SLOT = 2;
     private static final AtomicInteger NEXT_MAP_ID = new AtomicInteger(-1);
 
+    // 当前地图状态
     private final byte[] canvas = new byte[MAP_SIZE * MAP_SIZE];
     private int mapId = CartographyMenuHandleImpl.allocateMapId();
     private List<Object> decorations = List.of(); // NMS MapDecoration 的不可变快照
     private CartographyWindow.View view = CartographyWindow.View.NORMAL;
+
+    // 待同步变更
+    // 空脏矩形使用 min=MAP_SIZE, max=-1, 多次 patch 扩张同一组边界.
     private int dirtyMinX = MAP_SIZE;
     private int dirtyMinY = MAP_SIZE;
     private int dirtyMaxX = -1;
     private int dirtyMaxY = -1;
     private boolean iconsDirty = true;
+
+    // 当前网络批次
     private boolean patchQueued;
     private boolean iconsQueued;
 

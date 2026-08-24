@@ -11,7 +11,7 @@ public interface StonecutterMenuHandle extends MenuHandle {
      * 替换客户端原生配方按钮快照.
      *
      * <p>空物品表示有效前缀中的中间空洞, 实现需向客户端显示不可见占位符.
-     * 数组只在调用期间有效, 实现不得修改或保留数组和物品引用.</p>
+     * <strong>数组和物品引用只在调用期间有效, 实现不得修改或保留.</strong>
      *
      * @param buttons 按客户端索引顺序排列的按钮物品
      */
@@ -20,7 +20,7 @@ public interface StonecutterMenuHandle extends MenuHandle {
     /**
      * 设置当前选中的原生配方索引.
      *
-     * @param index 配方索引, -1 表示未选择
+     * @param index 配方索引, {@code -1} 表示未选择
      */
     void setSelectedRecipeIndex(int index);
 

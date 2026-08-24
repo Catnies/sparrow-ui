@@ -25,20 +25,26 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<W, B>> implements Window.Builder<W, B> {
+    // 查看者与基础显示
     private @Nullable Player viewer;
     private Supplier<? extends Component> titleSupplier = Component::empty;
     private boolean closeable = true;
+    // 用户处理器
     private List<Consumer<W>> openHandlers = new ArrayList<>();
     private List<BiConsumer<W, InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
     private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>();
+    // 返回行为, 数据与根会话
     private boolean backOnPlayerClose;
     private @Nullable Object data;
     private WindowSession.Kind sessionKind = WindowSession.Kind.STACK;
     private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
+    // 窗口状态确认
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
+    // 视觉配置
     private VisualLayer windowVisualLayer = VisualLayer.NONE;
     private VisualLayer cursorVisualLayer = VisualLayer.NONE;
+    // 构建收尾
     private List<Consumer<? super W>> modifiers = new ArrayList<>();
 
     AbstractWindowBuilder() {

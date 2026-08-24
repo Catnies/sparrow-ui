@@ -44,18 +44,23 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private static final int RESULT_SLOT = 2;
     private static final ClientboundPacketFilter MERCHANT_OFFERS_FILTER = ClientboundMerchantOffersPacketProxy.CLASS::isInstance;
 
+    // 渲染依赖与当前挂载
     private final BiConsumer<? super String, ? super Throwable> reporter;
     private final NamespacedKey markerKey;
     private final Window window;
-
     private @Nullable TradeBindings bindings;
+
+    // 商人显示状态
     private int level;
     private double progress = -1.0;
     private boolean restockMessageEnabled;
+
+    // 客户端预测纠正
     private boolean selectionReconciliationPending;
     private boolean selectionContentRecoveryOnly;
     private boolean resultReconciliationPending;
 
+    // Offers 版本与当前网络批次
     private final AtomicLong offerRevision = new AtomicLong(); // 任意线程只递增此值, 实际渲染仍在实体线程
     private long committedOfferRevision = -1; // 最近成功进入网络发送批次的 revision
     private long queuedOfferRevision;
@@ -167,9 +172,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         }
     }
 
-    /**
-     * 选择交易没有 changed-slots 可供吸收, 必须用完整内容覆盖客户端本地搬运到未知背包槽的物品.
-     */
+    // 交易选择包没有 changed-slots, 用完整内容恢复客户端自动搬运到未知背包槽的物品.
     @Override
     public void synchronize(
             ItemStack @NotNull [] slots,
@@ -191,9 +194,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         }
     }
 
-    /**
-     * 标题重开已经携带完整内容, 同样可以完成待处理的选择纠正.
-     */
+    // 标题重开自带完整内容, 同时完成待处理的选择纠正.
     @Override
     public void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor) {
         boolean reconcileResult = this.resultReconciliationPending;
@@ -207,15 +208,11 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         }
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>本批次只捕获一次 revision. 发送期间到达的新失效会保留为更大的 revision,
-     * 由后续 tick 再次发送.
-     */
+    // 每批固定一个 revision, 发送期间到达的新失效留给后续 tick.
     @Override
     protected void submitPackets(@NotNull List<Object> outgoing, boolean forceFull) {
         long revision = this.offerRevision.get();
-        // 选择纠正借用完整内容包恢复全部槽位, 但不应因此重新渲染未变化的 offers
+        // 选择纠正借用完整内容包, offers 仍按 revision 判断是否重建.
         boolean forceOffers = forceFull && !this.selectionContentRecoveryOnly;
         this.offersQueued = forceOffers || revision != this.committedOfferRevision || this.committedOffersPacket == null;
         this.queuedOffersPacket = null;
@@ -243,9 +240,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         }
     }
 
-    /**
-     * 返回本轮将成为客户端当前状态的 offers 包.
-     */
+    // 结果槽纠正需要复用本轮即将提交的 offers 包.
     private Object currentOffersPacket() {
         Object packet = this.offersQueued ? this.queuedOffersPacket : this.committedOffersPacket;
         if (packet == null) {
@@ -254,14 +249,11 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         return packet;
     }
 
-    /**
-     * 将当前 Trade 挂载渲染为一份完整的 offers 数据包.
-     */
+    // 渲染当前全部 Trade, 客户端索引与 entries 保持一致.
     private Object createOffersPacket() {
         TradeBindings bindings = this.bindings;
         List<TradeBinding> entries = bindings == null ? List.of() : bindings.entries();
 
-        // offers 与 entries 保持一一对应, 单项渲染失败也不能改变客户端索引
         ArrayList<Object> offers = new ArrayList<>(entries.size()); // NMS MerchantOffer 列表
         for (int index = 0; index < entries.size(); index++) {
             offers.add(this.createOffer(entries.get(index), index));
@@ -284,16 +276,13 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         );
     }
 
-    /**
-     * 将一条 Trade 转换为纯展示的原版 MerchantOffer.
-     */
     private Object createOffer(TradeBinding binding, int tradeIndex) {
         // 每个位置缓存最近一次成功结果, 渲染异常时由 render 保留旧快照
         ItemStack firstInput = binding.renderFirstInput(this, tradeIndex);
         ItemStack secondInput = binding.renderSecondInput(this, tradeIndex);
         ItemStack result = binding.renderResult(this, tradeIndex);
 
-        // 只标记协议展示副本, 不修改 Trade Item 提供的服务端物品
+        // 随机标记写入协议展示副本, Trade Item 提供的服务端物品保持不变.
         MarkedStack markedFirstInput = this.mark(firstInput, true);
         Object firstCost = this.createCost(markedFirstInput);
         Optional<Object> secondCost = secondInput.isEmpty()
@@ -318,27 +307,22 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         );
     }
 
-    /**
-     * 创建要求完整组件精确匹配的 ItemCost, 阻止玩家背包物品自动填入展示交易.
-     */
+    // 随机组件参与精确匹配, 玩家背包物品不会自动填入展示交易.
     private Object createCost(MarkedStack marked) {
         Object stack = marked.stack(); // NMS ItemStack
 
-        // 1.21.8 与 26.1+ 只在 Item holder 的访问方法上存在差异
+        // 版本差异位于 Item holder 的访问入口.
         Object holder = VersionHelper.isOrAbove26_1()
                 ? ItemStackProxy.INSTANCE.typeHolder(stack)
                 : ItemStackProxy.INSTANCE.getItemHolder(stack);
 
-        // predicate 包含随机 CUSTOM_DATA, 玩家背包物品无法精确匹配
         Object predicate = DataComponentExactPredicateProxy.INSTANCE.allOf(
                 ItemStackProxy.INSTANCE.getComponents(stack)
         );
         return ItemCostProxy.INSTANCE.newInstance(holder, marked.count(), predicate, stack);
     }
 
-    /**
-     * 复制展示物品并写入会话内随机标记. 必需位置为空时使用不可见占位以保持 offer 索引.
-     */
+    // 复制展示物品并加入会话随机标记, 必需空位用不可见占位保持 offer 索引.
     private MarkedStack mark(ItemStack source, boolean required) {
         ItemStack display;
         if (source.isEmpty()) {
@@ -350,7 +334,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             display = source.clone();
         }
 
-        // 每次构建都生成新值, 防止客户端复用上一次 offers 的输入匹配结果
+        // 每次构建使用新值, 客户端不会复用上一次 offers 的输入匹配结果.
         ItemMeta meta = display.getItemMeta();
         meta.getPersistentDataContainer().set(
                 this.markerKey,
@@ -362,9 +346,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         return new MarkedStack(stack, Math.max(1, display.getAmount()));
     }
 
-    /**
-     * 渲染一个 Trade Item. 失败时上报异常并保留该位置最近一次成功快照.
-     */
+    // 渲染失败时上报异常并保留该位置最近一次成功快照.
     private ItemStack render(
             @NotNull Item item,
             @NotNull RenderCell renderCell,
@@ -424,9 +406,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         private OfferMath() {
         }
 
-        /**
-         * 把 API 的正折扣映射为原版负差值. {@link Integer#MIN_VALUE} 无法取反, 因此饱和为最大加价.
-         */
+        // API 正折扣映射为原版负差值, MIN_VALUE 饱和为最大加价.
         static int specialPriceDiff(int discount) {
             return discount == Integer.MIN_VALUE ? Integer.MAX_VALUE : -discount;
         }
@@ -436,15 +416,14 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     private enum GateState {
-        PREPARING, // 正在组装挂载, 忽略准备期通知
-        ACTIVE, // 向当前菜单转发失效
-        RETIRED // 忽略替换或关闭后的迟到通知
+        PREPARING, // 组装挂载, 忽略准备期通知
+        ACTIVE,    // 向当前菜单转发失效
+        RETIRED    // 丢弃替换或关闭后的迟到通知
     }
 
     /**
-     * 持有一次菜单会话内的全部 Trade 挂载, 并把它们合并为一个刷新计划.
-     * <p>构造阶段保持 PREPARING gate, 只有全部挂载成功后才激活. 替换或关闭时先退役 gate,
-     * 再按所有权逆序释放资源.
+     * 持有一次菜单会话的全部 Trade 挂载, 并合并它们的失效通知.
+     * <p>所有挂载成功后才激活 gate, 退役后按所有权逆序关闭资源.
      */
     static final class TradeBindings implements AutoCloseable {
         private final Runnable invalidator;
@@ -460,20 +439,20 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             this.invalidator = invalidator;
             ArrayList<TradeBinding> entries = new ArrayList<>(trades.size());
 
-            // 准备期通知被 gate 拦截, 不会让尚未发布的候选会话变脏
+            // 准备期通知不会投递给尚未发布的候选会话.
             try {
                 for (int index = 0; index < trades.size(); index++) {
                     TradeBinding binding = new TradeBinding(trades.get(index), window, this::dirty);
                     entries.add(binding);
                 }
             } catch (RuntimeException | Error throwable) {
-                // 逆序回滚已经取得的资源, 并把关闭异常附加到原始失败
+                // 逆序回滚已取得资源, 清理异常附加到原始失败.
                 this.gate.set(GateState.RETIRED);
                 TradeBindings.closeEntries(entries, throwable);
                 throw throwable;
             }
 
-            // 全部准备成功后才发布不可修改快照
+            // 全部准备成功后发布不可变快照.
             this.entries = List.copyOf(entries);
         }
 
@@ -506,14 +485,12 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             }
             this.closed = true;
 
-            // 继续关闭其余条目, 最后统一抛出首个失败
+            // 单项失败不打断后续关闭, 最后抛出聚合结果.
             Throwable failure = TradeBindings.closeEntries(this.entries, null);
             ThrowableUtils.throwIfUnchecked(failure);
         }
 
-        /**
-         * 按创建顺序的反方向关闭 TradeBinding, 同时聚合所有非受检异常.
-         */
+        // 逆序关闭 TradeBinding 并聚合非受检异常.
         @Nullable
         private static Throwable closeEntries(@NotNull List<TradeBinding> entries, @Nullable Throwable failure) {
             for (int index = entries.size() - 1; index >= 0; index--) {
@@ -528,19 +505,25 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     /**
-     * 持有一条 Trade 的订阅, 三个 Item 挂载及最近一次成功渲染结果.
+     * 持有一条 Trade 的订阅, 三个 Item 挂载和最近成功结果.
      */
     private static final class TradeBinding implements AutoCloseable {
+        // Trade 与失效入口
         private final MerchantWindow.Trade trade;
+        private final Runnable invalidator;
+
+        // 订阅与 Item 挂载
         private final Subscription tradeSubscription;
         private final ItemAttachment firstInputAttachment;
         private final ItemAttachment secondInputAttachment;
         private final ItemAttachment resultAttachment;
+
+        // 三个显示位置的渲染状态
         private final RenderCell firstInputRenderCell;
         private final RenderCell secondInputRenderCell;
         private final RenderCell resultRenderCell;
-        private final Runnable invalidator;
 
+        // 最近成功结果与生命周期
         private ItemStack firstInput = ItemUtils.EMPTY;
         private ItemStack secondInput = ItemUtils.EMPTY;
         private ItemStack result = ItemUtils.EMPTY;
@@ -553,7 +536,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         ) {
             this.trade = trade;
             this.invalidator = invalidator;
-            // 交易列表画在容器槽位之外, 三个位置共用同一份不占槽位的渲染上下文
+            // 交易列表不占容器槽位, 三个位置共用 off-slot 渲染上下文.
             RenderContext renderContext = RenderContext.offSlot(window);
             this.firstInputRenderCell = new RenderCell(
                     renderContext,
@@ -575,7 +558,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             ItemAttachment secondInputAttachment = null;
             ItemAttachment resultAttachment = null;
 
-            // 三个 Item 独立挂载, 相同 Item 引用也拥有独立的显示生命周期
+            // 三个位置各自挂载, 相同 Item 引用也拥有独立显示生命周期.
             try {
                 tradeSubscription = trade.subscribe(ignoredChange -> this.dirtyAll());
                 firstInputAttachment = trade.getFirstInput().attach(window, ignoredItem -> this.dirty(this.firstInputRenderCell));
@@ -583,7 +566,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
                 resultAttachment = trade.getResult().attach(window, ignoredItem -> this.dirty(this.resultRenderCell));
             } catch (RuntimeException | Error throwable) {
                 this.closeRenderCells();
-                // 构造中途失败时只关闭已经取得的资源
+                // 构造中途失败时关闭已经取得的资源.
                 TradeBinding.close(
                         resultAttachment,
                         secondInputAttachment,
@@ -671,9 +654,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             this.firstInputRenderCell.close();
         }
 
-        /**
-         * 按结果, 第二输入, 第一输入, Trade 订阅的顺序关闭, 兼容构造失败留下的空引用.
-         */
+        // 按所有权逆序关闭, 构造失败留下的空引用直接跳过.
         @Nullable
         private static Throwable close(
                 @Nullable ItemAttachment result,

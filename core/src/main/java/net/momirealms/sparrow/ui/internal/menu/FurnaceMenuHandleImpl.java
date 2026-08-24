@@ -58,10 +58,9 @@ final class FurnaceMenuHandleImpl extends AbstractRecipeBookMenuHandle implement
         this.dataSlots.commit();
     }
 
-    /**
-     * 把两个公开比例转换为客户端原版的四个 container data slot.
-     */
+    // 两个比例映射到原版四个 data slot, total 固定为同一量程.
     static final class DataSlots {
+        // 原版 data slot 布局
         static final int FUEL_REMAINING_SLOT = 0;
         static final int FUEL_TOTAL_SLOT = 1;
         static final int COOK_ELAPSED_SLOT = 2;
@@ -69,9 +68,11 @@ final class FurnaceMenuHandleImpl extends AbstractRecipeBookMenuHandle implement
         static final int PROGRESS_SCALE = 200;
         private static final int DATA_SLOT_COUNT = 4;
 
+        // 待发送与当前批次
         private final BitSet dirtySlots = new BitSet(DATA_SLOT_COUNT);
         private final BitSet queuedSlots = new BitSet(DATA_SLOT_COUNT);
 
+        // 当前比例值
         private int fuelRemaining;
         private int cookElapsed;
 

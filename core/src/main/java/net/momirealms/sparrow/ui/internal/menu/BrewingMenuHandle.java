@@ -2,6 +2,9 @@ package net.momirealms.sparrow.ui.internal.menu;
 
 import org.jetbrains.annotations.ApiStatus;
 
+/**
+ * 酿造台菜单的酿造进度与燃料状态.
+ */
 @ApiStatus.Internal
 public interface BrewingMenuHandle extends MenuHandle {
 

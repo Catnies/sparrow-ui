@@ -8,9 +8,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.BitSet;
 
-/**
- * Paper 砂轮菜单句柄, 负责纠正输入变化后客户端预测的结果槽.
- */
 @SuppressWarnings("UnstableApiUsage")
 final class GrindstoneMenuHandleImpl extends ContainerMenuHandle {
     private static final int RESULT_SLOT = 2;
@@ -29,6 +26,7 @@ final class GrindstoneMenuHandleImpl extends ContainerMenuHandle {
 
     @Override
     protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
+        // 输入变化会触发客户端本地重算, 结果槽随后由服务端覆盖.
         if (dirtySlots.get(0) || dirtySlots.get(1)) {
             this.forceRemoteSlot(RESULT_SLOT);
         }

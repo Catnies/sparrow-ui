@@ -47,6 +47,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 点击时直接取用, 不在点击现场拼描述.
  */
 public final class CustomFramesMenu {
+    // 舞台与展示模式
     private static final int WIDTH = 9;
     private static final int HEIGHT = 6;
     private static final int AREA = WIDTH * HEIGHT;
@@ -72,6 +73,7 @@ public final class CustomFramesMenu {
     // 中心是固定的 54 个格子, 描述因此可以全部预建; 点击时直接取用
     private static final List<AnimationDefinition> RIPPLES = buildRipples();
 
+    // 当前菜单状态
     private final Player viewer;
     private final MutableSignal<Integer> mode;                         // 当前选中的展示
     private final NormalPane stage;                                    // 动画宿主, 也是上方 6 行

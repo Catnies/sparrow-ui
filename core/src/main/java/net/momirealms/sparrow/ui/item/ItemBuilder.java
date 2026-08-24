@@ -28,18 +28,21 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ItemBuilder {
+    // 显示与刷新
     private DisplaySourceFactory source = new DisplaySourceFactory.ProviderFactory(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
-
+    private final List<Function<? super Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
+    private boolean updateOnClick; // 点击成功后是否主动失效
+    // 交互守卫
     private final List<ConfiguredItem.GuardEntry<ItemClick>> clickGuards = new ArrayList<>(); // 点击前置处理器
     private final List<ConfiguredItem.GuardEntry<ItemDragClick>> dragGuards = new ArrayList<>(); // 拖拽前置处理器
     private final List<ConfiguredItem.GuardEntry<BundleSelectClick>> bundleSelectGuards = new ArrayList<>(); // Bundle 前置处理器
+    // 交互处理器
     private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器
     private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器
     private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器
+    // 构建收尾
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
-    private final List<Function<? super Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
-    private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
      * 配置在渲染调用线程立即返回 ItemStack 的显示来源.

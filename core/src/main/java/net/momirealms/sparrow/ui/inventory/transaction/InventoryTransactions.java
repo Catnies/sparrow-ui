@@ -83,6 +83,7 @@ public final class InventoryTransactions {
     }
 
     private static final class Commit {
+        // 事务输入与提交策略
         private final UpdateReason reason;
         private final TransactionDraft draft;
         @Nullable private final InteractionDraft interaction;
@@ -91,7 +92,7 @@ public final class InventoryTransactions {
         private final List<PlannedRoot> readSet;
         private final BooleanSupplier commitGuard;
         private final boolean writeBack; // 为 true 时在状态提交后调用各基准的落地, 把内容写进外部存储
-
+        // 流水线准备结果
         private List<TransactionNotification> updates;              // 本笔事务需要通知的订阅者
         private List<TransactionScope> scopes;                      // 封笔后的最终写集
         private List<PlannedRoot.StateLock> locks;                  // 按全序排好的锁凭证

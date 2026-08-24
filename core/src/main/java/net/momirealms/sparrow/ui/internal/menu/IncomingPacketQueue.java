@@ -8,30 +8,18 @@ import java.util.List;
 
 /**
  * Netty 生产, 玩家实体线程消费的有界 FIFO.
- *
- * <p>队列只负责保序和背压. Window 已有唯一实体 tick, 因此不再为每个入站包创建调度任务.</p>
+ * <p>Window 在实体 tick 批量取走消息, 固定容量限制单次会话的积压并报告溢出.
  *
  * @param <T> 入站消息类型
  */
 final class IncomingPacketQueue<T> implements AutoCloseable {
 
-    /**
-     * 一次入队尝试的结果.
-     */
     public enum OfferResult {
         ACCEPTED,
         CLOSED,
         OVERFLOW
     }
 
-    /**
-     * 保留 Netty 到实体线程顺序的入站消息.
-     *
-     * @param sequence 队列内单调递增的顺序号
-     * @param generation 接收消息时所属的 Window 代际
-     * @param packet 领域化后的入站消息
-     * @param <T> 消息类型
-     */
     public record Entry<T>(long sequence, long generation, @NotNull T packet) {
     }
 
@@ -45,12 +33,6 @@ final class IncomingPacketQueue<T> implements AutoCloseable {
     private boolean closed;
     private boolean overflowed;
 
-    /**
-     * 创建容量固定的 FIFO.
-     *
-     * @param capacity 可暂存的最大消息数量
-     * @throws IllegalArgumentException 容量不为正数
-     */
     public IncomingPacketQueue(int capacity) {
         if (capacity <= 0) {
             throw new IllegalArgumentException("capacity must be positive");
@@ -61,15 +43,7 @@ final class IncomingPacketQueue<T> implements AutoCloseable {
         this.generations = new long[capacity];
     }
 
-    /**
-     * 从 Netty 线程追加一条入站消息.
-     * <p>队列满时不会丢弃已有消息, 而是记录溢出并返回 {@link OfferResult#OVERFLOW}.
-     * 调用方可据此关闭已无法安全同步的 Window.
-     *
-     * @param generation 接收消息时的 Window 代际
-     * @param packet 要追加的消息
-     * @return 本次入队结果
-     */
+    // 满队列保留已有消息并记录溢出, Window 随后会关闭这次会话.
     @NotNull
     public synchronized OfferResult offer(long generation, @NotNull T packet) {
         if (this.closed) {
@@ -90,13 +64,7 @@ final class IncomingPacketQueue<T> implements AutoCloseable {
         return OfferResult.ACCEPTED;
     }
 
-    /**
-     * 按 FIFO 顺序移除至多指定数量的消息.
-     *
-     * @param limit 本次最多移除的数量
-     * @return 不可变的已移除消息列表
-     * @throws IllegalArgumentException 上限不为正数
-     */
+    // 按 FIFO 顺序取走至多 limit 条消息.
     @NotNull
     public synchronized List<Entry<T>> drain(int limit) {
         if (limit <= 0) {
@@ -118,16 +86,7 @@ final class IncomingPacketQueue<T> implements AutoCloseable {
         return List.copyOf(drained);
     }
 
-    /**
-     * 按 FIFO 顺序移除至多指定数量的消息, 并只返回属于指定代际的负载.
-     *
-     * <p>不匹配的旧代际消息也会从队列中移除, 但不会暴露给当前菜单会话.</p>
-     *
-     * @param generation 当前菜单会话代际
-     * @param limit 本次最多移除的消息数量
-     * @return 不可变的当前代际负载列表
-     * @throws IllegalArgumentException 上限不为正数
-     */
+    // 旧代际消息照常出队, 只有当前代际的负载会交给菜单.
     @NotNull
     public synchronized List<T> drain(long generation, int limit) {
         if (limit <= 0) {

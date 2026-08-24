@@ -94,6 +94,7 @@ public final class AnimationPresetsMenu {
             List.of(plain(Material.LIME_STAINED_GLASS_PANE), plain(Material.GREEN_STAINED_GLASS_PANE))
     );
 
+    // 控制栏选项
     private static final List<Show> SHOWS = List.of(
             new Show(
                     "同步帧序列",
@@ -142,6 +143,7 @@ public final class AnimationPresetsMenu {
             )
     );
 
+    // 当前菜单状态
     private final MutableSignal<Integer> playingIndex;          // 当前在播的那一种在 SHOWS 中的下标
     private final NormalPane stage;                             // 动画的宿主, 也是上方 6 行
     private final NormalWindow window;

@@ -11,9 +11,8 @@ import org.jetbrains.annotations.NotNull;
 import java.util.BitSet;
 
 /**
- * 客户端点击包携带的容器预测, 只代表客户端声称的状态.
- * <p>此对象只把客户端声称的哈希交给 Paper 的 RemoteSlot 客户端已知状态. Window 槽位内容始终
- * 由服务端决定; 预测值只能缩小需要复核的槽位集合, 不能直接改变任何业务物品.</p>
+ * 客户端点击包声称的容器状态.
+ * <p>预测哈希写入 Paper RemoteSlot 后参与差异检查, Window 物品仍由服务端结果决定.
  */
 @ApiStatus.Internal
 public final class ClientMenuPrediction implements MenuPrediction {
@@ -21,8 +20,8 @@ public final class ClientMenuPrediction implements MenuPrediction {
     private static final Object[] EMPTY_HASHES = new Object[0];
 
     private final int[] changedSlots;
-    private final Object[] changedHashes; // NMS HashedStack 数组副本, 与 changedSlots 按索引对应
-    private final Object cursor; // NMS HashedStack 光标预测
+    private final Object[] changedHashes; // NMS HashedStack[], 与 changedSlots 同下标对应
+    private final Object cursor;          // NMS HashedStack 光标预测
 
     private ClientMenuPrediction(int @NotNull [] changedSlots, Object @NotNull [] changedHashes, @NotNull Object cursor) {
         this.changedSlots = changedSlots;
@@ -31,13 +30,10 @@ public final class ClientMenuPrediction implements MenuPrediction {
     }
 
     /**
-     * 从不再向下游转发的点击包接管预测数据.
+     * 在 Netty 线程将点击包压缩为实体线程读取的稳定快照.
      *
-     * <p>点击包在 Netty 线程解码, 预测会在玩家实体线程消费. 这里把可变 fastutil map 压缩为
-     * 两个顺序数组, 在保持跨线程输入稳定的同时避免为一次性遍历复制哈希表和包装器.</p>
-     *
-     * @param packet 已被 Sparrow 捕获的点击包
-     * @return 该包携带的客户端预测状态
+     * @param packet NMS ServerboundContainerClickPacket
+     * @return 独立的客户端预测快照
      */
     @NotNull
     public static ClientMenuPrediction from(@NotNull Object packet) {
@@ -60,14 +56,7 @@ public final class ClientMenuPrediction implements MenuPrediction {
         return new ClientMenuPrediction(slots, hashes, proxy.carriedItem(packet));
     }
 
-    /**
-     * 将预测写入客户端已知状态, 并记录后续必须与服务端槽位内容核对的槽位.
-     *
-     * @param remoteSlots Paper 槽位客户端已知状态
-     * @param remoteCursor Paper 光标客户端已知状态
-     * @param candidates 待复核槽位集合
-     * @return 是否携带了需要复核的光标预测
-     */
+    // 越界槽位来自无效客户端声明, 不进入服务端候选集合.
     boolean apply(Object @NotNull [] remoteSlots, @NotNull Object remoteCursor, @NotNull BitSet candidates) {
         for (int index = 0; index < this.changedSlots.length; index++) {
             int slot = this.changedSlots[index];

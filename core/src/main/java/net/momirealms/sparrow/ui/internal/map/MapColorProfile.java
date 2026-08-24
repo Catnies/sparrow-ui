@@ -7,16 +7,18 @@ import java.io.IOException;
 import java.io.InputStream;
 
 final class MapColorProfile {
+    static final String PROFILE_RESOURCE = "/map-color-profile.bin";
+    // Profile 格式
     static final int MAGIC = 0x53504D43; // ASCII SPMC
     static final int FORMAT_VERSION = 1; // 二进制 profile 格式
     static final int COLOR_COUNT = 256;
     static final int FIRST_COLOR = 4;     // 地图色 0..3 留给透明像素
+    // RGB 分块
     static final int BLOCK_SHIFT = 3;     // 每个 RGB 分块覆盖 8x8x8 种颜色
     static final int BLOCKS_PER_AXIS = 1 << (8 - BLOCK_SHIFT);
     static final int BLOCK_COUNT = BLOCKS_PER_AXIS * BLOCKS_PER_AXIS * BLOCKS_PER_AXIS;
 
-    private static final String PROFILE_RESOURCE = "/map-color-profile.bin";
-
+    // 运行时调色板与候选索引
     private final int[] colors;       // 当前服务端的 256 个地图色
     private final char[] offsets;     // 第 n 块候选范围为 [offsets[n], offsets[n + 1])
     private final byte[] candidates;  // 各分块可能成为最近色的地图色 ID

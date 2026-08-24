@@ -18,66 +18,43 @@ import java.util.Arrays;
 import java.util.BitSet;
 
 /**
- * 为 Bukkit 事件提供专用的 InventoryView, 但不把事件对该 InventoryView 的写入直接应用到玩家物品栏.
- * <p>顶部 Inventory 和底部槽位数组共同组成 Bukkit 事件状态副本. 事件可以观察与协议包一致的内容,
- * 但任何写入都只修改这份副本; 最终服务端渲染结果仍由 Window 决定.</p>
+ * Bukkit 事件读取和临时写入的独立 InventoryView.
+ * <p>顶部 Inventory 与底部槽位数组保存协议状态副本, 事件写入不会直接修改玩家物品栏.
  */
 @SuppressWarnings("UnstableApiUsage")
 final class ProtocolInventoryView implements InventoryView {
     private static final int PLAYER_INVENTORY_SLOTS = 36;
 
+    // 事件视图布局
     private final Player player;
     private final Inventory upper;
     private final int lowerStart;
     private final int size;
     private final InventoryType inventoryType;
     private final MenuType menuType;
+
+    // 事件读取的内容副本
     private final ItemStack[] lowerItems;
-    private final BitSet touchedSlots = new BitSet();      // 本 tick 写过的槽位, 留给最终同步纠正客户端
-    private final BitSet eventTouchedSlots = new BitSet(); // 最近一次事件写过的槽位, 由 resetForEvent 清空
     private Component title = Component.empty();
     private ItemStack cursor = ItemUtils.EMPTY;
-    private boolean cursorTouched;      // 本 tick 是否写过光标, 留给最终同步纠正客户端
-    private boolean eventCursorTouched; // 最近一次事件是否写过光标, 由 resetForEvent 清空
 
-    /**
-     * 创建一个初始为空的 Bukkit 事件用的 InventoryView.
-     *
-     * @param player InventoryView 所属玩家
-     * @param upperSize 顶部槽位数量
-     * @param inventoryType Bukkit Inventory 类型
-     * @param menuType Bukkit 菜单类型
-     */
+    // 本 tick 累积写入
+    private final BitSet touchedSlots = new BitSet();
+    private boolean cursorTouched;
+
+    // 单次事件写入
+    private final BitSet eventTouchedSlots = new BitSet();
+    private boolean eventCursorTouched;
+
     ProtocolInventoryView(Player player, int upperSize, InventoryType inventoryType, MenuType menuType) {
         this(player, upperSize, upperSize, inventoryType, menuType);
     }
 
-    /**
-     * 创建下部玩家物品栏位于指定协议槽位(raw slot)的 Bukkit 事件用的 InventoryView.
-     *
-     * <p>顶部 Inventory 中位于 {@code lowerStart} 之前的槽位先出现, 随后是固定的 36 个玩家槽位,
-     * 顶部 Inventory 的剩余槽位位于协议末尾. 普通菜单的 {@code upperSize == lowerStart},
-     * Crafter 则用末尾的顶部槽位表示结果槽.</p>
-     *
-     * @param player InventoryView 所属玩家
-     * @param upperSize Bukkit 顶部 Inventory 槽位数量
-     * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
-     * @param inventoryType Bukkit Inventory 类型
-     * @param menuType Bukkit 菜单类型
-     */
+    // Crafter 的结果槽位于玩家 36 格之后, lowerStart 可以小于 upperSize.
     ProtocolInventoryView(Player player, int upperSize, int lowerStart, InventoryType inventoryType, MenuType menuType) {
         this(player, CraftInventoryProxy.INSTANCE.newInstance(SimpleContainerProxy.INSTANCE.newInstance(upperSize)), lowerStart, inventoryType, menuType);
     }
 
-    /**
-     * 创建使用给定 Bukkit 顶部 Inventory 保存事件状态的 InventoryView.
-     *
-     * @param player InventoryView 所属玩家
-     * @param upper 保存 Bukkit 事件状态的顶部 Inventory
-     * @param lowerStart 玩家物品栏的起始协议槽位(raw slot)
-     * @param inventoryType Bukkit Inventory 类型
-     * @param menuType Bukkit 菜单类型
-     */
     ProtocolInventoryView(Player player, Inventory upper, int lowerStart, InventoryType inventoryType, MenuType menuType) {
         int upperSize = upper.getSize();
         if (lowerStart < 0 || lowerStart > upperSize) {
@@ -93,13 +70,6 @@ final class ProtocolInventoryView implements InventoryView {
         Arrays.fill(this.lowerItems, ItemUtils.EMPTY);
     }
 
-    /**
-     * 用完整服务端渲染结果替换 Bukkit 事件状态副本中的槽位, 光标和标题.
-     *
-     * @param slots 完整的服务端槽位渲染结果
-     * @param cursor 菜单实际光标
-     * @param title 当前标题
-     */
     void initialize(ItemStack @NotNull [] slots, @NotNull ItemStack cursor, @NotNull Component title) {
         this.title = title;
         this.replaceContents(slots, cursor);
@@ -109,22 +79,15 @@ final class ProtocolInventoryView implements InventoryView {
         this.eventCursorTouched = false;
     }
 
-    /**
-     * 用服务端渲染结果和菜单实际光标重置 Bukkit 事件状态副本, 但保留此前事件的触碰记录供最终同步纠正客户端.
-     * 顶部 Inventory 本身是事件副本的 backing, 监听器可以直接写入并绕过触碰记录, 所以始终完整恢复.
-     * 底部暴露的是真实玩家 Inventory, 不与 lowerItems 事件副本共用 backing; lowerItems 只恢复刚渲染或此前触碰过的槽位.
-     * <p>只有事件粒度的写入记录会被清掉: 它描述的是"上一个事件写了什么", 内容一旦被服务端渲染结果覆盖就失效了.
-     *
-     * @param slots 按协议槽位排列的当前服务端渲染结果
-     * @param renderedSlots 本次事件前刚重新渲染的槽位
-     * @param cursor 当前菜单实际光标
-     */
+    // 重置下一次事件读取的副本, 本 tick 累积触碰记录继续留给最终同步.
     void resetForEvent(ItemStack @NotNull [] slots, @NotNull BitSet renderedSlots, @NotNull ItemStack cursor) {
         for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
             int upperSlot = this.upperSlot(rawSlot);
             if (upperSlot >= 0) {
+                // 监听器能直接改 upper backing, 每次事件前都完整恢复.
                 this.upper.setItem(upperSlot, slots[rawSlot]);
             } else if (renderedSlots.get(rawSlot) || this.touchedSlots.get(rawSlot)) {
+                // lowerItems 不与真实玩家 Inventory 共用 backing, 按变化范围恢复即可.
                 this.lowerItems[this.lowerSlot(rawSlot)] = ItemUtils.copyOrEmpty(slots[rawSlot]);
             }
         }
@@ -133,7 +96,7 @@ final class ProtocolInventoryView implements InventoryView {
         this.eventCursorTouched = false;
     }
 
-    // 用服务端渲染结果和菜单实际光标覆盖上下两半的槽位与光标; 协议槽位要先换算成上下容器各自的下标.
+    // 将协议槽位换算为上下容器下标, 再覆盖完整事件副本.
     private void replaceContents(ItemStack[] slots, ItemStack cursor) {
         for (int rawSlot = 0; rawSlot < slots.length; rawSlot++) {
             int upperSlot = this.upperSlot(rawSlot);
@@ -146,14 +109,7 @@ final class ProtocolInventoryView implements InventoryView {
         this.cursor = ItemUtils.copyOrEmpty(cursor);
     }
 
-    /**
-     * 把发生变化的服务端渲染结果写回 Bukkit 事件状态副本.
-     *
-     * @param slots 当前服务端槽位渲染结果
-     * @param changedSlots 已发送变化或被 Bukkit 事件触碰的槽位
-     * @param cursor 当前菜单实际光标
-     * @param cursorChanged 是否需要恢复菜单实际光标
-     */
+    // 最终同步后把实际发送或被事件触碰的位置对齐到服务端状态.
     void apply(
             ItemStack @NotNull [] slots,
             @NotNull BitSet changedSlots,
@@ -177,58 +133,33 @@ final class ProtocolInventoryView implements InventoryView {
         }
     }
 
-    /**
-     * 返回 Bukkit 事件用 InventoryView 当前展示的 Adventure 标题.
-     *
-     * @return 当前标题
-     */
     @Override
     public @NotNull Component title() {
         return this.title;
     }
 
-    /**
-     * 把 Bukkit 事件写入过的槽位转移到调用方复用的位图, 并清空本地记录.
-     *
-     * @param destination 接收待恢复槽位的可变位图
-     */
+    // 转移本 tick 累积写入, 供最终客户端纠正.
     void drainTouchedSlots(@NotNull BitSet destination) {
         destination.clear();
         destination.or(this.touchedSlots);
         this.touchedSlots.clear();
     }
 
-    /**
-     * 把最近一次 Bukkit 事件写过的槽位转移到调用方复用的位图, 并清空该事件的写入记录.
-     * <p>与 {@link #drainTouchedSlots} 的累积位图相互独立: 那份覆盖整个 tick, 只用来纠正客户端;
-     * 这份只覆盖最近一次事件, 供调用方把写入合并进当前交互的草稿.
-     *
-     * @param destination 接收本次事件写入槽位的可变位图
-     */
+    // 转移单次事件写入, 供当前交互草稿吸收.
     void drainEventTouchedSlots(@NotNull BitSet destination) {
         destination.clear();
         destination.or(this.eventTouchedSlots);
         this.eventTouchedSlots.clear();
     }
 
-    /**
-     * 取出并清空 Bukkit 事件是否写入过光标的标记.
-     *
-     * @return 需要恢复菜单实际光标时返回 {@code true}
-     */
+    // 取出本 tick 的累积光标写入标记.
     boolean takeCursorTouched() {
         boolean touched = this.cursorTouched;
         this.cursorTouched = false;
         return touched;
     }
 
-    /**
-     * 取出最近一次 Bukkit 事件写入的光标, 并清空该事件的写入记录.
-     * <p>与 {@link #takeCursorTouched()} 的累积标记相互独立: 那份标记覆盖整个 tick, 只用来纠正客户端;
-     * 这份只覆盖最近一次事件, 供调用方把写入合并进当前交互的草稿.
-     *
-     * @return 最近一次事件写过光标时返回写入值, 没写过时返回 {@code null}
-     */
+    // 取出单次事件写入的光标副本, 供当前交互草稿吸收.
     @Nullable
     ItemStack takeEventCursor() {
         if (!this.eventCursorTouched) {
@@ -258,9 +189,7 @@ final class ProtocolInventoryView implements InventoryView {
         return this.inventoryType;
     }
 
-    /**
-     * 只更新 Bukkit 事件状态副本; 底部 Inventory 的写入绝不落到玩家 Bukkit Inventory.
-     */
+    // 写入停留在事件副本, 底部槽位不会落到真实玩家 Inventory.
     @Override
     public void setItem(int rawSlot, @Nullable ItemStack item) {
         int upperSlot = this.upperSlot(rawSlot);
@@ -291,9 +220,7 @@ final class ProtocolInventoryView implements InventoryView {
         return ItemUtils.copyOrEmpty(item);
     }
 
-    /**
-     * 只更新 Bukkit 事件状态副本中的光标.
-     */
+    // 光标写入同时记入本 tick 和本次事件两级触碰状态.
     @Override
     public void setCursor(@Nullable ItemStack item) {
         this.cursor = ItemUtils.copyOrEmpty(item);

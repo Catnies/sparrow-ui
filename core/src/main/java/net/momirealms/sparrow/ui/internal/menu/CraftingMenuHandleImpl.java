@@ -28,6 +28,7 @@ final class CraftingMenuHandleImpl extends AbstractRecipeBookMenuHandle {
 
     @Override
     protected void prepareSynchronize(@NotNull BitSet dirtySlots, boolean forceFull) {
+        // 合成输入变化会触发客户端本地重算, 结果槽随后由服务端覆盖.
         if (CraftingMenuHandleImpl.hasDirtyCraftingSlot(dirtySlots)) {
             this.forceRemoteSlot(RESULT_SLOT);
         }

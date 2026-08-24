@@ -26,10 +26,13 @@ import java.util.*;
 
 @SuppressWarnings("UnstableApiUsage")
 final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements StonecutterMenuHandle {
+    // 协议槽位与占位物
     private static final int INPUT_SLOT = 0;
     private static final int RESULT_SLOT = 1;
     private static final int SELECTED_DATA_SLOT = 0;
     private static final Object PLACEHOLDER = ItemUtils.invisibleBarrier();
+
+    // 原版配方目录
     private static final Object RECIPE_MANAGER = MinecraftServerProxy.INSTANCE.getRecipeManager(MinecraftServerProxy.INSTANCE.getServer());
     private static final Object ALL_ITEMS = IngredientProxy.INSTANCE.of(
             RegistryProxy.INSTANCE.stream(BuiltInRegistriesProxy.ITEM).filter(item -> item != ItemsProxy.AIR)
@@ -50,12 +53,17 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         }
     };
 
+    // 当前按钮与客户端投影
     private List<ItemStack> recipeButtons = List.of();
     private Object clientInput = PLACEHOLDER;
     private Object clientResult = ItemStackProxy.EMPTY;
     private int selectedRecipeIndex = -1;
+
+    // 待发送变更
     private boolean recipeButtonsDirty = true;
     private boolean dataDirty = true;
+
+    // 当前网络批次
     private boolean recipeButtonsQueued;
     private boolean dataQueued;
 
@@ -77,9 +85,9 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         for (int index = 0; index < buttons.length; index++) {
             Objects.requireNonNull(buttons[index], "buttons contains null");
         }
-        // 入参和现值相等判断对原件和副本给出同一答案, 内容没变就.
+        // 内容没变时沿用已有按钮快照和客户端目录.
         if (this.sameRecipeButtons(buttons)) return;
-        // 传进来的数组归调用方所有, 存下来的这一份必须独立
+        // 存下独立副本, 调用方随后可以复用或修改原数组.
         ItemStack[] copy = new ItemStack[buttons.length];
         for (int index = 0; index < buttons.length; index++) {
             copy[index] = ItemUtils.copyOrEmpty(buttons[index]);
@@ -95,7 +103,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         this.forceRemoteSlot(RESULT_SLOT);
     }
 
-    // 现值是归一化过的, (空物品统一存成空物品), 入参没有, 因此空的那一侧要按同一标准比.
+    // 当前快照已归一化空物品, 比较输入时先对齐空值语义.
     private boolean sameRecipeButtons(ItemStack @NotNull [] buttons) {
         if (this.recipeButtons.size() != buttons.length) {
             return false;
@@ -184,7 +192,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
 
     @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
-        // 强制输入槽物品不为空, 至少需要一个占位物品以支持配方界面.
+        // 原版配方界面要求输入槽非空, 空输入使用不可见占位物.
         Object clientItem = rawSlot == INPUT_SLOT && item.isEmpty()
                 ? PLACEHOLDER
                 : super.toClientItem(rawSlot, item);
