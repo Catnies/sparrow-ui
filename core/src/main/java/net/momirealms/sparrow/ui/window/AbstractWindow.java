@@ -905,6 +905,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 ThrowableUtils.combine(throwable, closeFailure);
             }
             closePaths(paths, throwable);
+            try {
+                this.bindings.suspendAll();
+            } catch (RuntimeException | Error suspendFailure) {
+                ThrowableUtils.combine(throwable, suspendFailure);
+            }
             throw throwable;
         }
     }
