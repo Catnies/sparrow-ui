@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.visual.animation.ActivePlayback;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import org.bukkit.inventory.ItemStack;
@@ -20,9 +21,10 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public abstract class AbstractSlotVisual extends AbstractVisual implements SlotVisual {
-    private final Object stateLock = new Object();          // 只保护 State 替换, 标脏一律出了锁再做
+    private final Object stateLock = new Object();          // 只保护 State 替换与终结闸门, 标脏一律出了锁再做
     private final VisualDirtyAttachments dirtyAttachments;  // 按槽位的失效订阅表, 槽位数量建成后固定不变
     private volatile State state;                           // 两层映射与播放中的动画整体存于不可变 State, 修改即整体替换, 读取无锁
+    private AnimationHandle.FinishReason finishing;         // 通道正在以这个原因整体终结, 非 null 期间新播放不入场; 由 stateLock 保护
 
     protected AbstractSlotVisual(@NotNull Bindings bindings, int size) {
         super(bindings);
@@ -75,8 +77,9 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     public final AnimationHandle play(@NotNull AnimationDefinition animationDefinition) {
         int size = this.state.bySlot.length;
         int[] slots = animationDefinition.slots();
-        if (slots.length == 0) {
-            return ActiveSlotAnimation.FINISHED_EMPTY;
+        // 空槽位或零时长的播放出生即到点, 当场完成
+        if (slots.length == 0 || animationDefinition.totalTicks() == 0) {
+            return ActivePlayback.FINISHED;
         }
         long periodTicks = animationDefinition.periodTicks();
         Signal<Long> clock = Signals.everyTicks(periodTicks);
@@ -94,11 +97,20 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         // 对齐共享节拍, 让同周期动画同步换帧
         long startTick = Signals.ticking().get() / periodTicks * periodTicks;
         ActiveSlotAnimation playing = new ActiveSlotAnimation(this, animationDefinition, slots, orderBySlot, startTick);
+        AnimationHandle.FinishReason finishing;
         synchronized (this.stateLock) {
-            State current = this.state;
-            ActiveSlotAnimation[] animations = Arrays.copyOf(current.animations, current.animations.length + 1);
-            animations[current.animations.length] = playing;
-            this.state = new State(current.global, current.bySlot, animations);
+            finishing = this.finishing;
+            if (finishing == null) {
+                State current = this.state;
+                ActiveSlotAnimation[] animations = Arrays.copyOf(current.animations, current.animations.length + 1);
+                animations[current.animations.length] = playing;
+                this.state = new State(current.global, current.bySlot, animations);
+            }
+        }
+        // 通道正在整体终结时不再放新播放进场, 当场以同一原因结束, 句柄的结束回调照常恰好触发一次
+        if (finishing != null) {
+            playing.finish(finishing);
+            return playing;
         }
         // 入场即盖住参与的槽位
         this.dirtyAnimated(slots);
@@ -131,20 +143,51 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         this.dirtyAnimated(animation.slots);
     }
 
-    // 某个结束回调失败也会继续终结其余动画
+    // 以给定原因结束全部在播动画. 终结期间入场的播放当场以同一原因结束而不进通道, 否则结束回调里的链式续播会让通道死灰复燃.
+    // 某个结束回调失败也会继续终结其余动画. 已在 beginFinishing 阶段内时, 闸门的开合由外层负责.
     @ApiStatus.Internal
     public final void finishAnimations(@NotNull AnimationHandle.FinishReason reason) {
-        ActiveSlotAnimation[] animations = this.state.animations;
+        ActiveSlotAnimation[] animations;
+        boolean owned;
+        synchronized (this.stateLock) {
+            owned = this.finishing == null;
+            if (owned) {
+                this.finishing = reason;
+            }
+            animations = this.state.animations;
+        }
         RuntimeException failure = null;
-        for (int index = 0; index < animations.length; index++) {
-            try {
-                animations[index].finish(reason);
-            } catch (RuntimeException exception) {
-                failure = ThrowableUtils.combine(failure, exception);
+        try {
+            for (int index = 0; index < animations.length; index++) {
+                try {
+                    animations[index].finish(reason);
+                } catch (RuntimeException exception) {
+                    failure = ThrowableUtils.combine(failure, exception);
+                }
+            }
+        } finally {
+            if (owned) {
+                this.endFinishing();
             }
         }
         if (failure != null) {
             throw failure;
+        }
+    }
+
+    // 进入以给定原因整体终结的阶段, 期间新播放当场以该原因结束. 供宿主把阶段拉长到多次批量终结之外, 必须与 endFinishing 配对.
+    @ApiStatus.Internal
+    public final void beginFinishing(@NotNull AnimationHandle.FinishReason reason) {
+        synchronized (this.stateLock) {
+            this.finishing = reason;
+        }
+    }
+
+    // 退出整体终结阶段, 新播放恢复入场.
+    @ApiStatus.Internal
+    public final void endFinishing() {
+        synchronized (this.stateLock) {
+            this.finishing = null;
         }
     }
 

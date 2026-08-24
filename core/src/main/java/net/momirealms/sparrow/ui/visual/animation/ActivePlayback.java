@@ -14,6 +14,17 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public abstract class ActivePlayback<H> implements AnimationHandle {
+    public static final AnimationHandle FINISHED = new AnimationHandle() {
+        @Override
+        public void cancel() {
+        }
+
+        @Override
+        public void whenFinished(@NotNull Consumer<FinishReason> callback) {
+            callback.accept(FinishReason.COMPLETED);
+        }
+    };
+
     private final WeakReference<H> host;
     private final long startTick;
     private final long totalTicks;                  // 播放开始时从描述读定的总时长, 负数表示无限

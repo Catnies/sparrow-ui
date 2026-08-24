@@ -37,6 +37,7 @@ import net.momirealms.sparrow.ui.visual.ResolvedVisual;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.visual.WindowVisual;
 import net.momirealms.sparrow.ui.visual.WindowVisualImpl;
+import net.momirealms.sparrow.ui.visual.animation.ActivePlayback;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import net.momirealms.sparrow.ui.visual.animation.TitleAnimationDefinition;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
@@ -282,6 +283,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     @NotNull
     @Override
     public AnimationHandle playTitleAnimation(@NotNull TitleAnimationDefinition animationDefinition) {
+        // 零时长的播放出生即到点, 不入场也不挂钟, 当场完成
+        if (animationDefinition.totalTicks() == 0) {
+            return ActivePlayback.FINISHED;
+        }
         // 先解析时钟, 把非法周期挡在入场之前
         long periodTicks = animationDefinition.periodTicks();
         Signal<Long> clock = Signals.everyTicks(periodTicks);
@@ -344,11 +349,15 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 以给定原因结束全部在播标题动画, 返回时通道一定是空的.
     // 终结期间入场的播放当场以同一原因结束而不进通道, 否则结束回调里的链式续播会让通道死灰复燃.
-    // 某个结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛.
+    // 某个结束回调抛异常也照样终结剩下的, 攒起来交给调用方抛. 已在 beginTitleFinishing 阶段内时, 闸门的开合由外层负责.
     private void finishTitleAnimations(@NotNull AnimationHandle.FinishReason reason) {
         ActiveTitleAnimation[] animations;
+        boolean owned;
         synchronized (this.titleAnimationLock) {
-            this.titleAnimationsFinishing = reason;
+            owned = this.titleAnimationsFinishing == null;
+            if (owned) {
+                this.titleAnimationsFinishing = reason;
+            }
             animations = this.titleAnimations;
             this.titleAnimations = ActiveTitleAnimation.NONE;
         }
@@ -362,12 +371,25 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 }
             }
         } finally {
-            synchronized (this.titleAnimationLock) {
-                this.titleAnimationsFinishing = null;
+            if (owned) {
+                this.endTitleFinishing();
             }
         }
         if (failure != null) {
             throw failure;
+        }
+    }
+
+    // 标题通道的终结闸门, 与 WindowVisual 的 beginFinishing/endFinishing 对称, 供关闭阶段把闸门拉长覆盖两个通道的批量终结.
+    private void beginTitleFinishing(@NotNull AnimationHandle.FinishReason reason) {
+        synchronized (this.titleAnimationLock) {
+            this.titleAnimationsFinishing = reason;
+        }
+    }
+
+    private void endTitleFinishing() {
+        synchronized (this.titleAnimationLock) {
+            this.titleAnimationsFinishing = null;
         }
     }
 
@@ -1677,15 +1699,23 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                 failure = ThrowableUtils.combine(failure, throwable);
             }
         }
+        // Window 的动画关闭阶段
+        this.windowVisual.beginFinishing(AnimationHandle.FinishReason.WINDOW_CLOSED);
+        this.beginTitleFinishing(AnimationHandle.FinishReason.WINDOW_CLOSED);
         try {
-            this.windowVisual.finishAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
-        } catch (Throwable throwable) {
-            failure = ThrowableUtils.combine(failure, throwable);
-        }
-        try {
-            this.finishTitleAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
-        } catch (Throwable throwable) {
-            failure = ThrowableUtils.combine(failure, throwable);
+            try {
+                this.windowVisual.finishAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
+            } catch (Throwable throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
+            }
+            try {
+                this.finishTitleAnimations(AnimationHandle.FinishReason.WINDOW_CLOSED);
+            } catch (Throwable throwable) {
+                failure = ThrowableUtils.combine(failure, throwable);
+            }
+        } finally {
+            this.windowVisual.endFinishing();
+            this.endTitleFinishing();
         }
         // 摘掉本次打开的订阅, 绑定声明留到下次打开再挂
         try {

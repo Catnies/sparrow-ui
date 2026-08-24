@@ -3,25 +3,12 @@ package net.momirealms.sparrow.ui.visual;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.visual.animation.ActivePlayback;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
-import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.Consumer;
-
 final class ActiveSlotAnimation extends ActivePlayback<AbstractSlotVisual> {
     static final ActiveSlotAnimation[] NONE = new ActiveSlotAnimation[0];
-    static final AnimationHandle FINISHED_EMPTY = new AnimationHandle() {
-        @Override
-        public void cancel() {
-        }
-
-        @Override
-        public void whenFinished(@NotNull Consumer<FinishReason> callback) {
-            callback.accept(FinishReason.COMPLETED);
-        }
-    };
 
     private final AnimationDefinition animationDefinition;
     private final int[] orderBySlot; // 宿主槽位 -> orderIndex, -1 表示不参与
