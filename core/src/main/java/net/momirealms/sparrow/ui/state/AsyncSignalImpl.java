@@ -66,9 +66,16 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         if (polling == null) return;
         long generation = ++polling.generation;
         polling.clockSubscription = polling.settings.clock().link(this, () -> this.onPollTick(polling, generation));
-        // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
-        if (this.loadState.get() == IDLE && System.nanoTime() - polling.lastCompletedNanos >= polling.settings.periodNanos()) {
-            this.dirty();
+        try {
+            // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
+            if (this.loadState.get() == IDLE && System.nanoTime() - polling.lastCompletedNanos >= polling.settings.periodNanos()) {
+                this.dirty();
+            }
+        } catch (RuntimeException | Error exception) {
+            // 激活刷新抛出时撤销时钟订阅, 让 register 的回滚留下干净现场
+            polling.clockSubscription.close();
+            polling.clockSubscription = null;
+            throw exception;
         }
     }
 
