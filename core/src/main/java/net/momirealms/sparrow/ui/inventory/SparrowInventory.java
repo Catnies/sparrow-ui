@@ -15,7 +15,6 @@ import net.momirealms.sparrow.ui.inventory.operation.CollectResult;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.RemoveResult;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
-import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
 import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
 import net.momirealms.sparrow.ui.inventory.transaction.InventoryTransactions;
 import net.momirealms.sparrow.ui.inventory.transaction.InventoryUpdateChannel;

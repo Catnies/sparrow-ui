@@ -231,7 +231,7 @@ public final class LiveSearchMenu {
         }
         // 先发布新结果再回到第一页, 所有依赖项会沿同一条状态链刷新
         this.input.set(normalized);
-        this.pages.page(0);
+        this.pages.setPage(0);
     }
 
     /**

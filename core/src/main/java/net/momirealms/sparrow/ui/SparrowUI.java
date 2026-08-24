@@ -103,7 +103,7 @@ public class SparrowUI implements Listener {
      *
      * @param fireBukkitInventoryEvents 是否允许派发 Bukkit Inventory 事件
      */
-    public void setFireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
+    public void fireBukkitInventoryEvents(boolean fireBukkitInventoryEvents) {
         this.fireBukkitInventoryEvents = fireBukkitInventoryEvents;
     }
 
@@ -144,7 +144,7 @@ public class SparrowUI implements Listener {
      *
      * @param warningsEnabled 是否报告 UI 用法警告
      */
-    public void setWarningsEnabled(boolean warningsEnabled) {
+    public void warningsEnabled(boolean warningsEnabled) {
         this.warningsEnabled = warningsEnabled;
     }
 

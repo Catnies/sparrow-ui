@@ -648,12 +648,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     @Override
-    public int getServerWindowState() {
+    public int serverWindowState() {
         return this.serverWindowState;
     }
 
     @Override
-    public int getClientWindowState() {
+    public int clientWindowState() {
         return this.clientWindowState;
     }
 

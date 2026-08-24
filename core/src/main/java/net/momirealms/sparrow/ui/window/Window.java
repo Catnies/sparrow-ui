@@ -407,14 +407,14 @@ public interface Window {
      *
      * @return 服务器窗口状态
      */
-    int getServerWindowState();
+    int serverWindowState();
 
     /**
      * 返回最近一次收到 Pong 确认的客户端窗口状态.
      *
      * @return 客户端已确认窗口状态
      */
-    int getClientWindowState();
+    int clientWindowState();
 
     /**
      * 替换客户端 Pong 确认窗口状态时依次执行的处理器列表.

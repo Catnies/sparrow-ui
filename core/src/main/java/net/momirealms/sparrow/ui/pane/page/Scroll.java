@@ -12,7 +12,7 @@ import java.util.List;
  * 把一条长序列按线铺开, 每次只显示连续的若干线, 滚动换线.
  * <p>竖着滚时一线是一行, 内容从上往下铺; 横着滚时一线是一列, 内容从左往右铺.
  * 两个方向的端口完全一样, {@link #line()} 一族说的"线"按方向各自指行或列.
- * <p>滚动按钮由使用方点击里调 {@link #advance(int)} 或 {@link #line(int)}, 而显示挂在 {@link #line()} 上.
+ * <p>滚动按钮由使用方点击里调 {@link #advance(int)} 或 {@link #setLine(int)}, 而显示挂在 {@link #line()} 上.
  *
  * <pre>{@code
  * Scroll<Item> scroll = Scroll.vertical(allItems, 9, 3);
@@ -193,7 +193,7 @@ public final class Scroll<T> {
      *
      * @param index 目标线偏移, 从 0 开始
      */
-    public void line(int index) {
+    public void setLine(int index) {
         this.requested.set(Math.clamp(index, 0, this.maxLine.get()));
     }
 

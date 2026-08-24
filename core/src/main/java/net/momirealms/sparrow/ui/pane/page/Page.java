@@ -19,7 +19,7 @@ import java.util.function.IntUnaryOperator;
 
 /**
  * 把一条长序列切成整页, 给出当前页的内容, 当前页码和总页数.
- * <p>翻页按钮由使用方点击里调 {@link #advance(int)} 或 {@link #page(int)}, 而显示挂在 {@link #page()} 上.
+ * <p>翻页按钮由使用方点击里调 {@link #advance(int)} 或 {@link #setPage(int)}, 而显示挂在 {@link #page()} 上.
  *
  * <pre>{@code
  * Page<Item> pages = Page.of(allItems, 18);
@@ -226,7 +226,7 @@ public final class Page<T> {
      *
      * @param index 目标页码, 从 0 开始
      */
-    public void page(int index) {
+    public void setPage(int index) {
         this.requested.set(Math.clamp(index, 0, this.pageCount.get() - 1));
     }
 
