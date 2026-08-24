@@ -9,16 +9,16 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.LongFunction;
 
-// 按周期弱缓存时钟节点: 同周期共享一个实例, 没人持有的周期随 GC 消失, 死掉的槽在下次取用时清掉.
+// 按周期弱缓存共享节点, 无外部持有者的实例由下次取用清理
 final class WeakPeriodCache<V> {
-    private final Map<Long, Entry<V>> entries = new HashMap<>();      // 周期 -> 实例, 只弱持有
-    private final ReferenceQueue<V> released = new ReferenceQueue<>();  // 实例已被回收的槽
+    private final Map<Long, Entry<V>> entries = new HashMap<>();      // 周期 -> 实例弱引用
+    private final ReferenceQueue<V> released = new ReferenceQueue<>();  // 已回收实例
 
-    // 取该周期的实例, 没有或已被回收就用 create 建一个. 返回值由调用方强持有才能活下去.
+    // 取该周期的实例, 缓存未命中时创建. 返回值需要由调用方保活.
     @NotNull
     synchronized V get(long period, @NotNull LongFunction<? extends V> create) {
         for (Reference<?> dead; (dead = this.released.poll()) != null; ) {
-            // 只清仍指向这条死引用的槽, 不误删已经重建的实例
+            // 仅删除仍指向该弱引用的槽, 保留已经重建的实例
             this.entries.remove(((Entry<?>) dead).period, dead);
         }
         Entry<V> cached = this.entries.get(period);
@@ -30,7 +30,7 @@ final class WeakPeriodCache<V> {
         return value;
     }
 
-    // 当前还占着槽的周期数, 含已回收但还没清的.
+    // 包含已回收但尚未从队列清理的槽
     synchronized int size() {
         return this.entries.size();
     }
@@ -39,7 +39,7 @@ final class WeakPeriodCache<V> {
         this.entries.clear();
     }
 
-    // 对实例的弱引用, 携带所在周期, 回收后能直接从引用队列定位到槽.
+    // 弱引用携带周期, 回收后可直接定位缓存槽
     private static final class Entry<V> extends WeakReference<V> {
         private final long period;
 

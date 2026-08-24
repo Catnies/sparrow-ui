@@ -32,6 +32,7 @@ public final class Signals {
 
     /**
      * 服务器 tick 源, 每 tick 失效一次, 值是<strong>本 signal 有订阅者以来经过的 tick 数</strong>.
+     * <p>第一个订阅者到来时启动, 最后一个离开时停表. 回调由 Paper 全局区域调度线程发出.
      *
      * @return tick 源
      */
@@ -51,10 +52,11 @@ public final class Signals {
 
     /**
      * 按周期降频的 tick 源, 每 {@code periodTicks} 个 tick 失效一次, 值为已经过去的周期数.
-     * <p>相同周期共享同一个派生节点, 因此所有用同一周期的绑定会在同一 tick 一起失效, 天然合并;
+     * <p>相同周期共享同一个派生节点, 所有使用该周期的绑定会在同一 tick 失效. 回调由 Paper 全局区域调度线程发出.
      *
      * @param periodTicks 正数 tick 周期
      * @return 降频后的 tick 源
+     * @throws IllegalArgumentException {@code periodTicks} 小于等于 0
      */
     @NotNull
     public static Signal<Long> everyTicks(long periodTicks) {
@@ -70,7 +72,7 @@ public final class Signals {
     /**
      * 毫秒时钟, 每 {@code periodMillis} 毫秒失效一次, 值是<strong>有订阅者以来经过的周期数</strong>, 跨停表续走不回退.
      * <p>任务挂在 Paper 异步调度器上, <strong>失效通知在异步线程上发出</strong>, 订阅者回调必须线程安全.
-     * 同周期共享一个实例, 没人持有的周期随 GC 消失; 第一个订阅者到来才起任务, 最后一个走了就取消.
+     * 同周期共享一个实例, 没人持有的周期随 GC 消失. 第一个订阅者到来时启动, 最后一个离开时取消.
      *
      * @param periodMillis 周期毫秒数, 不小于 50
      * @return 毫秒时钟
@@ -85,8 +87,14 @@ public final class Signals {
     }
 
     /**
-     * 组合来源, 任一来源失效即失效, 值在拉取时以两个来源的快照重算.
+     * 组合两个来源, 任一来源失效都会向下游发送失效, 拉取时分别读取两边的当前值.
+     * <p>两个读取不构成跨来源的原子快照. {@code combiner} 可能在任意拉取线程执行, 并发拉取时允许重跑.
      *
+     * @param <A> 第一个来源的值类型
+     * @param <B> 第二个来源的值类型
+     * @param <R> 组合结果类型
+     * @param a 第一个来源
+     * @param b 第二个来源
      * @param combiner 纯函数, 可在任意线程被执行
      * @return 组合 signal
      */
@@ -99,6 +107,19 @@ public final class Signals {
         });
     }
 
+    /**
+     * 组合三个来源, 任一来源失效都会向下游发送失效, 拉取时依次读取三个当前值.
+     *
+     * @param <A> 第一个来源的值类型
+     * @param <B> 第二个来源的值类型
+     * @param <C> 第三个来源的值类型
+     * @param <R> 组合结果类型
+     * @param a 第一个来源
+     * @param b 第二个来源
+     * @param c 第三个来源
+     * @param combiner 纯函数, 可在任意线程被执行
+     * @return 组合 signal
+     */
     @NotNull
     public static <A, B, C, R> Signal<R> combine(@NotNull Signal<A> a, @NotNull Signal<B> b, @NotNull Signal<C> c, @NotNull TriFunction<? super A, ? super B, ? super C, ? extends R> combiner) {
         Objects.requireNonNull(combiner, "combiner");
@@ -111,7 +132,7 @@ public final class Signals {
     /**
      * 按 key 在分区之间切换, 值取自 {@code key} 当前选中的那个分区.
      * <p>{@code key} 换了或选中的分区失效都向下游失效, {@code key} 重算后仍是同一个 key 时什么都不发生.
-     * <p>只有被选中的那个 key 会被取用, 没选中的分区不参与. 异步分区源的首载发生在第一次读, 而不是切过去的那一刻.
+     * <p>只有当前分区参与求值和失效传播. 异步分区的首载由返回 signal 的第一次读取触发.
      * <p>选中的分区句柄由返回的 signal 强持有, 换 key 时释放.
      *
      * <pre>{@code
@@ -120,8 +141,10 @@ public final class Signals {
      * Signal<List<Row>> current = Signals.switching(pages, page);
      * }</pre>
      *
+     * @param <K> 分区 key 类型
+     * @param <T> 值类型
      * @param source 分区数据源
-     * @param key 选择分区的 key, 值不得为 {@code null}
+     * @param key 选择分区的 key, 当前值不得为 {@code null}
      * @return 切换后的 signal
      */
     @NotNull
@@ -133,8 +156,7 @@ public final class Signals {
 
     /**
      * 按 key 在若干现成的 signal 之间切换, 值取自 {@code key} 当前选中的那一个.
-     * <p>与分区版的区别在来源上, 本版本从各自独立的 signal 来源, 各有各的失效.
-     * 没被选中的来源不参与失效传播, 也不会被求值.
+     * <p>每个来源都是独立 signal. 返回值只订阅并读取当前选中的来源.
      *
      * <pre>{@code
      * MutableSignal<Category> tab = Signal.of(Category.WEAPONS);
@@ -143,9 +165,12 @@ public final class Signals {
      *         Category.ARMOR, armor), tab);
      * }</pre>
      *
+     * @param <K> 选择 key 类型
+     * @param <T> 值类型
      * @param sources 每个 key 对应一个来源, 不能为空
      * @param key 选择来源的 key, 取值必须是 {@code sources} 里有的那些
      * @return 切换后的 signal
+     * @throws IllegalArgumentException {@code sources} 为空, 或拉取时找不到当前 key 对应的来源
      */
     @NotNull
     public static <K, T> Signal<T> switching(@NotNull Map<K, ? extends Signal<T>> sources, @NotNull Signal<K> key) {
@@ -167,19 +192,21 @@ public final class Signals {
     }
 
     /**
-     * 组合集合的成员, 集合换了成员, 或任何一个成员失效, 返回的 signal 都失效.
-     * <p>成员数量可以随时变化, 这是它与 {@link #combine} 的区别.
-     * <p>集合每次变化都必须给出一个与旧值不判等的新集合, 原地改集合再写回去, 上游会认为值没变.
-     * 集合的迭代顺序还要稳定, 否则同一批成员会被当成换过了.
+     * 汇合集合中的动态成员. 集合成员变化或任一成员 signal 失效时, 返回的 signal 都会失效.
+     * <p>普通 {@link MutableSignal} 承载集合时, 更新成员需要发布一个能被判定为新值的集合.
+     * {@link ListSignal} 和 {@link SetSignal} 可以直接作为来源并就地修改包装器. 集合迭代顺序必须稳定.
+     * <p>返回值是单调递增的失效标记, 数字本身没有业务含义.
      *
      * <pre>{@code
-     * MutableSignal<List<SparrowInventory>> chests = Signal.of(List.of(left, right));
-     * Signal<Long> anyChestChanged = Signals.merging(chests, SparrowInventory::contentSignal);
+     * ListSignal<SparrowInventory> inventories = ListSignal.of();
+     * inventories.add(left);
+     * Signal<Long> changed = Signals.merging(inventories, SparrowInventory::contentSignal);
      * }</pre>
      *
+     * @param <T> 集合成员类型
      * @param sources 给出当前成员的集合, 值不得为 {@code null}
      * @param signalOf 把成员换算成它的失效来源
-     * @return 汇合后的 signal
+     * @return 随成员变化单调递增的 signal
      */
     @NotNull
     public static <T> Signal<Long> merging(

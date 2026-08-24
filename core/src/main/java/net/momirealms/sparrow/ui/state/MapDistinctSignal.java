@@ -8,13 +8,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-/**
- * 派生节点, 有下游订阅时, 上游失效立即重算判等, 值不变则吞掉失效.
- * 无下游订阅时不挂上游监听, 一切由拉取路径驱动, 行为退化为惰性 map.
- *
- * @param <S> 上游值类型
- * @param <T> 派生值类型
- */
 sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSignal {
     private final AbstractSignal<S> source;
     private final Function<? super S, ? extends T> mapper;
@@ -41,8 +34,8 @@ sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSigna
 
     /**
      * 把缓存推进到上游当前版本, 已经是最新时直接返回.
-     * <p>求值不持锁, 所以 {@code mapper} 可以读取任何 signal.
-     * 多个线程同时刷新时它可能为同一个上游版本跑不止一次, 而只有 CAS 成功的那一份结果会被发布, 所以它必须是纯函数.
+     * <p>求值不持锁, {@code mapper} 可以读取其他 signal. 多线程刷新可能重复计算同一个上游版本,
+     * 只有 CAS 成功的结果会发布, 因此 {@code mapper} 必须是纯函数.
      *
      * @return 与上游当前版本对齐的缓存记录
      */
@@ -57,7 +50,7 @@ sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSigna
             boolean changed = current == null || !same(this.sameValue, current.value(), value);
             long version = current == null ? 1L : current.version() + (changed ? 1L : 0L);
             Cached<T> next = new Cached<>(value, sourceVersion, version);
-            // 只从读到的那一份往前推, 输给别人就重来, 缓存因此只会前进
+            // 只从当前读到的记录前进, CAS 失败后重读
             if (this.cached.compareAndSet(current, next)) {
                 return next;
             }
@@ -68,10 +61,10 @@ sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSigna
     protected void onActive() {
         this.upstream = this.linkTo(this.source, this::onSourceDirty);
         try {
-            // 没有基线时首次订阅会把"从无到有"误判为值变化, 把 notifiedVersion 抬到当前版本.
+            // 首次订阅先建立通知基线, 不把首次求值当成变化
             this.notifiedVersion.accumulateAndGet(this.align().version(), Math::max);
         } catch (RuntimeException | Error exception) {
-            // mapper 抛出时撤销上游挂载, 让 register 的回滚留下干净现场.
+            // 基线求值失败时撤销上游订阅, 配合 register 回滚
             this.upstream.close();
             this.upstream = null;
             throw exception;
@@ -80,7 +73,7 @@ sealed class MapDistinctSignal<S, T> extends AbstractSignal<T> permits LensSigna
 
     private void onSourceDirty() {
         long version = this.align().version();
-        // 把 notifiedVersion 推过这个版本的那个线程负责派发, 别的线程直接走人, 一次变化只通知一遍
+        // 线程推进 notifiedVersion 成功后执行派发, 同一版本只通知一次
         while (true) {
             long notified = this.notifiedVersion.get();
             if (version <= notified) {

@@ -7,21 +7,16 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.function.Function;
 
-/**
- * 多来源汇合节点, 成员由一个集合 signal 给出, 集合换了成员或任何一个成员失效, 都向下游失效.
- *
- * @param <T> 集合成员类型
- */
 final class MergingSignal<T> extends AbstractSignal<Long> {
     private final AbstractSignal<? extends Collection<? extends T>> sources;
     private final Function<? super T, ? extends Signal<?>> signalOf;
     private final Object mergeLock = new Object();
 
-    @Nullable private volatile Aligned aligned;         // 当前对齐到的成员及其版本快照
-    private volatile long version;                      // 单调递增, 换成员或成员失效时推进
-    private long notifiedVersion;                       // 已向下游通知过的版本
-    @Nullable private Subscription sourcesUpstream;     // 有下游订阅时挂着
-    private Subscription @Nullable [] memberUpstream;   // 有下游订阅时挂着, 与 aligned 一起换
+    @Nullable private volatile Aligned aligned;         // 当前成员与读取到的版本
+    private volatile long version;                      // 成员集合或任一成员失效时递增
+    private long notifiedVersion;                       // 最近一次已派发的版本
+    @Nullable private Subscription sourcesUpstream;
+    private Subscription @Nullable [] memberUpstream;   // 有下游订阅时存在, 与 aligned 同步换批
 
     MergingSignal(
             AbstractSignal<? extends Collection<? extends T>> sources,
@@ -38,7 +33,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
 
     @Override
     long version() {
-        // 无锁对一次快照确认有没有变化.
+        // 无锁检查当前对齐记录
         Aligned current = this.aligned;
         if (
                 current != null
@@ -58,39 +53,37 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
 
     /**
      * 把成员列表对齐到集合当前内容, 换过成员或成员失效过时推进版本, 已经对齐时只更新记账.
-     * <p>版本一律先推进再发布快照. {@link #version()} 按 aligned 到 version 的顺序读, 这里写成相反的顺序,
-     * 读者才不会看见新快照却配上旧版本 —— 那会让没有下游订阅的拉取路径把这次变化整个漏掉.
-     * 反过来看见旧快照配新版本是安全的: 那只会让下游多算一遍.
+     * <p>先推进 {@code version}, 再发布 {@code aligned}. {@link #version()} 按相反顺序读取,
+     * 因此不会观察到新成员配旧版本而漏掉变化. 旧成员配新版本只会多计算一次.
      *
      * @return 需要在锁外关闭的上一批成员转发凭证, 没有换成员时为 {@code null}
      */
     private Subscription @Nullable [] alignLocked() {
         long sourcesVersion = this.sources.version();
         Aligned current = this.aligned;
-        // 集合没失效过, 成员就不可能换, 这里可以直接沿用上次算好的那批成员, 省掉一次重算.
+        // 集合版本未变时直接沿用上次换算出的成员
         AbstractSignal<?>[] members = current != null && current.sourcesVersion() == sourcesVersion
                 ? current.members()
                 : this.currentMembers();
 
-        // 成员没换, 只看自上次记录以来有没有失效过
+        // 成员未换时只比较各自版本
         if (current != null && Arrays.equals(current.members(), members)) {
             long sum = versionSumOf(members);
             if (sum != current.memberVersionSum()) {
                 this.version++;
             }
-            // 集合版本一并记新, 否则集合每失效一次都要白重算一遍成员
+            // 同步记录集合版本, 避免重复换算相同成员
             this.aligned = new Aligned(members, sourcesVersion, sum);
             return null;
         }
 
-        // 无下游订阅时不挂转发, 版本改由 version 的拉取路径推进
+        // 无下游订阅时不建立转发, 由拉取路径推进版本
         Subscription[] previous = this.memberUpstream;
         Subscription[] attached = null;
         if (previous != null) {
             attached = this.linkAll(members, this::onUpstreamDirty);
         }
-        // 版本之和抛出时整笔换成员作废: 新转发当场撤掉, 对齐结果与上一批转发都维持原状,
-        // 否则逻辑上还对着旧成员, 转发却已经改听新成员, 而换回旧成员走的是快路径, 不会再重挂.
+        // 读取成员版本失败时撤销新转发, 让对齐记录和上一批订阅继续对应
         long sum;
         try {
             sum = versionSumOf(members);
@@ -106,13 +99,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         return previous;
     }
 
-    /**
-     * 读出集合当前内容, 并把每个成员换成它的 signal.
-     * <p>换算出来的 signal 数组才是"成员有没有换"的依据: 集合值换了不等于成员换了, 使用方完全可能
-     * 给出一个内容相同的新集合.
-     *
-     * @return 按集合迭代顺序排列的成员 signal
-     */
+    // 按集合迭代顺序换算成员 signal, 数组内容才是成员是否变化的依据
     private AbstractSignal<?>[] currentMembers() {
         Collection<? extends T> elements = this.sources.get();
         AbstractSignal<?>[] members = new AbstractSignal<?>[elements.size()];
@@ -123,7 +110,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         return members;
     }
 
-    // 集合或某个成员失效时重新对齐一次, 真的变了才向下游通知.
+    // 上游失效后重新对齐, 版本确实前进时才派发
     private void onUpstreamDirty() {
         Subscription[] previous;
         boolean shouldNotify = false;
@@ -150,17 +137,17 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
                 Aligned current = this.aligned;
                 assert current != null; // alignLocked 一定会留下一次对齐结果
                 this.memberUpstream = this.linkAll(current.members(), this::onUpstreamDirty);
-                // 上一句之前发生的成员失效收不到推送, 所以挂完转发再对一次快照, 把它收进版本里.
+                // 建完转发后再次对齐, 收进挂载窗口内发生的成员失效
                 discarded = this.alignLocked();
             } catch (RuntimeException | Error exception) {
-                // 集合求值或成员换算抛出时撤销已挂的订阅, 让 register 的回滚留下干净现场.
+                // 激活求值失败时撤销本轮订阅, 配合 register 回滚
                 closeAll(this.memberUpstream);
                 this.memberUpstream = null;
                 this.sourcesUpstream.close();
                 this.sourcesUpstream = null;
                 throw exception;
             }
-            // 没有基线时首次订阅会把无订阅期间攒下的版本推进误判为变化, 手动对齐.
+            // 首次订阅以当前版本建立通知基线
             this.notifiedVersion = this.version;
         }
         closeAll(discarded);
@@ -180,13 +167,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         closeAll(previousMembers);
     }
 
-    /**
-     * 把全部成员的版本加起来.
-     * <p>成员固定不变时各自的版本只增不减, 所以这个和只要没变, 就一定谁都没失效过.
-     *
-     * @param members 成员 signal
-     * @return 版本之和
-     */
+    // 成员固定且各版本单调递增, 版本和不变即可确认所有成员都未失效
     private static long versionSumOf(AbstractSignal<?>[] members) {
         long sum = 0L;
         for (int index = 0; index < members.length; index++) {
@@ -195,7 +176,7 @@ final class MergingSignal<T> extends AbstractSignal<Long> {
         return sum;
     }
 
-    // 一次对齐结果: 成员 signal, 算出这批成员时集合的版本, 以及记下这一次时成员的版本之和.
+    // 一次对齐使用的成员、集合版本和成员版本和
     private record Aligned(AbstractSignal<?>[] members, long sourcesVersion, long memberVersionSum) {
     }
 }

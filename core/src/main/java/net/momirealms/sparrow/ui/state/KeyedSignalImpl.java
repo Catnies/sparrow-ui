@@ -8,12 +8,6 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
-/**
- * {@link MutableKeyedSignal} 的同步实现.
- *
- * @param <K> 分区 key 类型
- * @param <T> 值类型
- */
 sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> permits MutablePlayerKeyedSignalImpl {
     private final Function<? super K, ? extends T> initial;
     private final BiPredicate<? super T, ? super T> sameValue;
@@ -59,11 +53,9 @@ sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignal
         this.partition(key).update(updater);
     }
 
-    /**
-     * 同步分区实现, 携带 stale 标记 + 惰性重算的可写源节点.
-     */
+    // 同步分区在首次读取或标脏后的下一次读取中装载
     static final class SyncPartition<K, T> extends AbstractSignal<T> {
-        // 装载被并发失效连续打断时的重试上限, 触顶后返回最后一次装载结果并保持 stale.
+        // 连续并发失效时限制单次 get 的装载次数, 触顶后返回最后一次结果并保持 stale
         private static final int MAX_LOAD_ATTEMPTS = 8;
 
         private final K key;
@@ -80,7 +72,7 @@ sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignal
         @Override
         public T get() {
             T value = null;
-            // 提交失败说明期间已有其他状态变更, 进行一个有上限的重读重试.
+            // CAS 失败表示装载期间状态又变了, 重读后在上限内继续装载
             for (int attempt = 0; attempt < MAX_LOAD_ATTEMPTS; attempt++) {
                 PartitionState<T> current = this.state.get();
                 if (!current.stale()) {
@@ -129,9 +121,8 @@ sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignal
             }
         }
 
-        // 无论当前是否已经 stale 都推进版本.
+        // 重复标脏仍推进版本, 每次通知都能使下游缓存过期
         void dirty() {
-            // 每一轮总有某个线程成功, 系统整体一定前进
             while (true) {
                 PartitionState<T> current = this.state.get();
                 if (this.state.compareAndSet(current, new PartitionState<>(current.value(), current.version() + 1, true))) {

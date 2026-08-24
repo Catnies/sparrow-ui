@@ -7,18 +7,12 @@ import java.util.concurrent.Executor;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-/**
- * {@link KeyedSignal} 的异步实现.
- *
- * @param <K> 分区 key 类型
- * @param <T> 值类型
- */
 sealed class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSignalImpl<T>> permits PlayerKeyedSignalImpl {
     private final T placeholder;
     private final Executor executor;
     private final Function<? super K, ? extends T> loader;
     private final BiPredicate<? super T, ? super T> sameValue;
-    @Nullable private final AsyncSignalImpl.Polling polling;    // 全部分区共用, 每个分区只在自己有订阅时轮询
+    @Nullable private final AsyncSignalImpl.Polling polling;    // 全部分区共用时钟设置, 各分区独立启停
 
     AsyncKeyedSignalImpl(T placeholder, Executor executor, Function<? super K, ? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable AsyncSignalImpl.Polling polling) {
         this.placeholder = placeholder;
@@ -33,7 +27,7 @@ sealed class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncS
         return new AsyncSignalImpl<>(this.placeholder, this.executor, () -> this.loader.apply(key), this.sameValue, this.polling);
     }
 
-    // 分区被取用时推动首载, 只有第一次真正生效.
+    // 真正读写分区时推动首载, 单个分区只会成功调度一次
     @Override
     void afterPartitionAccess(AsyncSignalImpl<T> partition) {
         partition.scheduleInitialLoad();

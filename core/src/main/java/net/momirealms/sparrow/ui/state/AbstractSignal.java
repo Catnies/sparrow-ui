@@ -31,11 +31,11 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 {
     private static final BiPredicate<Object, Object> DEFAULT_SAME_VALUE = Objects::equals;
 
-    private final CopyOnWriteArrayList<Entry> entries = new CopyOnWriteArrayList<>(); // 订阅者
-    private final ReferenceQueue<Runnable> deadNodes = new ReferenceQueue<>(); // 绑定节点已被回收的弱条目
+    private final CopyOnWriteArrayList<Entry> entries = new CopyOnWriteArrayList<>();
+    private final ReferenceQueue<Runnable> deadNodes = new ReferenceQueue<>(); // 已回收的绑定节点
     private final Object activationLock = new Object();
     private volatile boolean retired;
-    // 正在派发本节点的线程. 只拿来跟本线程自己比, 若并发则有一定的概率在派发时标记会被别人盖掉, 那种情况下大半的重入抓不到, 只能靠某一层恰好撞上把递归拦下.
+    // 只可靠拦截同线程重入. 并发派发会互相覆盖此标记, 跨线程反馈环仍受公开契约禁止, 检测只作尽力而为.
     @Nullable private Thread dispatchingThread;
 
     // 当前值版本, 值可能变化时单调递增.
@@ -57,30 +57,23 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     }
 
     /**
-     * 派生节点订阅上游, 条目记下本节点是它的下游, {@link #reapDownstream} 才能顺着订阅链走下去.
-     * 回调之前先清一次死条目, 会截断失效的节点才有机会发现自己的订阅者已经走光.
+     * 将本节点接到上游. 订阅条目同时记录下游节点, 供 {@link #reapDownstream} 沿派生链清理死订阅.
+     * <p>回调前先清理本节点, 让截断失效的节点也能发现订阅者已经全部离开.
      *
      * @param source 要订阅的上游
      * @param listener 失效回调
-     * @return 订阅凭证, 与 onDirty 的一样弱
+     * @return 弱订阅凭证
      */
     @NotNull
     final Subscription linkTo(@NotNull AbstractSignal<?> source, @NotNull Runnable listener) {
-        // 死条目本来靠派发时投递失败就地剔除, 而判等不变、成员没换、发出被推后这些节点可能长期不派发,
-        // 只有在上游失效这个唯一的活动时机主动清一次才发现得了下游已经走光; 清到空就退订, 上游的调度任务跟着停.
+        // 截断或推迟失效的节点可能长期没有派发机会, 在上游失效入口补一次清理才能及时停掉整条空链.
         return source.register(() -> {
             this.reapDeadEntries();
             listener.run();
         }, this);
     }
 
-    /**
-     * 同 {@link #linkTo}, 一次订阅一批上游.
-     *
-     * @param sources 要订阅的上游
-     * @param listener 失效回调
-     * @return 与 sources 同下标的订阅凭证
-     */
+    // 一次接上多个固定上游, 中途失败时撤销已经建立的订阅.
     @NotNull
     final Subscription[] linkAll(AbstractSignal<?>[] sources, @NotNull Runnable listener) {
         Subscription[] subscriptions = new Subscription[sources.length];
@@ -91,7 +84,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
                 linked++;
             }
         } catch (RuntimeException | Error exception) {
-            // 中途有谁激活失败就倒序撤销已经挂上的那些, 再把异常原样抛出
+            // 倒序撤销已经挂上的来源, 再把激活异常原样抛出
             for (int index = linked - 1; index >= 0; index--) {
                 subscriptions[index].close();
             }
@@ -102,12 +95,12 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
 
     @NotNull
     private Subscription register(Runnable callback, @Nullable AbstractSignal<?> downstream) {
-        // 弱引用的目标必须是新建的节点, 因为无捕获 lambda 与静态方法引用会被 JVM 缓存成常驻单例, 弱引用永远不会清空.
+        // 弱引用指向每次新建的节点. JVM 可能缓存无捕获 lambda 与静态方法引用, 直接弱引用户回调会让订阅无法消亡.
         BindingNode node = new BindingNode(callback, downstream);
         Entry entry = new Entry(node);
         node.bindEntry(entry);
         synchronized (this.activationLock) {
-            // 已终止的信号不再接受订阅, 返回一条立即失效的凭证.
+            // 已终止的来源返回一条已经关闭的凭证
             if (this.retired) {
                 entry.close();
                 return node;
@@ -134,12 +127,11 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         }
     }
 
-    // 关闭绑定节点已被回收的弱条目.
-    // 派发路径不必调用, deliver() 本来就会就地剔除死条目, 会截断上游失效的节点则要在失效回调入口自己补一次.
+    // 清理绑定节点已被回收的弱条目. 派发路径会自行发现, 截断失效的节点需要在上游回调入口主动调用.
     final void reapDeadEntries() {
         Reference<?> reference = this.deadNodes.poll();
         if (reference == null) return;
-        // 一次菜单关闭会让同一个共享 signal 上的一整批条目同时死亡, 逐条摘表就要复制一遍订阅表, 所以整批先只标关闭, 摘表统一交给一次清扫.
+        // 一次菜单关闭常会释放整批订阅, 先标记再批量摘表, 避免 CopyOnWriteArrayList 为每条死亡记录复制一次.
         do {
             if (reference instanceof NodeReference dead) {
                 dead.entry.markClosed();
@@ -148,9 +140,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         this.sweepClosed();
     }
 
-    // 先让下游各派生节点清一遍死条目, 再清自己, 全程不派发失效.
-    // 装载结果判等不变的轮询源没有派发机会, 下游死光了也没人发现, 只能由它在时钟到拍时主动走一遍:
-    // 派生节点清到空会自己退订, 退订逐级回到这里, 本节点随之清到空, onInactive 才有机会把时钟收掉.
+    // 从下游向上清理整条派生链, 全程不发送失效. 轮询值长期不变时靠时钟入口调用, 空链才能逐级退订并停表.
     final void reapDownstream() {
         for (Entry entry : this.entries) {
             if (entry.isClosed()) continue;
@@ -186,7 +176,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
                     SparrowUI.getInstance().handleException("Failed to deliver a signal invalidation", exception);
                 }
                 if (!alive) {
-                    // 本轮发现的死条目一起摘, 边派发边逐条摘表在订阅多的 signal 上是平方级
+                    // 本轮发现的死条目批量摘表, 避免派发期间反复复制订阅数组
                     reap |= entry.markClosed();
                 }
             }
@@ -196,7 +186,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         }
     }
 
-    // 把已经标关闭的条目一次性摘掉, 有多少条都只复制一遍订阅表.
+    // 一次摘掉全部已关闭条目
     private void sweepClosed() {
         synchronized (this.activationLock) {
             if (this.entries.removeIf(Entry::isClosed) && this.entries.isEmpty()) {
@@ -254,23 +244,21 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return new ThrottleSignal<>(this, millis, Signals.millisDelayer());
     }
 
-    // 当前订阅条目数.
     final int entryCount() {
         return this.entries.size();
     }
 
-    // 此数据源是否已终止.
     final boolean isRetired() {
         return this.retired;
     }
 
-    // 终止此数据源, 关闭全部订阅, 之后不再接受新订阅也不再派发.
+    // 终止来源并关闭全部订阅, 后续注册直接得到已关闭凭证
     final void retire() {
         synchronized (this.activationLock) {
             if (this.retired) return;
             this.retired = true;
         }
-        // 同样整批先标关闭再一次清扫.
+        // 整批标记后只清扫一次
         for (Entry entry : this.entries) {
             entry.markClosed();
         }
@@ -285,8 +273,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return DEFAULT_SAME_VALUE;
     }
 
-    // 判等函数的空值策略, 全部节点共用这一份. 两边都是 null 算相同, 只有一边是 null 算不同,
-    // 两边都非 null 才轮得到判等函数, 所以 ItemStack::isSimilar 这类不接受 null 的方法引用可以直接传.
+    // 所有节点共用同一套空值判等. 两边都非 null 时才调用用户函数, ItemStack::isSimilar 一类方法引用可以直接传入.
     static <V> boolean same(BiPredicate<? super V, ? super V> sameValue, V current, V candidate) {
         if (current == null || candidate == null) {
             return current == candidate;
@@ -294,16 +281,11 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         return sameValue.test(current, candidate);
     }
 
-    // 把公开工厂收到的 signal 收窄到内部实现.
     static <T> AbstractSignal<T> require(Signal<T> signal) {
         return (AbstractSignal<T>) Objects.requireNonNull(signal, "signal");
     }
 
-    /**
-     * 关闭一批凭证, 为 {@code null} 时无操作.
-     *
-     * @param subscriptions 订阅凭证
-     */
+    // 关闭一批可能尚未建立的订阅
     static void closeAll(Subscription @Nullable [] subscriptions) {
         if (subscriptions == null) return;
         for (int index = 0; index < subscriptions.length; index++) {
@@ -315,9 +297,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
     record Versioned<V>(V value, long version) {
     }
 
-    /**
-     * 订阅条目, 本 signal 只弱引用绑定节点, 凭证一丢订阅就死亡.
-     */
+    // 来源只经弱引用持有绑定节点, 凭证消亡后条目等待下一次清扫
     private final class Entry implements Subscription {
         private final AtomicBoolean closed = new AtomicBoolean();
         private final NodeReference node;
@@ -348,13 +328,13 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
             }
         }
 
-        // 标记关闭并拆掉与绑定节点的相互引用, 但不动订阅表; 返回是否由本次调用完成关闭.
+        // 标记关闭并拆掉与绑定节点的相互引用, 订阅表留给批量清扫, 返回本次是否完成关闭
         private boolean markClosed() {
             if (!this.closed.compareAndSet(false, true)) {
                 return false;
             }
             // 本条目也可能被 retire 或死条目清理直接关掉, 那些路径不经过 BindingNode.close(),
-            // 所以拆除统一收在这里: 节点还活着就让它丢掉回调与对本 signal 的引用.
+            // 所有关闭路径都在这里断开回调与来源引用
             if (this.node.get() instanceof BindingNode node) {
                 node.detach();
             }
@@ -405,7 +385,7 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
             }
         }
 
-        // 断开两个方向的引用, 不再持有用户回调, 也不再经条目持有所属 signal.
+        // 断开两个方向的引用, 释放用户回调与所属 signal
         private void detach() {
             this.closed = true;
             this.callback = null;
@@ -414,9 +394,6 @@ abstract sealed class AbstractSignal<T> implements Signal<T> permits
         }
     }
 
-    /**
-     * 对 {@link BindingNode} 的弱引用, 目标以 {@link Runnable} 形态存放.
-     */
     private static final class NodeReference extends WeakReference<Runnable> {
         private final AbstractSignal<?>.Entry entry;
 

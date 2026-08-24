@@ -9,13 +9,19 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
- * 包一个现成 {@link List} 的集合装饰器, 自己就是那个 {@code List}, 每次有效变更落地之后向订阅者失效.
- * <p>{@link #get()} 返回包装器自己, 是活视图; 跨线程读的安全性由被包装的 {@code List} 决定,
- * 要给渲染线程或异步 Provider 读就包一个写时复制的. 判等按身份, 内容相同的两个包装器不相等, 要比内容就比 {@code List.copyOf(wrapper)}.
- * <p>通知只说 "变了", 不带元素; 无效变更({@code set} 写回同一个对象、空的 {@code addAll})不通知.
- * {@code sort} 只要至少有两个元素就会通知, 顺序没有变化也一样.
- * {@code map} / {@code mapDistinct} 的 mapper <strong>必须返回不可变结果</strong>, 直接返回这个活集合会让判等永远说 "没变".
- * <p><strong>包装器强持被包装的 {@code List}</strong>; 注入到长命结构里时它随该结构活着. 元素禁止放 {@code Player} / {@code Entity} / {@code World}.
+ * 同时实现 {@link List} 与 {@link Signal} 的集合装饰器. 有效变更落地后发送失效, {@link #get()} 返回包装器自身的活视图.
+ * <p>线程安全由被包装的 {@code List} 决定, 判等使用包装器身份. 派生函数需要返回不可变结果, 不能直接返回这个活视图.
+ * {@code sort} 在元素不少于两个时采用保守通知, 即使顺序没有变化也会发送一次失效.
+ * <p><strong>包装器会长期持有 delegate 和元素, 禁止存放 {@code Player}、{@code Entity}、{@code World}.</strong>
+ *
+ * <pre>{@code
+ * ListSignal<String> rows = ListSignal.of();
+ * rows.batch(() -> {
+ *     rows.clear();
+ *     rows.addAll(List.of("first", "second"));
+ * });
+ * Signal<Integer> count = rows.mapDistinct(List::size);
+ * }</pre>
  *
  * @param <E> 元素类型
  */
@@ -23,11 +29,11 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
 
     /**
      * 挂一个元素钩子, 元素存入<strong>之前</strong>调用, 返回值才是真正存进去的, 原样返回就是不换.
-     * <p>它是给 "把包装器注入到别人的字段里" 这种用法准备的, 订阅者只知道 "表变了", 钩子才知道谁来了.
-     * 钩子在写入线程同步跑, 通知永远在钩子之后; 挂多个按挂的顺序串着跑, 前一个的返回值是后一个的入参.
-     * 替换类操作({@code set}、{@code ListIterator.set})先对旧元素跑 {@link #afterRemove} 的钩子, 再对新元素跑本钩子.
-     * <p>换值有一条边界: 调用方之后拿原对象来 {@code remove(Object)} / {@code contains}, 按 {@code equals} 找不到换过的那个.
-     * <strong>钩子里不得订阅本 signal 再在回调里写它</strong>, 那是重入. 钩子是构造期配置, 要在把包装器交出去之前挂好.
+     * <p>钩子在写入线程同步执行, 多个钩子按注册顺序串联, 前一个返回值会传给后一个.
+     * 替换类操作({@code set}、{@code ListIterator.set})先对旧元素执行 {@link #afterRemove} 钩子, 再处理新元素,
+     * 让按位置维护的旁表先释放旧记录.
+     * <p>钩子替换元素后, 调用方再用原对象执行 {@code remove(Object)} 或 {@code contains} 可能找不到已存元素.
+     * <strong>钩子属于构造期配置, 应在发布包装器之前注册, 并且不得建立会写回本 signal 的订阅.</strong>
      *
      * @param hook 收到调用方要放的元素, 返回真正存进去的
      * @return 本包装器
@@ -36,9 +42,9 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
     ListSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook);
 
     /**
-     * 挂一个元素钩子, 元素从集合移除<strong>之后</strong>调用. 按下标、按迭代器移除时收到的是被存着的那个;
+     * 挂一个元素钩子, 元素从集合移除<strong>之后</strong>调用. 按下标、按迭代器移除时收到的是被存着的那个.
      * {@code remove(Object)} 只能给调用方传入的参数, 对身份判等的元素类型两者是同一个.
-     * <p>钩子抛出时变更已经落地, 异常原样抛给写入方, 订阅者仍会收到这次变更的通知.
+     * <p>钩子抛出时变更已经落地, 异常会抛给写入方, 订阅者仍会收到这次失效.
      *
      * @param hook 收到被移除的元素
      * @return 本包装器
@@ -49,7 +55,7 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知.
      * <p>只合并本线程的变更, 别的线程这期间的变更照常各自通知. {@code changes} 抛出时已经落地的变更保留并仍通知一次.
-     * <p>{@code changes} 与随后通知都抛出时, batch 最终抛出通知异常, {@code changes} 的异常不会保留.
+     * 两边都抛出时, 最终传播通知阶段的异常.
      *
      * @param changes 要合并的一批变更
      */
@@ -58,6 +64,7 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
     /**
      * 包一个现成的 {@code List}. 之后<strong>只能经包装器改它</strong>, 绕过包装器直接改 delegate 不会通知任何人.
      *
+     * @param <E> 元素类型
      * @param delegate 被包装的 {@code List}
      * @return 包装器
      */
@@ -67,9 +74,10 @@ public sealed interface ListSignal<E> extends Signal<List<E>>, List<E> permits L
     }
 
     /**
-     * 新建一个包着 {@link CopyOnWriteArrayList} 的装饰器, 任何线程都能安全迭代.
+     * 新建一个包着 {@link CopyOnWriteArrayList} 的装饰器, 支持写入期间的并发迭代.
      * <p>写时复制每次写都复制整个数组, 热路径或大集合要按自己的访问模式另选 delegate 用 {@link #wrap}.
      *
+     * @param <E> 元素类型
      * @return 包装器
      */
     @NotNull

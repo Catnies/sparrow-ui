@@ -4,12 +4,6 @@ import net.momirealms.sparrow.ui.Subscription;
 
 import java.util.function.Function;
 
-/**
- * 惰性派生节点, 失效原样透传, 值在拉取时按上游版本重算并缓存.
- *
- * @param <S> 上游值类型
- * @param <T> 派生值类型
- */
 final class MappedSignal<S, T> extends AbstractSignal<T> {
     private final AbstractSignal<S> source;
     private final Function<? super S, ? extends T> mapper;

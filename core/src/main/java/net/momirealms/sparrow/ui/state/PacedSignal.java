@@ -5,9 +5,8 @@ import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 按时间安排发出的派生节点, 防抖与节流共用的骨架.
- * <p>有订阅期间 {@code get()} 返回上一次发出时从上游拍下的快照, 下游在两次发出之间看到稳定值;
- * 没有订阅时退化为透传, 不挂上游也不占调度任务, 拉取路径发现上游版本变了就重新拍快照.
+ * 防抖与节流共用的定时派生节点.
+ * <p>有订阅期间读取上次通知时保存的值. 没有订阅时透传上游, 不建立订阅或延时任务.
  *
  * @param <T> 值类型
  */
@@ -17,11 +16,11 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
     private final Delayer delayer;
     private final Object stateLock = new Object();
 
-    @Nullable private volatile Snapshot<T> snapshot;    // 最近一次发出, 或无订阅时最近一次拉取拍下的快照
-    private volatile boolean active;                    // 有订阅期间为真, 拉取路径据此决定读快照还是透传
-    private Subscription upstream;                      // 有订阅期间挂着
-    @Nullable private Delayer.Handle pending;           // 还没触发的延时任务, 状态锁内读写
-    private long generation;                            // 每排一个任务推进一次, 停表再推进一次; 任务带着代数触发, 不符即已被取代或属于上一段
+    @Nullable private volatile Snapshot<T> snapshot;    // 最近一次通知或无订阅拉取时保存的值
+    private volatile boolean active;
+    private Subscription upstream;
+    @Nullable private Delayer.Handle pending;           // 状态锁内读写
+    private long generation;                            // 每次排入与停表都递增, 用于拒绝被替换或跨激活段的迟到任务
 
     PacedSignal(AbstractSignal<T> source, long delay, Delayer delayer) {
         this.source = source;
@@ -39,7 +38,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
         return this.current().version();
     }
 
-    // 有订阅期间只读快照, 无订阅时把快照对齐到上游当前版本.
+    // 有订阅期间读取稳定值, 无订阅时对齐到上游当前版本
     private Snapshot<T> current() {
         if (this.active) {
             Snapshot<T> snapshot = this.snapshot;
@@ -55,7 +54,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
             return current;
         }
         synchronized (this.stateLock) {
-            // 刚被激活的话基线已经拍好, 直接用
+            // 并发激活已经建立基线时直接使用
             if (!this.active && this.sourceChangedLocked()) {
                 this.captureLocked();
             }
@@ -67,7 +66,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
 
     @Override
     protected void onActive() {
-        // 先挂上游再拍基线, 挂载前后到达的失效都不会漏; 订阅前的变化并进基线, 不补发
+        // 先挂上游再建立基线, 订阅前的变化并入基线且不补发
         this.upstream = this.linkTo(this.source, this::onSourceDirty);
         try {
             synchronized (this.stateLock) {
@@ -77,7 +76,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
                 this.active = true;
             }
         } catch (RuntimeException | Error exception) {
-            // 读上游抛出时撤销挂载, 让 register 的回滚留下干净现场
+            // 建立基线失败时撤销上游订阅, 配合 register 回滚
             this.upstream.close();
             this.upstream = null;
             throw exception;
@@ -93,8 +92,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
         if (emit) this.notifyDirty();
     }
 
-    // 延时任务到点. 代数不符说明这个任务已被后来的排入取代或属于上一段, 什么也不做.
-    // 本方法整个跑在调度器线程上, 拍快照会跑用户的 mapper, 抛出去只会落到调度器自己的日志里, 所以在这里兜住上报.
+    // 延时任务在调度线程触发. generation 隔离被替换和上一激活段的迟到任务, 用户求值异常在此边界上报.
     private void fire(long generation) {
         try {
             this.reapDeadEntries();
@@ -110,13 +108,13 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
         }
     }
 
-    // 上游失效时在状态锁内决定怎么办, 返回 true 表示现在就向下游发出.
+    // 上游失效时在状态锁内决定是否立即派发
     abstract boolean onSourceDirtyLocked();
 
-    // 延时任务到点时在状态锁内决定怎么办, 返回 true 表示向下游发出.
+    // 延时任务到点时在状态锁内决定是否派发
     abstract boolean onFireLocked();
 
-    // 最后一个订阅走了之后在状态锁内收尾, 只属于这一段的状态在这里清掉.
+    // 在状态锁内清理当前激活段的子类状态
     void onInactiveLocked() {
     }
 
@@ -131,14 +129,14 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
         return current == null || current.sourceVersion() != this.source.version();
     }
 
-    // 从上游拍一份快照并推进版本. 先读版本再读值, 两次读之间上游又变了的话记下的版本偏旧, 下次拉取会再算一遍. 状态锁内调用.
+    // 保存上游当前值并推进版本. 先读版本再读值, 并发变化会留下偏旧版本, 下一次拉取会再次对齐.
     final void captureLocked() {
         long sourceVersion = this.source.version();
         Snapshot<T> current = this.snapshot;
         this.snapshot = new Snapshot<>(this.source.get(), sourceVersion, current == null ? 1L : current.version() + 1L);
     }
 
-    // 排一个 delay 之后触发的任务, 顶掉还没触发的那个. 排不进去就整笔作废, 代数与旧任务都不动. 状态锁内调用.
+    // 排入新任务后再取消旧任务. 调度失败时 generation、pending 与旧任务都保持原样.
     final void scheduleLocked() {
         long next = this.generation + 1L;
         Delayer.Handle scheduled = this.delayer.schedule(() -> this.fire(next), this.delay);
@@ -157,7 +155,7 @@ abstract sealed class PacedSignal<T> extends AbstractSignal<T> permits DebounceS
             this.active = false;
             pending = this.pending;
             this.pending = null;
-            // 取消追不上执行时这个任务会在下一段里到点, 代数先推进一次, 它到点时就认不出自己了
+            // 先推进 generation, 让未能及时取消的任务无法进入下一激活段
             this.generation++;
             this.onInactiveLocked();
         }

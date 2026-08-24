@@ -1,13 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
-/**
- * 节流节点, 两次发出之间至少隔 delay.
- * <p>没有打开的窗口时立即发出并开一个窗口; 窗口内的失效只记下待发, 窗口到期时补发一次并续开窗口, 没有待发就关窗.
- *
- * @param <T> 值类型
- */
 final class ThrottleSignal<T> extends PacedSignal<T> {
-    private boolean trailing;   // 窗口内收到过失效, 到期要补发. 状态锁内读写
+    private boolean trailing;   // 当前窗口内收到过失效, 状态锁内读写
 
     ThrottleSignal(AbstractSignal<T> source, long delay, Delayer delayer) {
         super(source, delay, delayer);
@@ -29,7 +23,7 @@ final class ThrottleSignal<T> extends PacedSignal<T> {
         return this.emitAndOpenWindowLocked();
     }
 
-    // 窗口随停表一起关掉, 窗口内攒下的待发也不带进下一段
+    // 停表时丢弃当前窗口内的待发记录
     @Override
     void onInactiveLocked() {
         this.trailing = false;

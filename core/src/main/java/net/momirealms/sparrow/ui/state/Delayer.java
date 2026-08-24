@@ -8,14 +8,14 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
-// 一次性延时任务的调度抽象, 防抖与节流节点靠它在 tick 与毫秒两种时基上共用同一套实现.
+// 防抖与节流共用的一次性延时入口, 测试可替换实际调度器
 interface Delayer {
 
-    // 在 delay 个时间单位之后跑一次 task, 返回可取消的句柄. delay 必须为正.
+    // 在 delay 个时间单位后执行一次, delay 必须为正
     @NotNull
     Handle schedule(@NotNull Runnable task, long delay);
 
-    // tick 基, 任务跑在 Paper 全局区域调度线程.
+    // tick 时基, 任务运行在 Paper 全局区域调度线程
     @NotNull
     static Delayer paperTicks() {
         return (task, delayTicks) -> {
@@ -25,7 +25,7 @@ interface Delayer {
         };
     }
 
-    // 毫秒基, 任务跑在 Paper 异步调度线程.
+    // 毫秒时基, 任务运行在 Paper 异步调度线程
     @NotNull
     static Delayer paperMillis() {
         return (task, delayMillis) -> {

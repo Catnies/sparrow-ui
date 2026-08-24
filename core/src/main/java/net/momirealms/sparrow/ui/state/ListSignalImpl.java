@@ -19,10 +19,6 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 
-/**
- * {@link ListSignal} 的实现.
- * Signal 那一半继承自 {@link CollectionSignal}, {@code List} 那一半全部转给根 {@link Facade}, 变更路径与钩子都在那边.
- */
 final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListSignal<E> {
     private final List<E> delegate;
     private final Facade root;
@@ -258,11 +254,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
         return this.delegate.toString();
     }
 
-    /**
-     * {@code List} 那一半: 每个方法代理给 target, 变更落地后推进版本与通知, 钩子也在这里跑.
-     * <p>{@code subList} / {@code reversed} 给出的视图也是本类, 写穿到同一个包装器, 所以视图上的变更同样通知.
-     * 视图的判等按内容(普通 {@code List} 的契约), 只有包装器本身按身份.
-     */
+    // 根 List 与 subList/reversed 视图共用的写入门面, 所有变更写回同一个包装器
     private final class Facade implements List<E> {
         private final List<E> target;
 
@@ -270,13 +262,13 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             this.target = target;
         }
 
-        // 放入之前过钩子, 返回真正存进去的元素.
+        // 返回经过全部放入钩子后的元素
         private E adding(E element) {
             Function<E, E> hook = ListSignalImpl.this.adding;
             return hook == null ? element : hook.apply(element);
         }
 
-        // 移除之后过钩子再通知. 钩子抛出时变更已经落地, 通知仍要发出, 所以放在 finally 里.
+        // 移除已经落地, 钩子失败时仍在 finally 中通知
         private void removedThenChanged(E element) {
             try {
                 Consumer<E> hook = ListSignalImpl.this.removing;
@@ -286,7 +278,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             }
         }
 
-        // 一批移除之后逐个过钩子再通知一次.
+        // 一批移除逐个执行钩子, 最后只通知一次
         private void allRemovedThenChanged(@Nullable List<E> doomed) {
             try {
                 Consumer<E> hook = ListSignalImpl.this.removing;
@@ -298,7 +290,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             }
         }
 
-        // 读取全部直接代理
+        // 读取
 
         @Override
         public int size() {
@@ -423,7 +415,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             return added;
         }
 
-        // 批量放入先把每个元素过一遍钩子, 再一次性交给 target, 写时复制的 delegate 只复制一次.
+        // 先计算全部钩子结果再批量写入, 写时复制 delegate 只复制一次
         private Collection<? extends E> allAdding(Collection<? extends E> c) {
             Function<E, E> hook = ListSignalImpl.this.adding;
             if (hook == null || c.isEmpty()) return c;
@@ -443,7 +435,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
                 if (old != element) ListSignalImpl.this.changed();
                 return old;
             }
-            // 先摘旧再放新, 旁表按位置登记时才不会把刚放进去的新条目误删
+            // 先摘旧值再放新值, 让按位置维护的旁表保持对应
             E old = this.target.get(index);
             if (old == element) return old;
             if (removing != null) removing.accept(old);
@@ -467,7 +459,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
                 if (changed[0]) ListSignalImpl.this.changed();
                 return;
             }
-            // 先把每个位置的结果与钩子算完, 再让 target 自己按位置写回, 写时复制的 delegate 只复制一次
+            // 先计算全部替换结果再批量写回, 写时复制 delegate 只复制一次
             List<E> results = new ArrayList<>(this.target.size());
             boolean changed = false;
             for (E old : this.target) {
@@ -527,7 +519,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
         @Override
         public boolean removeAll(@NotNull Collection<?> c) {
-            // 没挂钩子时谓词不会被用到, 别白建一份查找集
+            // 没有移除钩子时沿用 delegate 的原始查找方式
             Collection<?> lookup = ListSignalImpl.this.removing == null ? c : lookupOf(c);
             return this.removeMatching(lookup::contains, () -> this.target.removeAll(c));
         }
@@ -543,7 +535,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             return this.removeMatching(filter, () -> this.target.removeIf(filter));
         }
 
-        // 批量移除: 有钩子时先收集命中的元素, 再交给 target 的批量方法, 最后逐个回调. 写时复制的迭代器不支持逐个删, 所以不能改写成迭代删.
+        // 有钩子时先记录命中元素, 再让 target 批量删除. 写时复制迭代器不支持逐个删除.
         private boolean removeMatching(Predicate<? super E> matching, BooleanSupplier bulkRemove) {
             List<E> doomed = null;
             if (ListSignalImpl.this.removing != null) {
@@ -566,7 +558,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             this.allRemovedThenChanged(doomed);
         }
 
-        // 视图与迭代器, 都写穿到同一个包装器
+        // 视图与迭代器
 
         @Override
         @NotNull
@@ -612,7 +604,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             return this.target.toString();
         }
 
-        // 迭代器上的 remove / set / add 同样经钩子与通知, 每个动作各通知一次.
+        // 迭代器变更写回同一个包装器, 每个动作通知一次
         private final class MutatingIterator implements ListIterator<E> {
             private final ListIterator<E> it;
             private E last;   // 最近一次 next / previous 给出的元素, set 与 remove 的对象
@@ -686,7 +678,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
             @Override
             public void forEachRemaining(Consumer<? super E> action) {
-                // 逐个经 next, 让 last 跟着走, 之后的 remove 才对得上元素
+                // 经 next 更新 last, 后续 remove 才能拿到对应元素
                 while (this.it.hasNext()) action.accept(this.next());
             }
         }

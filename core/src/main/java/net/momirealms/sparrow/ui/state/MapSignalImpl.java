@@ -22,13 +22,6 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-/**
- * {@link MapSignal} 的实现, 每个方法代理给 delegate, 变更落地后推进版本与通知, 钩子也在这里调.
- * <p>三个视图与 {@code Map.Entry} 都写穿到本对象, 所以从视图上删、经 {@code setValue} 改同样通知.
- *
- * @param <K> key 类型
- * @param <V> 值类型
- */
 final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements MapSignal<K, V> {
     private final Map<K, V> delegate;
     @Nullable private volatile BiFunction<K, V, V> putting;     // 存入之前的钩子, 挂多个时已串成一个
@@ -61,7 +54,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this;
     }
 
-    // 放入之前过钩子, 返回真正存进去的值.
+    // 返回经过全部放入钩子后的值
     private V putting(K key, V value) {
         BiFunction<K, V, V> hook = this.putting;
         return hook == null ? value : hook.apply(key, value);
@@ -71,7 +64,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this.putting != null || this.removing != null;
     }
 
-    // 读取全部直接代理
+    // 读取
 
     @Override
     public int size() {
@@ -115,13 +108,13 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this.putOne(key, value);
     }
 
-    // 放一个映射, 返回旧值; 等值映射保留已存实例, 有效变更才通知. 有钩子时先摘旧再放新.
+    // 等值映射保留已存实例, 有钩子时先摘旧值再放新值
     private V putOne(K key, V value) {
         V old = this.delegate.get(key);
         if (old != null && old.equals(value)) return old;
         if (!this.hooked()) {
             old = this.delegate.put(key, value);
-            // 旧值为 null 时分不清 "原来没有" 与 "原来映射到 null", 一律按变了算
+            // 返回 null 无法区分新增 key 与覆盖 null 映射, 两种情况都保守通知
             if (old == null || !old.equals(value)) this.changed();
             return old;
         }
@@ -139,7 +132,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             this.changed();
             return;
         }
-        // 逐个走放入路径, 每个值各自过钩子; 通知合并成一次
+        // 每个值单独经过钩子, 通知由 batch 合并
         this.batch(() -> {
             for (Map.Entry<? extends K, ? extends V> entry : m.entrySet()) {
                 this.putOne(entry.getKey(), entry.getValue());
@@ -169,12 +162,12 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
                 if (!old.equals(value)) this.changed();
                 return old;
             }
-            // 旧值为 null 分不清 "没替换" 与 "替换了 null 值映射", 后者按实际变更通知
+            // 返回 null 无法区分未命中与替换 null 映射, containsKey 补足判断
             if (value != null && this.delegate.containsKey(key)) this.changed();
             return null;
         }
         V old = this.delegate.get(key);
-        // 旧值为 null 时只有确实存着 null 值映射才继续替换
+        // null 旧值只有在 key 确实存在时才参与替换
         if (Objects.equals(old, value) || (old == null && !this.delegate.containsKey(key))) return old;
         if (old != null) this.removed(key, old);
         this.delegate.replace(key, this.putting(key, value));
@@ -190,7 +183,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return replaced;
         }
         V current = this.delegate.get(key);
-        // null 旧值按 Map 契约参与匹配, 只在 key 确实存在时算命中
+        // null 旧值按 Map 契约参与匹配, key 必须真实存在
         if (!Objects.equals(current, oldValue) || (current == null && !this.delegate.containsKey(key))) return false;
         if (Objects.equals(current, newValue)) return true;
         if (current != null) this.removed(key, current);
@@ -212,7 +205,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         if (changed[0]) this.changed();
     }
 
-    // 替换一个映射的值时过钩子: 先摘旧再放新, 返回真正存进去的新值. 跑在 delegate 的重算函数里.
+    // 在 delegate 重算函数中先摘旧值再计算实际存入的新值
     private V swapping(K key, @Nullable V old, V replacement) {
         if (old != null) this.removed(key, old);
         return replacement == null ? null : this.putting(key, replacement);
@@ -223,7 +216,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         if (hook != null) hook.accept(key, value);
     }
 
-    // compute 钩子跑在 delegate 的重算函数里, 并发 map 的原子性才保得住; 重算函数可能被重跑, 以最后一次为准.
+    // compute 钩子留在 delegate 的重算函数内, 保留并发 map 的按 key 原子性
 
     @Override
     public V compute(K key, @NotNull BiFunction<? super K, ? super V, ? extends V> remappingFunction) {
@@ -268,7 +261,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     public V merge(K key, @NotNull V value, @NotNull BiFunction<? super V, ? super V, ? extends V> remappingFunction) {
-        // 经 compute 走, 新插入的值也要过钩子
+        // 经 compute 进入同一条钩子路径
         return this.compute(key, (k, old) -> old == null ? value : remappingFunction.apply(old, value));
     }
 
@@ -277,8 +270,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
     @Override
     public V remove(Object key) {
         if (this.delegate.get(key) == null) {
-            // key 不存在, 或映射到 null. 后者只在允许 null 值的 delegate 上出现, 用二参 remove 原子确认后照常通知;
-            // 并发 map 读到 null 恒为 "没删到", 不跑钩子也不通知.
+            // 允许 null 的 delegate 用二参 remove 原子确认 null 映射, 并发 map 的 null 则表示未命中
             if (this.delegate.containsKey(key) && this.delegate.remove(key, null)) {
                 this.removedThenChanged(key, null);
             }
@@ -306,7 +298,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return removed;
     }
 
-    // 移除之后过钩子再通知. 钩子抛出时变更已经落地, 通知仍要发出, 所以放在 finally 里.
+    // 移除已经落地, 钩子失败时仍在 finally 中通知
     @SuppressWarnings("unchecked")
     private void removedThenChanged(Object key, V value) {
         try {
@@ -316,7 +308,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         }
     }
 
-    // 一批移除之后逐个过钩子再通知一次.
+    // 一批移除逐个执行钩子, 最后只通知一次
     private void allRemovedThenChanged(@Nullable List<Map.Entry<K, V>> doomed) {
         try {
             BiConsumer<K, V> hook = this.removing;
@@ -328,7 +320,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         }
     }
 
-    // 删掉一个 key 的映射, 过钩子并通知; 没有这个 key 或并发下没删到时什么也不做.
+    // 删除单个 key, 并发竞争中未命中时不执行钩子或通知
     private boolean removeKey(Object key) {
         if (this.delegate.get(key) == null) {
             if (this.delegate.containsKey(key) && this.delegate.remove(key, null)) {
@@ -343,7 +335,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return true;
     }
 
-    // 按条目谓词批量移除, 逐个 remove 以便每条都过钩子; 通知一次.
+    // 按条目谓词批量删除, 有钩子时逐条确认实际删除结果
     private boolean removeEntries(Predicate<? super Map.Entry<K, V>> matching) {
         if (this.removing == null) {
             boolean removed = this.delegate.entrySet().removeIf(matching);
@@ -355,13 +347,13 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             if (matching.test(entry)) doomed.add(new AbstractMap.SimpleImmutableEntry<>(entry));
         }
         if (doomed.isEmpty()) return false;
-        // 先全删完再逐个过钩子, 与 clear 同序
+        // 先完成全部删除, 再按原顺序执行钩子
         List<Map.Entry<K, V>> gone = new ArrayList<>(doomed.size());
         for (int i = 0; i < doomed.size(); i++) {
             Map.Entry<K, V> entry = doomed.get(i);
             if (this.delegate.remove(entry.getKey(), entry.getValue())) gone.add(entry);
         }
-        // 并发下候选可能全部落空, 一条没删掉就不算删除
+        // 并发竞争可能让全部候选落空
         if (gone.isEmpty()) return false;
         this.allRemovedThenChanged(gone);
         return true;
@@ -404,13 +396,11 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         return this.delegate.toString();
     }
 
-    // 三个视图共用读操作和批量删除, 具体视图只提供条目到元素的转换.
+    // 三个集合视图共用读取与批量删除, 子类只转换条目形态
     private abstract class View<T> implements Collection<T> {
 
-        // 只读操作代理的目标
         abstract Collection<T> target();
 
-        // 视图元素怎么从条目里取
         abstract T elementOf(Map.Entry<K, V> entry);
 
         @Override
@@ -450,7 +440,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return this.snapshot().toArray(generator);
         }
 
-        // 经本视图的迭代器复制一份, 条目视图给出的才是写穿的条目
+        // 经包装迭代器复制, entrySet 才能保留写穿的 EntryView
         private List<T> snapshot() {
             List<T> copy = new ArrayList<>(this.size());
             for (T element : this) copy.add(element);
@@ -543,7 +533,6 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return entry.getKey();
         }
 
-        // 按 key 删只用删一条
         @Override
         public boolean remove(Object o) {
             return MapSignalImpl.this.removeKey(o);
@@ -562,7 +551,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             return entry.getValue();
         }
 
-        // Collection.remove 只删第一个等值的
+        // Collection.remove 只删除第一个等值元素
         @Override
         public boolean remove(Object o) {
             for (Map.Entry<K, V> entry : MapSignalImpl.this.delegate.entrySet()) {
@@ -588,13 +577,13 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         @Override
         public boolean remove(Object o) {
-            // 按 key 直接删, 不必为一条扫全表; key 与值都对上才算
+            // 直接按 key 与值条件删除
             if (!(o instanceof Map.Entry<?, ?> entry)) return false;
             return MapSignalImpl.this.remove(entry.getKey(), entry.getValue());
         }
     }
 
-    // 把 delegate 的条目迭代器翻译成视图元素的迭代器, remove 回到本对象, 每条都过钩子.
+    // 将 delegate 条目转换成各视图元素, remove 写回包装器
     private final class EntryIterator<T> implements Iterator<T> {
         private final Iterator<Map.Entry<K, V>> it;
         private final Function<Map.Entry<K, V>, T> elementOf;
@@ -629,12 +618,12 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         @Override
         public void forEachRemaining(Consumer<? super T> action) {
-            // 逐个经 next, 让 last 跟着走, 之后的 remove 才对得上条目
+            // 经 next 更新 last, 后续 remove 才能拿到对应条目
             while (this.it.hasNext()) action.accept(this.next());
         }
     }
 
-    // 写穿的条目: setValue 先摘旧再放新, 然后通知.
+    // setValue 写穿包装器, 先摘旧值再放新值
     private final class EntryView implements Map.Entry<K, V> {
         private final Map.Entry<K, V> entry;
 

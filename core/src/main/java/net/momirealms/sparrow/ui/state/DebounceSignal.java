@@ -1,10 +1,5 @@
 package net.momirealms.sparrow.ui.state;
 
-/**
- * 防抖节点, 上游每失效一次就把发出推后 delay, 连续失效只在最后一次之后发出一次.
- *
- * @param <T> 值类型
- */
 final class DebounceSignal<T> extends PacedSignal<T> {
 
     DebounceSignal(AbstractSignal<T> source, long delay, Delayer delayer) {

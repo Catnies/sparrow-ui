@@ -21,7 +21,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     private static final int LOADING = 2;       // 一轮加载进行中
     private static final int LOADING_DIRTY = 3; // 加载中又登记了失效, 本轮完成后补跑一轮
     // 调度参数
-    private static final int MAX_SCHEDULE_ATTEMPTS = 2;     // 首次提交, 外加为并发登记的失效补一次.
+    private static final int MAX_SCHEDULE_ATTEMPTS = 2;     // 首次提交, 加上为并发失效补的一次重试
     private static final long MILLIS_PER_TICK = 50L;
     // 加载函数与已发布状态
     private final Executor executor;
@@ -29,9 +29,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
     private final BiPredicate<? super T, ? super T> sameValue;
     private final AtomicReference<Versioned<T>> state;
     private final AtomicInteger loadState = new AtomicInteger(UNLOADED);
-    // 当前加载
-    @Nullable private Thread loadingThread; // 正在跑装载函数的线程
-    @Nullable private final PollingState polling;       // 轮询状态, 为 null 就是普通异步源
+    // 当前加载与轮询生命周期
+    @Nullable private Thread loadingThread;             // 正在执行 loader 的线程, 用于拒绝自失效
+    @Nullable private final PollingState polling;        // null 表示普通异步来源
 
     AsyncSignalImpl(T placeholder, Executor executor, Supplier<? extends T> loader, BiPredicate<? super T, ? super T> sameValue, @Nullable Polling polling) {
         this.executor = Objects.requireNonNull(executor, "executor");
@@ -41,11 +41,10 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         this.polling = polling == null ? null : new PollingState(polling);
     }
 
-    // 调度首次初始化.
+    // 调度首载, 分区来源会在第一次真实取用时调用
     void scheduleInitialLoad() {
         if (this.loadState.compareAndSet(UNLOADED, LOADING)) {
-            // 拒绝时必须退回 UNLOADED 而不是 IDLE: 首次调度入口只认 UNLOADED,
-            // 退到 IDLE 会让这个分区永远停在占位值上, 后续访问连任务都不再提交.
+            // 首载被拒后恢复 UNLOADED. 后续访问只会从这个状态重新提交首载.
             this.scheduleLoad(UNLOADED);
         }
     }
@@ -67,12 +66,12 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         long generation = ++polling.generation;
         polling.clockSubscription = this.linkTo(polling.settings.clock(), () -> this.onPollTick(polling, generation));
         try {
-            // 订阅到来时数据已经放了超过一个周期就立刻补一次; 首载没调度过或还在飞时不叠加
+            // 空闲值超过一个周期时立即补载, 首载未提交或仍在执行时不叠加
             if (this.loadState.get() == IDLE && System.nanoTime() - polling.lastCompletedNanos >= polling.settings.periodNanos()) {
                 this.dirty();
             }
         } catch (RuntimeException | Error exception) {
-            // 激活刷新抛出时撤销时钟订阅, 让 register 的回滚留下干净现场
+            // 激活补载失败时撤销时钟订阅, 配合 register 回滚
             polling.clockSubscription.close();
             polling.clockSubscription = null;
             throw exception;
@@ -88,11 +87,9 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         polling.clockSubscription = null;
     }
 
-    // 轮询时钟到拍, 下游全死时这里就是清扫机会, 清到空会走 onInactive 把时钟订阅收掉, 常量数据源也因此能停.
-    // 清扫要顺着订阅链走到底: 装载结果判等不变时没有派发, 被持有的派生节点自己发现不了它的订阅者已经死光.
+    // 轮询到拍时先清理整条派生链. 值长期不变也能发现空链并经 onInactive 停表.
     private void onPollTick(PollingState polling, long generation) {
-        // 时钟派发前先把回调读了出来, 这期间停表再重开撤不回那次调用, 迟到的旧段回调看到的订阅数是新一段的, 不拦就多跑一次 loader.
-        // 只是一次 volatile 读, 读完到 dirty() 之间恰好停表重开的话仍会多跑一次, 那与新一段激活时的补载同形, 不为它加锁.
+        // 时钟可能已经取出上一激活段的回调, generation 阻止它借用新一段订阅多跑 loader
         if (generation != polling.generation) return;
         this.reapDownstream();
         if (this.entryCount() == 0) return;
@@ -124,26 +121,25 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
     }
 
-    // 提交加载任务, 执行器拒绝任务时按当前状态回滚,
-    // 极窄窗口内并发登记的失效可能丢失, 下一次 dirty() 会恢复.
+    // 提交加载任务. 执行器拒绝时恢复原状态, 最终重试窗口内的并发失效可能需要再次 dirty().
     private void scheduleLoad(int rollbackState) {
         RuntimeException failure = null;
         for (int attempt = 0; attempt < MAX_SCHEDULE_ATTEMPTS; attempt++) {
             RuntimeException rejection = this.submit();
             if (rejection == null) {
-                // 重试成功, 但本轮被拒的那次仍要如实上报.
+                // 重试成功后仍上报本轮已经发生的拒绝
                 if (failure != null) {
                     SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
                 }
                 return;
             }
             failure = ThrowableUtils.combine(failure, rejection);
-            // 期间登记的失效记录下, 完成后进行一次额外的尝试.
+            // 拒绝窗口内登记了失效时再尝试一次
             if (!this.loadState.compareAndSet(LOADING_DIRTY, LOADING)) {
                 break;
             }
         }
-        // 最终回滚到一个可再次调度的状态.
+        // 最终恢复到可再次调度的状态
         this.loadState.set(rollbackState);
         SparrowUI.getInstance().handleException("Failed to schedule an async signal load", failure);
     }
@@ -168,7 +164,7 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         } catch (RuntimeException exception) {
             failure = exception;
         } finally {
-            // 只有轮询用得上这个时刻. 先记再改状态, 看到 IDLE 的人一定看得到这次的时刻
+            // 先记录完成时刻再发布 IDLE, 激活方看到空闲时也能看到这次时间
             PollingState polling = this.polling;
             if (polling != null) polling.lastCompletedNanos = System.nanoTime();
             pending = this.loadState.getAndUpdate(current -> current == LOADING_DIRTY ? LOADING : IDLE) == LOADING_DIRTY;
@@ -184,13 +180,13 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
                 failure = ThrowableUtils.combine(failure, exception);
             }
         }
-        // 本方法整个跑在执行器线程上, 抛出去只会落到执行器的未捕获处理器, 或者直接被吞掉.
+        // loader 与失效派发都在执行器线程, 失败在此边界上报
         if (failure != null) {
             SparrowUI.getInstance().handleException("Failed to load an async signal value", failure);
         }
     }
 
-    // 跑一次装载函数, 期间记下当前线程, 让 dirty() 能认出 loader 在自己脚下拆台.
+    // 记录 loader 所在线程, 供 dirty() 拒绝装载函数造成的自失效
     private T runLoader() {
         this.loadingThread = Thread.currentThread();
         try {
@@ -212,19 +208,19 @@ final class AsyncSignalImpl<T> extends AbstractSignal<T> implements AsyncSignal<
         }
     }
 
-    // 轮询才用得上的那部分状态, 普通异步源只留一个 null. 每个数据源一份, 里面的设置则是同一个 KeyedSignal 的各分区共用的.
+    // 每个轮询分区独立保存激活状态, Polling 设置可由同一个 KeyedSignal 的全部分区共享
     private static final class PollingState {
         private final Polling settings;
-        private volatile long lastCompletedNanos;           // 上一次装载结束的时刻, 成功失败都记, 激活刷新据此判断过没过期
+        private volatile long lastCompletedNanos;           // 最近一次装载结束时间, 成功失败都记录
         @Nullable private Subscription clockSubscription;   // 有订阅期间挂在轮询时钟上, activationLock 内读写
-        private volatile long generation;                   // 每挂一次时钟推进一次, 时钟回调带着自己那一段的代数, activationLock 内写
+        private volatile long generation;                   // 每次挂时钟递增, activationLock 内写
 
         private PollingState(Polling settings) {
             this.settings = settings;
         }
     }
 
-    // 轮询设置, 共享的周期时钟, 以及一个周期折成纳秒(激活刷新用). 同周期的轮询共用同一个时钟, 会在同一拍一起发起装载.
+    // 轮询设置由同周期来源共享, periodNanos 用于判断重新激活时是否需要补载
     record Polling(AbstractSignal<Long> clock, long periodNanos) {
 
         @NotNull

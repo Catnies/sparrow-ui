@@ -14,7 +14,7 @@ final class TickingSignal extends AbstractSignal<Long> {
     private final Ticker ticker;
     private Ticker.Handle handle;
     private final AtomicReference<Versioned<Long>> state = new AtomicReference<>(new Versioned<>(0L, 0L));
-    private final WeakPeriodCache<Signal<Long>> periodic = new WeakPeriodCache<>();   // 周期 -> 降频视图
+    private final WeakPeriodCache<Signal<Long>> periodic = new WeakPeriodCache<>();   // 周期 -> 弱缓存的降频视图
 
     TickingSignal(Ticker ticker) {
         this.ticker = ticker;
@@ -32,8 +32,7 @@ final class TickingSignal extends AbstractSignal<Long> {
 
     @Override
     protected void onActive() {
-        // 本段的起点由回调自己带着, 段内计数叠在它之上, 值因此跨停表续走不回退.
-        // cancel 只拦后续运行, 正在跑的那一拍会迟到, 它拿的必须还是自己那一段的起点.
+        // 回调携带本激活段的起点, 段内计数叠加其上. 迟到任务仍使用所属段起点, 总值跨停表单调递增.
         long base = this.state.get().value();
         this.handle = this.ticker.start(tick -> this.onTick(base, tick));
     }
@@ -48,36 +47,29 @@ final class TickingSignal extends AbstractSignal<Long> {
         long total = base + tick;
         while (true) {
             Versioned<Long> current = this.state.get();
-            // 迟到的旧段回调算出的值不会比新段已经发出的大, 值只往前走; 两段的回调可能在不同线程上, 发布用 CAS
+            // 旧段迟到值不得覆盖新段进度, 不同调度线程经 CAS 发布单调值
             if (total <= current.value()) return;
             if (this.state.compareAndSet(current, new Versioned<>(total, current.version() + 1))) break;
         }
         this.notifyDirty();
     }
 
-    /**
-     * 取本 tick 源上的降频视图, 每 {@code periodTicks} 个 tick 失效一次.
-     * <p>同周期共享一个节点, 每 tick 的重算次数因此只跟周期种类走, 而不跟绑定数量走.
-     */
+    // 同周期共享降频视图, 每 tick 的重算次数只随周期种类增长
     @NotNull
     Signal<Long> every(long periodTicks) {
         return this.periodic.get(periodTicks, period -> this.mapDistinct(tick -> tick / period));
     }
 
-    // 当前缓存着的降频视图数.
     int periodicViewCount() {
         return this.periodic.size();
     }
 
-    /**
-     * 全局区域调度器实现, 自己数回调次数而<strong>不去问服务器当前 tick</strong>.
-     * <p>{@code Bukkit.getCurrentTick()} 在 Folia 上只在区域 tick 内合法.
-     */
+    // 全局区域调度器无法在 Folia 上调用 Bukkit.getCurrentTick(), 因此直接累计回调次数
     @NotNull
     static TickingSignal.Ticker paperTicker() {
         return onTick -> {
             Plugin plugin = SparrowUI.getInstance().getPlugin();
-            // 只被调度任务这一个线程改写, 不需要原子性
+            // 单个调度任务内只有一个写者
             long[] elapsed = new long[1];
             ScheduledTask task = Bukkit.getGlobalRegionScheduler()
                     .runAtFixedRate(plugin, ignoredTask -> onTick.accept(++elapsed[0]), 1L, 1L);
@@ -85,15 +77,12 @@ final class TickingSignal extends AbstractSignal<Long> {
         };
     }
 
-    /**
-     * 毫秒时钟的调度实现, 挂在 Paper 异步调度器上, 回调在异步线程.
-     * <p>与 tick 版一样自己数回调次数.
-     */
+    // 毫秒时钟挂在 Paper 异步调度器上, 相邻回调可能使用不同池线程
     @NotNull
     static TickingSignal.Ticker paperMillisTicker(long periodMillis) {
         return onTick -> {
             Plugin plugin = SparrowUI.getInstance().getPlugin();
-            // 相邻两拍可能落在不同的池线程上, 但调度器要等这一拍跑完才排下一拍, 计数始终只有一个写者
+            // 调度器串行安排同一任务的各拍, 计数始终只有一个写者
             long[] elapsed = new long[1];
             ScheduledTask task = Bukkit.getAsyncScheduler().runAtFixedRate(
                     plugin, ignoredTask -> onTick.accept(++elapsed[0]), periodMillis, periodMillis, TimeUnit.MILLISECONDS
@@ -102,10 +91,9 @@ final class TickingSignal extends AbstractSignal<Long> {
         };
     }
 
-    // 调度抽象, 默认实现用 Paper 全局区域调度器.
+    // 测试可替换的周期调度入口
     interface Ticker {
 
-        // 启动每 tick 回调, 返回可取消的任务句柄.
         @NotNull
         Handle start(@NotNull LongConsumer onTick);
 

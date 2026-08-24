@@ -50,7 +50,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         return this;
     }
 
-    // 移除之后过钩子再通知. 钩子抛出时变更已经落地, 通知仍要发出, 所以放在 finally 里.
+    // 移除已经落地, 钩子失败时仍在 finally 中通知
     private void removedThenChanged(E element) {
         try {
             Consumer<E> hook = this.removing;
@@ -60,7 +60,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         }
     }
 
-    // 一批移除之后逐个过钩子再通知一次.
+    // 一批移除逐个执行钩子, 最后只通知一次
     private void allRemovedThenChanged(@Nullable List<E> doomed) {
         try {
             Consumer<E> hook = this.removing;
@@ -72,7 +72,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         }
     }
 
-    // 读取全部直接代理
+    // 读取
 
     @Override
     public int size() {
@@ -141,7 +141,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
             if (added) this.changed();
             return added;
         }
-        // 先用原元素查重, 已有就不惊动钩子
+        // 原元素已经存在时不执行放入钩子
         if (this.delegate.contains(e)) return false;
         boolean added = this.delegate.add(hook.apply(e));
         if (added) this.changed();
@@ -154,7 +154,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         Collection<? extends E> stored = c;
         Function<E, E> hook = this.adding;
         if (hook != null) {
-            // 先把新元素过一遍钩子, 再一次性交给 delegate, 写时复制的只复制一次
+            // 先计算全部钩子结果再批量写入, 写时复制 delegate 只复制一次
             List<E> fresh = new ArrayList<>();
             Set<E> freshElements = new HashSet<>();
             for (E element : c) {
@@ -196,7 +196,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         return this.removeMatching(filter, () -> this.delegate.removeIf(filter));
     }
 
-    // 批量移除: 有钩子时先收集命中的元素, 再交给 delegate 的批量方法, 最后逐个回调. 写时复制的迭代器不支持逐个删.
+    // 有钩子时先记录命中元素, 再让 delegate 批量删除. 写时复制迭代器不支持逐个删除.
     private boolean removeMatching(Predicate<? super E> matching, BooleanSupplier bulkRemove) {
         List<E> doomed = null;
         if (this.removing != null) {
@@ -230,7 +230,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         return this.delegate.toString();
     }
 
-    // 迭代器上的 remove 同样经钩子与通知.
+    // 迭代器删除写回同一个包装器
     private final class MutatingIterator implements Iterator<E> {
         private final Iterator<E> it;
         private E last;   // 最近一次 next 给出的元素, remove 的对象
@@ -257,7 +257,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
         @Override
         public void forEachRemaining(Consumer<? super E> action) {
-            // 逐个经 next, 让 last 跟着走, 之后的 remove 才对得上元素
+            // 经 next 更新 last, 后续 remove 才能拿到对应元素
             while (this.it.hasNext()) action.accept(this.next());
         }
     }

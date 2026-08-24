@@ -8,13 +8,6 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
-/**
- * 宿主状态里某一个字段的可写视图.
- * <p>读侧就是宿主上的一个 mapDistinct 视图, 只在本字段真的变了时才向下游失效; 写落回宿主的 CAS 循环.
- *
- * @param <S> 宿主值类型
- * @param <F> 字段值类型
- */
 final class LensSignal<S, F> extends MapDistinctSignal<S, F> implements MutableSignal<F> {
     private final MutableSignal<S> host;
     private final Function<? super S, ? extends F> getter;

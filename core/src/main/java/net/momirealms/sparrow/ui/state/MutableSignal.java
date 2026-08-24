@@ -8,6 +8,11 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
+/**
+ * 可从任意线程写入的 {@link Signal}. 写入新值或基于当前值进行原子更新时, 判等相同的结果不会发送失效.
+ *
+ * @param <T> 值类型, 允许为 {@code null}
+ */
 public sealed interface MutableSignal<T> extends Signal<T> permits MutableSignalImpl, MutablePartitionHandle, LensSignal {
 
     /**
@@ -19,27 +24,33 @@ public sealed interface MutableSignal<T> extends Signal<T> permits MutableSignal
 
     /**
      * 基于当前值原子更新.
+     * <p>发生写入争用时 {@code updater} 可能执行多次, <strong>必须无副作用并允许重试</strong>.
      *
-     * @param updater 纯函数
+     * @param updater 根据当前值计算新值的纯函数
      */
     void update(@NotNull UnaryOperator<T> updater);
 
     /**
      * 把当前值的一个字段单独拿出来, 当成一个可写 signal 用.
-     * <p>读的一侧只在这个字段变了时才向下游失效, 写的一侧回到本 signal 的 {@link #update} 里跑.
-     * <p>它存在的理由是让可复用的输入组件接上宿主状态. 组件只认识 "一个可写的 {@code F}", 不认识宿主的状态类型.
+     * <p>字段值变化时 lens 才向下游失效. 写入 lens 会经本 signal 的 {@link #update} 重新构造宿主值,
+     * 并发写入不同字段时仍使用同一条原子更新路径.
      *
      * <pre>{@code
-     * record Settings(boolean sound, int volume) { ... }
+     * record Settings(boolean sound, int volume) {
+     *     Settings withSound(boolean sound) {
+     *         return new Settings(sound, this.volume);
+     *     }
+     * }
+     *
      * MutableSignal<Settings> settings = Signal.of(new Settings(true, 5));
      * MutableSignal<Boolean> sound = settings.lens(Settings::sound, Settings::withSound);
-     * toggle("开关音效", sound);
+     * sound.set(false);
      * }</pre>
      *
-     * <p>{@code getter} 跑在本 signal 的失效线程与拉取线程上, 争用时可能被重跑, 所以它必须是平凡的字段访问.
-     * <p><strong>getter 与 setter 被返回的 lens 持有整个生命周期, 禁止捕获 {@code Player}、{@code World}、{@code Window} 一类对象.</strong>
-     * <p>lens 强持有本 signal. 接在分区句柄上时这条链一直连到整个 {@link KeyedSignal}.
+     * <p>{@code getter} 会在失效线程和拉取线程执行, 争用时可能重跑. {@code getter} 与 {@code setter} 都必须是纯函数.
+     * <p><strong>lens 会长期持有本 signal、getter 和 setter, 禁止在函数中捕获 {@code Player}、{@code World}、{@code Window} 一类对象.</strong>
      *
+     * @param <F> 字段类型
      * @param getter 从宿主值取出字段
      * @param setter 用新的字段值造一个新的宿主值
      * @return 该字段的可写 signal
@@ -50,8 +61,9 @@ public sealed interface MutableSignal<T> extends Signal<T> permits MutableSignal
     }
 
     /**
-     * 同 {@link #lens(Function, BiFunction)}, 但用给定的判等函数比较字段值.
+     * 创建一个使用给定判等函数的字段 lens.
      *
+     * @param <F> 字段类型
      * @param getter 从宿主值取出字段
      * @param setter 用新的字段值造一个新的宿主值
      * @param sameValue 判等函数, 语义见 {@link Signal#of(Object, BiPredicate)}

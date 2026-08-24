@@ -4,11 +4,6 @@ import net.momirealms.sparrow.ui.Subscription;
 
 import java.util.function.Function;
 
-/**
- * 多来源组合节点: 任一来源失效即失效, 值在拉取时以全部来源的快照重算.
- *
- * @param <T> 组合值类型
- */
 final class CombinedSignal<T> extends AbstractSignal<T> {
     private final AbstractSignal<?>[] sources;
     private final Function<Object[], ? extends T> combiner;
@@ -41,7 +36,7 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
         return this.versionSum();
     }
 
-    // 来源固定且各自版本只增不减, 和没变就一定谁都没失效过.
+    // 来源固定且各自版本单调递增, 版本和不变即可确认所有来源都未失效
     private long versionSum() {
         long sum = 0L;
         for (int i = 0; i < this.sources.length; i++) {
@@ -52,7 +47,7 @@ final class CombinedSignal<T> extends AbstractSignal<T> {
 
     @Override
     protected void onActive() {
-        // 这里使用弱订阅, 不能让来源反过来钉住本节点.
+        // 弱订阅阻断来源到派生节点的保活路径
         this.upstream = this.linkAll(this.sources, this::notifyDirty);
     }
 
