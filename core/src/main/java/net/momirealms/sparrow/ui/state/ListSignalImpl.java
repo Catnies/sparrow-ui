@@ -605,6 +605,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
         private final class MutatingIterator implements ListIterator<E> {
             private final ListIterator<E> it;
             private E last;   // 最近一次 next / previous 给出的元素, set 与 remove 的对象
+            private boolean canModify;
 
             private MutatingIterator(ListIterator<E> it) {
                 this.it = it;
@@ -617,7 +618,10 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
             @Override
             public E next() {
-                return this.last = this.it.next();
+                E next = this.it.next();
+                this.last = next;
+                this.canModify = true;
+                return next;
             }
 
             @Override
@@ -627,7 +631,10 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
             @Override
             public E previous() {
-                return this.last = this.it.previous();
+                E previous = this.it.previous();
+                this.last = previous;
+                this.canModify = true;
+                return previous;
             }
 
             @Override
@@ -643,11 +650,13 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             @Override
             public void remove() {
                 this.it.remove();
+                this.canModify = false;
                 Facade.this.removedThenChanged(this.last);
             }
 
             @Override
             public void set(E e) {
+                if (!this.canModify) throw new IllegalStateException();
                 if (this.last == e) return;
                 Consumer<E> removing = ListSignalImpl.this.removing;
                 if (removing != null) removing.accept(this.last);
@@ -660,6 +669,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             @Override
             public void add(E e) {
                 this.it.add(Facade.this.adding(e));
+                this.canModify = false;
                 ListSignalImpl.this.changed();
             }
 
