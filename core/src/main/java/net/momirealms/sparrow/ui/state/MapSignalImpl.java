@@ -237,8 +237,10 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         V result = this.delegate.computeIfAbsent(key, k -> {
             V value = mappingFunction.apply(k);
             if (value == null) return null;
+            V stored = this.putting(k, value);
+            if (stored == null) return null;
             changed[0] = true;
-            return this.putting(k, value);
+            return stored;
         });
         if (changed[0]) this.changed();
         return result;
@@ -641,6 +643,7 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
         public V setValue(V value) {
             V old = this.entry.getValue();
             if (old == null ? value == null : old.equals(value)) return old;
+            if (!MapSignalImpl.this.delegate.entrySet().contains(this.entry)) return old;
             this.entry.setValue(MapSignalImpl.this.swapping(this.entry.getKey(), old, value));
             MapSignalImpl.this.changed();
             return old;
