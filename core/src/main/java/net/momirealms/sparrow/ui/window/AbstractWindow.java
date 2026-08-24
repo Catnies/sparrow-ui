@@ -1410,7 +1410,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @Nullable DisplayedSlotPath[] paths,
             @NotNull Consumer<SparrowInventory> action
     ) {
+        ArrayList<Pane> visited = new ArrayList<>();
         this.forEachPathPane(paths, pane -> {
+            // 一个 Pane 通常铺满一大片槽位, 每个槽位都会走到这里, 只展开第一次
+            if (visited.contains(pane)) return;
+            visited.add(pane);
             // 绝大多数 Pane 一个都没声明, 这里直接跳过, 序列的成员随时会变, 每次规划都现取一份, 不缓存.
             for (InventorySequence sequence : pane.participatingSequences()) {
                 List<SparrowInventory> members = sequence.inventories();
