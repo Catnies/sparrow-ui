@@ -321,6 +321,11 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     // 按条目谓词批量移除, 逐个 remove 以便每条都过钩子; 通知一次.
     private boolean removeEntries(Predicate<? super Map.Entry<K, V>> matching) {
+        if (this.removing == null) {
+            boolean removed = this.delegate.entrySet().removeIf(matching);
+            if (removed) this.changed();
+            return removed;
+        }
         List<Map.Entry<K, V>> doomed = new ArrayList<>();
         for (Map.Entry<K, V> entry : this.delegate.entrySet()) {
             if (matching.test(entry)) doomed.add(new AbstractMap.SimpleImmutableEntry<>(entry));
@@ -464,12 +469,14 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         @Override
         public boolean removeAll(@NotNull Collection<?> c) {
-            return MapSignalImpl.this.removeEntries(entry -> c.contains(this.elementOf(entry)));
+            Collection<?> lookup = lookupOf(c);
+            return MapSignalImpl.this.removeEntries(entry -> lookup.contains(this.elementOf(entry)));
         }
 
         @Override
         public boolean retainAll(@NotNull Collection<?> c) {
-            return MapSignalImpl.this.removeEntries(entry -> !c.contains(this.elementOf(entry)));
+            Collection<?> lookup = lookupOf(c);
+            return MapSignalImpl.this.removeEntries(entry -> !lookup.contains(this.elementOf(entry)));
         }
 
         @Override
@@ -555,7 +562,9 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
         @Override
         public boolean remove(Object o) {
-            return MapSignalImpl.this.removeEntries(entry -> entry.equals(o));
+            // 按 key 直接删, 不必为一条扫全表; key 与值都对上才算
+            if (!(o instanceof Map.Entry<?, ?> entry)) return false;
+            return MapSignalImpl.this.remove(entry.getKey(), entry.getValue());
         }
     }
 

@@ -2,6 +2,9 @@ package net.momirealms.sparrow.ui.state;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -14,6 +17,12 @@ abstract sealed class CollectionSignal<T> extends AbstractSignal<T> permits List
     private final AtomicLong version = new AtomicLong();
     private final ReentrantLock batchLock = new ReentrantLock();
     private boolean batchPending;   // 本线程 batch 期间攒下了变更, 只在持有 batchLock 时读写
+
+    // 批量移除要对本集合的每个元素问一遍实参, 实参是 List 时每问一次都是一次线性查找; 先归一成按哈希查的.
+    @NotNull
+    static Collection<?> lookupOf(@NotNull Collection<?> c) {
+        return c instanceof Set<?> ? c : new HashSet<>(c);
+    }
 
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 嵌套时只有最外层通知.

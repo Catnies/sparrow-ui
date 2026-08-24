@@ -527,12 +527,15 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
         @Override
         public boolean removeAll(@NotNull Collection<?> c) {
-            return this.removeMatching(c::contains, () -> this.target.removeAll(c));
+            // 没挂钩子时谓词不会被用到, 别白建一份查找集
+            Collection<?> lookup = ListSignalImpl.this.removing == null ? c : lookupOf(c);
+            return this.removeMatching(lookup::contains, () -> this.target.removeAll(c));
         }
 
         @Override
         public boolean retainAll(@NotNull Collection<?> c) {
-            return this.removeMatching(element -> !c.contains(element), () -> this.target.retainAll(c));
+            Collection<?> lookup = ListSignalImpl.this.removing == null ? c : lookupOf(c);
+            return this.removeMatching(element -> !lookup.contains(element), () -> this.target.retainAll(c));
         }
 
         @Override

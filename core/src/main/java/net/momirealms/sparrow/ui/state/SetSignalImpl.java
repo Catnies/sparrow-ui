@@ -181,12 +181,14 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        return this.removeMatching(c::contains, () -> this.delegate.removeAll(c));
+        Collection<?> lookup = this.removing == null ? c : lookupOf(c);
+        return this.removeMatching(lookup::contains, () -> this.delegate.removeAll(c));
     }
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        return this.removeMatching(element -> !c.contains(element), () -> this.delegate.retainAll(c));
+        Collection<?> lookup = this.removing == null ? c : lookupOf(c);
+        return this.removeMatching(element -> !lookup.contains(element), () -> this.delegate.retainAll(c));
     }
 
     @Override
