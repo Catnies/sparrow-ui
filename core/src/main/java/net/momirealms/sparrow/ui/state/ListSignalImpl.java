@@ -458,20 +458,28 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             Function<E, E> hook = ListSignalImpl.this.adding;
             Consumer<E> removing = ListSignalImpl.this.removing;
             if (hook == null && removing == null) {
-                this.target.replaceAll(operator);
-                ListSignalImpl.this.changed();
+                boolean[] changed = new boolean[1];
+                this.target.replaceAll(old -> {
+                    E replacement = operator.apply(old);
+                    changed[0] |= replacement != old;
+                    return replacement;
+                });
+                if (changed[0]) ListSignalImpl.this.changed();
                 return;
             }
             // 先把每个位置的结果与钩子算完, 再让 target 自己按位置写回, 写时复制的 delegate 只复制一次
             List<E> results = new ArrayList<>(this.target.size());
+            boolean changed = false;
             for (E old : this.target) {
                 E replacement = operator.apply(old);
                 if (replacement != old) {
+                    changed = true;
                     if (removing != null) removing.accept(old);
                     replacement = this.adding(replacement);
                 }
                 results.add(replacement);
             }
+            if (!changed) return;
             Iterator<E> next = results.iterator();
             this.target.replaceAll(ignored -> next.next());
             ListSignalImpl.this.changed();

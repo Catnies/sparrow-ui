@@ -13,6 +13,7 @@ import java.util.function.Function;
  * <p>{@link #get()} 返回包装器自己, 是活视图; 跨线程读的安全性由被包装的 {@code List} 决定,
  * 要给渲染线程或异步 Provider 读就包一个写时复制的. 判等按身份, 内容相同的两个包装器不相等, 要比内容就比 {@code List.copyOf(wrapper)}.
  * <p>通知只说 "变了", 不带元素; 无效变更({@code set} 写回同一个对象、空的 {@code addAll})不通知.
+ * {@code sort} 只要至少有两个元素就会通知, 顺序没有变化也一样.
  * {@code map} / {@code mapDistinct} 的 mapper <strong>必须返回不可变结果</strong>, 直接返回这个活集合会让判等永远说 "没变".
  * <p><strong>包装器强持被包装的 {@code List}</strong>; 注入到长命结构里时它随该结构活着. 元素禁止放 {@code Player} / {@code Entity} / {@code World}.
  *

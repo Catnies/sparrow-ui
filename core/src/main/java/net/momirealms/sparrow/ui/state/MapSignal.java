@@ -12,6 +12,7 @@ import java.util.function.BiFunction;
  * 包一个现成 {@link Map} 的集合装饰器, 自己就是那个 {@code Map}, 每次有效变更落地之后向订阅者失效.
  * <p>契约与 {@link ListSignal} 相同: {@link #get()} 返回包装器自己, 跨线程读的安全性由被包装的 {@code Map} 决定, 判等按身份,
  * 通知不带元素, 无效变更({@code put} 相同值、{@code remove} 不存在的 key)不通知,
+ * 没有元素钩子时, 非空 {@code putAll} 总会通知, 每个映射都相同也一样.
  * {@code map} / {@code mapDistinct} 的 mapper <strong>必须返回不可变结果</strong>.
  * {@code keySet()} / {@code values()} / {@code entrySet()} 与 {@code Map.Entry.setValue} 都写穿并通知.
  * <p>映射到 {@code null} 值的条目移除时判断不了有没有删掉东西, 可能漏通知; 要用 {@code null} 值就别指望那一次通知.
