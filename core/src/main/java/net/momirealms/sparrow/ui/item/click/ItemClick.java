@@ -11,10 +11,10 @@ import org.jetbrains.annotations.NotNull;
  *
  * @param clickType 点击类型
  * @param player 点击玩家
- * @param window 当前 Window
+ * @param window 所属 Window
+ * @param cursor 派发时菜单持有的光标快照, 构造时复制
  * @param windowSlot 点击的 Window 槽位
  * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
- * @param cursor 派发时菜单持有的实际光标快照
  */
 public record ItemClick (
         @NotNull ClickType clickType,
@@ -29,6 +29,15 @@ public record ItemClick (
         cursor = cursor.clone();
     }
 
+    /**
+     * 创建不关联快捷栏按键的点击上下文.
+     *
+     * @param player 点击玩家
+     * @param clickType 点击类型
+     * @param window 所属 Window
+     * @param cursor 派发时菜单持有的光标快照, 构造时复制
+     * @param windowSlot 点击的 Window 槽位
+     */
     public ItemClick(@NotNull Player player, @NotNull ClickType clickType, @NotNull Window window, @NotNull ItemStack cursor, int windowSlot) {
         this(clickType, player, window, cursor, windowSlot, -1);
     }

@@ -42,30 +42,33 @@ public final class ItemBuilder {
     private boolean updateOnClick; // 点击成功后是否主动失效
 
     /**
-     * 配置在渲染线程立即返回 ItemStack 的同步 renderer.
+     * 配置在渲染调用线程立即返回 ItemStack 的显示来源.
      *
-     * @param renderer 同步渲染函数
+     * @param renderer 同步渲染函数, 不得返回 {@code null}
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProvider(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
         return this.setItemProviderAsync(ItemProvider.sync(renderer));
     }
 
     /**
-     * 配置固定显示的物品.
+     * 配置固定显示的物品. 传入的模板会被复制.
      *
      * @param itemStack 固定物品模板
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProviderConstant(@NotNull ItemStack itemStack) {
         return this.setItemProviderAsync(ItemProvider.constant(itemStack));
     }
 
     /**
-     * 配置 ItemProvider, 未完成的 Future 暂时显示最近一次成功结果或空物品.
+     * 配置异步显示来源. Future 未完成时显示最近一次成功结果, 首次完成前显示空物品.
      *
      * @param itemProvider 显示提供器
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider) {
         this.setSource(new DisplaySourceFactory.ProviderFactory(Objects.requireNonNull(itemProvider, "itemProvider"), ItemProvider.EMPTY));
@@ -73,22 +76,24 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置 ItemProvider 及其首次成功结果前显示的占位物品.
+     * 配置异步显示来源及首次成功前显示的占位物品.
      *
      * @param itemProvider 显示提供器
      * @param placeholder 首次成功结果前显示的占位物品
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
         return this.setItemProviderAsync(itemProvider, ItemProvider.constant(placeholder));
     }
 
     /**
-     * 配置ItemProvider 及其首次成功结果前使用的占位提供器.
+     * 配置异步显示来源及首次成功前使用的占位 Provider.
      *
      * @param itemProvider 显示提供器
      * @param placeholder 首次成功结果前使用的占位提供器
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
         this.setSource(new DisplaySourceFactory.ProviderFactory(
@@ -99,22 +104,24 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置第一次挂载时解析一次的懒加载显示来源, 解析完成前显示空物品.
+     * 配置首次挂载时解析一次的懒加载显示来源, 解析完成前显示空物品.
      *
      * @param lazyProvider 懒加载显示提供器
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setLazyItemProvider(@NotNull LazyItemProvider lazyProvider) {
         return this.setLazyItemProvider(ItemProvider.EMPTY, lazyProvider);
     }
 
     /**
-     * 配置第一次挂载时解析一次的懒加载显示来源.
-     * <p>解析出来的 Provider 由这件 Item 的全部显示挂载共用, 之后不再解析.
+     * 配置首次挂载时解析一次的懒加载显示来源.
+     * <p>解析结果由同一 Item 的全部挂载共用, 后续挂载不会再次解析.
      *
      * @param placeholder 解析完成前的显示内容
      * @param lazyProvider 懒加载显示提供器
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setLazyItemProvider(@NotNull ItemStack placeholder, @NotNull LazyItemProvider lazyProvider) {
         return this.setLazyItemProvider(
@@ -124,12 +131,15 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置第一次挂载时解析一次的懒加载显示来源.
-     * <p>解析出来的 Provider 由这件 Item 的全部显示挂载共用, 之后不再解析.
+     * 配置首次挂载时解析一次的懒加载显示来源.
+     * <p>解析结果由同一 Item 的全部挂载共用, 后续挂载不会再次解析.
+     * <p><strong>解析 Future 应当及时完成或取消.</strong> 在它完成前, Future 的回调会保留
+     * 当前 Item 的懒加载状态与失效通知.
      *
      * @param placeholder 解析完成前的显示内容
      * @param lazyProvider 懒加载显示提供器
      * @return 此构建器
+     * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setLazyItemProvider(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) {
         this.setSource(new DisplaySourceFactory.LazyFactory(
@@ -144,13 +154,14 @@ public final class ItemBuilder {
      *
      * @param periodTicks 正数 tick 周期
      * @return 此构建器
+     * @throws IllegalArgumentException 当周期不是正数时
      */
     public ItemBuilder updatePeriodically(int periodTicks) {
         return this.dependsOn(Signals.everyTicks(periodTicks));
     }
 
     /**
-     * 声明渲染读取了哪些 Signal, 失效时重新渲染这个 Item.
+     * 声明渲染读取的 Signal. 任一 Signal 失效时重新渲染这个 Item.
      *
      * @param signals 渲染依赖的数据源
      * @return 此构建器
@@ -164,7 +175,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 声明渲染读取了按玩家分区的 Signal.
+     * 声明按查看者 UUID 取值的渲染依赖.
      *
      * @param signal 按玩家分区的数据源
      * @return 此构建器
@@ -176,8 +187,9 @@ public final class ItemBuilder {
     }
 
     /**
-     * 声明渲染读取了按任意维度分区的 Signal.
+     * 声明通过查看者计算分区键的渲染依赖.
      *
+     * @param <K> 分区键类型
      * @param signal 分区数据源
      * @param keyOf 从查看者导出分区 key, 在挂载时执行
      * @return 此构建器
@@ -190,7 +202,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 配置点击处理器成功完成后主动失效 Item.
+     * 让 Item 在点击守卫全部通过且处理器正常返回后主动失效.
      *
      * @return 此构建器
      */
@@ -200,10 +212,9 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加点击前置处理器.
-     * 添加顺序执行, 第一个返回 false 的守卫会拒绝点击.
+     * 添加点击守卫. 守卫按添加顺序执行, 第一个 {@code false} 会终止本次点击.
      *
-     * @param guard 点击前置处理器
+     * @param guard 点击守卫
      * @return 此构建器
      */
     public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard) {
@@ -211,10 +222,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加点击前置处理器与拒绝回调.
+     * 添加点击守卫与拒绝回调.
      *
-     * @param guard 点击前置处理器
-     * @param onRejected 点击前置处理器返回 false 时执行的回调
+     * @param guard 点击守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard, @NotNull Consumer<? super ItemClick> onRejected) {
@@ -223,10 +234,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加点击前置处理器与拒绝回调.
+     * 添加可访问 Item 自身的点击守卫与拒绝回调.
      *
-     * @param guard 点击前置处理器
-     * @param onRejected 点击前置处理器返回 false 时执行的回调
+     * @param guard 点击守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addClickGuard(@NotNull ItemGuard<? super ItemClick> guard, @NotNull BiConsumer<? super Item, ? super ItemClick> onRejected) {
@@ -248,7 +259,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加可以访问 Item 自身的点击处理器, 供处理逻辑同时读取物品和点击事件.
+     * 添加可访问 Item 自身的点击处理器.
      *
      * @param clickHandler 同时接收物品和点击事件的处理器
      * @return 此构建器
@@ -259,9 +270,9 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加拖拽前置处理器.
+     * 添加拖拽守卫.
      *
-     * @param guard 拖拽前置处理器
+     * @param guard 拖拽守卫
      * @return 此构建器
      */
     public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard) {
@@ -269,10 +280,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加拖拽前置处理器与拒绝回调.
+     * 添加拖拽守卫与拒绝回调.
      *
-     * @param guard 拖拽前置处理器
-     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @param guard 拖拽守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard, @NotNull Consumer<? super ItemDragClick> onRejected) {
@@ -281,10 +292,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加拖拽前置处理器与拒绝回调.
+     * 添加可访问 Item 自身的拖拽守卫与拒绝回调.
      *
-     * @param guard 拖拽前置处理器
-     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @param guard 拖拽守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addDragGuard(@NotNull ItemGuard<? super ItemDragClick> guard, @NotNull BiConsumer<? super Item, ? super ItemDragClick> onRejected) {
@@ -306,7 +317,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加可以访问 Item 自身的拖拽处理器, 供处理逻辑同时读取物品和拖拽事件.
+     * 添加可访问 Item 自身的拖拽处理器.
      *
      * @param dragHandler 同时接收物品和拖拽事件的处理器
      * @return 此构建器
@@ -317,9 +328,9 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加 Bundle 选择前置处理器.
+     * 添加 Bundle 选择守卫.
      *
-     * @param guard Bundle 选择前置处理器
+     * @param guard Bundle 选择守卫
      * @return 此构建器
      */
     public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard) {
@@ -327,10 +338,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加 Bundle 选择前置处理器与拒绝回调.
+     * 添加 Bundle 选择守卫与拒绝回调.
      *
-     * @param guard Bundle 选择前置处理器
-     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @param guard Bundle 选择守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard, @NotNull Consumer<? super BundleSelectClick> onRejected) {
@@ -339,10 +350,10 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加 Bundle 选择前置处理器与拒绝回调.
+     * 添加可访问 Item 自身的 Bundle 选择守卫与拒绝回调.
      *
-     * @param guard Bundle 选择前置处理器
-     * @param onRejected 前置处理器返回 false 时执行的回调
+     * @param guard Bundle 选择守卫
+     * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
     public ItemBuilder addBundleSelectGuard(@NotNull ItemGuard<? super BundleSelectClick> guard, @NotNull BiConsumer<? super Item, ? super BundleSelectClick> onRejected) {
@@ -364,7 +375,7 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加可以访问 Item 自身的 Bundle 选择处理器.
+     * 添加可访问 Item 自身的 Bundle 选择处理器.
      *
      * @param selectHandler 同时接收物品和选择事件的处理器
      * @return 此构建器
@@ -375,9 +386,8 @@ public final class ItemBuilder {
     }
 
     /**
-     * 添加在 Item 完整构建后执行的修改器. 修改器按添加顺序执行.
-     * <p>修改器可以保存 Item 引用, 建立外部注册关系或调用 {@link ObservableItem#notifyWindows()}.
-     * 如果某个修改器抛出异常, 后续修改器不会执行, 异常由 {@link #build()} 直接抛出.</p>
+     * 添加构建后修改器. 修改器按添加顺序执行.
+     * <p>修改器抛出的异常由 {@link #build()} 直接抛出, 后续修改器不再执行.
      *
      * @param modifier 构建完成后的修改器
      * @return 此构建器
@@ -404,12 +414,11 @@ public final class ItemBuilder {
                 this.bundleHandler,
                 this.updateOnClick
         );
-        // 构建完成后按添加顺序执行修改器, 让调用方拿到完整的 Item
         this.modifier.accept(item);
         return item;
     }
 
-    // 写入显示来源声明, 并保证只配置一次.
+    // 默认空来源不占用配置次数, 显式来源只能设置一次.
     private void setSource(DisplaySourceFactory source) {
         if (this.sourceConfigured)
             throw new IllegalStateException("display source has already been configured");
@@ -417,22 +426,20 @@ public final class ItemBuilder {
         this.sourceConfigured = true;
     }
 
-    // 构建器阶段的显示来源声明, 每次 {@link #build()} 都创建一个独立的 {@link DisplaySource}.
+    // 每次 build 都从声明创建独立的运行时显示来源.
     sealed interface DisplaySourceFactory permits DisplaySourceFactory.ProviderFactory, DisplaySourceFactory.LazyFactory {
 
         DisplaySource create(Runnable invalidator);
 
-        // 固定或上下文来源声明
         record ProviderFactory(ItemProvider provider, ImmediateItemProvider placeholder) implements DisplaySourceFactory {
 
             @Override
             public DisplaySource create(Runnable invalidator) {
-                // 固定来源没有解析阶段, 失效回调用不上
+                // 固定来源没有解析完成事件, 不需要失效回调.
                 return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
             }
         }
 
-        // 懒加载来源声明
         record LazyFactory(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider) implements DisplaySourceFactory {
 
             @Override
@@ -442,20 +449,17 @@ public final class ItemBuilder {
         }
     }
 
-    // Item 的显示来源, 决定每次渲染使用的提供器与挂载行为.
+    // 运行时显示来源, 同时负责当前 Provider 与首次挂载行为.
     sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.LazyDisplaySource {
 
-        // 获取当前渲染使用的提供器.
         ItemProvider provider();
 
-        // 获取首次成功结果前使用的占位提供器.
         ImmediateItemProvider placeholder();
 
-        // Item 挂载到槽位时的回调. 默认无操作.
+        // 懒加载来源在这里启动首次解析.
         default void onAttached() {
         }
 
-        // 固定不变的显示来源
         record FixedDisplaySource(@NotNull ItemProvider provider, @NotNull ImmediateItemProvider placeholder) implements DisplaySource {
             public FixedDisplaySource {
                 Objects.requireNonNull(provider, "provider");
@@ -463,12 +467,14 @@ public final class ItemBuilder {
             }
         }
 
-        // 第一次挂载时异步解析一次, 之后复用结果的懒加载显示来源.
+        // 首次挂载时解析一次, 后续挂载复用同一结果.
         final class LazyDisplaySource implements DisplaySource {
-            private final ImmediateItemProvider placeholder; // 占位提供器, 解析出的显示来源首次成功前继续使用
-            private final AtomicReference<LazyItemProvider> pendingProvider; // 挂起的提供器, 取出后置 null 保证只解析一次
-            private final Runnable invalidator;                         // 解析完成后通知 Window 失效的回调
-            private volatile ItemProvider currentProvider;              // 当前渲染使用的提供器, 初始为占位内容, 解析完成后替换
+            private final ImmediateItemProvider placeholder;
+            // getAndSet(null) 让多个并发挂载中只有一个能启动解析.
+            private final AtomicReference<LazyItemProvider> pendingProvider;
+            private final Runnable invalidator;
+            // 完成回调可能运行在异步线程, 渲染线程需要立即看到新 Provider.
+            private volatile ItemProvider currentProvider;
 
             LazyDisplaySource(ImmediateItemProvider placeholder, LazyItemProvider lazyProvider, Runnable invalidator) {
                 this.placeholder = Objects.requireNonNull(placeholder, "placeholder");
@@ -487,14 +493,12 @@ public final class ItemBuilder {
                 return this.placeholder;
             }
 
-            // 仅第一次挂载真正提交解析, 后续直接复用结果.
             @Override
             public void onAttached() {
-                // 取出并清空挂起的提供器, 保证同一 Item 多次挂载也只执行一次解析
                 LazyItemProvider lazyProvider = this.pendingProvider.getAndSet(null);
                 if (lazyProvider == null) return;
 
-                // 同步抛出同样视为解析失败, 与异步异常走同一通道
+                // resolve 同步抛出也按解析失败处理.
                 CompletableFuture<? extends ItemProvider> stage;
                 try {
                     stage = Objects.requireNonNull(lazyProvider.resolve(), "lazyProvider result");
@@ -504,23 +508,22 @@ public final class ItemBuilder {
                 }
 
                 stage.whenComplete((provider, throwable) -> {
-                    // 加载失败时转发异常, 保留占位显示
+                    // 失败时保留占位 Provider.
                     if (throwable != null) {
                         SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", ThrowableUtils.unwrapCompletion(throwable));
                         return;
                     }
-                    // 解析结果为 null 也视为失败, 避免渲染时空指针
                     if (provider == null) {
                         SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", new NullPointerException("resolved provider"));
                         return;
                     }
 
-                    // 替换当前提供器并通知窗口重新渲染
+                    // 先发布新 Provider, 再通知 Window 读取它.
                     this.currentProvider = provider;
                     try {
                         this.invalidator.run();
                     } catch (RuntimeException exception) {
-                        // 失效回调失败不能影响已完成的解析结果
+                        // 通知失败不撤销已经发布的 Provider.
                         SparrowUI.getInstance().handleException("Failed to invalidate windows for lazy item", exception);
                     }
                 });

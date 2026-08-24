@@ -67,7 +67,6 @@ final class ConfiguredItem implements ObservableItem {
 
     @Override
     public void handleClick(ItemClick click) {
-        // 守卫全部通过才执行处理器, 点击成功后按需主动失效
         if (!this.passes(this.clickGuards, click)) return;
         this.clickHandler.accept(this, click);
         if (this.updateOnClick) {
@@ -87,7 +86,7 @@ final class ConfiguredItem implements ObservableItem {
         this.bundleHandler.accept(this, select);
     }
 
-    // 按添加顺序执行守卫, 首个拒绝者执行善后回调并宣告不通过.
+    // 首个拒绝交互的守卫负责执行自己的拒绝回调.
     private <C extends ItemInteraction> boolean passes(@NotNull List<GuardEntry<C>> guards, @NotNull C interaction) {
         for (int index = 0; index < guards.size(); index++) {
             GuardEntry<C> entry = guards.get(index);
@@ -99,19 +98,19 @@ final class ConfiguredItem implements ObservableItem {
         return true;
     }
 
-    // 登记观察者, 按查看者解析并订阅声明的依赖, 再触发显示来源的首次挂载回调.
     @Override
     public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
         Objects.requireNonNull(window, "window");
         Objects.requireNonNull(observer, "observer");
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
+        // 观察者, 依赖与懒加载来源全部就绪后, 本次挂载才算成功.
         try {
             attachment.track(this.observers.subscribe(observer));
             attachment.subscribeDependencies(this.dependencies, window.viewer());
             this.displaySource.onAttached();
             return attachment;
         } catch (RuntimeException | Error throwable) {
-            // 回滚失败不能盖掉挂载失败的原因
+            // 保留原始挂载异常, 清理异常作为补充信息.
             try {
                 attachment.close();
             } catch (RuntimeException | Error closeFailure) {

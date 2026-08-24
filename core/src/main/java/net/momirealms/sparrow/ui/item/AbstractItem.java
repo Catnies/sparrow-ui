@@ -43,11 +43,25 @@ public abstract class AbstractItem implements ObservableItem {
         }
     }
 
+    /**
+     * 声明按查看者 UUID 取值的渲染依赖.
+     * <p><strong>只应在子类构造器里调用.</strong>
+     *
+     * @param signal 按玩家分区的数据源
+     */
     protected final void dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
         Objects.requireNonNull(signal, "signal");
         this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
     }
 
+    /**
+     * 声明通过查看者计算分区键的渲染依赖.
+     * <p><strong>只应在子类构造器里调用.</strong>
+     *
+     * @param <K> 分区键类型
+     * @param signal 分区数据源
+     * @param keyOf 从查看者取得分区键的函数, 每次挂载时调用
+     */
     protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
         Objects.requireNonNull(signal, "signal");
         Objects.requireNonNull(keyOf, "keyOf");
@@ -55,8 +69,8 @@ public abstract class AbstractItem implements ObservableItem {
     }
 
     /**
-     * 根据当前显示上下文发起一次物品渲染.
-     * <p>此方法遵守 {@link ItemProvider#provide(RenderContext)} 的渲染约束.</p>
+     * 为当前显示位置计算物品内容.
+     * <p>实现必须遵守 {@link ItemProvider#provide(RenderContext)} 的渲染约束.
      *
      * @param context 渲染上下文
      * @return 本次显示结果的 Future
@@ -65,7 +79,7 @@ public abstract class AbstractItem implements ObservableItem {
     protected abstract CompletableFuture<? extends ItemStack> render(RenderContext context);
 
     /**
-     * 返回此显示位置尚无成功渲染结果时使用的占位物品.
+     * 返回此显示位置首次渲染完成前使用的占位物品.
      * <p>后续刷新尚未完成时继续显示最近一次成功结果, 不会重新退回占位物品.
      *
      * @param context 渲染上下文
@@ -89,17 +103,17 @@ public abstract class AbstractItem implements ObservableItem {
     }
 
     @Override
-    public final ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+    public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
         Objects.requireNonNull(window, "window");
         Objects.requireNonNull(observer, "observer");
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
-        // 登记观察者并订阅依赖, 任一步失败都关闭挂载回滚
+        // 观察者和依赖必须一同生效, 任一订阅失败都撤销本次挂载.
         try {
             attachment.track(this.observers.subscribe(observer));
             attachment.subscribeDependencies(this.dependencies, window.viewer());
             return attachment;
         } catch (RuntimeException | Error throwable) {
-            // 回滚失败不能盖掉挂载失败的原因
+            // 保留原始挂载异常, 清理异常作为补充信息.
             try {
                 attachment.close();
             } catch (RuntimeException | Error closeFailure) {

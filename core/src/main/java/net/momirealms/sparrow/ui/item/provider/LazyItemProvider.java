@@ -12,17 +12,17 @@ public interface LazyItemProvider {
 
     /**
      * 启动这一次解析并返回结果阶段.
-     * <p>解析出 {@code null} 视为失败, 此时保留占位内容.
+     * <p><strong>返回值不能为 {@code null}.</strong> Future 解析出 {@code null} 也视为失败.
      *
      * @return 本次解析的结果阶段
      */
     CompletableFuture<? extends ItemProvider> resolve();
 
     /**
-     * 把同步的解析函数放到 Paper 全局异步调度器上执行.
+     * 创建在 Paper 全局异步调度器上执行同步解析函数的来源.
      *
      * @param supplier 同步解析函数, 可返回 {@code null} 表示解析失败
-     * @return 把解析函数提交到 Paper 全局异步调度器的提供器
+     * @return 异步解析来源
      */
     @NotNull
     static LazyItemProvider compute(@NotNull Supplier<? extends ItemProvider> supplier) {

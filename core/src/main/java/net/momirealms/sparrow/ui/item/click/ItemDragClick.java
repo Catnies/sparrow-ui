@@ -10,14 +10,15 @@ import java.util.List;
 
 /**
  * 一次拖拽手势经过某个 Item 时的上下文.
- * <p>只有手势本身成立才会派发: 光标为空, 或非创造模式的中键拖拽, 都不会到达 Item.
- * <p>同一次手势给经过的每一个 Item 槽位各派发一次; 同一个 Item 实例挂在多个被拖过的槽位上时会被调用多次, 每次的 {@link #windowSlot()} 不同, {@link #path()} 是同一份.
- * <p>{@code path} 是手势发生那一刻的结构快照. 处理器在第一站改动 Pane 结构不会让后续站点的 {@link Stop#kind()} 跟着变.
+ * <p>只有有效手势才会派发. 光标为空或非创造模式的中键拖拽不会到达 Item.
+ * <p>每个经过的 Item 槽位各收到一次事件. 同一个 Item 挂在多个槽位时会收到多次,
+ * 每次的 {@link #windowSlot()} 不同, {@link #path()} 相同.
+ * <p>{@code path} 是手势开始时的结构快照. 处理器改动 Pane 不会改变后续站点的 {@link Stop#kind()}.
  *
- * @param clickType 拖拽按键: LEFT 均分, RIGHT 每格一个, MIDDLE 创造模式整堆
+ * @param clickType 拖拽按键, LEFT 均分, RIGHT 每格一个, MIDDLE 为创造模式整堆
  * @param player 拖拽玩家
- * @param window 当前 Window
- * @param cursor 手势开始时的光标快照, 即引擎分配之前的整堆
+ * @param window 所属 Window
+ * @param cursor 手势开始时的光标快照, 构造时复制
  * @param windowSlot 本次派发对应的 Window 槽位
  * @param path 手势经过的全部 Window 槽位, 按客户端发包顺序保序去重
  */
@@ -36,9 +37,9 @@ public record ItemDragClick(
     }
 
     /**
-     * 返回本次派发对应的那一站.
+     * 返回本次派发对应的站点.
      *
-     * @return path 中 windowSlot 与本次派发一致的那一站
+     * @return path 中 windowSlot 与本次派发一致的站点
      */
     @NotNull
     public Stop self() {
@@ -46,10 +47,9 @@ public record ItemDragClick(
     }
 
     /**
-     * 返回本次派发的槽位是手势的第几站, 从 0 开始.
-     * <p>用来区分手势的起点, 中途与终点.
+     * 返回本次槽位在拖拽路径中的下标.
      *
-     * @return 本格在 path 中的下标
+     * @return 从 0 开始的路径下标
      */
     public int stopIndex() {
         for (int index = 0; index < this.path.size(); index++) {

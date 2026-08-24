@@ -5,12 +5,12 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 玩家在 Item 显示的 Bundle 内容中选择槽位的上下文.
+ * 一次 Bundle 内容槽位选择的上下文.
  *
  * @param player 执行选择的玩家
- * @param window 当前 Window
+ * @param window 所属 Window
  * @param windowSlot Bundle 所在的 Window 槽位
- * @param bundleSlot Bundle 内槽位; {@code -1} 表示光标已离开.
+ * @param bundleSlot Bundle 内槽位, {@code -1} 表示未选中任何槽位
  */
 public record BundleSelectClick(
         @NotNull Player player,

@@ -13,6 +13,7 @@ import java.util.function.LongSupplier;
 final class ThrottleGuard implements ItemGuard<ItemClick> {
     private final long intervalMillis;
     private final LongSupplier timeSource;
+    // 两级弱键避免共享 Guard 延长 Item 或 Player 的生命周期.
     private final Map<Item, Map<Player, Long>> timestamps = new WeakHashMap<>();
 
     ThrottleGuard(long intervalMillis, @NotNull LongSupplier timeSource) {
@@ -25,7 +26,7 @@ final class ThrottleGuard implements ItemGuard<ItemClick> {
     @Override
     public boolean test(@NotNull Item item, @NotNull ItemClick click) {
         long now = this.timeSource.getAsLong();
-        // 一个 Guard 共用一把短锁; 只有观测到共享 Guard 争用时才拆为每 Item 锁.
+        // WeakHashMap 不是线程安全的, 查询与更新时间共用同一把锁.
         synchronized (this.timestamps) {
             Map<Player, Long> itemTimestamps = this.timestamps.computeIfAbsent(item, ignoredItem -> new WeakHashMap<>());
             Long last = itemTimestamps.get(click.player());

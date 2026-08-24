@@ -14,14 +14,12 @@ import java.util.function.Function;
 
 /**
  * Item 与一个最终显示槽位之间的挂载关系.
- * Window 在替换显示路径或关闭时必须调用 {@link #close()}.
+ * <p><strong>显示路径被替换或关闭时必须调用 {@link #close()}.</strong>
  */
 public interface ItemAttachment extends AutoCloseable {
-
-    // 不携带订阅, 不主动失效的共享挂载.
     ItemAttachment PASSIVE = () -> {};
 
-    // 解除此显示关系, 重复关闭不产生额外效果.
+    // 解除显示关系. 重复关闭不产生额外效果.
     @Override
     void close();
 
@@ -39,32 +37,23 @@ public interface ItemAttachment extends AutoCloseable {
 
     /**
      * 持有本次挂载取得的全部订阅, 并把依赖失效转成对这一条显示路径的标脏.
-     * <p>依赖订阅按挂载建立而不是共享, 因此按查看者分区的依赖失效只影响对应玩家的槽位.
+     * <p>依赖订阅按挂载建立, 按查看者分区的依赖失效只影响对应玩家的槽位.
      */
     final class Tracking implements ItemAttachment {
         private final Item item;
         private final Observer<? super Item> observer;
-        private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>(); // 挂载线程写入, 关闭线程读取.
-        private final AtomicBoolean closed = new AtomicBoolean(); // 一次性关闭哨兵, 关闭后依赖失效不再转发
+        private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
+        private final AtomicBoolean closed = new AtomicBoolean();
 
         private Tracking(Item item, Observer<? super Item> observer) {
             this.item = item;
             this.observer = observer;
         }
 
-        /**
-         * 把一条订阅交给本次挂载管理, 关闭挂载时一并关闭.
-         */
         void track(@NotNull Subscription subscription) {
             this.subscriptions.add(subscription);
         }
 
-        /**
-         * 按查看者解析并订阅声明的依赖.
-         *
-         * @param dependencies 依赖声明
-         * @param viewer 本次挂载的查看者
-         */
         void subscribeDependencies(
                 @NotNull List<? extends Function<? super Player, ? extends Signal<?>>> dependencies,
                 @NotNull Player viewer
@@ -75,9 +64,6 @@ public interface ItemAttachment extends AutoCloseable {
             }
         }
 
-        /**
-         * 依赖失效, 标脏本次挂载对应的显示路径.
-         */
         private void dirty() {
             if (this.closed.get()) return;
             this.observer.onUpdate(this.item);
@@ -88,7 +74,7 @@ public interface ItemAttachment extends AutoCloseable {
             if (!this.closed.compareAndSet(false, true)) {
                 return;
             }
-            // 逐个关闭订阅, 单个失败不阻断其余清理, 最后统一抛出
+            // 单个订阅关闭失败不应阻断其余清理.
             RuntimeException failure = null;
             for (Subscription subscription : this.subscriptions) {
                 try {
