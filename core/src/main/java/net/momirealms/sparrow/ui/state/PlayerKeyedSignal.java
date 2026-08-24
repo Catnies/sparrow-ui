@@ -52,7 +52,7 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> MutablePlayerKeyedSignal<T> of(@NotNull Function<? super UUID, ? extends T> initial, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new MutablePlayerKeyedSignalImpl<>(new KeyedSignalImpl<>(initial, sameValue));
+        return new MutablePlayerKeyedSignalImpl<>(initial, sameValue);
     }
 
     /**
@@ -79,7 +79,7 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> PlayerKeyedSignal<T> async(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, null));
+        return new PlayerKeyedSignalImpl<>(placeholder, executor, loader, sameValue, null);
     }
 
     /**
@@ -111,7 +111,7 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> PlayerKeyedSignal<T> polling(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader, long periodTicks, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyTicks(periodTicks)));
+        return new PlayerKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyTicks(periodTicks));
     }
 
     /**
@@ -142,6 +142,6 @@ public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
      */
     @NotNull
     static <T> PlayerKeyedSignal<T> pollingMillis(T placeholder, @NotNull Executor executor, @NotNull Function<? super UUID, ? extends T> loader, long periodMillis, @NotNull BiPredicate<? super T, ? super T> sameValue) {
-        return new PlayerKeyedSignalImpl<>(new AsyncKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyMillis(periodMillis)));
+        return new PlayerKeyedSignalImpl<>(placeholder, executor, loader, sameValue, AsyncSignalImpl.Polling.everyMillis(periodMillis));
     }
 }

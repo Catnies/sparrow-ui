@@ -13,7 +13,7 @@ import java.util.function.Function;
  * @param <K> 分区 key 类型
  * @param <T> 值类型
  */
-final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSignalImpl<T>> {
+sealed class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSignalImpl<T>> permits PlayerKeyedSignalImpl {
     private final T placeholder;
     private final Executor executor;
     private final Function<? super K, ? extends T> loader;

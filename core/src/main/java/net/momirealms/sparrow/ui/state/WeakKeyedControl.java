@@ -8,9 +8,7 @@ import org.jetbrains.annotations.NotNull;
  * 菜单级、会话级、每副本一个的 signal 要登记到全局事件总线、Redis 订阅、定时任务上, 写成 {@code bus.on(X, e -> signal.remove(...))}
  * 会把 signal 强捕获进一个永不消失的登记表, 为了防泄漏加的功能自己变成泄漏源. 换成 {@code WeakKeyedControl<K> control = signal.weakControl()}
  * 再捕获 {@code control}, signal 死后登记只剩一个几十字节的空壳.
- * <p>与自己手写 {@code WeakReference} 的区别: 空值检查忘不掉; {@link #isStale} 让讲究的登记表能把自己的条目摘掉;
- * 以及弱持的是<strong>正确的对象</strong>. {@code PlayerKeyedSignal} 的 {@code at(uuid)} 句柄强持的是它里面的委托而不是包装器,
- * 用户只留句柄时包装器会被回收, 自己弱持包装器的人会静默失效, 这里弱持的是委托.
+ * <p>与自己手写 {@code WeakReference} 相比, 空值检查收在实现里, {@link #isStale} 也让登记表能及时摘掉失效条目.
  * <p>线程安全同 {@code KeyedSignal}. <strong>不要在同一个 KeyedSignal 的回调里调 {@link #remove} / {@link #clear}</strong>, 那会在该 key 的重算里重入.
  *
  * @param <K> 分区 key 类型

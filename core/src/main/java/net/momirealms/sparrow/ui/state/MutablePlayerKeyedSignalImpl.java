@@ -1,36 +1,14 @@
 package net.momirealms.sparrow.ui.state;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.util.UUID;
-import java.util.function.UnaryOperator;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
 
-/**
- * {@link MutablePlayerKeyedSignal} 的实现, 委托同步 KeyedSignal.
- *
- * @param <T> 值类型
- */
-final class MutablePlayerKeyedSignalImpl<T> extends PlayerKeyedSignalImpl<T> implements MutablePlayerKeyedSignal<T> {
-    private final MutableKeyedSignal<UUID, T> delegate;
+final class MutablePlayerKeyedSignalImpl<T> extends KeyedSignalImpl<UUID, T> implements MutablePlayerKeyedSignal<T> {
 
-    MutablePlayerKeyedSignalImpl(MutableKeyedSignal<UUID, T> delegate) {
-        super(delegate);
-        this.delegate = delegate;
-    }
-
-    @Override
-    @NotNull
-    public MutableSignal<T> at(@NotNull UUID key) {
-        return this.delegate.at(key);
-    }
-
-    @Override
-    public void set(@NotNull UUID key, T value) {
-        this.delegate.set(key, value);
-    }
-
-    @Override
-    public void update(@NotNull UUID key, @NotNull UnaryOperator<T> updater) {
-        this.delegate.update(key, updater);
+    MutablePlayerKeyedSignalImpl(Function<? super UUID, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue) {
+        super(initial, sameValue);
+        // 通用基类已经完成构造且本类没有额外状态, 注册表可以在这里发布 this.
+        PlayerSignalRegistry.track(this);
     }
 }

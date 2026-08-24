@@ -14,7 +14,7 @@ import java.util.function.UnaryOperator;
  * @param <K> 分区 key 类型
  * @param <T> 值类型
  */
-final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> {
+sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> permits MutablePlayerKeyedSignalImpl {
     private final Function<? super K, ? extends T> initial;
     private final BiPredicate<? super T, ? super T> sameValue;
 
