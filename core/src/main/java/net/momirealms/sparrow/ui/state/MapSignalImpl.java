@@ -280,8 +280,9 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
             if (removed) this.changed();
             return removed;
         }
+        if (!this.delegate.containsKey(key)) return false;
         V current = this.delegate.get(key);
-        if (current == null || !current.equals(value)) return false;
+        if (!Objects.equals(current, value)) return false;
         boolean removed = this.delegate.remove(key, current);
         if (removed) this.removedThenChanged(key, current);
         return removed;
