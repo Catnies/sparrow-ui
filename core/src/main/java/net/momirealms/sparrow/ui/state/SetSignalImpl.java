@@ -5,6 +5,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -155,8 +156,9 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         if (hook != null) {
             // 先把新元素过一遍钩子, 再一次性交给 delegate, 写时复制的只复制一次
             List<E> fresh = new ArrayList<>();
+            Set<E> freshElements = new HashSet<>();
             for (E element : c) {
-                if (!this.delegate.contains(element)) fresh.add(hook.apply(element));
+                if (!this.delegate.contains(element) && freshElements.add(element)) fresh.add(hook.apply(element));
             }
             stored = fresh;
         }
