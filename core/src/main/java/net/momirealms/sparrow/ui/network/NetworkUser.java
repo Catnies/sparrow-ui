@@ -56,16 +56,19 @@ public final class NetworkUser {
         this.player = player;
     }
 
-    void setConnectionState(@NotNull ConnectionState state) {
+    @ApiStatus.Internal
+    public void setConnectionState(@NotNull ConnectionState state) {
         this.decoderState = state;
         this.encoderState = state;
     }
 
-    void decoderState(@NotNull ConnectionState state) {
+    @ApiStatus.Internal
+    public void decoderState(@NotNull ConnectionState state) {
         this.decoderState = state;
     }
 
-    void encoderState(@NotNull ConnectionState state) {
+    @ApiStatus.Internal
+    public void encoderState(@NotNull ConnectionState state) {
         this.encoderState = state;
     }
 
