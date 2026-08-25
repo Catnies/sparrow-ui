@@ -350,14 +350,14 @@ public final class NetworkManager implements Listener, AutoCloseable {
     /**
      * 按 NMS 包的运行期 Class 和方向注册对象层监听器.
      *
-     * @param listener 对象层监听器, null 时跳过注册
-     * @param packetClass NMS 包类型, null 时跳过注册
+     * @param listener 对象层监听器
+     * @param packetClass NMS 包类型, 当前版本不存在时为 null, 跳过注册
      * @param flow 包的传输方向, 决定监听器收到的是 onPacketReceive 还是 onPacketSend
      * @throws IllegalStateException 管理器已关闭或该方向的该类型已有监听器时
      */
-    public synchronized void registerNMSPacketListener(@Nullable NMSPacketListener listener, @Nullable Class<?> packetClass, @NotNull PacketFlow flow) {
+    public synchronized void registerNMSPacketListener(@NotNull NMSPacketListener listener, @Nullable Class<?> packetClass, @NotNull PacketFlow flow) {
         this.requireOpen();
-        if (listener == null || packetClass == null) return;
+        if (packetClass == null) return;
         boolean serverbound = flow == PacketFlow.SERVERBOUND;
         Map<Class<?>, NMSPacketListener> current = serverbound ? this.serverboundNMSListeners : this.clientboundNMSListeners;
         if (current.containsKey(packetClass)) {
