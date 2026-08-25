@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
@@ -28,7 +27,7 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
     private boolean dataDirty = true;
     private boolean dataQueued;
 
-    AnvilMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    AnvilMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(
                 packets,
                 player,

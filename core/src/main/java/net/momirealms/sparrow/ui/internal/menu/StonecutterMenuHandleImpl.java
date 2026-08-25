@@ -2,7 +2,9 @@ package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.internal.network.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.network.ConnectionState;
+import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.PacketIdRegistry;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
@@ -39,6 +41,11 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     );
     private static final ClientboundStateProjection RECIPE_CATALOG_PROJECTION = new ClientboundStateProjection() {
         @Override
+        public int[] suppressedPacketIds(@NotNull PacketIdRegistry packetIds) {
+            return new int[]{packetIds.byName("minecraft:update_recipes", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)};
+        }
+
+        @Override
         public boolean suppresses(@NotNull Object packet) {
             return ClientboundUpdateRecipesPacketProxy.CLASS.isInstance(packet);
         }
@@ -67,7 +74,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     private boolean recipeButtonsQueued;
     private boolean dataQueued;
 
-    StonecutterMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    StonecutterMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(
                 packets,
                 player,

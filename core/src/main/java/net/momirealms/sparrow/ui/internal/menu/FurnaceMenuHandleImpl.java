@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -17,7 +16,7 @@ final class FurnaceMenuHandleImpl extends AbstractRecipeBookMenuHandle implement
     private final DataSlots dataSlots = new DataSlots();
 
     FurnaceMenuHandleImpl(
-            @NotNull PacketListener packets,
+            @NotNull MenuPacketGateway packets,
             @NotNull Player player,
             @NotNull Object menuType,
             @NotNull InventoryType inventoryType,

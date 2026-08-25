@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.CraftRegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.RegistriesProxy;
@@ -25,7 +24,7 @@ final class EnchantmentMenuHandleImpl extends ContainerMenuHandle implements Enc
     private static final Object ENCHANTMENT_REGISTRY = CraftRegistryProxy.INSTANCE.getMinecraftRegistry(RegistriesProxy.ENCHANTMENT); // NMS 附魔注册表
     private final DataSlots dataSlots = new DataSlots();
 
-    EnchantmentMenuHandleImpl(@NotNull PacketListener packets, @NotNull Player player, long generation) {
+    EnchantmentMenuHandleImpl(@NotNull MenuPacketGateway packets, @NotNull Player player, long generation) {
         super(
                 packets,
                 player,

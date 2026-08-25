@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
+import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
@@ -22,6 +23,7 @@ public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
+    private NetworkManager networkManager;
     private WindowManager windowManager;
     private volatile boolean fireBukkitInventoryEvents = true;
     private boolean warningsEnabled = Boolean.parseBoolean(System.getProperty(WARNINGS_PROPERTY, "true"));
@@ -53,8 +55,10 @@ public class SparrowUI implements Listener {
         MapColorPalette.initialize();
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.plugin = plugin;
+        this.networkManager = new NetworkManager();
         this.windowManager = WindowManager.create();
         this.addDisableHandler(this.windowManager::shutdown);
+        this.addDisableHandler(this.networkManager::close);
     }
 
     /**
@@ -211,5 +215,18 @@ public class SparrowUI implements Listener {
             this.getPlugin();
         }
         return this.windowManager;
+    }
+
+    /**
+     * 获取当前共享的数据包网络管理器.
+     *
+     * @return 数据包网络管理器
+     */
+    @NotNull
+    public NetworkManager networkManager() {
+        if (this.networkManager == null) {
+            this.getPlugin();
+        }
+        return this.networkManager;
     }
 }

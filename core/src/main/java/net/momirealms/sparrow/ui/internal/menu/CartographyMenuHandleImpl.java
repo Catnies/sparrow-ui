@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.CraftRegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMapItemDataPacketProxy;
@@ -56,7 +55,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     private boolean patchQueued;
     private boolean iconsQueued;
 
-    CartographyMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    CartographyMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(
                 packets,
                 player,

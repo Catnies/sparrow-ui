@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.internal.menu;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.internal.network.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
@@ -43,7 +42,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private static final int OFF_HAND_SLOT = 45;
 
     // 会话身份与协议入口
-    private final PacketListener packets;
+    private final MenuPacketGateway packets;
     private final Player player;
     private final Object serverPlayer;
     private final Object menuType; // NMS MenuType<?>
@@ -69,7 +68,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     // 菜单交接与生命周期
     private Object replacedMenu; // 光标来源与打开失败时的 NMS 菜单恢复目标
-    private @Nullable PacketListener.Session session;
+    private @Nullable MenuPacketGateway.Session session;
     private Object actualCarried = ItemStackProxy.EMPTY; // 代理菜单实际持有的 NMS ItemStack
     private boolean predictedCarried;
     private boolean externalCarried;
@@ -78,7 +77,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private Lifecycle lifecycle = Lifecycle.CREATED;
 
     ContainerMenuHandle(
-            PacketListener packets,
+            MenuPacketGateway packets,
             Player player,
             Object menuType,
             InventoryType inventoryType,
@@ -90,7 +89,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     ContainerMenuHandle(
-            PacketListener packets,
+            MenuPacketGateway packets,
             Player player,
             Object menuType,
             InventoryType inventoryType,
@@ -159,7 +158,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         List<Object> outgoing = this.openPackets(title, full); // NMS 客户端数据包列表
 
         // 先捕获入站容器包, 再把服务端活动菜单切换到代理.
-        PacketListener.Session openedSession = this.packets.open(
+        MenuPacketGateway.Session openedSession = this.packets.open(
                 this.player,
                 this.containerId,
                 input -> this.incoming.offer(this.generation, input),
@@ -313,7 +312,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         Lifecycle previous = this.lifecycle;
         ClientboundStateProjection releasedProjection = null;
         if (previous == Lifecycle.COMMITTED && reason != InventoryCloseEvent.Reason.DISCONNECT) {
-            PacketListener.Session currentSession = this.session;
+            MenuPacketGateway.Session currentSession = this.session;
             if (currentSession != null) {
                 releasedProjection = currentSession.releasedClientboundStateProjection();
             }
@@ -681,7 +680,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     // 入站队列先关闭, Session 随后停止网络层捕获.
     private void closeSession() {
         this.incoming.close();
-        PacketListener.Session previousSession = this.session;
+        MenuPacketGateway.Session previousSession = this.session;
         this.session = null;
         if (previousSession != null) {
             previousSession.close();

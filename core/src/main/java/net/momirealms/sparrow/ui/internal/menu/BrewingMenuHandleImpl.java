@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
@@ -22,7 +21,7 @@ final class BrewingMenuHandleImpl extends ContainerMenuHandle implements Brewing
     private boolean brewQueued;
     private boolean fuelQueued;
 
-    BrewingMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    BrewingMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(packets, player, MenuTypeProxy.BREWING_STAND, InventoryType.BREWING, MenuType.BREWING_STAND, 5, generation);
     }
 

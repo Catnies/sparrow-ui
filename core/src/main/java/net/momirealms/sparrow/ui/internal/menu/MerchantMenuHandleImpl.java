@@ -4,7 +4,9 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.internal.network.ClientboundPacketFilter;
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
+import net.momirealms.sparrow.ui.network.ConnectionState;
+import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.PacketIdRegistry;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.window.RenderCell;
@@ -42,7 +44,17 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private static final int FIRST_INPUT_SLOT = 0;
     private static final int SECOND_INPUT_SLOT = 1;
     private static final int RESULT_SLOT = 2;
-    private static final ClientboundPacketFilter MERCHANT_OFFERS_FILTER = ClientboundMerchantOffersPacketProxy.CLASS::isInstance;
+    private static final ClientboundPacketFilter MERCHANT_OFFERS_FILTER = new ClientboundPacketFilter() {
+        @Override
+        public int[] suppressedPacketIds(@NotNull PacketIdRegistry packetIds) {
+            return new int[]{packetIds.byName("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)};
+        }
+
+        @Override
+        public boolean suppresses(@NotNull Object packet) {
+            return ClientboundMerchantOffersPacketProxy.CLASS.isInstance(packet);
+        }
+    };
 
     // 渲染依赖与当前挂载
     private final BiConsumer<? super String, ? super Throwable> reporter;
@@ -69,21 +81,13 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private boolean offersQueued;
 
     MerchantMenuHandleImpl(
-            @NotNull PacketListener packets,
+            @NotNull MenuPacketGateway packets,
             @NotNull Player player,
             long generation,
             @NotNull MerchantWindow window,
             @NotNull BiConsumer<? super String, ? super Throwable> reporter
     ) {
-        super(
-                packets,
-                player,
-                MenuTypeProxy.MERCHANT,
-                InventoryType.MERCHANT,
-                org.bukkit.inventory.MenuType.MERCHANT,
-                3,
-                generation
-        );
+        super(packets, player, MenuTypeProxy.MERCHANT, InventoryType.MERCHANT, org.bukkit.inventory.MenuType.MERCHANT, 3, generation);
         this.reporter = reporter;
         this.markerKey = new NamespacedKey(SparrowUI.getInstance().getPlugin(), "merchant_offer");
         this.window = window;

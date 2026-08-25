@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.kyori.adventure.key.Key;
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.RegistriesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundPlaceGhostRecipePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
@@ -27,7 +26,7 @@ abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implemen
     private static final Object RECIPE_MANAGER = MinecraftServerProxy.INSTANCE.getRecipeManager(MinecraftServerProxy.INSTANCE.getServer());
 
     AbstractRecipeBookMenuHandle(
-            @NotNull PacketListener packets,
+            @NotNull MenuPacketGateway packets,
             @NotNull Player player,
             @NotNull Object menuType,
             @NotNull InventoryType inventoryType,

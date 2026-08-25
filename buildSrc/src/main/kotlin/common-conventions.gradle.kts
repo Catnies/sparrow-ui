@@ -27,6 +27,7 @@ repositories {
 dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.netty.transport)
+    compileOnly(libs.netty.codec.base)
     implementation(libs.jetbrains.annotations)
     implementation(libs.jspecify)
     implementation(libs.gson)
@@ -36,6 +37,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platformLauncher)
     testImplementation(libs.mockbukkit)
     testImplementation(libs.test.paper.api)
+    testImplementation(libs.netty.codec.base)
 //    testImplementation(libs.logback.classic)
 }
 

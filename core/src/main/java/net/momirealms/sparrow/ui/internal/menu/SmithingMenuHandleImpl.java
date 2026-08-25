@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -12,16 +11,8 @@ import java.util.BitSet;
 final class SmithingMenuHandleImpl extends ContainerMenuHandle {
     private static final int RESULT_SLOT = 3;
 
-    SmithingMenuHandleImpl(PacketListener packets, Player player, long generation) {
-        super(
-                packets,
-                player,
-                MenuTypeProxy.SMITHING,
-                InventoryType.SMITHING,
-                org.bukkit.inventory.MenuType.SMITHING,
-                4,
-                generation
-        );
+    SmithingMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
+        super(packets, player, MenuTypeProxy.SMITHING, InventoryType.SMITHING, org.bukkit.inventory.MenuType.SMITHING, 4, generation);
     }
 
     @Override

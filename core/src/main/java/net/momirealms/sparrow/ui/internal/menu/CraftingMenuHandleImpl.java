@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -14,7 +13,7 @@ final class CraftingMenuHandleImpl extends AbstractRecipeBookMenuHandle {
     private static final int CRAFTING_SLOT_START = 1;
     private static final int CRAFTING_SLOT_END = 10;
 
-    CraftingMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    CraftingMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(
                 packets,
                 player,

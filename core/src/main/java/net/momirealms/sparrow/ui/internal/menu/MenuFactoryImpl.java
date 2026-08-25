@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
 import net.momirealms.sparrow.ui.SparrowUI;
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
 import org.bukkit.entity.Player;
@@ -14,21 +13,20 @@ import java.util.function.BiConsumer;
 
 /**
  * Paper 容器协议适配器.
- *
  * <p><strong>菜单创建和生成的 MenuHandle 必须在玩家实体线程调用.</strong>
- * {@link PacketListener} 将实际网络写入切换到 Netty event loop.
+ * {@link MenuPacketGateway} 将实际网络写入切换到 Netty event loop.
  */
 @SuppressWarnings("UnstableApiUsage")
 public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
-    private final PacketListener packets;
+    private final MenuPacketGateway packets;
 
     /**
-     * 创建共享一个 {@link PacketListener} 的菜单工厂.
+     * 创建共享一个 {@link MenuPacketGateway} 的菜单工厂.
      *
      * @param plugin 注册网络监听器的插件
      */
     public MenuFactoryImpl(@NotNull Plugin plugin) {
-        this.packets = new PacketListener(plugin, SparrowUI.getInstance()::handleException);
+        this.packets = new MenuPacketGateway(plugin, SparrowUI.getInstance().networkManager());
     }
 
     @NotNull
@@ -198,7 +196,7 @@ public final class MenuFactoryImpl implements MenuFactory, AutoCloseable {
     }
 
     /**
-     * 卸载所有已注入的玩家网络 handler.
+     * 关闭菜单协议会话与事件入口.
      */
     @Override
     public void close() {

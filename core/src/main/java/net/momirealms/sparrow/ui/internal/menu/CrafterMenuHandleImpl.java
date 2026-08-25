@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.internal.menu;
 
-import net.momirealms.sparrow.ui.internal.network.PacketListener;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import org.bukkit.entity.Player;
@@ -21,7 +20,7 @@ final class CrafterMenuHandleImpl extends ContainerMenuHandle implements Crafter
     private final BitSet dirtyData = new BitSet(CRAFTING_SLOTS);
     private final BitSet queuedData = new BitSet(CRAFTING_SLOTS);
 
-    CrafterMenuHandleImpl(PacketListener packets, Player player, long generation) {
+    CrafterMenuHandleImpl(MenuPacketGateway packets, Player player, long generation) {
         super(
                 packets,
                 player,
