@@ -1,6 +1,5 @@
-package net.momirealms.sparrow.ui.internal.map;
+package net.momirealms.sparrow.ui.window.map;
 
-import net.momirealms.sparrow.ui.window.map.MapColorProfile;
 import org.bukkit.map.MapPalette;
 
 import java.io.BufferedOutputStream;
