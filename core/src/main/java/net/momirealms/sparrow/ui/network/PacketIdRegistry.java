@@ -21,8 +21,6 @@ import java.util.function.Consumer;
 
 @ApiStatus.Experimental
 public final class PacketIdRegistry {
-    private static final String PACKET_VISITOR_CLASS = "net.minecraft.network.ProtocolInfo$Details$PacketVisitor";
-
     private final Map<String, Integer>[][] packetIds;
     private final int[][] packetCounts;
 
@@ -98,11 +96,9 @@ public final class PacketIdRegistry {
     private static PacketTable readPacketTable(Object template) {
         HashMap<String, Integer> ids = new HashMap<>();
         int[] largestId = {-1};
-        Class<?> visitorClass;
-        try {
-            visitorClass = Class.forName(PACKET_VISITOR_CLASS);
-        } catch (ClassNotFoundException exception) {
-            throw new IllegalStateException("Missing NMS packet visitor", exception);
+        Class<?> visitorClass = ProtocolInfoDetailsProxy.PACKET_VISITOR_CLASS;
+        if (visitorClass == null) {
+            throw new IllegalStateException("Missing NMS packet visitor");
         }
         Object visitor = Proxy.newProxyInstance(visitorClass.getClassLoader(), new Class<?>[]{visitorClass}, (proxy, method, arguments) -> {
             if (method.getName().equals("accept")) {
