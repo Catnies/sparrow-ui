@@ -734,14 +734,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
             throw CancelPacketException.INSTANCE;
         }
 
-        @Override
-        public void exceptionCaught(ChannelHandlerContext context, Throwable throwable) throws Exception {
-            if (this.hasCause(throwable, CancelPacketException.INSTANCE)) {
-                return;
-            }
-            super.exceptionCaught(context, throwable);
-        }
-
         private boolean hasCause(Throwable throwable, Throwable expected) {
             Throwable current = throwable;
             while (current != null) {
