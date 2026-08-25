@@ -381,13 +381,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
         // 先读包 ID 探测定长路由, 未命中时恢复 readerIndex 且不创建事件对象.
         int initialReaderIndex = buffer.readerIndex();
-        int packetId;
-        try {
-            packetId = PacketBuf.readVarInt(buffer);
-        } catch (Throwable throwable) {
-            buffer.readerIndex(initialReaderIndex);
-            throw throwable;
-        }
+        int packetId = PacketBuf.readVarInt(buffer);
         ByteBufPacketListenerHolder[] listeners = serverbound
                 ? this.serverboundByteBufListeners[user.decoderState().ordinal()]
                 : this.clientboundByteBufListeners[user.encoderState().ordinal()];
