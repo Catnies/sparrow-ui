@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui;
 
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
-import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
+import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.WindowManager;

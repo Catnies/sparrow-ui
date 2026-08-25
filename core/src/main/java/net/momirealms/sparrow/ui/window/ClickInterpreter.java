@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.window.handle.MenuInput;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.InventoryView;
 import org.jetbrains.annotations.NotNull;

@@ -3,7 +3,7 @@ package net.momirealms.sparrow.ui.inventory;
 import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.internal.ObservableDispatcher;
+import net.momirealms.sparrow.ui.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;

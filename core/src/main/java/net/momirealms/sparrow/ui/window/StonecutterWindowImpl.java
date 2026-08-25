@@ -2,9 +2,9 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
-import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
-import net.momirealms.sparrow.ui.internal.menu.MenuInput;
-import net.momirealms.sparrow.ui.internal.menu.StonecutterMenuHandle;
+import net.momirealms.sparrow.ui.window.handle.MenuFactory;
+import net.momirealms.sparrow.ui.window.handle.MenuInput;
+import net.momirealms.sparrow.ui.window.handle.StonecutterMenuHandle;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;

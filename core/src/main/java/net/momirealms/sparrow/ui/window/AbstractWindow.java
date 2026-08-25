@@ -7,9 +7,9 @@ import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
-import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
-import net.momirealms.sparrow.ui.internal.menu.MenuHandle;
-import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.window.handle.MenuFactory;
+import net.momirealms.sparrow.ui.window.handle.MenuHandle;
+import net.momirealms.sparrow.ui.window.handle.MenuInput;
 import net.momirealms.sparrow.ui.inventory.InventorySequence;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.ClickSemantics;
@@ -17,7 +17,6 @@ import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
-import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
@@ -61,7 +60,6 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 abstract class AbstractWindow<M extends MenuHandle> implements Window {

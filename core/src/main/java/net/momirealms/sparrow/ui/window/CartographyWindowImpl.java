@@ -1,10 +1,10 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
+import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
-import net.momirealms.sparrow.ui.internal.menu.CartographyMenuHandle;
-import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
+import net.momirealms.sparrow.ui.window.handle.CartographyMenuHandle;
+import net.momirealms.sparrow.ui.window.handle.MenuFactory;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

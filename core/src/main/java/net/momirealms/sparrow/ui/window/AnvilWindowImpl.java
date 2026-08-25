@@ -2,9 +2,9 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
-import net.momirealms.sparrow.ui.internal.menu.AnvilMenuHandle;
-import net.momirealms.sparrow.ui.internal.menu.MenuFactory;
-import net.momirealms.sparrow.ui.internal.menu.MenuInput;
+import net.momirealms.sparrow.ui.window.handle.AnvilMenuHandle;
+import net.momirealms.sparrow.ui.window.handle.MenuFactory;
+import net.momirealms.sparrow.ui.window.handle.MenuInput;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;

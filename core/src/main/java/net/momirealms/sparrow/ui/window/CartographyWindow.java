@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.internal.map.MapColorPalette;
+import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.pane.Pane;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
