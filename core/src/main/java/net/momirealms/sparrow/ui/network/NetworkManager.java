@@ -1,0 +1,773 @@
+package net.momirealms.sparrow.ui.network;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.ChannelPromise;
+import io.netty.handler.codec.EncoderException;
+import io.netty.handler.codec.MessageToMessageDecoder;
+import io.netty.handler.codec.MessageToMessageEncoder;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.network.listener.configuration.FinishConfigurationListener;
+import net.momirealms.sparrow.ui.network.listener.game.ConfigurationAcknowledgedListener;
+import net.momirealms.sparrow.ui.network.listener.game.LoginListener;
+import net.momirealms.sparrow.ui.network.listener.game.StartConfigurationListener;
+import net.momirealms.sparrow.ui.network.listener.handshake.IntentionListener;
+import net.momirealms.sparrow.ui.network.listener.login.LoginAcknowledgedListener;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerPropertiesProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerSettingsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerConnectionListenerProxy;
+import net.momirealms.sparrow.ui.proxy.netty.handler.codec.ByteToMessageDecoderProxy;
+import net.momirealms.sparrow.ui.proxy.netty.handler.codec.MessageToByteEncoderProxy;
+import net.momirealms.sparrow.ui.state.ListSignal;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.plugin.Plugin;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+
+@ApiStatus.Experimental
+public final class NetworkManager implements Listener, AutoCloseable {
+    private static final String MINECRAFT_SPLITTER = "splitter";
+
+    public final PacketIdRegistry packetIds;        // 当前服务端运行期包 ID 索引
+    public final String connectionHandlerName;      // acceptor 上的子连接捕获 handler
+    public final String preInitializerName;         // 子连接注册前的临时 initializer
+    public final String packetBridgeName;           // NMS 对象层双向监听 handler
+    public final String decoderName;                // ByteBuf 入站监听 handler
+    public final String encoderName;                // ByteBuf 出站监听 handler
+    public final boolean compressionAlreadyHandled; // 服务端禁用压缩时直接跳过压缩探测
+
+    private volatile ByteBufPacketListenerHolder[][][] byteBufListeners;             // [state][flow][id] COW 快照
+    private volatile Map<Class<?>, NMSPacketListener> nmsPacketListeners = Map.of(); // NMS Class COW 快照
+
+    private final Map<ChannelPipeline, NetworkUser> users = new ConcurrentHashMap<>();
+    private final Map<UUID, NetworkUser> onlineUsers = new ConcurrentHashMap<>();
+    private final Set<Channel> serverChannels = ConcurrentHashMap.newKeySet();
+    final AtomicBoolean closed = new AtomicBoolean(); // 与 pipeline 重定位共享的关闭门闩
+
+    /**
+     * 创建管理器并立即接管服务端 acceptor 与已有玩家连接.
+     */
+    public NetworkManager() {
+        this.packetIds = new PacketIdRegistry();
+        this.byteBufListeners = createByteBufListeners(this.packetIds);
+
+        Object server = MinecraftServerProxy.INSTANCE.getServer();
+        Object settings = DedicatedServerProxy.INSTANCE.settings(server);
+        Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
+        Object properties = DedicatedServerSettingsProxy.INSTANCE.properties(settings);
+        int compressionThreshold = DedicatedServerPropertiesProxy.INSTANCE.networkCompressionThreshold(properties);
+        this.compressionAlreadyHandled = compressionThreshold < 0;
+
+        Plugin plugin = SparrowUI.getInstance().getPlugin();
+        String prefix = "sparrow_ui_" + plugin.getName().toLowerCase(Locale.ROOT);
+        this.connectionHandlerName = prefix + "_connection_handler";
+        this.preInitializerName = prefix + "_pre_initializer";
+        this.packetBridgeName = prefix + "_packet_bridge";
+        this.decoderName = prefix + "_decoder";
+        this.encoderName = prefix + "_encoder";
+
+        this.registerProtocolStateListeners();
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+        this.installServerInjection(server);
+        this.injectExistingConnections(ServerConnectionListenerProxy.INSTANCE.connections(serverConnection));
+    }
+
+    // 按运行期 ID 空间创建无锁读取的定长路由表.
+    private static ByteBufPacketListenerHolder[][][] createByteBufListeners(PacketIdRegistry packetIds) {
+        ConnectionState[] states = ConnectionState.values();
+        PacketFlow[] flows = PacketFlow.values();
+        ByteBufPacketListenerHolder[][][] listeners = new ByteBufPacketListenerHolder[states.length][flows.length][];
+        for (int stateIndex = 0; stateIndex < states.length; stateIndex++) {
+            ConnectionState state = states[stateIndex];
+            for (int flowIndex = 0; flowIndex < flows.length; flowIndex++) {
+                PacketFlow flow = flows[flowIndex];
+                listeners[stateIndex][flowIndex] = new ByteBufPacketListenerHolder[packetIds.count(state, flow)];
+            }
+        }
+        return listeners;
+    }
+
+    // 注册两条方向各自推进协议阶段所需的内部监听器.
+    private void registerProtocolStateListeners() {
+        this.registerByteBufPacketListener(IntentionListener.INSTANCE, "minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND);
+        this.registerByteBufPacketListener(LoginAcknowledgedListener.INSTANCE, "minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
+        this.registerByteBufPacketListener(FinishConfigurationListener.INSTANCE, "minecraft:finish_configuration", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+        this.registerByteBufPacketListener(LoginListener.INSTANCE, "minecraft:login", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        this.registerByteBufPacketListener(StartConfigurationListener.INSTANCE, "minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        this.registerByteBufPacketListener(ConfigurationAcknowledgedListener.INSTANCE, "minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+    }
+
+    // 注入已有 acceptor 与在线连接, 并接管后续新增的 acceptor.
+    private void installServerInjection(Object server) {
+        Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
+        List<ChannelFuture> channels = ServerConnectionListenerProxy.INSTANCE.channels(serverConnection);
+        ListSignal<ChannelFuture> listener = ListSignal.wrap(channels).beforeAdd(future -> {
+            this.injectAcceptorChannel(future);
+            return future;
+        });
+        synchronized (channels) {
+            // 持有原 channels monitor 补注入已有 acceptor, 再发布监听新增元素的包装器.
+            for (int index = 0; index < channels.size(); index++) {
+                this.injectAcceptorChannel(channels.get(index));
+            }
+            ServerConnectionListenerProxy.INSTANCE.channels(serverConnection, listener);
+        }
+    }
+
+    // 在 acceptor pipeline 上安装子连接预注入 handler.
+    private void injectAcceptorChannel(ChannelFuture future) {
+        if (this.closed.get()) return;
+        Channel channel = future.channel();
+        this.serverChannels.add(channel);
+
+        ChannelPipeline pipeline = channel.pipeline();
+        removeHandler(pipeline, this.connectionHandlerName);
+        ServerChannelHandler handler = new ServerChannelHandler();
+        if (pipeline.get("SpigotNettyServerChannelHandler#0") != null) {
+            pipeline.addAfter("SpigotNettyServerChannelHandler#0", this.connectionHandlerName, handler);
+        } else if (pipeline.get("floodgate-init") != null) {
+            pipeline.addAfter("floodgate-init", this.connectionHandlerName, handler);
+        } else if (pipeline.get("MinecraftPipeline#0") != null) {
+            pipeline.addAfter("MinecraftPipeline#0", this.connectionHandlerName, handler);
+        } else {
+            pipeline.addFirst(this.connectionHandlerName, handler);
+        }
+    }
+
+    // 只接管能与当前在线 Bukkit 玩家对应的已有连接.
+    private void injectExistingConnections(List<?> connections) {
+        HashMap<Channel, Player> playersByChannel = new HashMap<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            playersByChannel.put(this.channel(player), player);
+        }
+        List<?> snapshot;
+        // connections 是 NMS synchronizedList, 复合快照需要持有它的 monitor.
+        synchronized (connections) {
+            snapshot = List.copyOf(connections);
+        }
+        for (int index = 0; index < snapshot.size(); index++) {
+            Channel channel = (Channel) ConnectionProxy.INSTANCE.channel(snapshot.get(index));
+            Player player = playersByChannel.get(channel);
+            if (player == null) continue;
+            this.execute(channel, () -> {
+                if (this.closed.get()) return;
+                NetworkUser user = this.injectConnectionChannel(channel);
+                if (user != null) {
+                    user.setConnectionState(ConnectionState.PLAY);
+                    this.bindPlayer(user, player);
+                }
+            });
+        }
+    }
+
+    // 在已完成 vanilla 初始化的连接上建立用户索引与两层数据包 handlers.
+    @Nullable
+    NetworkUser injectConnectionChannel(Channel channel) {
+        if (isFakeChannel(channel)) return null;
+        ChannelPipeline pipeline = channel.pipeline();
+        // splitter 出现后 vanilla 基础 pipeline 已稳定, 后续 handlers 可以使用固定锚点.
+        if (pipeline.get(MINECRAFT_SPLITTER) == null) {
+            channel.close();
+            return null;
+        }
+
+        NetworkUser user = this.users.computeIfAbsent(pipeline, ignored -> {
+            NetworkUser created = new NetworkUser(this, channel);
+            channel.closeFuture().addListener((ChannelFutureListener) future -> this.handleDisconnection(created));
+            return created;
+        });
+        // 重复注入沿用同一个 NetworkUser, handler 则按当前第三方顺序重新安装.
+        this.removeConnectionHandlers(user);
+
+        // 对象桥紧贴 NMS Connection 前方, 两个方向都能看到解码后的包对象.
+        for (Map.Entry<String, ChannelHandler> entry : pipeline.toMap().entrySet()) {
+            if (ConnectionProxy.CLASS.isInstance(entry.getValue())) {
+                pipeline.addBefore(entry.getKey(), this.packetBridgeName, new NMSPacketBridge(user));
+                break;
+            }
+        }
+        // Buffer handlers 的第三方相对位置由 NetworkPipelineOrder 单独维护.
+        NetworkPipelineOrder.addByteBufHandlers(
+                this,
+                pipeline,
+                new ByteBufDecoder(user),
+                new ByteBufEncoder(user, this.compressionAlreadyHandled)
+        );
+        return user;
+    }
+
+    static boolean isFakeChannel(Channel channel) {
+        String name = channel.getClass().getSimpleName();
+        return name.equals("FakeChannel") || name.equals("SpoofedChannel");
+    }
+
+    // 玩家绑定与连接回收
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    private void handleJoin(PlayerJoinEvent event) {
+        if (this.closed.get()) return;
+        Player player = event.getPlayer();
+        NetworkUser user = this.user(player);
+        if (user == null) {
+            SparrowUI.getInstance().handleException("Missing SparrowUI network user for " + player.getName(), new IllegalStateException("player channel was not injected"));
+            return;
+        }
+        this.bindPlayer(user, player);
+    }
+
+    private void bindPlayer(NetworkUser user, Player player) {
+        user.player(player);
+        this.onlineUsers.put(player.getUniqueId(), user);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    private void handleQuit(PlayerQuitEvent event) {
+        NetworkUser user = this.onlineUsers.remove(event.getPlayer().getUniqueId());
+        if (user != null && user.player() == event.getPlayer()) {
+            user.player(null);
+        }
+    }
+
+    // 同时撤销 pipeline 与 UUID 两份索引, 随后清理当前连接的 handlers.
+    private void handleDisconnection(NetworkUser user) {
+        this.users.remove(user.channel().pipeline(), user);
+        UUID uuid = user.uuid();
+        if (uuid != null) {
+            this.onlineUsers.remove(uuid, user);
+        }
+        user.player(null);
+        this.removeConnectionHandlers(user);
+    }
+
+    private void removeConnectionHandlers(NetworkUser user) {
+        ChannelPipeline pipeline = user.channel().pipeline();
+        removeHandler(pipeline, this.packetBridgeName);
+        NetworkPipelineOrder.removeByteBufHandlers(this, pipeline);
+    }
+
+    private static void removeHandler(ChannelPipeline pipeline, String name) {
+        if (pipeline.get(name) != null) {
+            pipeline.remove(name);
+        }
+    }
+
+    private Channel channel(Player player) {
+        Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
+        Object packetListener = ServerPlayerProxy.INSTANCE.connection(serverPlayer);
+        Object connection = ServerCommonPacketListenerImplProxy.INSTANCE.connection(packetListener);
+        return (Channel) ConnectionProxy.INSTANCE.channel(connection);
+    }
+
+    // 监听器注册与派发
+
+    /**
+     * 按运行期注册名, 协议阶段和方向注册 ByteBuf 监听器.
+     *
+     * @param listener 监听器
+     * @param name 完整注册名, 当前版本不存在时跳过注册
+     * @param state 包所属协议阶段
+     * @param flow 包的传输方向
+     * @throws IllegalStateException 管理器已关闭或该路由已有监听器时
+     */
+    public synchronized void registerByteBufPacketListener(@NotNull ByteBufPacketListener listener, @NotNull String name, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
+        this.requireOpen();
+        int packetId = this.packetIds.byName(name, state, flow);
+        if (packetId == -1) return;
+        ByteBufPacketListenerHolder[][][] current = this.byteBufListeners;
+        ByteBufPacketListenerHolder[] currentRoute = current[state.ordinal()][flow.ordinal()];
+        if (currentRoute[packetId] != null) {
+            throw new IllegalStateException("Packet listener already registered for " + name + " (" + state + "/" + flow + "/" + packetId + ")");
+        }
+        // 只复制命中的 route 与两级索引, Netty 线程继续无锁读取旧快照.
+        ByteBufPacketListenerHolder[] updatedRoute = currentRoute.clone();
+        updatedRoute[packetId] = new ByteBufPacketListenerHolder(name, listener);
+        ByteBufPacketListenerHolder[][] updatedState = current[state.ordinal()].clone();
+        updatedState[flow.ordinal()] = updatedRoute;
+        ByteBufPacketListenerHolder[][][] updated = current.clone();
+        updated[state.ordinal()] = updatedState;
+        this.byteBufListeners = updated;
+    }
+
+    /**
+     * 按 NMS 包的运行期 Class 注册对象层监听器.
+     *
+     * @param listener 对象层监听器, null 时跳过注册
+     * @param packetClass NMS 包类型, null 时跳过注册
+     * @throws IllegalStateException 管理器已关闭或该类型已有监听器时
+     */
+    public synchronized void registerNMSPacketListener(@Nullable NMSPacketListener listener, @Nullable Class<?> packetClass) {
+        this.requireOpen();
+        if (listener == null || packetClass == null) return;
+        if (this.nmsPacketListeners.containsKey(packetClass)) {
+            throw new IllegalStateException("NMS packet listener already registered for " + packetClass.getName());
+        }
+        // 发布新的只读快照, 已经进入派发的线程仍可安全读完旧表.
+        HashMap<Class<?>, NMSPacketListener> listeners = new HashMap<>(this.nmsPacketListeners);
+        listeners.put(packetClass, listener);
+        this.nmsPacketListeners = Map.copyOf(listeners);
+    }
+
+    // 在原始帧上按 route 派发监听器, 并维护取消、改写与异常后的指针契约.
+    private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, PacketFlow flow) {
+        if (!buffer.isReadable() || user.bypassing()) {
+            return buffer.isReadable();
+        }
+        // 先读包 ID 探测定长路由, 未命中时恢复 readerIndex 且不创建事件对象.
+        int initialReaderIndex = buffer.readerIndex();
+        int packetId;
+        try {
+            packetId = PacketBuf.readVarInt(buffer);
+        } catch (Throwable throwable) {
+            buffer.readerIndex(initialReaderIndex);
+            throw throwable;
+        }
+        ConnectionState state = flow == PacketFlow.SERVERBOUND ? user.decoderState() : user.encoderState();
+        ByteBufPacketListenerHolder[] listeners = this.byteBufListeners[state.ordinal()][flow.ordinal()];
+        if (packetId < 0 || packetId >= listeners.length) {
+            buffer.readerIndex(initialReaderIndex);
+            return true;
+        }
+        ByteBufPacketListenerHolder holder = listeners[packetId];
+        if (holder == null) {
+            buffer.readerIndex(initialReaderIndex);
+            return true;
+        }
+        // 命中后才记录完整写指针并创建事件, 供异常路径恢复原帧.
+        int initialWriterIndex = buffer.writerIndex();
+        PacketBuf packetBuffer = new PacketBuf(buffer);
+        ByteBufPacketEvent event = new ByteBufPacketEvent(packetId, packetBuffer, buffer.readerIndex());
+        try {
+            if (flow == PacketFlow.SERVERBOUND) {
+                holder.listener().onPacketReceive(user, event);
+            } else {
+                holder.listener().onPacketSend(user, event);
+            }
+        } catch (Throwable throwable) {
+            SparrowUI.getInstance().handleException("Failed to handle packet " + holder.name(), throwable);
+            // 已经变更或取消的半成品帧不可继续传播, 纯读取失败则恢复原始指针.
+            if (event.changed() || event.cancelled()) {
+                buffer.clear();
+                return false;
+            }
+            buffer.writerIndex(initialWriterIndex);
+            buffer.readerIndex(initialReaderIndex);
+            return true;
+        }
+        if (event.cancelled()) {
+            buffer.clear();
+            return false;
+        }
+        if (!event.changed()) {
+            buffer.writerIndex(initialWriterIndex);
+            buffer.readerIndex(initialReaderIndex);
+        }
+        return buffer.isReadable();
+    }
+
+    // bundle 子包递归共用根事件, 让取消与替换作用于完整的出站对象.
+    @Nullable
+    private NMSPacketEvent handleNMSPacketSend(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event) {
+        if (ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
+            for (Object child : BundlePacketProxy.INSTANCE.subPackets(packet)) {
+                event = this.handleNMSPacketSend(user, root, child, event);
+            }
+            return event;
+        }
+        NMSPacketListener listener = this.nmsPacketListeners.get(packet.getClass());
+        if (listener == null) {
+            return event;
+        }
+        NMSPacketEvent resolved = event == null ? new NMSPacketEvent(root) : event;
+        try {
+            listener.onPacketSend(user, resolved, packet);
+        } catch (Throwable throwable) {
+            SparrowUI.getInstance().handleException("Failed to handle NMS packet " + packet.getClass().getName(), throwable);
+        }
+        return resolved;
+    }
+
+    // 查询与诊断
+
+    /**
+     * 返回 Bukkit 玩家当前绑定的连接用户.
+     *
+     * @param player Bukkit 玩家
+     * @return 连接用户, 注入尚未建立时为 null
+     */
+    @Nullable
+    public NetworkUser user(@NotNull Player player) {
+        return this.users.get(this.channel(player).pipeline());
+    }
+
+    /**
+     * 返回 channel 当前绑定的连接用户.
+     *
+     * @param channel Minecraft 连接 channel
+     * @return 连接用户, 注入尚未建立时为 null
+     */
+    @Nullable
+    public NetworkUser user(@NotNull Channel channel) {
+        return this.users.get(channel.pipeline());
+    }
+
+    /**
+     * 按协议阶段和方向输出当前服务端的运行期包 ID 表.
+     *
+     * @param output 每行表项的接收者
+     */
+    public void dumpPacketIds(@NotNull Consumer<String> output) {
+        this.packetIds.dump(output);
+    }
+
+    // 发送
+
+    /**
+     * 在连接 event loop 中发送一个 NMS 客户端包, 并绕过当前管理器自己的监听器.
+     *
+     * @param user 接收数据包的连接
+     * @param packet NMS 客户端包
+     * @throws IllegalStateException 管理器已关闭时
+     */
+    public void send(@NotNull NetworkUser user, @NotNull Object packet) {
+        this.requireOpen();
+        this.writeBypassed(user, packet);
+    }
+
+    /**
+     * 在连接 event loop 中发送一批 NMS 客户端包, 多个包会合成一个原版 bundle.
+     *
+     * @param user 接收数据包的连接
+     * @param packets NMS 客户端包列表
+     * @throws IllegalStateException 管理器已关闭时
+     */
+    public void send(@NotNull NetworkUser user, @NotNull List<?> packets) {
+        this.requireOpen();
+        if (packets.isEmpty()) {
+            return;
+        }
+        Object packet;
+        if (packets.size() == 1) {
+            packet = packets.getFirst();
+        } else {
+            ArrayList<Object> bundled = new ArrayList<>(packets.size());
+            bundled.addAll(packets);
+            packet = ClientboundBundlePacketProxy.INSTANCE.newInstance(bundled);
+        }
+        this.writeBypassed(user, packet);
+    }
+
+    /**
+     * 发送已经包含包 ID 的预序列化帧, buffer 所有权随调用转交给 Netty pipeline.
+     *
+     * @param user 接收数据包的连接
+     * @param buffer 预序列化帧
+     * @throws IllegalStateException 管理器已关闭时
+     */
+    public void sendByteBuf(@NotNull NetworkUser user, @NotNull ByteBuf buffer) {
+        this.requireOpen();
+        this.writeBypassed(user, buffer);
+    }
+
+    private void writeBypassed(NetworkUser user, Object message) {
+        Runnable write = () -> {
+            user.beginBypass();
+            try {
+                user.channel().writeAndFlush(message);
+            } finally {
+                user.endBypass();
+            }
+        };
+        this.execute(user.channel(), write);
+    }
+
+    private void execute(Channel channel, Runnable task) {
+        if (channel.eventLoop().inEventLoop()) {
+            task.run();
+        } else {
+            channel.eventLoop().execute(task);
+        }
+    }
+
+    // 关闭
+
+    private void requireOpen() {
+        if (this.closed.get()) {
+            throw new IllegalStateException("network manager is closed");
+        }
+    }
+
+    @Override
+    public void close() {
+        if (!this.closed.compareAndSet(false, true)) {
+            return;
+        }
+        HandlerList.unregisterAll(this);
+        for (Channel channel : Set.copyOf(this.serverChannels)) {
+            this.execute(channel, () -> removeHandler(channel.pipeline(), this.connectionHandlerName));
+        }
+        List<NetworkUser> users = List.copyOf(this.users.values());
+        for (int index = 0; index < users.size(); index++) {
+            NetworkUser user = users.get(index);
+            this.execute(user.channel(), () -> this.removeConnectionHandlers(user));
+        }
+        this.serverChannels.clear();
+        this.users.clear();
+        this.onlineUsers.clear();
+    }
+
+    // Netty handlers
+
+    private final class ServerChannelHandler extends ChannelInboundHandlerAdapter {
+        @Override
+        public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
+            Channel channel = (Channel) message;
+            removeHandler(channel.pipeline(), NetworkManager.this.preInitializerName);
+            channel.pipeline().addLast(NetworkManager.this.preInitializerName, new PreChannelInitializer());
+            super.channelRead(context, message);
+        }
+    }
+
+    private final class PreChannelInitializer extends ChannelInboundHandlerAdapter {
+        private static final InternalLogger LOGGER = InternalLoggerFactory.getInstance(ChannelInitializer.class);
+
+        @Override
+        public void channelRegistered(ChannelHandlerContext context) {
+            try {
+                if (!NetworkManager.this.closed.get()) {
+                    NetworkManager.this.injectConnectionChannel(context.channel());
+                }
+            } catch (Throwable throwable) {
+                this.exceptionCaught(context, throwable);
+            } finally {
+                if (context.pipeline().context(this) != null) {
+                    context.pipeline().remove(this);
+                }
+            }
+            context.pipeline().fireChannelRegistered();
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext context, Throwable throwable) {
+            LOGGER.warn("Failed to inject channel: " + context.channel(), throwable);
+            context.close();
+        }
+    }
+
+    @ChannelHandler.Sharable
+    final class ByteBufDecoder extends MessageToMessageDecoder<ByteBuf> {
+        private final NetworkUser user;
+
+        ByteBufDecoder(NetworkUser user) {
+            this.user = user;
+        }
+
+        @Override
+        protected void decode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
+            if (NetworkManager.this.handleByteBuf(this.user, buffer, PacketFlow.SERVERBOUND)) {
+                output.add(buffer.retain());
+            }
+        }
+    }
+
+    private final class NMSPacketBridge extends ChannelDuplexHandler {
+        private final NetworkUser user;
+
+        private NMSPacketBridge(NetworkUser user) {
+            this.user = user;
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext context, Object packet) throws Exception {
+            if (this.user.bypassing()) {
+                super.channelRead(context, packet);
+                return;
+            }
+            NMSPacketListener listener = NetworkManager.this.nmsPacketListeners.get(packet.getClass());
+            if (listener == null) {
+                super.channelRead(context, packet);
+                return;
+            }
+            NMSPacketEvent event = new NMSPacketEvent(packet);
+            try {
+                listener.onPacketReceive(this.user, event, packet);
+            } catch (Throwable throwable) {
+                SparrowUI.getInstance().handleException("Failed to handle NMS packet " + packet.getClass().getName(), throwable);
+            }
+            if (event.cancelled()) {
+                return;
+            }
+            super.channelRead(context, event.usingReplacement() ? event.replacement() : packet);
+        }
+
+        @Override
+        public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
+            if (this.user.bypassing()) {
+                super.write(context, packet, promise);
+                return;
+            }
+            NMSPacketEvent event = NetworkManager.this.handleNMSPacketSend(this.user, packet, packet, null);
+            if (event == null) {
+                super.write(context, packet, promise);
+                return;
+            }
+            if (event.cancelled()) {
+                promise.trySuccess();
+                return;
+            }
+            super.write(context, event.usingReplacement() ? event.replacement() : packet, promise);
+        }
+    }
+
+    @ChannelHandler.Sharable
+    final class ByteBufEncoder extends MessageToMessageEncoder<ByteBuf> {
+        private final NetworkUser user;
+        private boolean compressionHandled; // 当前连接是否已确认压缩位置
+
+        ByteBufEncoder(NetworkUser user, boolean compressionHandled) {
+            this.user = user;
+            this.compressionHandled = compressionHandled;
+        }
+
+        @Override
+        public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) throws Exception {
+            try {
+                super.write(context, message, promise);
+            } catch (EncoderException exception) {
+                if (this.hasCause(exception, CancelPacketException.INSTANCE)) {
+                    promise.trySuccess();
+                    return;
+                }
+                throw exception;
+            }
+        }
+
+        @Override
+        protected void encode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
+            boolean recompress = !this.compressionHandled && this.handleCompression(context, buffer);
+            NetworkManager.this.handleByteBuf(this.user, buffer, PacketFlow.CLIENTBOUND);
+            if (recompress && buffer.isReadable()) {
+                this.compress(context, buffer);
+            }
+            if (buffer.isReadable()) {
+                output.add(buffer.retain());
+                return;
+            }
+            throw CancelPacketException.INSTANCE;
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext context, Throwable throwable) throws Exception {
+            if (this.hasCause(throwable, CancelPacketException.INSTANCE)) {
+                return;
+            }
+            super.exceptionCaught(context, throwable);
+        }
+
+        private boolean handleCompression(ChannelHandlerContext context, ByteBuf buffer) {
+            if (this.compressionHandled) {
+                return false;
+            }
+            ChannelPipeline pipeline = context.pipeline();
+            int compressionIndex = pipeline.names().indexOf("compress");
+            if (compressionIndex == -1) {
+                return false;
+            }
+            this.compressionHandled = true;
+            int encoderIndex = pipeline.names().indexOf(NetworkManager.this.encoderName);
+            if (compressionIndex <= encoderIndex) {
+                return false;
+            }
+
+            // 当前帧已经经过新插入的 compress, 先恢复成监听器使用的未压缩帧.
+            this.decompress(context, buffer);
+            Channel channel = context.channel();
+            NetworkPipelineOrder.relocateByteBufHandlers(NetworkManager.this, channel);
+            // CraftEngine 安装时会在本次出站调用的后半程继续自我重排, 下一轮 event loop 再收口最终位置.
+            channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(NetworkManager.this, channel));
+            return true;
+        }
+
+        private void compress(ChannelHandlerContext context, ByteBuf input) {
+            ChannelHandler compressor = context.pipeline().get("compress");
+            ByteBuf output = context.alloc().buffer();
+            try {
+                if (compressor != null) {
+                    MessageToByteEncoderProxy.INSTANCE.encode(compressor, context, input, output);
+                }
+            } finally {
+                input.clear().writeBytes(output);
+                output.release();
+            }
+        }
+
+        private void decompress(ChannelHandlerContext context, ByteBuf input) {
+            ChannelHandler decompressor = context.pipeline().get("decompress");
+            if (decompressor == null) return;
+            ArrayList<Object> output = new ArrayList<>(1);
+            ByteToMessageDecoderProxy.INSTANCE.decode(decompressor, context, input, output);
+            ByteBuf decoded = (ByteBuf) output.getFirst();
+            try {
+                input.clear().writeBytes(decoded);
+            } finally {
+                decoded.release();
+            }
+        }
+
+        private boolean hasCause(Throwable throwable, Throwable expected) {
+            Throwable current = throwable;
+            while (current != null) {
+                if (current == expected) return true;
+                current = current.getCause();
+            }
+            return false;
+        }
+    }
+
+    private record ByteBufPacketListenerHolder(String name, ByteBufPacketListener listener) {
+    }
+
+    private static final class CancelPacketException extends RuntimeException {
+        private static final CancelPacketException INSTANCE = new CancelPacketException();
+
+        private CancelPacketException() {
+            super(null, null, false, false);
+        }
+    }
+}
