@@ -28,14 +28,9 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerPropertiesProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.server.dedicated.DedicatedServerSettingsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerConnectionListenerProxy;
-import net.momirealms.sparrow.ui.proxy.netty.handler.codec.ByteToMessageDecoderProxy;
-import net.momirealms.sparrow.ui.proxy.netty.handler.codec.MessageToByteEncoderProxy;
 import net.momirealms.sparrow.ui.state.ListSignal;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -71,7 +66,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
     public final String packetBridgeName;           // NMS 对象层双向监听 handler
     public final String decoderName;                // ByteBuf 入站监听 handler
     public final String encoderName;                // ByteBuf 出站监听 handler
-    public final boolean compressionAlreadyHandled; // 服务端禁用压缩时直接跳过压缩探测
 
     private volatile ByteBufPacketListenerHolder[][] serverboundByteBufListeners;
     private volatile ByteBufPacketListenerHolder[][] clientboundByteBufListeners;
@@ -91,13 +85,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.serverboundByteBufListeners = createByteBufListeners(this.packetIds, PacketFlow.SERVERBOUND);
         this.clientboundByteBufListeners = createByteBufListeners(this.packetIds, PacketFlow.CLIENTBOUND);
 
-        Object server = MinecraftServerProxy.INSTANCE.getServer();
-        Object settings = DedicatedServerProxy.INSTANCE.settings(server);
-        Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
-        Object properties = DedicatedServerSettingsProxy.INSTANCE.properties(settings);
-        int compressionThreshold = DedicatedServerPropertiesProxy.INSTANCE.networkCompressionThreshold(properties);
-        this.compressionAlreadyHandled = compressionThreshold < 0;
-
         Plugin plugin = SparrowUI.getInstance().getPlugin();
         String prefix = "sparrow_ui_" + plugin.getName().toLowerCase(Locale.ROOT);
         this.connectionHandlerName = prefix + "_connection_handler";
@@ -108,6 +95,9 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         this.registerProtocolStateListeners();
         Bukkit.getPluginManager().registerEvents(this, plugin);
+
+        Object server = MinecraftServerProxy.INSTANCE.getServer();
+        Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
         this.installServerInjection(server);
         this.injectExistingConnections(ServerConnectionListenerProxy.INSTANCE.connections(serverConnection));
     }
@@ -229,7 +219,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
                 this,
                 pipeline,
                 new ByteBufDecoder(user),
-                new ByteBufEncoder(user, this.compressionAlreadyHandled)
+                new ByteBufEncoder(user)
         );
         return user;
     }
@@ -693,11 +683,9 @@ public final class NetworkManager implements Listener, AutoCloseable {
     @ChannelHandler.Sharable
     final class ByteBufEncoder extends MessageToMessageEncoder<ByteBuf> {
         private final NetworkUser user;
-        private boolean compressionHandled; // 当前连接是否已确认压缩位置
 
-        ByteBufEncoder(NetworkUser user, boolean compressionHandled) {
+        ByteBufEncoder(NetworkUser user) {
             this.user = user;
-            this.compressionHandled = compressionHandled;
         }
 
         @Override
@@ -713,13 +701,10 @@ public final class NetworkManager implements Listener, AutoCloseable {
             }
         }
 
+        // vanilla 把 compress 挂在 prepender 之后, 出站时它恒在本 handler 之后执行, 因此这里看到的一定是明文帧.
         @Override
         protected void encode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
-            boolean recompress = !this.compressionHandled && this.handleCompression(context, buffer);
             NetworkManager.this.handleByteBuf(this.user, buffer, false);
-            if (recompress && buffer.isReadable()) {
-                this.compress(context, buffer);
-            }
             if (buffer.isReadable()) {
                 output.add(buffer.retain());
                 return;
@@ -733,56 +718,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
                 return;
             }
             super.exceptionCaught(context, throwable);
-        }
-
-        private boolean handleCompression(ChannelHandlerContext context, ByteBuf buffer) {
-            if (this.compressionHandled) {
-                return false;
-            }
-            ChannelPipeline pipeline = context.pipeline();
-            int compressionIndex = pipeline.names().indexOf("compress");
-            if (compressionIndex == -1) {
-                return false;
-            }
-            this.compressionHandled = true;
-            int encoderIndex = pipeline.names().indexOf(NetworkManager.this.encoderName);
-            if (compressionIndex <= encoderIndex) {
-                return false;
-            }
-
-            // 当前帧已经经过新插入的 compress, 先恢复成监听器使用的未压缩帧.
-            this.decompress(context, buffer);
-            Channel channel = context.channel();
-            NetworkPipelineOrder.relocateByteBufHandlers(NetworkManager.this, channel);
-            // CraftEngine 安装时会在本次出站调用的后半程继续自我重排, 下一轮 event loop 再收口最终位置.
-            channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(NetworkManager.this, channel));
-            return true;
-        }
-
-        private void compress(ChannelHandlerContext context, ByteBuf input) {
-            ChannelHandler compressor = context.pipeline().get("compress");
-            ByteBuf output = context.alloc().buffer();
-            try {
-                if (compressor != null) {
-                    MessageToByteEncoderProxy.INSTANCE.encode(compressor, context, input, output);
-                }
-            } finally {
-                input.clear().writeBytes(output);
-                output.release();
-            }
-        }
-
-        private void decompress(ChannelHandlerContext context, ByteBuf input) {
-            ChannelHandler decompressor = context.pipeline().get("decompress");
-            if (decompressor == null) return;
-            ArrayList<Object> output = new ArrayList<>(1);
-            ByteToMessageDecoderProxy.INSTANCE.decode(decompressor, context, input, output);
-            ByteBuf decoded = (ByteBuf) output.getFirst();
-            try {
-                input.clear().writeBytes(decoded);
-            } finally {
-                decoded.release();
-            }
         }
 
         private boolean hasCause(Throwable throwable, Throwable expected) {

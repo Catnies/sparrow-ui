@@ -21,7 +21,6 @@ dependencies {
     compileOnly(libs.paper.api)
     compileOnly(libs.datafixerupper)
     compileOnly(libs.netty.transport)
-    compileOnly(libs.netty.codec.base)
     implementation(libs.asm)
     implementation(libs.sparrow.reflection)
 }
