@@ -1,6 +1,5 @@
-package net.momirealms.sparrow.ui.network.listener;
+package net.momirealms.sparrow.ui.network;
 
-import net.momirealms.sparrow.ui.network.PacketBuf;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 

@@ -2,11 +2,11 @@ package net.momirealms.sparrow.ui.window.handle;
 
 import net.momirealms.sparrow.ui.network.filter.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.network.filter.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.network.listener.ByteBufPacketEvent;
-import net.momirealms.sparrow.ui.network.listener.ByteBufPacketListener;
+import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
+import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
 import net.momirealms.sparrow.ui.network.ConnectionState;
-import net.momirealms.sparrow.ui.network.listener.NMSPacketEvent;
-import net.momirealms.sparrow.ui.network.listener.NMSPacketListener;
+import net.momirealms.sparrow.ui.network.NMSPacketEvent;
+import net.momirealms.sparrow.ui.network.NMSPacketListener;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.network.NetworkUser;
 import net.momirealms.sparrow.ui.network.PacketBuf;

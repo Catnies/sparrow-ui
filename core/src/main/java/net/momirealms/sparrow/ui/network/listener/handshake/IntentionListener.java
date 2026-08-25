@@ -2,8 +2,8 @@ package net.momirealms.sparrow.ui.network.listener.handshake;
 
 import io.netty.channel.Channel;
 import net.momirealms.sparrow.ui.network.*;
-import net.momirealms.sparrow.ui.network.listener.ByteBufPacketEvent;
-import net.momirealms.sparrow.ui.network.listener.ByteBufPacketListener;
+import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
+import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
