@@ -86,7 +86,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
     }
 
     private void registerListeners() {
-        // 选择收纳袋里的物品
+        // 选择收纳袋里的物品. 布局: VarInt slotId, VarInt selectedItemIndex.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -97,7 +97,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.Common.BundleSelection(session.containerId, buffer.readVarInt(), buffer.readVarInt()));
             }
         }, "minecraft:bundle_item_selected", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 关闭容器
+        // 关闭容器. 布局: VarInt containerId.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -107,7 +107,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.Common.Close(event.getBuffer().readVarInt()));
             }
         }, "minecraft:container_close", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // Ping - Pong
+        // Ping - Pong. 布局: 定长 4 字节 id, 与其余包的 VarInt 不同.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -117,7 +117,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 }
             }
         }, "minecraft:pong", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 重命名
+        // 重命名. 布局: Utf name.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -127,7 +127,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.WindowSpecific.Rename(event.getBuffer().readUtf()));
             }
         }, "minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 切换合成器输入槽
+        // 切换合成器输入槽. 布局: VarInt slotId, VarInt containerId, Bool newState —— 槽位在容器编号之前.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -140,7 +140,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.WindowSpecific.CrafterSlotState(containerId, slotId, buffer.readBoolean()));
             }
         }, "minecraft:container_slot_state_changed", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 选择原版按钮
+        // 选择原版按钮. 布局: VarInt containerId, VarInt buttonId.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -151,7 +151,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.WindowSpecific.ButtonClick(buffer.readVarInt(), buffer.readVarInt()));
             }
         }, "minecraft:container_button_click", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 从配方书选择配方
+        // 从配方书选择配方. 布局: VarInt containerId, VarInt recipeDisplayId, Bool useMaxItems.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
@@ -162,7 +162,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 session.accept(new MenuInput.WindowSpecific.RecipePlace(buffer.readVarInt(), buffer.readVarInt(), buffer.readBoolean()));
             }
         }, "minecraft:place_recipe", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        // 选择村民交易栏位
+        // 选择村民交易栏位. 布局: VarInt index, 包内不带容器编号.
         this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
             @Override
             public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
