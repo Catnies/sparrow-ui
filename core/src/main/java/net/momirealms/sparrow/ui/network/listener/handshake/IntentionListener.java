@@ -21,7 +21,9 @@ public final class IntentionListener implements ByteBufPacketListener {
     public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
         PacketBuf buffer = event.getBuffer();
         buffer.readVarInt();        // protocolVersion
-        buffer.readUtf(255);        // serverAddress
+        // serverAddress 只跳过不解析, BungeeCord/Floodgate 转发会把 IP/UUID/属性塞进该字段,
+        // Paper 的上限是 Short.MAX_VALUE 而非 vanilla 的 255, 这里不能比平台解码器更严.
+        buffer.skipBytes(buffer.readVarInt());
         buffer.readUnsignedShort(); // serverPort
         ConnectionState nextState = switch (buffer.readVarInt()) {
             case 1 -> ConnectionState.STATUS;
