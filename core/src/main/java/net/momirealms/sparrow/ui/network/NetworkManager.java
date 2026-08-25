@@ -56,6 +56,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
+/**
+ * 数据包监听的接管者, 在服务端 acceptor 与每条玩家连接上安装 ByteBuf 与 NMS 对象两层 handlers.
+ *
+ * <p>全服共用一个实例, 经 {@link SparrowUI#networkManager()} 获取. 另行构造的实例会使用相同的 handler 名,
+ * 后者的注入将顶掉前者.</p>
+ */
 @ApiStatus.Experimental
 public final class NetworkManager implements Listener, AutoCloseable {
     private static final String MINECRAFT_SPLITTER = "splitter";
