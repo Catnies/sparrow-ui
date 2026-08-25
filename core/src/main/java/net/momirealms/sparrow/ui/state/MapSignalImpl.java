@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,8 +25,8 @@ import java.util.stream.StreamSupport;
 
 final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements MapSignal<K, V> {
     private final Map<K, V> delegate;
-    @Nullable private volatile BiFunction<K, V, V> putting;     // 存入之前的钩子, 挂多个时已串成一个
-    @Nullable private volatile BiConsumer<K, V> removing;       // 移除之后的钩子, 同上
+    private final ElementHooks<BiFunction<? super K, ? super V, ? extends V>> putting = new ElementHooks<>(); // 存入之前的钩子
+    private final ElementHooks<BiConsumer<? super K, ? super V>> removing = new ElementHooks<>();             // 移除之后的钩子
 
     MapSignalImpl(Map<K, V> delegate) {
         this.delegate = delegate;
@@ -33,20 +34,16 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     @Override
     @NotNull
-    public MapSignal<K, V> beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook) {
+    public Subscription beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook) {
         Objects.requireNonNull(hook, "hook");
-        BiFunction<K, V, V> current = this.putting;
-        this.putting = current == null ? hook::apply : (key, value) -> hook.apply(key, current.apply(key, value));
-        return this;
+        return this.putting.register(hook);
     }
 
     @Override
     @NotNull
-    public MapSignal<K, V> afterRemove(@NotNull BiConsumer<? super K, ? super V> hook) {
+    public Subscription afterRemove(@NotNull BiConsumer<? super K, ? super V> hook) {
         Objects.requireNonNull(hook, "hook");
-        BiConsumer<K, V> current = this.removing;
-        this.removing = current == null ? hook::accept : current.andThen(hook);
-        return this;
+        return this.removing.register(hook);
     }
 
     @Override
@@ -56,12 +53,17 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
 
     // 返回经过全部放入钩子后的值
     private V putting(K key, V value) {
-        BiFunction<K, V, V> hook = this.putting;
-        return hook == null ? value : hook.apply(key, value);
+        if (!this.putting.active()) return value;
+        V result = value;
+        for (HookReference<BiFunction<? super K, ? super V, ? extends V>> reference : this.putting.live()) {
+            BiFunction<? super K, ? super V, ? extends V> hook = reference.get();
+            if (hook != null) result = hook.apply(key, result);
+        }
+        return result;
     }
 
     private boolean hooked() {
-        return this.putting != null || this.removing != null;
+        return this.putting.active() || this.removing.active();
     }
 
     // 读取
@@ -212,8 +214,11 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
     }
 
     private void removed(K key, V value) {
-        BiConsumer<K, V> hook = this.removing;
-        if (hook != null) hook.accept(key, value);
+        if (!this.removing.active()) return;
+        for (HookReference<BiConsumer<? super K, ? super V>> reference : this.removing.live()) {
+            BiConsumer<? super K, ? super V> hook = reference.get();
+            if (hook != null) hook.accept(key, value);
+        }
     }
 
     // compute 钩子留在 delegate 的重算函数内, 保留并发 map 的按 key 原子性
@@ -311,9 +316,8 @@ final class MapSignalImpl<K, V> extends CollectionSignal<Map<K, V>> implements M
     // 一批移除逐个执行钩子, 最后只通知一次
     private void allRemovedThenChanged(@Nullable List<Map.Entry<K, V>> doomed) {
         try {
-            BiConsumer<K, V> hook = this.removing;
-            if (doomed != null && hook != null) {
-                for (int i = 0; i < doomed.size(); i++) hook.accept(doomed.get(i).getKey(), doomed.get(i).getValue());
+            if (doomed != null) {
+                for (int i = 0; i < doomed.size(); i++) this.removed(doomed.get(i).getKey(), doomed.get(i).getValue());
             }
         } finally {
             this.changed();

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,8 +23,8 @@ import java.util.stream.Stream;
 final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListSignal<E> {
     private final List<E> delegate;
     private final Facade root;
-    @Nullable private volatile Function<E, E> adding;    // 存入之前的钩子, 挂多个时已串成一个
-    @Nullable private volatile Consumer<E> removing;     // 移除之后的钩子, 同上
+    private final ElementHooks<Function<? super E, ? extends E>> adding = new ElementHooks<>(); // 存入之前的钩子
+    private final ElementHooks<Consumer<? super E>> removing = new ElementHooks<>();            // 移除之后的钩子
 
     ListSignalImpl(List<E> delegate) {
         this.delegate = delegate;
@@ -32,20 +33,16 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
     @Override
     @NotNull
-    public ListSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
+    public Subscription beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
         Objects.requireNonNull(hook, "hook");
-        Function<E, E> current = this.adding;
-        this.adding = current == null ? hook::apply : current.andThen(hook);
-        return this;
+        return this.adding.register(hook);
     }
 
     @Override
     @NotNull
-    public ListSignal<E> afterRemove(@NotNull Consumer<? super E> hook) {
+    public Subscription afterRemove(@NotNull Consumer<? super E> hook) {
         Objects.requireNonNull(hook, "hook");
-        Consumer<E> current = this.removing;
-        this.removing = current == null ? hook::accept : current.andThen(hook);
-        return this;
+        return this.removing.register(hook);
     }
 
     @Override
@@ -262,17 +259,36 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             this.target = target;
         }
 
-        // 返回经过全部放入钩子后的元素
+        // 依次经过每个存活钩子, 没挂过钩子时只读一次标志.
         private E adding(E element) {
-            Function<E, E> hook = ListSignalImpl.this.adding;
-            return hook == null ? element : hook.apply(element);
+            ElementHooks<Function<? super E, ? extends E>> hooks = ListSignalImpl.this.adding;
+            if (!hooks.active()) return element;
+            E result = element;
+            for (HookReference<Function<? super E, ? extends E>> reference : hooks.live()) {
+                Function<? super E, ? extends E> hook = reference.get();
+                if (hook != null) result = hook.apply(result);
+            }
+            return result;
+        }
+
+        // 两类钩子都没挂时写路径可以整段走原生实现
+        private boolean hooked() {
+            return ListSignalImpl.this.adding.active() || ListSignalImpl.this.removing.active();
+        }
+
+        private void removed(E element) {
+            ElementHooks<Consumer<? super E>> hooks = ListSignalImpl.this.removing;
+            if (!hooks.active()) return;
+            for (HookReference<Consumer<? super E>> reference : hooks.live()) {
+                Consumer<? super E> hook = reference.get();
+                if (hook != null) hook.accept(element);
+            }
         }
 
         // 移除已经落地, 钩子失败时仍在 finally 中通知
         private void removedThenChanged(E element) {
             try {
-                Consumer<E> hook = ListSignalImpl.this.removing;
-                if (hook != null) hook.accept(element);
+                this.removed(element);
             } finally {
                 ListSignalImpl.this.changed();
             }
@@ -281,9 +297,8 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
         // 一批移除逐个执行钩子, 最后只通知一次
         private void allRemovedThenChanged(@Nullable List<E> doomed) {
             try {
-                Consumer<E> hook = ListSignalImpl.this.removing;
-                if (doomed != null && hook != null) {
-                    for (int i = 0; i < doomed.size(); i++) hook.accept(doomed.get(i));
+                if (doomed != null) {
+                    for (int i = 0; i < doomed.size(); i++) this.removed(doomed.get(i));
                 }
             } finally {
                 ListSignalImpl.this.changed();
@@ -417,10 +432,9 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
         // 先计算全部钩子结果再批量写入, 写时复制 delegate 只复制一次
         private Collection<? extends E> allAdding(Collection<? extends E> c) {
-            Function<E, E> hook = ListSignalImpl.this.adding;
-            if (hook == null || c.isEmpty()) return c;
+            if (!ListSignalImpl.this.adding.active() || c.isEmpty()) return c;
             List<E> stored = new ArrayList<>(c.size());
-            for (E element : c) stored.add(hook.apply(element));
+            for (E element : c) stored.add(this.adding(element));
             return stored;
         }
 
@@ -428,9 +442,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
 
         @Override
         public E set(int index, E element) {
-            Function<E, E> hook = ListSignalImpl.this.adding;
-            Consumer<E> removing = ListSignalImpl.this.removing;
-            if (hook == null && removing == null) {
+            if (!this.hooked()) {
                 E old = this.target.set(index, element);
                 if (old != element) ListSignalImpl.this.changed();
                 return old;
@@ -438,7 +450,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             // 先摘旧值再放新值, 让按位置维护的旁表保持对应
             E old = this.target.get(index);
             if (old == element) return old;
-            if (removing != null) removing.accept(old);
+            this.removed(old);
             this.target.set(index, this.adding(element));
             ListSignalImpl.this.changed();
             return old;
@@ -447,9 +459,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
         @Override
         public void replaceAll(@NotNull UnaryOperator<E> operator) {
             if (this.target.isEmpty()) return;
-            Function<E, E> hook = ListSignalImpl.this.adding;
-            Consumer<E> removing = ListSignalImpl.this.removing;
-            if (hook == null && removing == null) {
+            if (!this.hooked()) {
                 boolean[] changed = new boolean[1];
                 this.target.replaceAll(old -> {
                     E replacement = operator.apply(old);
@@ -466,7 +476,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
                 E replacement = operator.apply(old);
                 if (replacement != old) {
                     changed = true;
-                    if (removing != null) removing.accept(old);
+                    this.removed(old);
                     replacement = this.adding(replacement);
                 }
                 results.add(replacement);
@@ -661,8 +671,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
             public void set(E e) {
                 if (!this.canModify) throw new IllegalStateException();
                 if (this.last == e) return;
-                Consumer<E> removing = ListSignalImpl.this.removing;
-                if (removing != null) removing.accept(this.last);
+                Facade.this.removed(this.last);
                 E stored = Facade.this.adding(e);
                 this.it.set(stored);
                 this.last = stored;

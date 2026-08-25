@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
@@ -37,20 +38,24 @@ public sealed interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> per
      * }</pre>
      *
      * @param hook 收到 key 与调用方要放的值, 返回真正存进去的
-     * @return 本包装器
+     * <p><strong>只弱持有钩子, 调用方必须保存返回的凭证</strong>, 寿命见 {@link ListSignal#beforeAdd}.
+     *
+     * @return 钩子凭证, 关闭即摘除这个钩子
      */
     @NotNull
-    MapSignal<K, V> beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook);
+    Subscription beforePut(@NotNull BiFunction<? super K, ? super V, ? extends V> hook);
 
     /**
      * 挂一个元素钩子, 映射从 map 移除<strong>之后</strong>调用, 收到的是被存着的那个值.
      * <p>钩子抛出时变更已经落地, 异常会抛给写入方, 订阅者仍会收到这次失效.
      *
      * @param hook 收到被移除的 key 与值
-     * @return 本包装器
+     * <p>寿命同 {@link #beforePut}: 只弱持有钩子, 调用方必须保存凭证.
+     *
+     * @return 钩子凭证, 关闭即摘除这个钩子
      */
     @NotNull
-    MapSignal<K, V> afterRemove(@NotNull BiConsumer<? super K, ? super V> hook);
+    Subscription afterRemove(@NotNull BiConsumer<? super K, ? super V> hook);
 
     /**
      * 把 {@code changes} 期间本线程对本集合的变更合并成一次通知, 语义见 {@link ListSignal#batch}.

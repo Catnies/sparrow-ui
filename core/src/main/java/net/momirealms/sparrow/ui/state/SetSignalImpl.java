@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.Subscription;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,8 +21,8 @@ import java.util.stream.Stream;
 
 final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSignal<E> {
     private final Set<E> delegate;
-    @Nullable private volatile Function<E, E> adding;    // 存入之前的钩子, 挂多个时已串成一个
-    @Nullable private volatile Consumer<E> removing;     // 移除之后的钩子, 同上
+    private final ElementHooks<Function<? super E, ? extends E>> adding = new ElementHooks<>(); // 存入之前的钩子
+    private final ElementHooks<Consumer<? super E>> removing = new ElementHooks<>();            // 移除之后的钩子
 
     SetSignalImpl(Set<E> delegate) {
         this.delegate = delegate;
@@ -29,20 +30,16 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     @NotNull
-    public SetSignal<E> beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
+    public Subscription beforeAdd(@NotNull Function<? super E, ? extends E> hook) {
         Objects.requireNonNull(hook, "hook");
-        Function<E, E> current = this.adding;
-        this.adding = current == null ? hook::apply : current.andThen(hook);
-        return this;
+        return this.adding.register(hook);
     }
 
     @Override
     @NotNull
-    public SetSignal<E> afterRemove(@NotNull Consumer<? super E> hook) {
+    public Subscription afterRemove(@NotNull Consumer<? super E> hook) {
         Objects.requireNonNull(hook, "hook");
-        Consumer<E> current = this.removing;
-        this.removing = current == null ? hook::accept : current.andThen(hook);
-        return this;
+        return this.removing.register(hook);
     }
 
     @Override
@@ -50,11 +47,29 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
         return this;
     }
 
+    // 依次经过每个存活钩子, 没挂过钩子时只读一次标志.
+    private E adding(E element) {
+        if (!this.adding.active()) return element;
+        E result = element;
+        for (HookReference<Function<? super E, ? extends E>> reference : this.adding.live()) {
+            Function<? super E, ? extends E> hook = reference.get();
+            if (hook != null) result = hook.apply(result);
+        }
+        return result;
+    }
+
+    private void removed(E element) {
+        if (!this.removing.active()) return;
+        for (HookReference<Consumer<? super E>> reference : this.removing.live()) {
+            Consumer<? super E> hook = reference.get();
+            if (hook != null) hook.accept(element);
+        }
+    }
+
     // 移除已经落地, 钩子失败时仍在 finally 中通知
     private void removedThenChanged(E element) {
         try {
-            Consumer<E> hook = this.removing;
-            if (hook != null) hook.accept(element);
+            this.removed(element);
         } finally {
             this.changed();
         }
@@ -63,9 +78,8 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
     // 一批移除逐个执行钩子, 最后只通知一次
     private void allRemovedThenChanged(@Nullable List<E> doomed) {
         try {
-            Consumer<E> hook = this.removing;
-            if (doomed != null && hook != null) {
-                for (int i = 0; i < doomed.size(); i++) hook.accept(doomed.get(i));
+            if (doomed != null) {
+                for (int i = 0; i < doomed.size(); i++) this.removed(doomed.get(i));
             }
         } finally {
             this.changed();
@@ -135,15 +149,14 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     public boolean add(E e) {
-        Function<E, E> hook = this.adding;
-        if (hook == null) {
+        if (!this.adding.active()) {
             boolean added = this.delegate.add(e);
             if (added) this.changed();
             return added;
         }
         // 原元素已经存在时不执行放入钩子
         if (this.delegate.contains(e)) return false;
-        boolean added = this.delegate.add(hook.apply(e));
+        boolean added = this.delegate.add(this.adding(e));
         if (added) this.changed();
         return added;
     }
@@ -152,13 +165,12 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
     public boolean addAll(@NotNull Collection<? extends E> c) {
         if (c.isEmpty()) return false;
         Collection<? extends E> stored = c;
-        Function<E, E> hook = this.adding;
-        if (hook != null) {
+        if (this.adding.active()) {
             // 先计算全部钩子结果再批量写入, 写时复制 delegate 只复制一次
             List<E> fresh = new ArrayList<>();
             Set<E> freshElements = new HashSet<>();
             for (E element : c) {
-                if (!this.delegate.contains(element) && freshElements.add(element)) fresh.add(hook.apply(element));
+                if (!this.delegate.contains(element) && freshElements.add(element)) fresh.add(this.adding(element));
             }
             stored = fresh;
         }
@@ -181,13 +193,13 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        Collection<?> lookup = this.removing == null ? c : lookupOf(c);
+        Collection<?> lookup = !this.removing.active() ? c : lookupOf(c);
         return this.removeMatching(lookup::contains, () -> this.delegate.removeAll(c));
     }
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        Collection<?> lookup = this.removing == null ? c : lookupOf(c);
+        Collection<?> lookup = !this.removing.active() ? c : lookupOf(c);
         return this.removeMatching(element -> !lookup.contains(element), () -> this.delegate.retainAll(c));
     }
 
@@ -199,7 +211,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
     // 有钩子时先记录命中元素, 再让 delegate 批量删除. 写时复制迭代器不支持逐个删除.
     private boolean removeMatching(Predicate<? super E> matching, BooleanSupplier bulkRemove) {
         List<E> doomed = null;
-        if (this.removing != null) {
+        if (this.removing.active()) {
             doomed = new ArrayList<>();
             for (E element : this.delegate) {
                 if (matching.test(element)) doomed.add(element);
@@ -214,7 +226,7 @@ final class SetSignalImpl<E> extends CollectionSignal<Set<E>> implements SetSign
     @Override
     public void clear() {
         if (this.delegate.isEmpty()) return;
-        List<E> doomed = this.removing == null ? null : new ArrayList<>(this.delegate);
+        List<E> doomed = !this.removing.active() ? null : new ArrayList<>(this.delegate);
         this.delegate.clear();
         this.allRemovedThenChanged(doomed);
     }
