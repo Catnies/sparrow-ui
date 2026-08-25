@@ -22,7 +22,7 @@ val generateMapColorProfile = tasks.register<JavaExec>("generateMapColorProfile"
     description = "Generates the compact map color profile resource"
     dependsOn(mapColorGenerator.classesTaskName)
     classpath = mapColorGenerator.runtimeClasspath
-    mainClass = "net.momirealms.sparrow.ui.internal.map.MapColorProfileGenerator"
+    mainClass = "net.momirealms.sparrow.ui.window.map.MapColorProfileGenerator"
     args(mapColorProfileResources.get().asFile.absolutePath)
     outputs.file(mapColorProfileFile)
 }
