@@ -31,6 +31,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerConnectionListenerProxy;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.ListSignal;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -82,6 +83,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     private final Map<UUID, NetworkUser> onlineUsers = new ConcurrentHashMap<>();
     private final Set<Channel> serverChannels = ConcurrentHashMap.newKeySet();
     final AtomicBoolean closed = new AtomicBoolean(); // 与 pipeline 重定位共享的关闭门闩
+    @Nullable private Subscription acceptorHook;      // acceptor 列表的元素钩子凭证
 
     /**
      * 创建管理器并立即接管服务端 acceptor 与已有玩家连接.
@@ -133,7 +135,9 @@ public final class NetworkManager implements Listener, AutoCloseable {
     private void installServerInjection(Object server) {
         Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
         List<ChannelFuture> channels = ServerConnectionListenerProxy.INSTANCE.channels(serverConnection);
-        ListSignal<ChannelFuture> listener = ListSignal.wrap(channels).beforeAdd(future -> {
+        ListSignal<ChannelFuture> listener = ListSignal.wrap(channels);
+        // 凭证是这个钩子的唯一强引用, 关掉它包装器就退化成纯转发, 不再吊着本管理器.
+        this.acceptorHook = listener.beforeAdd(future -> {
             this.injectAcceptorChannel(future);
             return future;
         });
@@ -576,6 +580,12 @@ public final class NetworkManager implements Listener, AutoCloseable {
             return;
         }
         HandlerList.unregisterAll(this);
+        // 摘掉钩子, NMS 手里那个包装器随即退化成纯转发.
+        Subscription acceptorHook = this.acceptorHook;
+        if (acceptorHook != null) {
+            acceptorHook.close();
+            this.acceptorHook = null;
+        }
         for (Channel channel : Set.copyOf(this.serverChannels)) {
             this.execute(channel, () -> removeHandler(channel.pipeline(), this.connectionHandlerName));
         }
