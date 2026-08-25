@@ -463,11 +463,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
      */
     @Nullable
     public NetworkUser user(@NotNull Player player) {
-        // 已进入游戏的玩家直接按 UUID 命中, 只有绑定之前才需要解析 channel.
         NetworkUser online = this.onlineUsers.get(player.getUniqueId());
-        if (online != null) {
-            return online;
-        }
+        if (online != null) return online;
         Channel channel = this.channel(player);
         return channel == null ? null : this.users.get(channel.pipeline());
     }
@@ -663,7 +660,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         public void channelRead(ChannelHandlerContext context, Object packet) throws Exception {
             // 该方向没有监听器时不必碰包对象.
             Map<Class<?>, NMSPacketListener> listeners = NetworkManager.this.serverboundNMSListeners;
-            if (listeners.isEmpty() || this.user.bypassing()) {
+            if (listeners.isEmpty()) {
                 super.channelRead(context, packet);
                 return;
             }
