@@ -200,11 +200,16 @@ public final class NetworkManager implements Listener, AutoCloseable {
             return null;
         }
 
-        NetworkUser user = this.users.computeIfAbsent(pipeline, ignored -> {
+        NetworkUser user = this.users.get(pipeline);
+        if (user == null) {
             NetworkUser created = new NetworkUser(this, channel);
-            channel.closeFuture().addListener((ChannelFutureListener) future -> this.handleDisconnection(created));
-            return created;
-        });
+            NetworkUser existing = this.users.putIfAbsent(pipeline, created);
+            user = existing != null ? existing : created;
+            // 已经关闭的 channel 会同步回调, 因此登记完成之后才挂断开清理.
+            if (existing == null) {
+                channel.closeFuture().addListener((ChannelFutureListener) future -> this.handleDisconnection(created));
+            }
+        }
         // 重复注入沿用同一个 NetworkUser, handler 则按当前第三方顺序重新安装.
         this.removeConnectionHandlers(user);
 
