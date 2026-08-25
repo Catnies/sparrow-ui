@@ -60,12 +60,12 @@ import java.util.function.Consumer;
 public final class NetworkManager implements Listener, AutoCloseable {
     private static final String MINECRAFT_SPLITTER = "splitter";
 
-    public final PacketIdRegistry packetIds;        // 当前服务端运行期包 ID 索引
-    public final String connectionHandlerName;      // acceptor 上的子连接捕获 handler
-    public final String preInitializerName;         // 子连接注册前的临时 initializer
-    public final String packetBridgeName;           // NMS 对象层双向监听 handler
-    public final String decoderName;                // ByteBuf 入站监听 handler
-    public final String encoderName;                // ByteBuf 出站监听 handler
+    private final PacketIdRegistry packetIds; // 当前服务端运行期包 ID 索引
+    final String connectionHandlerName;      // acceptor 上的子连接捕获 handler
+    final String preInitializerName;         // 子连接注册前的临时 initializer
+    final String packetBridgeName;           // NMS 对象层双向监听 handler
+    final String decoderName;                // ByteBuf 入站监听 handler
+    final String encoderName;                // ByteBuf 出站监听 handler
 
     private volatile ByteBufPacketListenerHolder[][] serverboundByteBufListeners;
     private volatile ByteBufPacketListenerHolder[][] clientboundByteBufListeners;
@@ -80,6 +80,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     /**
      * 创建管理器并立即接管服务端 acceptor 与已有玩家连接.
      */
+    @ApiStatus.Internal
     public NetworkManager() {
         this.packetIds = new PacketIdRegistry();
         this.serverboundByteBufListeners = createByteBufListeners(this.packetIds, PacketFlow.SERVERBOUND);
@@ -466,6 +467,16 @@ public final class NetworkManager implements Listener, AutoCloseable {
     @Nullable
     public NetworkUser user(@NotNull Channel channel) {
         return this.users.get(channel.pipeline());
+    }
+
+    /**
+     * 返回当前服务端的运行期包 ID 索引.
+     *
+     * @return 包 ID 注册表
+     */
+    @NotNull
+    public PacketIdRegistry packetIds() {
+        return this.packetIds;
     }
 
     /**

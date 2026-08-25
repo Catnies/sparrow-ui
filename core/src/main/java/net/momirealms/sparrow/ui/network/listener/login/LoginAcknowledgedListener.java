@@ -1,11 +1,7 @@
 package net.momirealms.sparrow.ui.network.listener.login;
 
 import io.netty.channel.Channel;
-import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
-import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
-import net.momirealms.sparrow.ui.network.ConnectionState;
-import net.momirealms.sparrow.ui.network.NetworkPipelineOrder;
-import net.momirealms.sparrow.ui.network.NetworkUser;
+import net.momirealms.sparrow.ui.network.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,6 +17,6 @@ public final class LoginAcknowledgedListener implements ByteBufPacketListener {
         user.setConnectionState(ConnectionState.CONFIGURATION);
         // PacketEvents 可能到登录确认才装完, 再按最终 pipeline 收口一次.
         Channel channel = user.channel();
-        channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.network, channel));
+        channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.networkManager(), channel));
     }
 }

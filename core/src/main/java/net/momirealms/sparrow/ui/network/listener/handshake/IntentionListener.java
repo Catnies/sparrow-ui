@@ -1,12 +1,7 @@
 package net.momirealms.sparrow.ui.network.listener.handshake;
 
 import io.netty.channel.Channel;
-import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
-import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
-import net.momirealms.sparrow.ui.network.ConnectionState;
-import net.momirealms.sparrow.ui.network.NetworkPipelineOrder;
-import net.momirealms.sparrow.ui.network.NetworkUser;
-import net.momirealms.sparrow.ui.network.PacketBuf;
+import net.momirealms.sparrow.ui.network.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -34,7 +29,7 @@ public final class IntentionListener implements ByteBufPacketListener {
         if (nextState == ConnectionState.LOGIN) {
             // CraftEngine 存在时先提交自己的重排任务, Sparrow 随后收口最终顺序.
             Channel channel = user.channel();
-            channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.network, channel));
+            channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.networkManager(), channel));
         }
     }
 }

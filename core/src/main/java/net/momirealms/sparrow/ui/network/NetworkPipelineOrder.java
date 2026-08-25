@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-@ApiStatus.Experimental
+@ApiStatus.Internal
 public final class NetworkPipelineOrder {
     private static final String MINECRAFT_DECODER = "decoder";
     private static final String MINECRAFT_ENCODER = "encoder";
@@ -27,6 +27,8 @@ public final class NetworkPipelineOrder {
     }
 
     // 按当前第三方 codec 的实际位置安装 Sparrow ByteBuf handlers.
+    // 入站要读服务端当前版本的 wire 布局, 排在 ViaVersion 的版本转换之后,
+    // 出站要让取消掉的帧对第三方彻底不可见, 所以排在它们之前.
     static void addByteBufHandlers(
             NetworkManager manager,
             ChannelPipeline pipeline,
@@ -43,6 +45,7 @@ public final class NetworkPipelineOrder {
      * @param manager handlers 所属的网络管理器
      * @param channel 要重定位的连接 channel
      */
+    @ApiStatus.Internal
     public static void relocateByteBufHandlers(@NotNull NetworkManager manager, @NotNull Channel channel) {
         if (manager.closed.get() || NetworkManager.isFakeChannel(channel)) return;
         ChannelPipeline pipeline = channel.pipeline();

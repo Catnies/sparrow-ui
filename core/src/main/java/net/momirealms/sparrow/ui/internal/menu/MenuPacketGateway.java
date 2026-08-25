@@ -233,9 +233,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
             this.containerId = containerId;
             this.inputSink = inputSink;
             this.clientboundPacketFilter = clientboundPacketFilter;
-            this.suppressedPacketIds = clientboundPacketFilter == null
-                    ? new int[0]
-                    : clientboundPacketFilter.suppressedPacketIds(network.packetIds);
+            this.suppressedPacketIds = clientboundPacketFilter == null ? new int[0] : clientboundPacketFilter.suppressedPacketIds(network.packetIds());
         }
 
         @Override

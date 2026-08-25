@@ -10,17 +10,21 @@ import java.util.UUID;
 
 @ApiStatus.Experimental
 public final class NetworkUser {
-    public final NetworkManager network;
-
+    private final NetworkManager networkManager;
     private final Channel channel;
     private volatile ConnectionState decoderState = ConnectionState.HANDSHAKING;
     private volatile ConnectionState encoderState = ConnectionState.HANDSHAKING;
     private volatile @Nullable Player player;
     private int bypassDepth;
 
-    NetworkUser(@NotNull NetworkManager network, @NotNull Channel channel) {
-        this.network = network;
+    NetworkUser(@NotNull NetworkManager networkManager, @NotNull Channel channel) {
+        this.networkManager = networkManager;
         this.channel = channel;
+    }
+
+    @NotNull
+    public NetworkManager networkManager() {
+        return this.networkManager;
     }
 
     @NotNull
