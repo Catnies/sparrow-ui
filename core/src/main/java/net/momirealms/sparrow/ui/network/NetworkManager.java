@@ -73,8 +73,10 @@ public final class NetworkManager implements Listener, AutoCloseable {
     public final String encoderName;                // ByteBuf 出站监听 handler
     public final boolean compressionAlreadyHandled; // 服务端禁用压缩时直接跳过压缩探测
 
-    private volatile ByteBufPacketListenerHolder[][][] byteBufListeners;             // [state][flow][id] COW 快照
-    private volatile Map<Class<?>, NMSPacketListener> nmsPacketListeners = Map.of(); // NMS Class COW 快照
+    private volatile ByteBufPacketListenerHolder[][] serverboundByteBufListeners;
+    private volatile ByteBufPacketListenerHolder[][] clientboundByteBufListeners;
+    private volatile Map<Class<?>, NMSPacketListener> serverboundNMSListeners = Map.of(); // NMS Class COW 快照
+    private volatile Map<Class<?>, NMSPacketListener> clientboundNMSListeners = Map.of();
 
     private final Map<ChannelPipeline, NetworkUser> users = new ConcurrentHashMap<>();
     private final Map<UUID, NetworkUser> onlineUsers = new ConcurrentHashMap<>();
@@ -86,7 +88,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
      */
     public NetworkManager() {
         this.packetIds = new PacketIdRegistry();
-        this.byteBufListeners = createByteBufListeners(this.packetIds);
+        this.serverboundByteBufListeners = createByteBufListeners(this.packetIds, PacketFlow.SERVERBOUND);
+        this.clientboundByteBufListeners = createByteBufListeners(this.packetIds, PacketFlow.CLIENTBOUND);
 
         Object server = MinecraftServerProxy.INSTANCE.getServer();
         Object settings = DedicatedServerProxy.INSTANCE.settings(server);
@@ -110,16 +113,11 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     // 按运行期 ID 空间创建无锁读取的定长路由表.
-    private static ByteBufPacketListenerHolder[][][] createByteBufListeners(PacketIdRegistry packetIds) {
+    private static ByteBufPacketListenerHolder[][] createByteBufListeners(PacketIdRegistry packetIds, PacketFlow flow) {
         ConnectionState[] states = ConnectionState.values();
-        PacketFlow[] flows = PacketFlow.values();
-        ByteBufPacketListenerHolder[][][] listeners = new ByteBufPacketListenerHolder[states.length][flows.length][];
+        ByteBufPacketListenerHolder[][] listeners = new ByteBufPacketListenerHolder[states.length][];
         for (int stateIndex = 0; stateIndex < states.length; stateIndex++) {
-            ConnectionState state = states[stateIndex];
-            for (int flowIndex = 0; flowIndex < flows.length; flowIndex++) {
-                PacketFlow flow = flows[flowIndex];
-                listeners[stateIndex][flowIndex] = new ByteBufPacketListenerHolder[packetIds.count(state, flow)];
-            }
+            listeners[stateIndex] = new ByteBufPacketListenerHolder[packetIds.count(states[stateIndex], flow)];
         }
         return listeners;
     }
@@ -255,8 +253,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
             this.bindPlayer(user, player);
             return;
         }
-        // 这条连接在管理器安装之前就登录到一半, acceptor 与在线玩家两条注入路径都错过了它.
-        // 玩家此刻已经进入游戏, 两个方向的协议阶段都是 PLAY.
+        // 说明这条连接在管理器安装之前就登录到一半, acceptor 与在线玩家两条注入都错过了.
+        // 这里重新补注入, 并且玩家此刻已经进入游戏, 两个方向的协议阶段都是 PLAY.
         this.execute(channel, () -> {
             if (this.closed.get()) return;
             NetworkUser injected = this.injectConnectionChannel(channel);
@@ -329,42 +327,53 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.requireOpen();
         int packetId = this.packetIds.byName(name, state, flow);
         if (packetId == -1) return;
-        ByteBufPacketListenerHolder[][][] current = this.byteBufListeners;
-        ByteBufPacketListenerHolder[] currentRoute = current[state.ordinal()][flow.ordinal()];
+        boolean serverbound = flow == PacketFlow.SERVERBOUND;
+        ByteBufPacketListenerHolder[][] current = serverbound ? this.serverboundByteBufListeners : this.clientboundByteBufListeners;
+        ByteBufPacketListenerHolder[] currentRoute = current[state.ordinal()];
         if (currentRoute[packetId] != null) {
             throw new IllegalStateException("Packet listener already registered for " + name + " (" + state + "/" + flow + "/" + packetId + ")");
         }
-        // 只复制命中的 route 与两级索引, Netty 线程继续无锁读取旧快照.
+        // 只复制命中的 route 与状态索引, Netty 线程继续无锁读取旧快照.
         ByteBufPacketListenerHolder[] updatedRoute = currentRoute.clone();
         updatedRoute[packetId] = new ByteBufPacketListenerHolder(name, listener);
-        ByteBufPacketListenerHolder[][] updatedState = current[state.ordinal()].clone();
-        updatedState[flow.ordinal()] = updatedRoute;
-        ByteBufPacketListenerHolder[][][] updated = current.clone();
-        updated[state.ordinal()] = updatedState;
-        this.byteBufListeners = updated;
+        ByteBufPacketListenerHolder[][] updated = current.clone();
+        updated[state.ordinal()] = updatedRoute;
+        if (serverbound) {
+            this.serverboundByteBufListeners = updated;
+        } else {
+            this.clientboundByteBufListeners = updated;
+        }
     }
 
     /**
-     * 按 NMS 包的运行期 Class 注册对象层监听器.
+     * 按 NMS 包的运行期 Class 和方向注册对象层监听器.
      *
      * @param listener 对象层监听器, null 时跳过注册
      * @param packetClass NMS 包类型, null 时跳过注册
-     * @throws IllegalStateException 管理器已关闭或该类型已有监听器时
+     * @param flow 包的传输方向, 决定监听器收到的是 onPacketReceive 还是 onPacketSend
+     * @throws IllegalStateException 管理器已关闭或该方向的该类型已有监听器时
      */
-    public synchronized void registerNMSPacketListener(@Nullable NMSPacketListener listener, @Nullable Class<?> packetClass) {
+    public synchronized void registerNMSPacketListener(@Nullable NMSPacketListener listener, @Nullable Class<?> packetClass, @NotNull PacketFlow flow) {
         this.requireOpen();
         if (listener == null || packetClass == null) return;
-        if (this.nmsPacketListeners.containsKey(packetClass)) {
-            throw new IllegalStateException("NMS packet listener already registered for " + packetClass.getName());
+        boolean serverbound = flow == PacketFlow.SERVERBOUND;
+        Map<Class<?>, NMSPacketListener> current = serverbound ? this.serverboundNMSListeners : this.clientboundNMSListeners;
+        if (current.containsKey(packetClass)) {
+            throw new IllegalStateException("NMS packet listener already registered for " + packetClass.getName() + " (" + flow + ")");
         }
         // 发布新的只读快照, 已经进入派发的线程仍可安全读完旧表.
-        HashMap<Class<?>, NMSPacketListener> listeners = new HashMap<>(this.nmsPacketListeners);
+        HashMap<Class<?>, NMSPacketListener> listeners = new HashMap<>(current);
         listeners.put(packetClass, listener);
-        this.nmsPacketListeners = Map.copyOf(listeners);
+        if (serverbound) {
+            this.serverboundNMSListeners = Map.copyOf(listeners);
+        } else {
+            this.clientboundNMSListeners = Map.copyOf(listeners);
+        }
     }
 
     // 在原始帧上按 route 派发监听器, 并维护取消、改写与异常后的指针契约.
-    private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, PacketFlow flow) {
+    // serverbound 决定读哪个方向的定长表与回调, 两个 handler 各自恒定传常量.
+    private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, boolean serverbound) {
         if (!buffer.isReadable() || user.bypassing()) {
             return buffer.isReadable();
         }
@@ -377,8 +386,9 @@ public final class NetworkManager implements Listener, AutoCloseable {
             buffer.readerIndex(initialReaderIndex);
             throw throwable;
         }
-        ConnectionState state = flow == PacketFlow.SERVERBOUND ? user.decoderState() : user.encoderState();
-        ByteBufPacketListenerHolder[] listeners = this.byteBufListeners[state.ordinal()][flow.ordinal()];
+        ByteBufPacketListenerHolder[] listeners = serverbound
+                ? this.serverboundByteBufListeners[user.decoderState().ordinal()]
+                : this.clientboundByteBufListeners[user.encoderState().ordinal()];
         if (packetId < 0 || packetId >= listeners.length) {
             buffer.readerIndex(initialReaderIndex);
             return true;
@@ -393,7 +403,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         PacketBuf packetBuffer = new PacketBuf(buffer);
         ByteBufPacketEvent event = new ByteBufPacketEvent(packetId, packetBuffer, buffer.readerIndex());
         try {
-            if (flow == PacketFlow.SERVERBOUND) {
+            if (serverbound) {
                 holder.listener().onPacketReceive(user, event);
             } else {
                 holder.listener().onPacketSend(user, event);
@@ -421,15 +431,16 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     // bundle 子包递归共用根事件, 让取消与替换作用于完整的出站对象.
+    // 表随递归传递, 整个 bundle 因此读的是同一份快照.
     @Nullable
-    private NMSPacketEvent handleNMSPacketSend(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event) {
+    private NMSPacketEvent handleNMSPacketSend(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event, Map<Class<?>, NMSPacketListener> listeners) {
         if (ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
             for (Object child : BundlePacketProxy.INSTANCE.subPackets(packet)) {
-                event = this.handleNMSPacketSend(user, root, child, event);
+                event = this.handleNMSPacketSend(user, root, child, event, listeners);
             }
             return event;
         }
-        NMSPacketListener listener = this.nmsPacketListeners.get(packet.getClass());
+        NMSPacketListener listener = listeners.get(packet.getClass());
         if (listener == null) {
             return event;
         }
@@ -620,7 +631,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         protected void decode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
-            if (NetworkManager.this.handleByteBuf(this.user, buffer, PacketFlow.SERVERBOUND)) {
+            if (NetworkManager.this.handleByteBuf(this.user, buffer, true)) {
                 output.add(buffer.retain());
             }
         }
@@ -635,11 +646,13 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         public void channelRead(ChannelHandlerContext context, Object packet) throws Exception {
-            if (this.user.bypassing()) {
+            // 该方向没有监听器时不必碰包对象.
+            Map<Class<?>, NMSPacketListener> listeners = NetworkManager.this.serverboundNMSListeners;
+            if (listeners.isEmpty() || this.user.bypassing()) {
                 super.channelRead(context, packet);
                 return;
             }
-            NMSPacketListener listener = NetworkManager.this.nmsPacketListeners.get(packet.getClass());
+            NMSPacketListener listener = listeners.get(packet.getClass());
             if (listener == null) {
                 super.channelRead(context, packet);
                 return;
@@ -658,11 +671,13 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
-            if (this.user.bypassing()) {
+            // 该方向没有监听器时不必展开 bundle, 也不必碰包对象.
+            Map<Class<?>, NMSPacketListener> listeners = NetworkManager.this.clientboundNMSListeners;
+            if (listeners.isEmpty() || this.user.bypassing()) {
                 super.write(context, packet, promise);
                 return;
             }
-            NMSPacketEvent event = NetworkManager.this.handleNMSPacketSend(this.user, packet, packet, null);
+            NMSPacketEvent event = NetworkManager.this.handleNMSPacketSend(this.user, packet, packet, null, listeners);
             if (event == null) {
                 super.write(context, packet, promise);
                 return;
@@ -701,7 +716,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         @Override
         protected void encode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
             boolean recompress = !this.compressionHandled && this.handleCompression(context, buffer);
-            NetworkManager.this.handleByteBuf(this.user, buffer, PacketFlow.CLIENTBOUND);
+            NetworkManager.this.handleByteBuf(this.user, buffer, false);
             if (recompress && buffer.isReadable()) {
                 this.compress(context, buffer);
             }

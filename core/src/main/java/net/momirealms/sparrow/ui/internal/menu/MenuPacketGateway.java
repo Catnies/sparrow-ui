@@ -201,7 +201,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
                 event.cancelled(true);
                 session.accept(Session.interaction(packet));
             }
-        }, ServerboundContainerClickPacketProxy.CLASS);
+        }, ServerboundContainerClickPacketProxy.CLASS, PacketFlow.SERVERBOUND);
     }
 
     @Nullable
