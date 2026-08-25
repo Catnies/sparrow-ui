@@ -175,7 +175,10 @@ public final class NetworkManager implements Listener, AutoCloseable {
     private void injectExistingConnections(List<?> connections) {
         HashMap<Channel, Player> playersByChannel = new HashMap<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
-            playersByChannel.put(this.channel(player), player);
+            Channel channel = this.channel(player);
+            if (channel != null) {
+                playersByChannel.put(channel, player);
+            }
         }
         List<?> snapshot;
         // connections 是 NMS synchronizedList, 复合快照需要持有它的 monitor.
@@ -244,12 +247,26 @@ public final class NetworkManager implements Listener, AutoCloseable {
     private void handleJoin(PlayerJoinEvent event) {
         if (this.closed.get()) return;
         Player player = event.getPlayer();
-        NetworkUser user = this.user(player);
-        if (user == null) {
-            SparrowUI.getInstance().handleException("Missing SparrowUI network user for " + player.getName(), new IllegalStateException("player channel was not injected"));
+        Channel channel = this.channel(player);
+        // 跳过假人.
+        if (channel == null || isFakeChannel(channel)) return;
+        NetworkUser user = this.user(channel);
+        if (user != null) {
+            this.bindPlayer(user, player);
             return;
         }
-        this.bindPlayer(user, player);
+        // 这条连接在管理器安装之前就登录到一半, acceptor 与在线玩家两条注入路径都错过了它.
+        // 玩家此刻已经进入游戏, 两个方向的协议阶段都是 PLAY.
+        this.execute(channel, () -> {
+            if (this.closed.get()) return;
+            NetworkUser injected = this.injectConnectionChannel(channel);
+            if (injected == null) {
+                SparrowUI.getInstance().handleException("Missing SparrowUI network user for " + player.getName(), new IllegalStateException("player channel was not injected"));
+                return;
+            }
+            injected.setConnectionState(ConnectionState.PLAY);
+            this.bindPlayer(injected, player);
+        });
     }
 
     private void bindPlayer(NetworkUser user, Player player) {
@@ -288,6 +305,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
+    // 假人拥有完整的 NMS 连接对象, 但它从未真正建立过 channel.
+    @Nullable
     private Channel channel(Player player) {
         Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
         Object packetListener = ServerPlayerProxy.INSTANCE.connection(serverPlayer);
@@ -429,11 +448,12 @@ public final class NetworkManager implements Listener, AutoCloseable {
      * 返回 Bukkit 玩家当前绑定的连接用户.
      *
      * @param player Bukkit 玩家
-     * @return 连接用户, 注入尚未建立时为 null
+     * @return 连接用户, 注入尚未建立或玩家没有真实连接时为 null
      */
     @Nullable
     public NetworkUser user(@NotNull Player player) {
-        return this.users.get(this.channel(player).pipeline());
+        Channel channel = this.channel(player);
+        return channel == null ? null : this.users.get(channel.pipeline());
     }
 
     /**
