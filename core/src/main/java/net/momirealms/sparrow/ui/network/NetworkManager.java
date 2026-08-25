@@ -406,8 +406,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
                 buffer.clear();
                 return false;
             }
-            buffer.writerIndex(initialWriterIndex);
-            buffer.readerIndex(initialReaderIndex);
+            buffer.setIndex(initialReaderIndex, initialWriterIndex);
             return true;
         }
         if (event.cancelled()) {
@@ -415,8 +414,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             return false;
         }
         if (!event.changed()) {
-            buffer.writerIndex(initialWriterIndex);
-            buffer.readerIndex(initialReaderIndex);
+            buffer.setIndex(initialReaderIndex, initialWriterIndex);
         }
         return buffer.isReadable();
     }
