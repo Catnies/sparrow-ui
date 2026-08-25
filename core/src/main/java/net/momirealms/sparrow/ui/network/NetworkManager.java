@@ -457,6 +457,11 @@ public final class NetworkManager implements Listener, AutoCloseable {
      */
     @Nullable
     public NetworkUser user(@NotNull Player player) {
+        // 已进入游戏的玩家直接按 UUID 命中, 只有绑定之前才需要解析 channel.
+        NetworkUser online = this.onlineUsers.get(player.getUniqueId());
+        if (online != null) {
+            return online;
+        }
         Channel channel = this.channel(player);
         return channel == null ? null : this.users.get(channel.pipeline());
     }
