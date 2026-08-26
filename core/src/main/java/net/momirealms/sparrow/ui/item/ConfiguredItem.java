@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
@@ -25,11 +25,11 @@ final class ConfiguredItem implements ObservableItem {
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
     // 交互守卫
     @Nullable private final ItemGuard<ItemClick> clickGuard; // 点击前置处理器链
-    @Nullable private final ItemGuard<ItemDragClick> dragGuard; // 拖拽前置处理器链
+    @Nullable private final ItemGuard<ItemDrag> dragGuard; // 拖拽前置处理器链
     @Nullable private final ItemGuard<BundleSelectClick> bundleSelectGuard; // Bundle 选择前置处理器链
     // 交互处理器
     @Nullable private final BiConsumer<Item, ItemClick> clickHandler;     // 点击处理器
-    @Nullable private final BiConsumer<Item, ItemDragClick> dragHandler;       // 拖拽处理器
+    @Nullable private final BiConsumer<Item, ItemDrag> dragHandler;       // 拖拽处理器
     @Nullable private final BiConsumer<Item, BundleSelectClick> bundleHandler; // Bundle 选择处理器
     private final boolean updateOnClick; // 点击成功后是否主动失效
 
@@ -37,10 +37,10 @@ final class ConfiguredItem implements ObservableItem {
             @NotNull ItemBuilder.DisplaySourceFactory source,
             @NotNull List<? extends Function<? super Player, ? extends Signal<?>>> dependencies,
             @Nullable ItemGuard<ItemClick> clickGuard,
-            @Nullable ItemGuard<ItemDragClick> dragGuard,
+            @Nullable ItemGuard<ItemDrag> dragGuard,
             @Nullable ItemGuard<BundleSelectClick> bundleSelectGuard,
             @Nullable BiConsumer<Item, ItemClick> clickHandler,
-            @Nullable BiConsumer<Item, ItemDragClick> dragHandler,
+            @Nullable BiConsumer<Item, ItemDrag> dragHandler,
             @Nullable BiConsumer<Item, BundleSelectClick> bundleHandler,
             boolean updateOnClick
     ) {
@@ -79,7 +79,7 @@ final class ConfiguredItem implements ObservableItem {
     }
 
     @Override
-    public void handleDrag(@NotNull ItemDragClick drag) {
+    public void handleDrag(@NotNull ItemDrag drag) {
         if (this.dragGuard != null && !this.dragGuard.test(this, drag)) return;
         if (this.dragHandler != null) {
             this.dragHandler.accept(this, drag);

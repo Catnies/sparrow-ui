@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -35,11 +35,11 @@ public final class ItemBuilder {
     private boolean updateOnClick; // 点击成功后是否主动失效
     // 交互守卫
     @Nullable private ItemGuard<ItemClick> clickGuard;                  // 点击前置处理器链
-    @Nullable private ItemGuard<ItemDragClick> dragGuard;               // 拖拽前置处理器链
+    @Nullable private ItemGuard<ItemDrag> dragGuard;               // 拖拽前置处理器链
     @Nullable private ItemGuard<BundleSelectClick> bundleSelectGuard;   // Bundle 前置处理器链
     // 交互处理器
     @Nullable private BiConsumer<Item, ItemClick> clickHandler;             // 点击处理器
-    @Nullable private BiConsumer<Item, ItemDragClick> dragHandler;          // 拖拽处理器
+    @Nullable private BiConsumer<Item, ItemDrag> dragHandler;          // 拖拽处理器
     @Nullable private BiConsumer<Item, BundleSelectClick> bundleHandler;    // Bundle 选择处理器
     // 构建收尾
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
@@ -274,8 +274,8 @@ public final class ItemBuilder {
      * @param guard 拖拽守卫
      * @return 此构建器
      */
-    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDragClick> guard) {
-        ItemGuard<ItemDragClick> current = this.dragGuard;
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDrag> guard) {
+        ItemGuard<ItemDrag> current = this.dragGuard;
         this.dragGuard = current == null ? guard : current.and(guard);
         return this;
     }
@@ -287,7 +287,7 @@ public final class ItemBuilder {
      * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
-    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDragClick> guard, @NotNull Consumer<ItemDragClick> onRejected) {
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDrag> guard, @NotNull Consumer<ItemDrag> onRejected) {
         return this.addDragGuard(guard, (ignoredItem, drag) -> onRejected.accept(drag));
     }
 
@@ -298,8 +298,8 @@ public final class ItemBuilder {
      * @param onRejected 此守卫返回 {@code false} 时执行的回调
      * @return 此构建器
      */
-    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDragClick> guard, @NotNull BiConsumer<Item, ItemDragClick> onRejected) {
-        ItemGuard<ItemDragClick> current = this.dragGuard;
+    public ItemBuilder addDragGuard(@NotNull ItemGuard<ItemDrag> guard, @NotNull BiConsumer<Item, ItemDrag> onRejected) {
+        ItemGuard<ItemDrag> current = this.dragGuard;
         this.dragGuard = current == null
                 ? guard.onRejected(onRejected)
                 : current.and(guard, onRejected);
@@ -312,7 +312,7 @@ public final class ItemBuilder {
      * @param dragHandler 拖拽处理器
      * @return 此构建器
      */
-    public ItemBuilder addDragHandler(@NotNull Consumer<ItemDragClick> dragHandler) {
+    public ItemBuilder addDragHandler(@NotNull Consumer<ItemDrag> dragHandler) {
         return this.addDragHandler((ignoredItem, drag) -> dragHandler.accept(drag));
     }
 
@@ -322,8 +322,8 @@ public final class ItemBuilder {
      * @param dragHandler 同时接收物品和拖拽事件的处理器
      * @return 此构建器
      */
-    public ItemBuilder addDragHandler(@NotNull BiConsumer<Item, ItemDragClick> dragHandler) {
-        BiConsumer<Item, ItemDragClick> current = this.dragHandler;
+    public ItemBuilder addDragHandler(@NotNull BiConsumer<Item, ItemDrag> dragHandler) {
+        BiConsumer<Item, ItemDrag> current = this.dragHandler;
         this.dragHandler = current == null ? dragHandler : current.andThen(dragHandler);
         return this;
     }

@@ -22,7 +22,7 @@ import java.util.List;
  * @param windowSlot 本次派发对应的 Window 槽位
  * @param path 手势经过的全部 Window 槽位, 按客户端发包顺序保序去重
  */
-public record ItemDragClick(
+public record ItemDrag(
         @NotNull ClickType clickType,
         @NotNull Player player,
         @NotNull Window window,
@@ -31,7 +31,7 @@ public record ItemDragClick(
         @NotNull List<Stop> path
 ) implements ItemInteraction {
 
-    public ItemDragClick {
+    public ItemDrag {
         cursor = cursor.clone();
         path = List.copyOf(path);
     }

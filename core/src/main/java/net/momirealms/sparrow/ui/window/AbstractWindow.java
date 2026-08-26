@@ -16,7 +16,7 @@ import net.momirealms.sparrow.ui.inventory.click.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
@@ -1086,21 +1086,21 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         List<Integer> windowSlots = drag.slots();
-        ItemDragClick.Stop[] stops = new ItemDragClick.Stop[windowSlots.size()];
+        ItemDrag.Stop[] stops = new ItemDrag.Stop[windowSlots.size()];
         boolean[] itemStops = new boolean[stops.length];
         for (int index = 0; index < stops.length; index++) {
             int windowSlot = windowSlots.get(index);
             DisplayedSlotPath path = this.requirePath(windowSlot);
-            stops[index] = new ItemDragClick.Stop(windowSlot);
+            stops[index] = new ItemDrag.Stop(windowSlot);
             itemStops[index] = path.hasInteractiveItem();
         }
         // 路径先定型成不可变列表, 逐站构造 ItemDragClick 时 List.copyOf 原样返回它, 不再每个 Item 复制一遍整条路径
-        List<ItemDragClick.Stop> path = List.of(stops);
+        List<ItemDrag.Stop> path = List.of(stops);
         for (int index = 0; index < path.size(); index++) {
             if (!itemStops[index]) continue;
-            ItemDragClick.Stop stop = path.get(index);
+            ItemDrag.Stop stop = path.get(index);
             this.requirePath(stop.windowSlot()).handleDrag(
-                    new ItemDragClick(drag.clickType(), this.viewer, this, cursor, stop.windowSlot(), path)
+                    new ItemDrag(drag.clickType(), this.viewer, this, cursor, stop.windowSlot(), path)
             );
         }
     }

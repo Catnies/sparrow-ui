@@ -3,7 +3,7 @@ package net.momirealms.sparrow.ui.item;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.window.Window;
@@ -88,7 +88,7 @@ public interface Item {
      *
      * @param drag 拖拽上下文
      */
-    default void handleDrag(@NotNull ItemDragClick drag) {
+    default void handleDrag(@NotNull ItemDrag drag) {
     }
 
     /**

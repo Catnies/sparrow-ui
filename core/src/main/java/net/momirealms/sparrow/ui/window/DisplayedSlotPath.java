@@ -9,7 +9,7 @@ import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
-import net.momirealms.sparrow.ui.item.click.ItemDragClick;
+import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -491,7 +491,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
-    void handleDrag(@NotNull ItemDragClick drag) {
+    void handleDrag(@NotNull ItemDrag drag) {
         PathState state = this.currentState();
         if (!state.frozen && !this.windowFrozen() && state.item != null) {
             state.item.handleDrag(drag);
