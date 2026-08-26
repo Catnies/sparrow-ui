@@ -9,14 +9,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-/**
- * 一次 Item 渲染的只读上下文.
- */
 public final class RenderContext {
-    private final Player player;
-    private final Window window;
-    private final Kind kind;
-    private final int windowSlot;
+    public final Window window;
+    public final Kind kind;
+    public final int windowSlot;
     @Nullable private final Consumer<Object> memo;
 
     /**
@@ -73,7 +69,6 @@ public final class RenderContext {
         this.kind = kind;
         this.windowSlot = windowSlot;
         this.memo = memo;
-        this.player = window.viewer();
     }
 
     /**
@@ -83,45 +78,7 @@ public final class RenderContext {
      */
     @NotNull
     public Player player() {
-        return this.player;
-    }
-
-    /**
-     * 返回本次渲染所属的 Window.
-     *
-     * @return Window
-     */
-    @NotNull
-    public Window window() {
-        return this.window;
-    }
-
-    /**
-     * 返回本次渲染的去向.
-     *
-     * @return 渲染去向
-     */
-    @NotNull
-    public Kind kind() {
-        return this.kind;
-    }
-
-    /**
-     * 返回最终 Window 槽位. 光标与非槽位内容固定返回 {@code -1}.
-     *
-     * @return Window 槽位, 或 {@code -1}
-     */
-    public int windowSlot() {
-        return this.windowSlot;
-    }
-
-    /**
-     * 返回本次是否在渲染光标内容.
-     *
-     * @return 渲染光标内容时为 {@code true}
-     */
-    public boolean isCursor() {
-        return this.kind == Kind.CURSOR;
+        return this.window.viewer();
     }
 
     /**
