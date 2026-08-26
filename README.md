@@ -26,7 +26,7 @@ Sparrow UI is a reactive inventory UI library for Paper and Folia. It brings men
 
 - **Comprehensive native menu APIs.** Sparrow UI supports chests, anvils, brewing stands, cartography tables, crafters, crafting tables, dispensers, droppers, enchanting tables, all three furnace variants, grindstones, hoppers, merchants, smithing tables, and stonecutters. Each menu type has its own Window API for native features such as progress bars, buttons, recipe books, trades, and map previews.
 
-- **Synchronous, asynchronous, and lazy Item rendering.** Items can render immediately, await database or network data through a Future, or resolve a shared resource once on first attachment. Placeholders remain visible while work is in progress, and stale results cannot overwrite newer renders.
+- **Synchronous and asynchronous Item rendering.** Items can render immediately or await database or network data through a Future. Placeholders remain visible while work is in progress, and stale results cannot overwrite newer renders.
 
 - **Reusable UI components with multiple observers.** The same Item, Pane, or Inventory can be attached to several Windows and shown to multiple players without rebuilding the shared component tree. When a component changes, every observer is notified while each Window rerenders only the affected slots.
 
@@ -65,7 +65,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.momirealms:sparrow-ui:beta.21")
+    implementation("net.momirealms:sparrow-ui:beta.22")
 }
 ```
 

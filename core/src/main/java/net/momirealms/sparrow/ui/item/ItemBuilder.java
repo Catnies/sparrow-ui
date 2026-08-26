@@ -3,17 +3,14 @@ package net.momirealms.sparrow.ui.item;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDrag;
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.item.provider.LazyItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.Signal;
-import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -21,15 +18,14 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 public final class ItemBuilder {
     // 显示与刷新
-    private DisplaySourceFactory source = new DisplaySourceFactory.ProviderFactory(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
+    private ItemProvider provider = ItemProvider.EMPTY;                // 显示来源, 只能配置一次
+    private ImmediateItemProvider placeholder = ItemProvider.EMPTY;    // 首次成功结果前使用的占位提供器
     private boolean sourceConfigured; // 显示来源是否已完成配置
     private final List<Function<Player, Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
     private boolean updateOnClick; // 点击成功后是否主动失效
@@ -52,7 +48,7 @@ public final class ItemBuilder {
      * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProvider(@NotNull Function<RenderContext, ItemStack> renderer) {
-        return this.setAsyncItemProvider(ItemProvider.sync(renderer));
+        return this.setItemProviderAsync(ItemProvider.sync(renderer));
     }
 
     /**
@@ -62,8 +58,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setConstantItemProvider(@NotNull ItemStack itemStack) {
-        return this.setAsyncItemProvider(ItemProvider.constant(itemStack));
+    public ItemBuilder setItemProviderConstant(@NotNull ItemStack itemStack) {
+        return this.setItemProviderAsync(ItemProvider.constant(itemStack));
     }
 
     /**
@@ -73,9 +69,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider) {
-        this.setSource(new DisplaySourceFactory.ProviderFactory(itemProvider, ItemProvider.EMPTY));
-        return this;
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider) {
+        return this.setItemProviderAsync(itemProvider, ItemProvider.EMPTY);
     }
 
     /**
@@ -86,8 +81,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
-        return this.setAsyncItemProvider(itemProvider, ItemProvider.constant(placeholder));
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
+        return this.setItemProviderAsync(itemProvider, ItemProvider.constant(placeholder));
     }
 
     /**
@@ -98,54 +93,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
-        this.setSource(new DisplaySourceFactory.ProviderFactory(
-                itemProvider,
-                placeholder
-        ));
-        return this;
-    }
-
-    /**
-     * 配置首次挂载时解析一次的懒加载显示来源, 解析完成前显示空物品.
-     *
-     * @param lazyProvider 懒加载显示提供器
-     * @return 此构建器
-     * @throws IllegalStateException 当显示来源已经配置过时
-     */
-    public ItemBuilder setLazyItemProvider(@NotNull LazyItemProvider lazyProvider) {
-        return this.setLazyItemProvider(ItemProvider.EMPTY, lazyProvider);
-    }
-
-    /**
-     * 配置首次挂载时解析一次的懒加载显示来源.
-     * <p>解析结果由同一 Item 的全部挂载共用, 后续挂载不会再次解析.
-     *
-     * @param placeholder 解析完成前的显示内容
-     * @param lazyProvider 懒加载显示提供器
-     * @return 此构建器
-     * @throws IllegalStateException 当显示来源已经配置过时
-     */
-    public ItemBuilder setLazyItemProvider(@NotNull ItemStack placeholder, @NotNull LazyItemProvider lazyProvider) {
-        return this.setLazyItemProvider(
-                ItemProvider.constant(placeholder),
-                lazyProvider
-        );
-    }
-
-    /**
-     * 配置首次挂载时解析一次的懒加载显示来源.
-     * <p>解析结果由同一 Item 的全部挂载共用, 后续挂载不会再次解析.
-     * <p><strong>解析 Future 应当及时完成或取消.</strong> 在它完成前, Future 的回调会保留
-     * 当前 Item 的懒加载状态与失效通知.
-     *
-     * @param placeholder 解析完成前的显示内容
-     * @param lazyProvider 懒加载显示提供器
-     * @return 此构建器
-     * @throws IllegalStateException 当显示来源已经配置过时
-     */
-    public ItemBuilder setLazyItemProvider(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) {
-        this.setSource(new DisplaySourceFactory.LazyFactory(placeholder, lazyProvider));
+    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
+        this.setSource(itemProvider, placeholder);
         return this;
     }
 
@@ -407,7 +356,8 @@ public final class ItemBuilder {
      */
     public ObservableItem build() {
         ObservableItem item = new ConfiguredItem(
-                this.source,
+                this.provider,
+                this.placeholder,
                 this.dependencies,
                 this.clickGuard,
                 this.dragGuard,
@@ -422,114 +372,11 @@ public final class ItemBuilder {
     }
 
     // 默认空来源不占用配置次数, 显式来源只能设置一次.
-    private void setSource(DisplaySourceFactory source) {
+    private void setSource(ItemProvider provider, ImmediateItemProvider placeholder) {
         if (this.sourceConfigured)
             throw new IllegalStateException("display source has already been configured");
-        this.source = source;
+        this.provider = provider;
+        this.placeholder = placeholder;
         this.sourceConfigured = true;
-    }
-
-    // 每次 build 都从声明创建独立的运行时显示来源.
-    sealed interface DisplaySourceFactory permits DisplaySourceFactory.ProviderFactory, DisplaySourceFactory.LazyFactory {
-
-        @NotNull
-        DisplaySource create(@NotNull Runnable invalidator);
-
-        record ProviderFactory(@NotNull ItemProvider provider, @NotNull ImmediateItemProvider placeholder) implements DisplaySourceFactory {
-
-            @NotNull
-            @Override
-            public DisplaySource create(@NotNull Runnable invalidator) {
-                // 固定来源没有解析完成事件, 不需要失效回调.
-                return new DisplaySource.FixedDisplaySource(this.provider, this.placeholder);
-            }
-        }
-
-        record LazyFactory(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider) implements DisplaySourceFactory {
-
-            @Override
-            @NotNull
-            public DisplaySource create(@NotNull Runnable invalidator) {
-                return new DisplaySource.LazyDisplaySource(this.placeholder, this.lazyProvider, invalidator);
-            }
-        }
-    }
-
-    // 运行时显示来源, 同时负责当前 Provider 与首次挂载行为.
-    sealed interface DisplaySource permits DisplaySource.FixedDisplaySource, DisplaySource.LazyDisplaySource {
-
-        @NotNull
-        ItemProvider provider();
-
-        @NotNull
-        ImmediateItemProvider placeholder();
-
-        // 懒加载来源在这里启动首次解析.
-        default void onAttached() {
-        }
-
-        record FixedDisplaySource(@NotNull ItemProvider provider, @NotNull ImmediateItemProvider placeholder) implements DisplaySource {
-        }
-
-        // 首次挂载时解析一次, 后续挂载复用同一结果.
-        final class LazyDisplaySource implements DisplaySource {
-            private final @NotNull ImmediateItemProvider placeholder;
-            // getAndSet(null) 让多个并发挂载中只有一个能启动解析.
-            private final @NotNull AtomicReference<LazyItemProvider> pendingProvider;
-            private final @NotNull Runnable invalidator;
-            // 完成回调可能运行在异步线程, 渲染线程需要立即看到新 Provider.
-            private volatile @NotNull ItemProvider currentProvider;
-
-            LazyDisplaySource(@NotNull ImmediateItemProvider placeholder, @NotNull LazyItemProvider lazyProvider, @NotNull Runnable invalidator) {
-                this.placeholder = placeholder;
-                this.currentProvider = placeholder;
-                this.pendingProvider = new AtomicReference<>(lazyProvider);
-                this.invalidator = invalidator;
-            }
-
-            @Override
-            @NotNull
-            public ItemProvider provider() {
-                return this.currentProvider;
-            }
-
-            @Override
-            @NotNull
-            public ImmediateItemProvider placeholder() {
-                return this.placeholder;
-            }
-
-            @Override
-            public void onAttached() {
-                LazyItemProvider lazyProvider = this.pendingProvider.getAndSet(null);
-                if (lazyProvider == null) return;
-
-                // resolve 同步抛出也按解析失败处理.
-                CompletableFuture<ItemProvider> stage;
-                try {
-                    stage = lazyProvider.resolve();
-                } catch (Throwable throwable) {
-                    SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", throwable);
-                    return;
-                }
-
-                stage.whenComplete((provider, throwable) -> {
-                    // 失败时保留占位 Provider.
-                    if (throwable != null) {
-                        SparrowUI.getInstance().handleException("Failed to resolve lazy item provider", ThrowableUtils.unwrapCompletion(throwable));
-                        return;
-                    }
-                    // 先发布新 Provider, 再通知 Window 读取它.
-                    this.currentProvider = provider;
-                    try {
-                        this.invalidator.run();
-                    } catch (RuntimeException exception) {
-                        // 通知失败不撤销已经发布的 Provider.
-                        SparrowUI.getInstance().handleException("Failed to invalidate windows for lazy item", exception);
-                    }
-                });
-            }
-        }
-
     }
 }

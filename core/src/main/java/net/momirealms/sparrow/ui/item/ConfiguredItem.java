@@ -20,7 +20,8 @@ import java.util.function.Function;
 
 final class ConfiguredItem implements ObservableItem {
     // 显示与失效
-    private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与挂载行为
+    private final ItemProvider itemProvider;               // 显示内容来源
+    private final ImmediateItemProvider placeholder;       // 首次成功结果前使用的占位提供器
     private final List<Function<Player, Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按查看者解析
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
     // 交互守卫
@@ -34,7 +35,8 @@ final class ConfiguredItem implements ObservableItem {
     private final boolean updateOnClick; // 点击成功后是否主动失效
 
     ConfiguredItem(
-            @NotNull ItemBuilder.DisplaySourceFactory source,
+            @NotNull ItemProvider itemProvider,
+            @NotNull ImmediateItemProvider placeholder,
             @NotNull List<Function<Player, Signal<?>>> dependencies,
             @Nullable ItemGuard<ItemClick> clickGuard,
             @Nullable ItemGuard<ItemDrag> dragGuard,
@@ -44,7 +46,8 @@ final class ConfiguredItem implements ObservableItem {
             @Nullable BiConsumer<Item, BundleSelectClick> bundleHandler,
             boolean updateOnClick
     ) {
-        this.displaySource = source.create(this::notifyWindows);
+        this.itemProvider = itemProvider;
+        this.placeholder = placeholder;
         this.dependencies = List.copyOf(dependencies);
         this.clickGuard = clickGuard;
         this.dragGuard = dragGuard;
@@ -58,13 +61,13 @@ final class ConfiguredItem implements ObservableItem {
     @NotNull
     @Override
     public ItemProvider getItemProvider() {
-        return this.displaySource.provider();
+        return this.itemProvider;
     }
 
     @NotNull
     @Override
     public ImmediateItemProvider getPlaceholder() {
-        return this.displaySource.placeholder();
+        return this.placeholder;
     }
 
     @Override
@@ -97,11 +100,10 @@ final class ConfiguredItem implements ObservableItem {
     @Override
     public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
-        // 观察者, 依赖与懒加载来源全部就绪后, 本次挂载才算成功.
+        // 观察者和依赖必须一同生效, 任一订阅失败都撤销本次挂载.
         try {
             attachment.track(this.observers.subscribe(observer));
             attachment.subscribeDependencies(this.dependencies, window.viewer());
-            this.displaySource.onAttached();
             return attachment;
         } catch (RuntimeException | Error throwable) {
             // 保留原始挂载异常, 清理异常作为补充信息.
