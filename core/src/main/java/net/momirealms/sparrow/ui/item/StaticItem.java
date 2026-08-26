@@ -7,7 +7,6 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
@@ -15,8 +14,8 @@ import java.util.function.BiConsumer;
  */
 public final class StaticItem implements Item {
     private final ItemProvider itemProvider;
-    private final BiConsumer<? super Item, ? super ItemClick> clickHandler;
-    private final BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler;
+    private final BiConsumer<Item, ItemClick> clickHandler;
+    private final BiConsumer<Item, BundleSelectClick> bundleSelectHandler;
 
     /**
      * 创建显示固定物品的 Item. 传入的物品会被复制.
@@ -44,7 +43,7 @@ public final class StaticItem implements Item {
      */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
-            @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler
+            @Nullable BiConsumer<Item, ItemClick> clickHandler
     ) {
         this(itemProvider, clickHandler, null);
     }
@@ -58,10 +57,10 @@ public final class StaticItem implements Item {
      */
     public StaticItem(
             @NotNull ItemProvider itemProvider,
-            @Nullable BiConsumer<? super Item, ? super ItemClick> clickHandler,
-            @Nullable BiConsumer<? super Item, ? super BundleSelectClick> bundleSelectHandler
+            @Nullable BiConsumer<Item, ItemClick> clickHandler,
+            @Nullable BiConsumer<Item, BundleSelectClick> bundleSelectHandler
     ) {
-        this.itemProvider = Objects.requireNonNull(itemProvider, "itemProvider");
+        this.itemProvider = itemProvider;
         this.clickHandler = clickHandler;
         this.bundleSelectHandler = bundleSelectHandler;
     }
@@ -73,16 +72,16 @@ public final class StaticItem implements Item {
     }
 
     @Override
-    public void handleClick(ItemClick click) {
+    public void handleClick(@NotNull ItemClick click) {
         if (this.clickHandler != null) {
-            this.clickHandler.accept(this, Objects.requireNonNull(click, "click"));
+            this.clickHandler.accept(this, click);
         }
     }
 
     @Override
-    public void handleBundleSelect(BundleSelectClick select) {
+    public void handleBundleSelect(@NotNull BundleSelectClick select) {
         if (this.bundleSelectHandler != null) {
-            this.bundleSelectHandler.accept(this, Objects.requireNonNull(select, "select"));
+            this.bundleSelectHandler.accept(this, select);
         }
     }
 }
