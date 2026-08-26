@@ -498,6 +498,11 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
+    boolean hasInteractiveItem() {
+        PathState state = this.currentState();
+        return !state.frozen && !this.windowFrozen() && state.item != null;
+    }
+
     void handleBundleSelect(@NotNull BundleSelectClick select) {
         PathState state = this.currentState();
         if (state.frozen || this.windowFrozen()) {
@@ -508,14 +513,6 @@ final class DisplayedSlotPath implements AutoCloseable {
         } else if (state.item != null) {
             state.item.handleBundleSelect(select);
         }
-    }
-
-    @NotNull
-    ItemDragClick.Kind kind() {
-        PathState state = this.currentState();
-        if (state.frozen || this.windowFrozen()) return ItemDragClick.Kind.FROZEN;
-        if (state.inventoryLink != null) return ItemDragClick.Kind.INVENTORY;
-        return state.item == null ? ItemDragClick.Kind.EMPTY : ItemDragClick.Kind.ITEM;
     }
 
     // 强制处理还没解析的 Pane 变化, 让 Window 在提交旧的点击候选前看到交互终点或冻结状态的改变.
