@@ -52,7 +52,7 @@ public final class ItemBuilder {
      * @throws IllegalStateException 当显示来源已经配置过时
      */
     public ItemBuilder setItemProvider(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
-        return this.setItemProviderAsync(ItemProvider.sync(renderer));
+        return this.setAsyncItemProvider(ItemProvider.sync(renderer));
     }
 
     /**
@@ -62,8 +62,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setItemProviderConstant(@NotNull ItemStack itemStack) {
-        return this.setItemProviderAsync(ItemProvider.constant(itemStack));
+    public ItemBuilder setConstantItemProvider(@NotNull ItemStack itemStack) {
+        return this.setAsyncItemProvider(ItemProvider.constant(itemStack));
     }
 
     /**
@@ -73,7 +73,7 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider) {
+    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider) {
         this.setSource(new DisplaySourceFactory.ProviderFactory(Objects.requireNonNull(itemProvider, "itemProvider"), ItemProvider.EMPTY));
         return this;
     }
@@ -86,8 +86,8 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
-        return this.setItemProviderAsync(itemProvider, ItemProvider.constant(placeholder));
+    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider, @NotNull ItemStack placeholder) {
+        return this.setAsyncItemProvider(itemProvider, ItemProvider.constant(placeholder));
     }
 
     /**
@@ -98,7 +98,7 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setItemProviderAsync(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
+    public ItemBuilder setAsyncItemProvider(@NotNull ItemProvider itemProvider, @NotNull ImmediateItemProvider placeholder) {
         this.setSource(new DisplaySourceFactory.ProviderFactory(
                 Objects.requireNonNull(itemProvider, "itemProvider"),
                 Objects.requireNonNull(placeholder, "placeholder")
