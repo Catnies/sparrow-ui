@@ -5,7 +5,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public interface ItemInteraction {
+public sealed interface ItemInteraction permits ItemClick, ItemDragClick, BundleSelectClick {
 
     /**
      * 返回发起交互的玩家.

@@ -38,7 +38,7 @@ public abstract class AbstractItem implements ObservableItem {
      */
     protected final void dependsOn(@NotNull Signal<?>... signals) {
         for (int index = 0; index < signals.length; index++) {
-            Signal<?> signal = Objects.requireNonNull(signals[index], "signal");
+            Signal<?> signal = signals[index];
             this.dependencies.add(ignoredViewer -> signal);
         }
     }
@@ -50,7 +50,6 @@ public abstract class AbstractItem implements ObservableItem {
      * @param signal 按玩家分区的数据源
      */
     protected final void dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
-        Objects.requireNonNull(signal, "signal");
         this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
     }
 
@@ -104,8 +103,6 @@ public abstract class AbstractItem implements ObservableItem {
 
     @Override
     public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
-        Objects.requireNonNull(window, "window");
-        Objects.requireNonNull(observer, "observer");
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
         // 观察者和依赖必须一同生效, 任一订阅失败都撤销本次挂载.
         try {
