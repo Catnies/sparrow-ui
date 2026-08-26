@@ -6,7 +6,6 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.function.LongSupplier;
 
@@ -20,7 +19,7 @@ final class ThrottleGuard implements ItemGuard<ItemClick> {
         if (intervalMillis <= 0)
             throw new IllegalArgumentException("intervalMillis must be positive");
         this.intervalMillis = intervalMillis;
-        this.timeSource = Objects.requireNonNull(timeSource, "timeSource");
+        this.timeSource = timeSource;
     }
 
     @Override

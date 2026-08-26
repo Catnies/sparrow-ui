@@ -1,16 +1,14 @@
 package net.momirealms.sparrow.ui.item.provider;
 
-import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 
 @FunctionalInterface
 public interface ItemProvider {
-    ImmediateItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemUtils.copyOrEmpty(null));
+    ImmediateItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemStack.empty());
 
     /**
      * 发起本次要显示物品的计算.
@@ -22,7 +20,7 @@ public interface ItemProvider {
      * @return 本次渲染最终结果的 Future
      */
     @NotNull
-    CompletableFuture<? extends ItemStack> provide(@NotNull RenderContext context);
+    CompletableFuture<ItemStack> provide(@NotNull RenderContext context);
 
     /**
      * 创建在渲染调用线程立即完成的同步 Provider.
@@ -31,8 +29,7 @@ public interface ItemProvider {
      * @return 同步提供器
      */
     @NotNull
-    static ImmediateItemProvider sync(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
-        Objects.requireNonNull(renderer, "renderer");
+    static ImmediateItemProvider sync(@NotNull Function<RenderContext, ItemStack> renderer) {
         return renderer::apply;
     }
 
@@ -45,6 +42,6 @@ public interface ItemProvider {
      */
     @NotNull
     static ImmediateItemProvider constant(@NotNull ItemStack template) {
-        return new ItemWrapper(Objects.requireNonNull(template, "template"));
+        return new ItemWrapper(template);
     }
 }

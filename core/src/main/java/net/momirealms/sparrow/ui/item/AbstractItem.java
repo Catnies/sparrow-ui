@@ -14,7 +14,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
@@ -62,8 +61,6 @@ public abstract class AbstractItem implements ObservableItem {
      * @param keyOf 从查看者取得分区键的函数, 每次挂载时调用
      */
     protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
-        Objects.requireNonNull(signal, "signal");
-        Objects.requireNonNull(keyOf, "keyOf");
         this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
     }
 

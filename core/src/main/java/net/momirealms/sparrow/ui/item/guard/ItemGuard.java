@@ -46,4 +46,19 @@ public interface ItemGuard<C extends ItemInteraction> {
             return false;
         };
     }
+
+    /**
+     * 为当前守卫附加拒绝回调.
+     *
+     * @param onRejected 当前守卫的拒绝回调
+     * @return 带拒绝回调的守卫
+     */
+    @NotNull
+    default ItemGuard<C> onRejected(@NotNull BiConsumer<Item, C> onRejected) {
+        return (item, interaction) -> {
+            if (this.test(item, interaction)) return true;
+            onRejected.accept(item, interaction);
+            return false;
+        };
+    }
 }

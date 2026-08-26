@@ -16,16 +16,17 @@ public interface LazyItemProvider {
      *
      * @return 本次解析的结果阶段
      */
-    CompletableFuture<? extends ItemProvider> resolve();
+    @NotNull
+    CompletableFuture<ItemProvider> resolve();
 
     /**
      * 创建在 Paper 全局异步调度器上执行同步解析函数的来源.
      *
-     * @param supplier 同步解析函数, 可返回 {@code null} 表示解析失败
+     * @param supplier 同步解析函数, 返回值不得为 {@code null}
      * @return 异步解析来源
      */
     @NotNull
-    static LazyItemProvider compute(@NotNull Supplier<? extends ItemProvider> supplier) {
+    static LazyItemProvider compute(@NotNull Supplier<ItemProvider> supplier) {
         return () -> {
             CompletableFuture<ItemProvider> future = new CompletableFuture<>();
             Bukkit.getAsyncScheduler().runNow(

@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.item;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDragClick;
-import net.momirealms.sparrow.ui.item.click.ItemInteraction;
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
@@ -13,9 +12,9 @@ import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
@@ -25,34 +24,34 @@ final class ConfiguredItem implements ObservableItem {
     private final List<Function<? super Player, ? extends Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按查看者解析
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
     // 交互守卫
-    private final List<GuardEntry<ItemClick>> clickGuards; // 点击前置处理器
-    private final List<GuardEntry<ItemDragClick>> dragGuards; // 拖拽前置处理器
-    private final List<GuardEntry<BundleSelectClick>> bundleSelectGuards; // Bundle 选择前置处理器
+    @Nullable private final ItemGuard<ItemClick> clickGuard; // 点击前置处理器链
+    @Nullable private final ItemGuard<ItemDragClick> dragGuard; // 拖拽前置处理器链
+    @Nullable private final ItemGuard<BundleSelectClick> bundleSelectGuard; // Bundle 选择前置处理器链
     // 交互处理器
-    private final BiConsumer<? super Item, ? super ItemClick> clickHandler;     // 点击处理器
-    private final BiConsumer<? super Item, ? super ItemDragClick> dragHandler;       // 拖拽处理器
-    private final BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler; // Bundle 选择处理器
+    private final BiConsumer<Item, ItemClick> clickHandler;     // 点击处理器
+    private final BiConsumer<Item, ItemDragClick> dragHandler;       // 拖拽处理器
+    private final BiConsumer<Item, BundleSelectClick> bundleHandler; // Bundle 选择处理器
     private final boolean updateOnClick; // 点击成功后是否主动失效
 
     ConfiguredItem(
             @NotNull ItemBuilder.DisplaySourceFactory source,
             @NotNull List<? extends Function<? super Player, ? extends Signal<?>>> dependencies,
-            @NotNull List<? extends GuardEntry<ItemClick>> clickGuards,
-            @NotNull List<? extends GuardEntry<ItemDragClick>> dragGuards,
-            @NotNull List<? extends GuardEntry<BundleSelectClick>> bundleSelectGuards,
-            @NotNull BiConsumer<? super Item, ? super ItemClick> clickHandler,
-            @NotNull BiConsumer<? super Item, ? super ItemDragClick> dragHandler,
-            @NotNull BiConsumer<? super Item, ? super BundleSelectClick> bundleHandler,
+            @Nullable ItemGuard<ItemClick> clickGuard,
+            @Nullable ItemGuard<ItemDragClick> dragGuard,
+            @Nullable ItemGuard<BundleSelectClick> bundleSelectGuard,
+            @NotNull BiConsumer<Item, ItemClick> clickHandler,
+            @NotNull BiConsumer<Item, ItemDragClick> dragHandler,
+            @NotNull BiConsumer<Item, BundleSelectClick> bundleHandler,
             boolean updateOnClick
     ) {
-        this.displaySource = Objects.requireNonNull(source.create(this::notifyWindows), "source result");
+        this.displaySource = source.create(this::notifyWindows);
         this.dependencies = List.copyOf(dependencies);
-        this.clickGuards = List.copyOf(clickGuards);
-        this.dragGuards = List.copyOf(dragGuards);
-        this.bundleSelectGuards = List.copyOf(bundleSelectGuards);
-        this.clickHandler = Objects.requireNonNull(clickHandler, "clickHandler");
-        this.dragHandler = Objects.requireNonNull(dragHandler, "dragHandler");
-        this.bundleHandler = Objects.requireNonNull(bundleHandler, "bundleHandler");
+        this.clickGuard = clickGuard;
+        this.dragGuard = dragGuard;
+        this.bundleSelectGuard = bundleSelectGuard;
+        this.clickHandler = clickHandler;
+        this.dragHandler = dragHandler;
+        this.bundleHandler = bundleHandler;
         this.updateOnClick = updateOnClick;
     }
 
@@ -69,8 +68,8 @@ final class ConfiguredItem implements ObservableItem {
     }
 
     @Override
-    public void handleClick(ItemClick click) {
-        if (!this.passes(this.clickGuards, click)) return;
+    public void handleClick(@NotNull ItemClick click) {
+        if (this.clickGuard != null && !this.clickGuard.test(this, click)) return;
         this.clickHandler.accept(this, click);
         if (this.updateOnClick) {
             this.notifyWindows();
@@ -78,33 +77,19 @@ final class ConfiguredItem implements ObservableItem {
     }
 
     @Override
-    public void handleDrag(ItemDragClick drag) {
-        if (!this.passes(this.dragGuards, drag)) return;
+    public void handleDrag(@NotNull ItemDragClick drag) {
+        if (this.dragGuard != null && !this.dragGuard.test(this, drag)) return;
         this.dragHandler.accept(this, drag);
     }
 
     @Override
     public void handleBundleSelect(@NotNull BundleSelectClick select) {
-        if (!this.passes(this.bundleSelectGuards, select)) return;
+        if (this.bundleSelectGuard != null && !this.bundleSelectGuard.test(this, select)) return;
         this.bundleHandler.accept(this, select);
-    }
-
-    // 首个拒绝交互的守卫负责执行自己的拒绝回调.
-    private <C extends ItemInteraction> boolean passes(@NotNull List<GuardEntry<C>> guards, @NotNull C interaction) {
-        for (int index = 0; index < guards.size(); index++) {
-            GuardEntry<C> entry = guards.get(index);
-            if (!entry.guard().test(this, interaction)) {
-                entry.onRejected().accept(this, interaction);
-                return false;
-            }
-        }
-        return true;
     }
 
     @Override
     public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
-        Objects.requireNonNull(window, "window");
-        Objects.requireNonNull(observer, "observer");
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
         // 观察者, 依赖与懒加载来源全部就绪后, 本次挂载才算成功.
         try {
@@ -126,11 +111,5 @@ final class ConfiguredItem implements ObservableItem {
     @Override
     public void notifyWindows() {
         this.observers.publish(this);
-    }
-
-    record GuardEntry<C extends ItemInteraction>(
-            @NotNull ItemGuard<? super C> guard,
-            @NotNull BiConsumer<? super Item, ? super C> onRejected
-    ) {
     }
 }

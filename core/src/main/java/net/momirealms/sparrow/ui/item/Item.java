@@ -10,8 +10,6 @@ import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
-
 public interface Item {
     Item EMPTY = new EmptyItem();
 
@@ -82,7 +80,7 @@ public interface Item {
      *
      * @param click 点击事件上下文
      */
-    default void handleClick(ItemClick click) {
+    default void handleClick(@NotNull ItemClick click) {
     }
 
     /**
@@ -90,7 +88,7 @@ public interface Item {
      *
      * @param drag 拖拽上下文
      */
-    default void handleDrag(ItemDragClick drag) {
+    default void handleDrag(@NotNull ItemDragClick drag) {
     }
 
     /**
@@ -98,7 +96,7 @@ public interface Item {
      *
      * @param select 选择上下文
      */
-    default void handleBundleSelect(BundleSelectClick select) {
+    default void handleBundleSelect(@NotNull BundleSelectClick select) {
     }
 
     /**
@@ -111,8 +109,6 @@ public interface Item {
      * @return 本次显示关系的附件
      */
     default ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
-        Objects.requireNonNull(window, "window");
-        Objects.requireNonNull(observer, "observer");
         return ItemAttachment.PASSIVE;
     }
 }
