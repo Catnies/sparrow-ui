@@ -21,7 +21,7 @@ import java.util.function.Function;
 final class ConfiguredItem implements ObservableItem {
     // 显示与失效
     private final ItemBuilder.DisplaySource displaySource; // 显示来源, 决定渲染提供器与挂载行为
-    private final List<Function<? super Player, ? extends Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按查看者解析
+    private final List<Function<Player, Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按查看者解析
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
     // 交互守卫
     @Nullable private final ItemGuard<ItemClick> clickGuard; // 点击前置处理器链
@@ -35,7 +35,7 @@ final class ConfiguredItem implements ObservableItem {
 
     ConfiguredItem(
             @NotNull ItemBuilder.DisplaySourceFactory source,
-            @NotNull List<? extends Function<? super Player, ? extends Signal<?>>> dependencies,
+            @NotNull List<Function<Player, Signal<?>>> dependencies,
             @Nullable ItemGuard<ItemClick> clickGuard,
             @Nullable ItemGuard<ItemDrag> dragGuard,
             @Nullable ItemGuard<BundleSelectClick> bundleSelectGuard,

@@ -22,10 +22,10 @@ public abstract class AbstractItem implements ObservableItem {
     private final ItemProvider itemProvider;
     private final ImmediateItemProvider placeholder;
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 失效广播派发器, notifyWindows 经它送达所有观察者
-    private final CopyOnWriteArrayList<Function<Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
+    private final CopyOnWriteArrayList<Function<Player, Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
-        this.itemProvider = this::render;
+        this.itemProvider = ItemProvider.async(this::render);
         this.placeholder = ItemProvider.sync(this::placeholder);
     }
 
@@ -60,7 +60,7 @@ public abstract class AbstractItem implements ObservableItem {
      * @param signal 分区数据源
      * @param keyOf 从查看者取得分区键的函数, 每次挂载时调用
      */
-    protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
+    protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<Player, K> keyOf) {
         this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
     }
 

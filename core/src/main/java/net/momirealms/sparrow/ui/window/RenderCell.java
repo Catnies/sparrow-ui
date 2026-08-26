@@ -102,7 +102,7 @@ public final class RenderCell implements AutoCloseable {
 
     private void submit(ItemProvider provider, long generation) {
         this.inFlightToken.set(generation);
-        CompletableFuture<? extends ItemStack> future;
+        CompletableFuture<ItemStack> future;
         try {
             future = Objects.requireNonNull(provider.provide(this.context), "provider result");
         } catch (Throwable throwable) {
@@ -125,7 +125,7 @@ public final class RenderCell implements AutoCloseable {
     }
 
     // 同步完成的计算当场取值, 首帧即出真值, 不需要完成通知.
-    private void completeNow(long generation, CompletableFuture<? extends ItemStack> future) {
+    private void completeNow(long generation, CompletableFuture<ItemStack> future) {
         try {
             ItemStack item = Objects.requireNonNull(future.join(), "computed item");
             this.lastCompleted = new Completed(generation, item);

@@ -31,7 +31,7 @@ public final class ItemBuilder {
     // 显示与刷新
     private DisplaySourceFactory source = new DisplaySourceFactory.ProviderFactory(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
-    private final List<Function<Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
+    private final List<Function<Player, Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
     private boolean updateOnClick; // 点击成功后是否主动失效
     // 交互守卫
     @Nullable private ItemGuard<ItemClick> clickGuard;                  // 点击前置处理器链
@@ -193,7 +193,7 @@ public final class ItemBuilder {
      * @param keyOf 从查看者导出分区 key, 在挂载时执行
      * @return 此构建器
      */
-    public <K> ItemBuilder dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<? super Player, ? extends K> keyOf) {
+    public <K> ItemBuilder dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<Player, K> keyOf) {
         this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
         return this;
     }
@@ -505,7 +505,7 @@ public final class ItemBuilder {
                 if (lazyProvider == null) return;
 
                 // resolve 同步抛出也按解析失败处理.
-                CompletableFuture<? extends ItemProvider> stage;
+                CompletableFuture<ItemProvider> stage;
                 try {
                     stage = lazyProvider.resolve();
                 } catch (Throwable throwable) {
