@@ -28,9 +28,9 @@ final class ConfiguredItem implements ObservableItem {
     @Nullable private final ItemGuard<ItemDragClick> dragGuard; // 拖拽前置处理器链
     @Nullable private final ItemGuard<BundleSelectClick> bundleSelectGuard; // Bundle 选择前置处理器链
     // 交互处理器
-    private final BiConsumer<Item, ItemClick> clickHandler;     // 点击处理器
-    private final BiConsumer<Item, ItemDragClick> dragHandler;       // 拖拽处理器
-    private final BiConsumer<Item, BundleSelectClick> bundleHandler; // Bundle 选择处理器
+    @Nullable private final BiConsumer<Item, ItemClick> clickHandler;     // 点击处理器
+    @Nullable private final BiConsumer<Item, ItemDragClick> dragHandler;       // 拖拽处理器
+    @Nullable private final BiConsumer<Item, BundleSelectClick> bundleHandler; // Bundle 选择处理器
     private final boolean updateOnClick; // 点击成功后是否主动失效
 
     ConfiguredItem(
@@ -39,9 +39,9 @@ final class ConfiguredItem implements ObservableItem {
             @Nullable ItemGuard<ItemClick> clickGuard,
             @Nullable ItemGuard<ItemDragClick> dragGuard,
             @Nullable ItemGuard<BundleSelectClick> bundleSelectGuard,
-            @NotNull BiConsumer<Item, ItemClick> clickHandler,
-            @NotNull BiConsumer<Item, ItemDragClick> dragHandler,
-            @NotNull BiConsumer<Item, BundleSelectClick> bundleHandler,
+            @Nullable BiConsumer<Item, ItemClick> clickHandler,
+            @Nullable BiConsumer<Item, ItemDragClick> dragHandler,
+            @Nullable BiConsumer<Item, BundleSelectClick> bundleHandler,
             boolean updateOnClick
     ) {
         this.displaySource = source.create(this::notifyWindows);
@@ -70,7 +70,9 @@ final class ConfiguredItem implements ObservableItem {
     @Override
     public void handleClick(@NotNull ItemClick click) {
         if (this.clickGuard != null && !this.clickGuard.test(this, click)) return;
-        this.clickHandler.accept(this, click);
+        if (this.clickHandler != null) {
+            this.clickHandler.accept(this, click);
+        }
         if (this.updateOnClick) {
             this.notifyWindows();
         }
@@ -79,13 +81,17 @@ final class ConfiguredItem implements ObservableItem {
     @Override
     public void handleDrag(@NotNull ItemDragClick drag) {
         if (this.dragGuard != null && !this.dragGuard.test(this, drag)) return;
-        this.dragHandler.accept(this, drag);
+        if (this.dragHandler != null) {
+            this.dragHandler.accept(this, drag);
+        }
     }
 
     @Override
     public void handleBundleSelect(@NotNull BundleSelectClick select) {
         if (this.bundleSelectGuard != null && !this.bundleSelectGuard.test(this, select)) return;
-        this.bundleHandler.accept(this, select);
+        if (this.bundleHandler != null) {
+            this.bundleHandler.accept(this, select);
+        }
     }
 
     @Override

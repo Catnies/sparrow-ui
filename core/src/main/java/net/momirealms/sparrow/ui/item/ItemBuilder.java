@@ -31,16 +31,16 @@ public final class ItemBuilder {
     // 显示与刷新
     private DisplaySourceFactory source = new DisplaySourceFactory.ProviderFactory(ItemProvider.EMPTY, ItemProvider.EMPTY); // 显示来源声明, 只能配置一次
     private boolean sourceConfigured; // 显示来源是否已完成配置
-    private final List<Function<? super Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
+    private final List<Function<Player, ? extends Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
     private boolean updateOnClick; // 点击成功后是否主动失效
     // 交互守卫
-    @Nullable private ItemGuard<ItemClick> clickGuard; // 点击前置处理器链
-    @Nullable private ItemGuard<ItemDragClick> dragGuard; // 拖拽前置处理器链
-    @Nullable private ItemGuard<BundleSelectClick> bundleSelectGuard; // Bundle 前置处理器链
+    @Nullable private ItemGuard<ItemClick> clickGuard;                  // 点击前置处理器链
+    @Nullable private ItemGuard<ItemDragClick> dragGuard;               // 拖拽前置处理器链
+    @Nullable private ItemGuard<BundleSelectClick> bundleSelectGuard;   // Bundle 前置处理器链
     // 交互处理器
-    private BiConsumer<Item, ItemClick> clickHandler = (ignoredItem, ignoredClick) -> { };      // 点击处理器
-    private BiConsumer<Item, ItemDragClick> dragHandler = (ignoredItem, ignoredDrag) -> { };         // 拖拽处理器
-    private BiConsumer<Item, BundleSelectClick> bundleHandler = (ignoredItem, ignoredSelect) -> { }; // Bundle 选择处理器
+    @Nullable private BiConsumer<Item, ItemClick> clickHandler;             // 点击处理器
+    @Nullable private BiConsumer<Item, ItemDragClick> dragHandler;          // 拖拽处理器
+    @Nullable private BiConsumer<Item, BundleSelectClick> bundleHandler;    // Bundle 选择处理器
     // 构建收尾
     private Consumer<ObservableItem> modifier = ignoredItem -> { }; // 构建完成后执行的修改器链
 
@@ -51,7 +51,7 @@ public final class ItemBuilder {
      * @return 此构建器
      * @throws IllegalStateException 当显示来源已经配置过时
      */
-    public ItemBuilder setItemProvider(@NotNull Function<? super RenderContext, ? extends ItemStack> renderer) {
+    public ItemBuilder setItemProvider(@NotNull Function<RenderContext, ItemStack> renderer) {
         return this.setAsyncItemProvider(ItemProvider.sync(renderer));
     }
 
@@ -263,7 +263,8 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addClickHandler(@NotNull BiConsumer<Item, ItemClick> clickHandler) {
-        this.clickHandler = this.clickHandler.andThen(clickHandler);
+        BiConsumer<Item, ItemClick> current = this.clickHandler;
+        this.clickHandler = current == null ? clickHandler : current.andThen(clickHandler);
         return this;
     }
 
@@ -322,7 +323,8 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addDragHandler(@NotNull BiConsumer<Item, ItemDragClick> dragHandler) {
-        this.dragHandler = this.dragHandler.andThen(dragHandler);
+        BiConsumer<Item, ItemDragClick> current = this.dragHandler;
+        this.dragHandler = current == null ? dragHandler : current.andThen(dragHandler);
         return this;
     }
 
@@ -381,7 +383,8 @@ public final class ItemBuilder {
      * @return 此构建器
      */
     public ItemBuilder addBundleSelectHandler(@NotNull BiConsumer<Item, BundleSelectClick> selectHandler) {
-        this.bundleHandler = this.bundleHandler.andThen(selectHandler);
+        BiConsumer<Item, BundleSelectClick> current = this.bundleHandler;
+        this.bundleHandler = current == null ? selectHandler : current.andThen(selectHandler);
         return this;
     }
 

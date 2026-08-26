@@ -22,7 +22,7 @@ public abstract class AbstractItem implements ObservableItem {
     private final ItemProvider itemProvider;
     private final ImmediateItemProvider placeholder;
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 失效广播派发器, notifyWindows 经它送达所有观察者
-    private final CopyOnWriteArrayList<Function<? super Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
+    private final CopyOnWriteArrayList<Function<Player, ? extends Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
         this.itemProvider = this::render;
@@ -72,7 +72,7 @@ public abstract class AbstractItem implements ObservableItem {
      * @return 本次显示结果的 Future
      */
     @NotNull
-    protected abstract CompletableFuture<? extends ItemStack> render(RenderContext context);
+    protected abstract CompletableFuture<ItemStack> render(RenderContext context);
 
     /**
      * 返回此显示位置首次渲染完成前使用的占位物品.

@@ -12,16 +12,5 @@ import org.jetbrains.annotations.NotNull;
  * @param windowSlot Bundle 所在的 Window 槽位
  * @param bundleSlot Bundle 内槽位, {@code -1} 表示未选中任何槽位
  */
-public record BundleSelectClick(
-        @NotNull Player player,
-        @NotNull Window window,
-        int windowSlot,
-        int bundleSlot
-) implements ItemInteraction {
-
-    public BundleSelectClick {
-        if (bundleSlot < -1) {
-            throw new IllegalArgumentException("bundleSlot must be -1 or non-negative");
-        }
-    }
+public record BundleSelectClick(@NotNull Player player, @NotNull Window window, int windowSlot, int bundleSlot) implements ItemInteraction {
 }
