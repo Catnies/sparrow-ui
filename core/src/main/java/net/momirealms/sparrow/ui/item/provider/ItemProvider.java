@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.item.provider;
 
+import net.momirealms.sparrow.ui.SparrowUI;
+import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -31,6 +33,30 @@ public interface ItemProvider {
     @NotNull
     static ImmediateItemProvider sync(@NotNull Function<RenderContext, ItemStack> renderer) {
         return renderer::apply;
+    }
+
+    /**
+     * 创建在 Paper 全局异步调度器上计算物品的 Provider.
+     *
+     * @param renderer 同步渲染函数
+     * @return 异步提供器
+     */
+    @NotNull
+    static ItemProvider async(@NotNull Function<RenderContext, ItemStack> renderer) {
+        return context -> {
+            CompletableFuture<ItemStack> future = new CompletableFuture<>();
+            Bukkit.getAsyncScheduler().runNow(
+                    SparrowUI.getInstance().getPlugin(),
+                    ignoredTask -> {
+                        try {
+                            future.complete(renderer.apply(context));
+                        } catch (Throwable throwable) {
+                            future.completeExceptionally(throwable);
+                        }
+                    }
+            );
+            return future;
+        };
     }
 
     /**

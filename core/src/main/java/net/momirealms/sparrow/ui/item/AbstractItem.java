@@ -25,7 +25,7 @@ public abstract class AbstractItem implements ObservableItem {
     private final CopyOnWriteArrayList<Function<Player, Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
-        this.itemProvider = ItemProvider.async(this::render);
+        this.itemProvider = this::render;
         this.placeholder = ItemProvider.sync(this::placeholder);
     }
 
