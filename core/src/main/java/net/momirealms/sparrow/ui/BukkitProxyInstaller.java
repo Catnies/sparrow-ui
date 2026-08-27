@@ -28,7 +28,7 @@ import java.util.zip.ZipInputStream;
 
 @ApiStatus.Internal
 public final class BukkitProxyInstaller {
-    private static final String PROXY_ARCHIVE = "proxy.jarinjar";
+    private static final String PROXY_ARCHIVE = "sparrow-ui-proxy.jarinjar";
     private static final String PROXY_BOOTSTRAP = "net.momirealms.sparrow.ui.proxy.BukkitProxy";
 
     private BukkitProxyInstaller() {
