@@ -29,6 +29,7 @@ final class ListSignalImpl<E> extends CollectionSignal<List<E>> implements ListS
     ListSignalImpl(List<E> delegate) {
         this.delegate = delegate;
         this.root = new Facade(delegate);
+        this.root.iterator(); // 预载类, 不然关服的时候会找不到类.
     }
 
     @Override

@@ -26,7 +26,6 @@ repositories {
 
 dependencies {
     compileOnly(libs.paper.api)
-    compileOnly(libs.gson)
     compileOnly(libs.netty.transport)
     compileOnly(libs.netty.codec.base)
     compileOnly(libs.jetbrains.annotations)
