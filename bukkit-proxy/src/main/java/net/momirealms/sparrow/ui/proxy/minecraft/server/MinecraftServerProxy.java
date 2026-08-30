@@ -15,6 +15,6 @@ public interface MinecraftServerProxy {
     @MethodInvoker(name = "getRecipeManager", activeIf = "min_version=1.20.1")
     Object getRecipeManager(Object target);
 
-    @FieldGetter(name = "connection", activeIf = "min_version=1.21.8")
+    @FieldGetter(name = "connection", activeIf = "min_version=1.20.1")
     Object getConnection(Object target);
 }

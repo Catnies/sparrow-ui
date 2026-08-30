@@ -9,16 +9,16 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
 import java.util.List;
 
-@ReflectionProxy(name = "net.minecraft.server.network.ServerConnectionListener", activeIf = "min_version=1.21.8")
+@ReflectionProxy(name = "net.minecraft.server.network.ServerConnectionListener", activeIf = "min_version=1.20.1")
 public interface ServerConnectionListenerProxy {
     ServerConnectionListenerProxy INSTANCE = ASMProxyFactory.create(ServerConnectionListenerProxy.class);
 
-    @FieldGetter(name = "channels", activeIf = "min_version=1.21.8")
+    @FieldGetter(name = "channels", activeIf = "min_version=1.20.1")
     List<ChannelFuture> channels(Object target);
 
-    @FieldSetter(name = "channels", activeIf = "min_version=1.21.8")
+    @FieldSetter(name = "channels", activeIf = "min_version=1.20.1")
     void channels(Object target, List<ChannelFuture> channels);
 
-    @MethodInvoker(name = "getConnections", activeIf = "min_version=1.21.8")
+    @MethodInvoker(name = "getConnections", activeIf = "min_version=1.20.1")
     List<?> connections(Object target);
 }
