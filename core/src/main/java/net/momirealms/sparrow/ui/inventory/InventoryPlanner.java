@@ -61,17 +61,17 @@ public final class InventoryPlanner {
         if (current == null || change == 0) {
             return null;
         }
-        // 超上限物品仍可减量, 只在增量时应用上限. long 计算避开 int 边界溢出.
-        long desired = (long) current.getAmount() + change;
+        // 超上限物品仍可减量, 只在增量时应用上限.
+        int desired = current.getAmount() + change;
         int target;
         if (change < 0) {
-            target = (int) Math.max(0L, desired);
+            target = Math.max(0, desired);
         } else {
             int cap = effectiveMaxStackSize(slotLimit, slot, current);
             if (current.getAmount() >= cap) {
                 return null;
             }
-            target = (int) Math.min(desired, cap);
+            target = Math.min(desired, cap);
         }
         if (target == current.getAmount()) {
             return null;
