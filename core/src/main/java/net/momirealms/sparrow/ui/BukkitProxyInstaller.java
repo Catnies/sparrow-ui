@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui;
 
+import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.util.ReflectionUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.Bukkit;
@@ -36,6 +37,10 @@ public final class BukkitProxyInstaller {
 
     // 安装并初始化当前库的反射代理运行时.
     public static void setUp() {
+        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
+    }
+
+    private static void setUpForJarInJar() {
         try {
             ClassLoader minecraftClassLoader = Bukkit.class.getClassLoader();
             byte[] archive = BukkitProxyInstaller.readProxyArchive();

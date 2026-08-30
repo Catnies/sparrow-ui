@@ -12,6 +12,7 @@ java {
 repositories {
     mavenCentral()
     maven("https://jitpack.io/")
+    maven("https://libraries.minecraft.net/")
     maven("https://repo.catnies.top/releases/")
     maven("https://repo.momirealms.net/releases/")
     maven("https://repo.papermc.io/repository/maven-public/") // Paper 仓库
@@ -25,9 +26,11 @@ dependencies {
     implementation(libs.sparrow.reflection)
 }
 
-tasks.shadowJar {
-    archiveClassifier = ""
-    archiveFileName = "sparrow-ui-proxy.jarinjar"
-    relocate("net.momirealms.sparrow.reflection", "net.momirealms.sparrow.ui.libraries.reflection")
-    relocate("org.objectweb.asm", "net.momirealms.sparrow.ui.libraries.asm")
+tasks {
+    shadowJar {
+        archiveClassifier = ""
+        archiveFileName = "sparrow-ui-proxy.jar"
+        relocate("net.momirealms.sparrow.reflection", "net.momirealms.sparrow.ui.libraries.reflection")
+        relocate("org.objectweb.asm", "net.momirealms.sparrow.ui.libraries.asm")
+    }
 }

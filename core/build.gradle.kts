@@ -27,10 +27,18 @@ val generateMapColorProfile = tasks.register<JavaExec>("generateMapColorProfile"
     outputs.file(mapColorProfileFile)
 }
 
-tasks.processResources {
-    dependsOn(bukkitProxyJar, generateMapColorProfile)
-    from(bukkitProxyJar.flatMap { it.archiveFile })
-    from(mapColorProfileFile)
+tasks {
+    jar {
+        dependsOn(bukkitProxyJar)
+        from(bukkitProxyJar.flatMap { it.archiveFile }.map { zipTree(it.asFile) }) {
+            exclude("META-INF/MANIFEST.MF")
+        }
+    }
+
+    processResources {
+        dependsOn(generateMapColorProfile)
+        from(mapColorProfileFile)
+    }
 }
 
 publishing {

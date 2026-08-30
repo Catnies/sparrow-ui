@@ -1,7 +1,7 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.world.inventory;
 
 import net.momirealms.sparrow.reflection.SReflection;
-import net.momirealms.sparrow.reflection.remapper.Remapper;
+import net.momirealms.sparrow.reflection.clazz.SparrowClass;
 import org.bukkit.inventory.InventoryView;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.MethodVisitor;
@@ -12,6 +12,9 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 
+import static net.momirealms.sparrow.reflection.method.matcher.MethodMatchers.mAllOf;
+import static net.momirealms.sparrow.reflection.method.matcher.MethodMatchers.mNamed;
+import static net.momirealms.sparrow.reflection.method.matcher.MethodMatchers.mTakeArguments;
 import static org.objectweb.asm.Opcodes.*;
 
 /**
@@ -60,19 +63,19 @@ public final class MenuSubclassFactory {
      */
     private static MethodHandle linkConstructor() {
         try {
-            Remapper remapper = SReflection.getRemapper();
-            Class<?> menuClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.inventory.AbstractContainerMenu");
-            Class<?> menuTypeClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.inventory.MenuType");
-            Class<?> itemStackClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.item.ItemStack");
-            Class<?> playerClass = MenuSubclassFactory.loadRuntimeClass(remapper, "net.minecraft.world.entity.player.Player");
-            MenuMethods methods = MenuSubclassFactory.resolveMethods(remapper, menuClass, itemStackClass, playerClass);
+            Class<?> menuClass = MenuSubclassFactory.loadRuntimeClass("net.minecraft.world.inventory.AbstractContainerMenu");
+            Class<?> menuTypeClass = MenuSubclassFactory.loadRuntimeClass("net.minecraft.world.inventory.MenuType");
+            Class<?> itemStackClass = MenuSubclassFactory.loadRuntimeClass("net.minecraft.world.item.ItemStack");
+            Class<?> playerClass = MenuSubclassFactory.loadRuntimeClass("net.minecraft.world.entity.player.Player");
+            MenuMethods methods = MenuSubclassFactory.resolveMethods(menuClass, itemStackClass, playerClass);
 
             byte[] bytecode = new MenuClassWriter(menuClass).write(menuTypeClass, methods);
             MethodHandles.Lookup hiddenLookup = MethodHandles.privateLookupIn(menuClass, SReflection.getLookup())
                     .defineHiddenClass(bytecode, true, MethodHandles.Lookup.ClassOption.NESTMATE);
+            MenuSubclassFactory.linkStateHandles(hiddenLookup);
             MethodHandle constructor = hiddenLookup.findConstructor(
                     hiddenLookup.lookupClass(),
-                    MethodType.methodType(void.class, menuTypeClass, int.class, State.class)
+                    MethodType.methodType(void.class, menuTypeClass, int.class, Object.class)
             );
             return constructor.asType(MethodType.methodType(Object.class, Object.class, int.class, State.class));
         } catch (ReflectiveOperationException exception) {
@@ -80,27 +83,69 @@ public final class MenuSubclassFactory {
         }
     }
 
-    private static Class<?> loadRuntimeClass(Remapper remapper, String sourceName) throws ClassNotFoundException {
-        String runtimeName = remapper.remapClassName(sourceName);
-        return Class.forName(runtimeName, false, MenuSubclassFactory.class.getClassLoader());
-    }
+    // NMS 隐藏类只保存 Object, 通过这些句柄回调插件类加载器中的 State.
+    private static void linkStateHandles(MethodHandles.Lookup hiddenLookup) throws ReflectiveOperationException {
+        MethodHandles.Lookup stateLookup = MethodHandles.lookup();
+        MethodType objectGetter = MethodType.methodType(Object.class);
+        MethodType objectSetter = MethodType.methodType(void.class, Object.class);
+        MethodType viewGetter = MethodType.methodType(InventoryView.class);
+        MethodType bridgedGetter = MethodType.methodType(Object.class, Object.class);
+        MethodType bridgedSetter = MethodType.methodType(void.class, Object.class, Object.class);
 
-    private static MenuMethods resolveMethods(Remapper remapper, Class<?> menuClass, Class<?> itemStackClass, Class<?> playerClass) throws NoSuchMethodException {
-        return new MenuMethods(
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "getCarried"),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "setCarried", itemStackClass),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "broadcastCarriedItem"),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "broadcastChanges"),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "broadcastFullState"),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "getBukkitView"),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "quickMoveStack", playerClass, int.class),
-                MenuSubclassFactory.resolveMethod(remapper, menuClass, "stillValid", playerClass)
+        MenuSubclassFactory.setStateHandle(
+                hiddenLookup,
+                MenuClassWriter.CARRIED_GETTER_FIELD,
+                stateLookup.findVirtual(State.class, "carried", objectGetter).asType(bridgedGetter)
+        );
+        MenuSubclassFactory.setStateHandle(
+                hiddenLookup,
+                MenuClassWriter.CARRIED_SETTER_FIELD,
+                stateLookup.findVirtual(State.class, "carried", objectSetter).asType(bridgedSetter)
+        );
+        MenuSubclassFactory.setStateHandle(
+                hiddenLookup,
+                MenuClassWriter.VIEW_GETTER_FIELD,
+                stateLookup.findVirtual(State.class, "view", viewGetter).asType(bridgedGetter)
+        );
+        MenuSubclassFactory.setStateHandle(
+                hiddenLookup,
+                MenuClassWriter.EMPTY_ITEM_GETTER_FIELD,
+                stateLookup.findVirtual(State.class, "emptyItem", objectGetter).asType(bridgedGetter)
         );
     }
 
-    private static Method resolveMethod(Remapper remapper, Class<?> owner, String sourceName, Class<?>... parameterTypes) throws NoSuchMethodException {
-        String runtimeName = remapper.remapMethodName(owner, sourceName, parameterTypes);
-        return owner.getMethod(runtimeName, parameterTypes);
+    private static void setStateHandle(MethodHandles.Lookup hiddenLookup, String fieldName, MethodHandle handle) throws ReflectiveOperationException {
+        hiddenLookup.findStaticVarHandle(hiddenLookup.lookupClass(), fieldName, MethodHandle.class).set(handle);
+    }
+
+    private static Class<?> loadRuntimeClass(String sourceName) throws ClassNotFoundException {
+        ClassLoader classLoader = MenuSubclassFactory.class.getClassLoader();
+        Class<?> runtimeClass = SparrowClass.find(false, classLoader, sourceName);
+        if (runtimeClass == null) {
+            throw new ClassNotFoundException(sourceName);
+        }
+        return runtimeClass;
+    }
+
+    private static MenuMethods resolveMethods(Class<?> menuClass, Class<?> itemStackClass, Class<?> playerClass) throws NoSuchMethodException {
+        return new MenuMethods(
+                MenuSubclassFactory.resolveMethod(menuClass, "getCarried"),
+                MenuSubclassFactory.resolveMethod(menuClass, "setCarried", itemStackClass),
+                MenuSubclassFactory.resolveMethod(menuClass, "broadcastCarriedItem"),
+                MenuSubclassFactory.resolveMethod(menuClass, "broadcastChanges"),
+                MenuSubclassFactory.resolveMethod(menuClass, "broadcastFullState"),
+                MenuSubclassFactory.resolveMethod(menuClass, "getBukkitView"),
+                MenuSubclassFactory.resolveMethod(menuClass, "quickMoveStack", playerClass, int.class),
+                MenuSubclassFactory.resolveMethod(menuClass, "stillValid", playerClass)
+        );
+    }
+
+    private static Method resolveMethod(Class<?> owner, String sourceName, Class<?>... parameterTypes) throws NoSuchMethodException {
+        Method method = SparrowClass.of(owner).getMethod(mAllOf(mNamed(sourceName), mTakeArguments(parameterTypes)));
+        if (method == null) {
+            throw new NoSuchMethodException(owner.getName() + "#" + sourceName);
+        }
+        return method;
     }
 
     private record MenuMethods(
@@ -120,14 +165,21 @@ public final class MenuSubclassFactory {
      */
     private static final class MenuClassWriter {
         private static final String STATE_FIELD = "state";
-        private static final String STATE_INTERNAL_NAME = Type.getInternalName(State.class);
-        private static final String STATE_DESCRIPTOR = Type.getDescriptor(State.class);
-        private static final String STATE_OBJECT_GETTER = Type.getMethodDescriptor(Type.getType(Object.class));
-        private static final String STATE_OBJECT_SETTER = Type.getMethodDescriptor(
-                Type.VOID_TYPE,
+        private static final String CARRIED_GETTER_FIELD = "carriedGetter";
+        private static final String CARRIED_SETTER_FIELD = "carriedSetter";
+        private static final String VIEW_GETTER_FIELD = "viewGetter";
+        private static final String EMPTY_ITEM_GETTER_FIELD = "emptyItemGetter";
+        private static final String METHOD_HANDLE_INTERNAL_NAME = Type.getInternalName(MethodHandle.class);
+        private static final String METHOD_HANDLE_DESCRIPTOR = Type.getDescriptor(MethodHandle.class);
+        private static final String HANDLE_OBJECT_GETTER = Type.getMethodDescriptor(
+                Type.getType(Object.class),
                 Type.getType(Object.class)
         );
-        private static final String STATE_VIEW_GETTER = Type.getMethodDescriptor(Type.getType(InventoryView.class));
+        private static final String HANDLE_OBJECT_SETTER = Type.getMethodDescriptor(
+                Type.VOID_TYPE,
+                Type.getType(Object.class),
+                Type.getType(Object.class)
+        );
 
         private final ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         private final String menuInternalName;
@@ -147,16 +199,20 @@ public final class MenuSubclassFactory {
                     this.menuInternalName,
                     null
             );
-            this.writer.visitField(ACC_PRIVATE | ACC_FINAL, STATE_FIELD, STATE_DESCRIPTOR, null, null).visitEnd();
+            this.writer.visitField(ACC_PRIVATE | ACC_FINAL, STATE_FIELD, Type.getDescriptor(Object.class), null, null).visitEnd();
+            this.writer.visitField(ACC_PRIVATE | ACC_STATIC, CARRIED_GETTER_FIELD, METHOD_HANDLE_DESCRIPTOR, null, null).visitEnd();
+            this.writer.visitField(ACC_PRIVATE | ACC_STATIC, CARRIED_SETTER_FIELD, METHOD_HANDLE_DESCRIPTOR, null, null).visitEnd();
+            this.writer.visitField(ACC_PRIVATE | ACC_STATIC, VIEW_GETTER_FIELD, METHOD_HANDLE_DESCRIPTOR, null, null).visitEnd();
+            this.writer.visitField(ACC_PRIVATE | ACC_STATIC, EMPTY_ITEM_GETTER_FIELD, METHOD_HANDLE_DESCRIPTOR, null, null).visitEnd();
 
             this.writeConstructor(menuTypeClass);
-            this.writeStateObjectResult(methods.getCarried(), "carried");
+            this.writeStateObjectResult(methods.getCarried(), CARRIED_GETTER_FIELD);
             this.writeSetCarried(methods.setCarried());
             this.writeNoOp(methods.broadcastCarriedItem());
             this.writeNoOp(methods.broadcastChanges());
             this.writeNoOp(methods.broadcastFullState());
-            this.writeViewGetter(methods.getBukkitView());
-            this.writeStateObjectResult(methods.quickMoveStack(), "emptyItem");
+            this.writeStateObjectResult(methods.getBukkitView(), VIEW_GETTER_FIELD);
+            this.writeStateObjectResult(methods.quickMoveStack(), EMPTY_ITEM_GETTER_FIELD);
             this.writeStillValid(methods.stillValid());
 
             this.writer.visitEnd();
@@ -173,7 +229,7 @@ public final class MenuSubclassFactory {
                     Type.VOID_TYPE,
                     Type.getType(menuTypeClass),
                     Type.INT_TYPE,
-                    Type.getType(State.class)
+                    Type.getType(Object.class)
             );
             MethodVisitor visitor = this.writer.visitMethod(ACC_PUBLIC, "<init>", descriptor, null, null);
             visitor.visitCode();
@@ -185,20 +241,21 @@ public final class MenuSubclassFactory {
 
             visitor.visitVarInsn(ALOAD, 0);
             visitor.visitVarInsn(ALOAD, 3);
-            visitor.visitFieldInsn(PUTFIELD, this.generatedInternalName, STATE_FIELD, STATE_DESCRIPTOR);
+            visitor.visitFieldInsn(PUTFIELD, this.generatedInternalName, STATE_FIELD, Type.getDescriptor(Object.class));
             visitor.visitInsn(RETURN);
             MenuClassWriter.finishMethod(visitor);
         }
 
-        private void writeStateObjectResult(Method targetMethod, String stateMethod) {
+        private void writeStateObjectResult(Method targetMethod, String handleField) {
             MethodVisitor visitor = this.beginOverride(targetMethod);
+            visitor.visitFieldInsn(GETSTATIC, this.generatedInternalName, handleField, METHOD_HANDLE_DESCRIPTOR);
             this.loadState(visitor);
             visitor.visitMethodInsn(
-                    INVOKEINTERFACE,
-                    STATE_INTERNAL_NAME,
-                    stateMethod,
-                    STATE_OBJECT_GETTER,
-                    true
+                    INVOKEVIRTUAL,
+                    METHOD_HANDLE_INTERNAL_NAME,
+                    "invokeExact",
+                    HANDLE_OBJECT_GETTER,
+                    false
             );
             visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(targetMethod.getReturnType()));
             visitor.visitInsn(ARETURN);
@@ -207,14 +264,15 @@ public final class MenuSubclassFactory {
 
         private void writeSetCarried(Method targetMethod) {
             MethodVisitor visitor = this.beginOverride(targetMethod);
+            visitor.visitFieldInsn(GETSTATIC, this.generatedInternalName, CARRIED_SETTER_FIELD, METHOD_HANDLE_DESCRIPTOR);
             this.loadState(visitor);
             visitor.visitVarInsn(ALOAD, 1);
             visitor.visitMethodInsn(
-                    INVOKEINTERFACE,
-                    STATE_INTERNAL_NAME,
-                    "carried",
-                    STATE_OBJECT_SETTER,
-                    true
+                    INVOKEVIRTUAL,
+                    METHOD_HANDLE_INTERNAL_NAME,
+                    "invokeExact",
+                    HANDLE_OBJECT_SETTER,
+                    false
             );
             visitor.visitInsn(RETURN);
             MenuClassWriter.finishMethod(visitor);
@@ -223,20 +281,6 @@ public final class MenuSubclassFactory {
         private void writeNoOp(Method targetMethod) {
             MethodVisitor visitor = this.beginOverride(targetMethod);
             visitor.visitInsn(RETURN);
-            MenuClassWriter.finishMethod(visitor);
-        }
-
-        private void writeViewGetter(Method targetMethod) {
-            MethodVisitor visitor = this.beginOverride(targetMethod);
-            this.loadState(visitor);
-            visitor.visitMethodInsn(
-                    INVOKEINTERFACE,
-                    STATE_INTERNAL_NAME,
-                    "view",
-                    STATE_VIEW_GETTER,
-                    true
-            );
-            visitor.visitInsn(ARETURN);
             MenuClassWriter.finishMethod(visitor);
         }
 
@@ -249,7 +293,7 @@ public final class MenuSubclassFactory {
 
         private void loadState(MethodVisitor visitor) {
             visitor.visitVarInsn(ALOAD, 0);
-            visitor.visitFieldInsn(GETFIELD, this.generatedInternalName, STATE_FIELD, STATE_DESCRIPTOR);
+            visitor.visitFieldInsn(GETFIELD, this.generatedInternalName, STATE_FIELD, Type.getDescriptor(Object.class));
         }
 
         private MethodVisitor beginOverride(Method targetMethod) {
