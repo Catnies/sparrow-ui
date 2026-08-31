@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.window.handle.MerchantMenuHandle;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.window.click.MerchantTradeSelectClick;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryCloseEvent;
@@ -199,12 +198,12 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
     }
 
     @Override
-    void tick(ScheduledTask task) {
+    void tick() {
         MerchantMenuHandle menuHandle = this.menuHandle();
         if (menuHandle != null && menuHandle.tickOffers()) {
             this.notifyUpdateMenu();
         }
-        super.tick(task);
+        super.tick();
     }
 
     @Override

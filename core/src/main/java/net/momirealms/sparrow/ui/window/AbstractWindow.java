@@ -1,10 +1,10 @@
 package net.momirealms.sparrow.ui.window;
 
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.window.handle.MenuFactory;
@@ -123,7 +123,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private volatile long generation; // 每次打开都会递增, 用来隔离迟到输入与通知
     private volatile @Nullable AbstractWindowSession session;
     private @Nullable M menuHandle; // 关闭时为 null, 仅玩家实体线程访问
-    private @Nullable ScheduledTask tickTask; // 仅玩家实体线程访问
+    private @Nullable SchedulerTask tickTask; // 仅玩家实体线程访问
     private long windowTick; // 本次打开以来的 tick 计数
 
     // 行为开关
@@ -836,7 +836,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         M menuHandle = this.createMenuHandle(this.manager.menuFactory(), generation);
         DisplayedSlotPath[] paths = new DisplayedSlotPath[this.layout.size()];
         ItemStack[] localSlots = new ItemStack[this.layout.size()];
-        ScheduledTask tickTask = null;
+        SchedulerTask tickTask = null;
         boolean menuOpening = false;
 
         try {
@@ -910,13 +910,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.openHandlers.forEachIsolated(Runnable::run, "Failed to handle Window open", SparrowUI.getInstance()::handleException);
     }
 
-    /**
-     * 执行一次玩家实体 tick
-     * 先限量处理协议输入, 再做周期刷新和批量同步.
-     *
-     * @param task 触发本次 tick 的调度任务
-     */
-    void tick(ScheduledTask task) {
+    // 执行一次玩家实体 tick, 先限量处理协议输入, 再做周期刷新和批量同步.
+    void tick() {
         M menuHandle = this.menuHandle;
         if (!this.open || menuHandle == null) {
             return;
@@ -1649,7 +1644,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         this.clickInterpreter.reset();
         Arrays.fill(this.bundleSelections, null);
 
-        ScheduledTask previousTickTask = this.tickTask;
+        SchedulerTask previousTickTask = this.tickTask;
         M previousMenu = this.menuHandle;
         DisplayedSlotPath[] previousPaths = this.paths;
         this.tickTask = null;
