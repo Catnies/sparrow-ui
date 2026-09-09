@@ -15,7 +15,6 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -336,7 +335,7 @@ public interface Window {
      *
      * @param closeHandlers 新处理器列表
      */
-    void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers);
+    void setCloseHandlers(@NotNull List<? extends Consumer<? super WindowCloseReason>> closeHandlers);
 
     /**
      * 当前关闭处理器列表的快照.
@@ -344,21 +343,21 @@ public interface Window {
      * @return 不可变的处理器列表
      */
     @Unmodifiable
-    @NotNull List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers();
+    @NotNull List<Consumer<WindowCloseReason>> getCloseHandlers();
 
     /**
      * 在现有关闭处理器末尾追加一个处理器.
      *
      * @param closeHandler 关闭处理器, 参数为关闭原因
      */
-    void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+    void addCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler);
 
     /**
      * 移除一个与给定对象相等的关闭处理器.
      *
      * @param closeHandler 要移除的关闭处理器
      */
-    void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler);
+    void removeCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler);
 
     /**
      * 替换容器外点击处理器列表.
@@ -808,7 +807,7 @@ public interface Window {
          * @return 此 Builder
          */
         @NotNull B setCloseHandlers(
-                @NotNull List<? extends BiConsumer<? super W, ? super InventoryCloseEvent.Reason>> closeHandlers
+                @NotNull List<? extends BiConsumer<? super W, ? super WindowCloseReason>> closeHandlers
         );
 
         /**
@@ -817,7 +816,7 @@ public interface Window {
          * @param closeHandler 关闭处理器, 第二个参数为关闭原因
          * @return 此 Builder
          */
-        @NotNull B addCloseHandler(@NotNull BiConsumer<? super W, ? super InventoryCloseEvent.Reason> closeHandler);
+        @NotNull B addCloseHandler(@NotNull BiConsumer<? super W, ? super WindowCloseReason> closeHandler);
 
         /**
          * 替换容器外点击处理器列表. 每个处理器同时接收本 Builder 创建的具体 Window.
@@ -883,7 +882,7 @@ public interface Window {
          * @param handler 结束处理器, 参数为结束原因
          * @return 此 Builder
          */
-        @NotNull B addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> handler);
+        @NotNull B addSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> handler);
 
         /**
          * 设置初始服务器窗口状态.

@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.window;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -29,7 +28,7 @@ public interface WindowSession {
     Kind kind();
 
     /**
-     * 结束会话, 关闭当前窗, 以 {@link InventoryCloseEvent.Reason#PLUGIN} 触发结束处理器并清空全部成员.
+     * 结束会话, 关闭当前窗, 以 {@link WindowCloseReason#PLUGIN} 触发结束处理器并清空全部成员.
      * 重复调用无事发生.
      *
      * @return 结束请求的执行结果
@@ -54,7 +53,7 @@ public interface WindowSession {
      *
      * @param sessionEndHandlers 新处理器列表
      */
-    void setSessionEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> sessionEndHandlers);
+    void setSessionEndHandlers(@NotNull List<? extends Consumer<? super WindowCloseReason>> sessionEndHandlers);
 
     /**
      * 当前结束处理器列表的快照.
@@ -62,23 +61,23 @@ public interface WindowSession {
      * @return 不可变的处理器列表
      */
     @Unmodifiable
-    @NotNull List<Consumer<InventoryCloseEvent.Reason>> getSessionEndHandlers();
+    @NotNull List<Consumer<WindowCloseReason>> getSessionEndHandlers();
 
     /**
      * 在现有结束处理器末尾追加一个处理器, 它在整段交互结束时恰好触发一次, 会话内跳转与返回绝不触发.
-     * <p>参数沿用 Bukkit 关闭原因. PLAYER 表示玩家主动离开, DISCONNECT 表示断线,
+     * <p>PLAYER 表示玩家主动离开, DISCONNECT 表示断线,
      * PLUGIN 表示插件结束(含 {@link #end()}), OPEN_NEW 表示会话外 Window 顶替.
      *
      * @param sessionEndHandler 结束处理器
      */
-    void addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler);
+    void addSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> sessionEndHandler);
 
     /**
      * 移除一个与给定对象相等的结束处理器.
      *
      * @param sessionEndHandler 要移除的结束处理器
      */
-    void removeSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler);
+    void removeSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> sessionEndHandler);
 
     /**
      * 此会话的所属玩家.

@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.window.handle;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import org.bukkit.event.inventory.InventoryCloseEvent;
+import net.momirealms.sparrow.ui.window.WindowCloseReason;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -88,14 +88,14 @@ public interface MenuHandle extends AutoCloseable {
      *
      * @param reason 关闭原因
      */
-    void close(@NotNull InventoryCloseEvent.Reason reason);
+    void close(@NotNull WindowCloseReason reason);
 
     /**
      * 以"插件主动关闭"的原因关闭菜单.
      */
     @Override
     default void close() {
-        this.close(InventoryCloseEvent.Reason.PLUGIN);
+        this.close(WindowCloseReason.PLUGIN);
     }
 
     /**

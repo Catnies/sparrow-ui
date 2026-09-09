@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -11,7 +10,7 @@ import java.util.function.Consumer;
 final class WindowSessionRetainedStack extends WindowSessionStack {
     private final List<Window> retained = new ArrayList<>(); // 被弹出的窗
 
-    WindowSessionRetainedStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+    WindowSessionRetainedStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         super(manager, viewer, sessionEndHandlers);
     }
 

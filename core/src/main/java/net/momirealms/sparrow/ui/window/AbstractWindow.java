@@ -45,7 +45,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
@@ -84,12 +83,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             @NotNull Supplier<? extends Component> titleSupplier,
             boolean closeable,
             @NotNull List<Runnable> openHandlers,
-            @NotNull List<Consumer<InventoryCloseEvent.Reason>> closeHandlers,
+            @NotNull List<Consumer<WindowCloseReason>> closeHandlers,
             @NotNull List<Consumer<WindowOutsideClick>> outsideClickHandlers,
             boolean backOnPlayerClose,
             @Nullable Object data,
             @NotNull WindowSession.Kind rootSessionKind,
-            @NotNull List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers,
+            @NotNull List<Consumer<WindowCloseReason>> rootSessionEndHandlers,
             int windowState,
             @NotNull List<Consumer<Integer>> windowStateChangeHandlers,
             @NotNull VisualLayer windowVisualLayer,
@@ -109,12 +108,12 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     private final WindowLayout layout;
     private final @Nullable Object data;
     private final WindowSession.Kind rootSessionKind; // 成为根窗时采用的会话类型
-    private final List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
+    private final List<Consumer<WindowCloseReason>> rootSessionEndHandlers; // 成为链根时装进新会话的结束处理器
     private final Bindings bindings = Bindings.suspended(); // 声明跨重开保留, 订阅只在打开期挂载
 
     // 用户处理器
     private final HandlerList<Runnable> openHandlers;
-    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> closeHandlers;
+    private final HandlerList<Consumer<WindowCloseReason>> closeHandlers;
     private final HandlerList<Consumer<WindowOutsideClick>> outsideClickHandlers;
     private final HandlerList<Consumer<Integer>> windowStateChangeHandlers;
 
@@ -505,7 +504,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     // 本窗成为链根时装进新会话的结束处理器.
     @NotNull
-    List<Consumer<InventoryCloseEvent.Reason>> rootSessionEndHandlers() {
+    List<Consumer<WindowCloseReason>> rootSessionEndHandlers() {
         return this.rootSessionEndHandlers;
     }
 
@@ -538,8 +537,8 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     @Override
-    public void setCloseHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> closeHandlers) {
-        List<Consumer<InventoryCloseEvent.Reason>> copy = HandlerList.copyConsumers(closeHandlers);
+    public void setCloseHandlers(@NotNull List<? extends Consumer<? super WindowCloseReason>> closeHandlers) {
+        List<Consumer<WindowCloseReason>> copy = HandlerList.copyConsumers(closeHandlers);
         this.submit(
                 () -> this.closeHandlers.set(copy),
                 "Failed to replace Window close handlers"
@@ -548,13 +547,13 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
     @NotNull
     @Override
-    public List<Consumer<InventoryCloseEvent.Reason>> getCloseHandlers() {
+    public List<Consumer<WindowCloseReason>> getCloseHandlers() {
         return this.closeHandlers.snapshot();
     }
 
     @Override
-    public void addCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
-        Consumer<InventoryCloseEvent.Reason> handler = HandlerList.narrowConsumer(closeHandler);
+    public void addCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler) {
+        Consumer<WindowCloseReason> handler = HandlerList.narrowConsumer(closeHandler);
         this.submit(
                 () -> this.closeHandlers.append(handler),
                 "Failed to add Window close handler"
@@ -569,7 +568,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     @Override
-    public void removeCloseHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> closeHandler) {
+    public void removeCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler) {
         this.submit(
                 () -> this.closeHandlers.remove(HandlerList.narrowConsumer(closeHandler)),
                 "Failed to remove Window close handler"
@@ -884,7 +883,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             try {
                 if (menuOpening) {
-                    menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
+                    menuHandle.close(WindowCloseReason.PLUGIN);
                 } else {
                     menuHandle.retire();
                 }
@@ -924,7 +923,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
                     "Closing Window because its incoming packet queue overflowed",
                     new IllegalStateException("incoming packet queue capacity exceeded")
             );
-            this.manager.closeNow(this, InventoryCloseEvent.Reason.UNKNOWN);
+            this.manager.closeNow(this, WindowCloseReason.UNKNOWN);
         }
 
         // 限制每 tick 的输入量, 防止单个玩家耗尽实体线程预算
@@ -1122,7 +1121,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
         this.clickInterpreter.reset();
         if (this.closeable) {
-            this.manager.closeNow(this, InventoryCloseEvent.Reason.PLAYER);
+            this.manager.closeNow(this, WindowCloseReason.PLAYER);
         } else {
             this.forceFull = true;
             this.flush(true);
@@ -1610,7 +1609,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     // 关闭已打开的 Window.
-    boolean closeOnViewerEntity(InventoryCloseEvent.Reason reason) {
+    boolean closeOnViewerEntity(WindowCloseReason reason) {
         if (!this.open) return false;
 
         Throwable failure = this.teardownOnEntity(reason);
@@ -1623,9 +1622,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
      * 服务器已经接管关闭流程后, 只回收 Window 的本地资源并通知关闭处理器.
      * 该路径不再次主动关闭容器.
      *
-     * @param reason Bukkit 容器关闭原因
+     * @param reason 关闭原因
      */
-    void closeAfterInventoryEvent(InventoryCloseEvent.Reason reason) {
+    void closeAfterInventoryEvent(WindowCloseReason reason) {
         if (!this.open) return;
         Throwable failure = this.teardownOnEntity(null);
         this.fireCloseHandlers(reason);
@@ -1633,9 +1632,9 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     // 关闭本次打开的菜单, 并清理菜单, tick 任务和显示路径.
-    // reason 为 null 表示容器关闭已由 Paper 或 调度器注销任务 接管.
+    // reason 为 null 表示容器关闭已由服务端流程或调度器注销任务接管.
     @Nullable
-    private Throwable teardownOnEntity(@Nullable InventoryCloseEvent.Reason reason) {
+    private Throwable teardownOnEntity(@Nullable WindowCloseReason reason) {
         // 使后续输入与 tick 立即失效
         this.open = false;
         this.generation++;
@@ -1711,7 +1710,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     }
 
     // 运行关闭处理器.
-    private void fireCloseHandlers(InventoryCloseEvent.Reason reason) {
+    private void fireCloseHandlers(WindowCloseReason reason) {
         this.closeHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
                 "Failed to handle Window close",

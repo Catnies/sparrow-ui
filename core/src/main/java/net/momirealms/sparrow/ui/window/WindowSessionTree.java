@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -15,7 +14,7 @@ final class WindowSessionTree extends AbstractWindowSession {
     private final IdentityHashMap<AbstractWindow<?>, AbstractWindow<?>> parents = new IdentityHashMap<>(8); // 成员到父窗, 根窗为 null
     private @Nullable AbstractWindow<?> cursor; // 当前位置, 恒指向当前窗
 
-    WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+    WindowSessionTree(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         super(manager, viewer, sessionEndHandlers);
     }
 

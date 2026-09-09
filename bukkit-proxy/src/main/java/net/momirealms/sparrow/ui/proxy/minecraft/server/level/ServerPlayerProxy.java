@@ -6,7 +6,7 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
-import org.bukkit.event.inventory.InventoryCloseEvent;
+import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
 @ReflectionProxy(name = "net.minecraft.server.level.ServerPlayer")
 public interface ServerPlayerProxy extends PlayerProxy {
@@ -25,8 +25,11 @@ public interface ServerPlayerProxy extends PlayerProxy {
     @MethodInvoker(name = "nextContainerCounter", activeIf = "min_version=1.20.1")
     int nextContainerCounter(Object target);
 
-    @MethodInvoker(name = "closeContainer", activeIf = "min_version=1.20.1")
-    void closeContainer(Object target, InventoryCloseEvent.Reason reason);
+    @MethodInvoker(name = "closeContainer", activeIf = "min_version=1.20.1 && has_patch=paper")
+    void closeContainer(Object target, @Type(name = "org.bukkit.event.inventory.InventoryCloseEvent$Reason") Object reason);
+
+    @MethodInvoker(name = "closeContainer", activeIf = "min_version=1.20.1 && !has_patch=paper")
+    void closeContainer$0(Object target);
 
     @MethodInvoker(name = "doCloseContainer", activeIf = "min_version=1.20.1")
     void doCloseContainer(Object target);

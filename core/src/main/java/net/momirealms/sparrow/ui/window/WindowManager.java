@@ -113,7 +113,7 @@ public final class WindowManager implements Listener {
         this.active.put(viewer.getUniqueId(), window);
         if (replaceWindow) {
             try {
-                previous.closeOnViewerEntity(InventoryCloseEvent.Reason.OPEN_NEW);
+                previous.closeOnViewerEntity(WindowCloseReason.OPEN_NEW);
             } catch (RuntimeException | Error throwable) {
                 SparrowUI.getInstance().handleException("Failed to clean up replaced Window", throwable);
             }
@@ -121,12 +121,12 @@ public final class WindowManager implements Listener {
         // 关服竞态, 新窗立即回滚
         if (this.shutdown.get()) {
             this.active.remove(viewer.getUniqueId(), window);
-            window.closeOnViewerEntity(InventoryCloseEvent.Reason.PLUGIN);
+            window.closeOnViewerEntity(WindowCloseReason.PLUGIN);
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
         // 被顶替的会话只做自身收尾
         if (displaced != null) {
-            displaced.endNow(InventoryCloseEvent.Reason.OPEN_NEW, false);
+            displaced.endNow(WindowCloseReason.OPEN_NEW, false);
         }
         // 会话落位, 再触发打开回调
         if (transitionSession == null) {
@@ -214,13 +214,13 @@ public final class WindowManager implements Listener {
         boolean wasOpen = window.isOpen();
         return this.submit(
                 window,
-                () -> this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN),
+                () -> this.closeNow(window, WindowCloseReason.PLUGIN),
                 () -> wasOpen ? Window.CloseResult.CLOSED : Window.CloseResult.ALREADY_CLOSED
         );
     }
 
     // 在玩家实体线程关闭 Window 并移除 active 映射.
-    Window.CloseResult closeNow(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
+    Window.CloseResult closeNow(AbstractWindow<?> window, WindowCloseReason reason) {
         if (!window.isOpen()) return Window.CloseResult.ALREADY_CLOSED;
 
         this.active.remove(window.viewer().getUniqueId(), window);
@@ -230,7 +230,7 @@ public final class WindowManager implements Listener {
     }
 
     // 只有正占用玩家活动窗口的会话参与关闭后的返回或结束决策.
-    private void afterCurrentWindowClosed(AbstractWindow<?> window, InventoryCloseEvent.Reason reason) {
+    private void afterCurrentWindowClosed(AbstractWindow<?> window, WindowCloseReason reason) {
         AbstractWindowSession session = window.sessionImpl();
         if (session == null || session.currentWindow() != window) {
             return;
@@ -259,7 +259,7 @@ public final class WindowManager implements Listener {
             }
         }
         if (closeAtRoot) {
-            this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
+            this.closeNow(window, WindowCloseReason.PLUGIN);
         }
         return null;
     }
@@ -338,14 +338,15 @@ public final class WindowManager implements Listener {
                 return;
             }
 
-            if (event.getReason() == InventoryCloseEvent.Reason.DISCONNECT) {
+            WindowCloseReason reason = WindowCloseReasonAdapter.fromBukkit(event);
+            if (reason == WindowCloseReason.DISCONNECT) {
                 if (this.active.remove(player.getUniqueId(), window)) {
                     try {
-                        window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
+                        window.closeAfterInventoryEvent(WindowCloseReason.DISCONNECT);
                     } catch (RuntimeException | Error throwable) {
                         SparrowUI.getInstance().handleException("Failed to process disconnected Window close", throwable);
                     }
-                    this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
+                    this.afterCurrentWindowClosed(window, WindowCloseReason.DISCONNECT);
                 }
                 return;
             }
@@ -353,7 +354,7 @@ public final class WindowManager implements Listener {
             PlayerCommandLane lane = this.lane(window.viewer());
             lane.submitDeferred(
                     () -> {
-                        this.closeNow(window, event.getReason());
+                        this.closeNow(window, reason);
                         return null;
                     },
                     () -> null
@@ -372,11 +373,11 @@ public final class WindowManager implements Listener {
         AbstractWindow<?> window = this.active.get(playerId);
         if (window != null && window.viewer() == player && this.active.remove(playerId, window)) {
             try {
-                window.closeAfterInventoryEvent(InventoryCloseEvent.Reason.DISCONNECT);
+                window.closeAfterInventoryEvent(WindowCloseReason.DISCONNECT);
             } catch (RuntimeException | Error throwable) {
                 SparrowUI.getInstance().handleException("Failed to close Window after player quit", throwable);
             }
-            this.afterCurrentWindowClosed(window, InventoryCloseEvent.Reason.DISCONNECT);
+            this.afterCurrentWindowClosed(window, WindowCloseReason.DISCONNECT);
         }
 
         PlayerCommandLane lane = this.lanes.get(playerId);
@@ -449,13 +450,13 @@ public final class WindowManager implements Listener {
         AbstractWindowSession session = window.sessionImpl();
         if (session != null) {
             try {
-                session.endNow(InventoryCloseEvent.Reason.PLUGIN, false);
+                session.endNow(WindowCloseReason.PLUGIN, false);
             } catch (RuntimeException | Error throwable) {
                 SparrowUI.getInstance().handleException("Failed to end Window session during shutdown", throwable);
             }
         }
         try {
-            this.closeNow(window, InventoryCloseEvent.Reason.PLUGIN);
+            this.closeNow(window, WindowCloseReason.PLUGIN);
         } catch (RuntimeException | Error throwable) {
             SparrowUI.getInstance().handleException("Failed to close Window during shutdown", throwable);
         }

@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,7 +11,7 @@ import java.util.function.Consumer;
 class WindowSessionStack extends AbstractWindowSession {
     private final List<Window> stack = new ArrayList<>(); // 根窗到栈顶, 只在玩家实体线程修改
 
-    WindowSessionStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+    WindowSessionStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         super(manager, viewer, sessionEndHandlers);
     }
 

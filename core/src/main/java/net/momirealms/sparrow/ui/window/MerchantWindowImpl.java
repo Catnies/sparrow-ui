@@ -13,7 +13,6 @@ import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.window.click.MerchantTradeSelectClick;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -189,7 +188,7 @@ final class MerchantWindowImpl extends AbstractWindow<MerchantMenuHandle> implem
         } catch (RuntimeException | Error throwable) {
             // 初始化失败仍要释放菜单和已经挂载的 Trade, 关闭失败作为 suppressed 保留
             try {
-                menuHandle.close(InventoryCloseEvent.Reason.PLUGIN);
+                menuHandle.close(WindowCloseReason.PLUGIN);
             } catch (RuntimeException | Error closeFailure) {
                 ThrowableUtils.combine(throwable, closeFailure);
             }

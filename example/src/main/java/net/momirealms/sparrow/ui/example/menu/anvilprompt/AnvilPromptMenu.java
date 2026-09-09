@@ -16,10 +16,10 @@ import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
+import net.momirealms.sparrow.ui.window.WindowCloseReason;
 import net.momirealms.sparrow.ui.window.WindowSession;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -329,7 +329,7 @@ public final class AnvilPromptMenu {
      * @return 发给玩家的提示
      */
     @NotNull
-    private static Component endMessage(@NotNull InventoryCloseEvent.Reason reason) {
+    private static Component endMessage(@NotNull WindowCloseReason reason) {
         return Component.text("已结束本次 Material 搜索。", NamedTextColor.GRAY)
                 .append(Component.text(" (" + describe(reason) + ")", NamedTextColor.DARK_GRAY));
     }
@@ -341,7 +341,7 @@ public final class AnvilPromptMenu {
      * @return 面向玩家的说明
      */
     @NotNull
-    private static String describe(@NotNull InventoryCloseEvent.Reason reason) {
+    private static String describe(@NotNull WindowCloseReason reason) {
         return switch (reason) {
             case PLAYER -> "玩家关闭";
             case DISCONNECT -> "玩家断线";

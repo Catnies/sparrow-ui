@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,13 +30,13 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     private boolean closeable = true;
     // 用户处理器
     private List<Consumer<W>> openHandlers = new ArrayList<>();
-    private List<BiConsumer<W, InventoryCloseEvent.Reason>> closeHandlers = new ArrayList<>();
+    private List<BiConsumer<W, WindowCloseReason>> closeHandlers = new ArrayList<>();
     private List<BiConsumer<W, WindowOutsideClick>> outsideClickHandlers = new ArrayList<>();
     // 返回行为, 数据与根会话
     private boolean backOnPlayerClose;
     private @Nullable Object data;
     private WindowSession.Kind sessionKind = WindowSession.Kind.STACK;
-    private List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers = new ArrayList<>();
+    private List<Consumer<WindowCloseReason>> sessionEndHandlers = new ArrayList<>();
     // 窗口状态确认
     private int windowState;
     private List<Consumer<Integer>> windowStateChangeHandlers = new ArrayList<>();
@@ -116,7 +115,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull B setCloseHandlers(
-            @NotNull List<? extends BiConsumer<? super W, ? super InventoryCloseEvent.Reason>> closeHandlers
+            @NotNull List<? extends BiConsumer<? super W, ? super WindowCloseReason>> closeHandlers
     ) {
         this.closeHandlers = new ArrayList<>(HandlerList.copyBiConsumers(closeHandlers));
         return this.self();
@@ -124,7 +123,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull B addCloseHandler(
-            @NotNull BiConsumer<? super W, ? super InventoryCloseEvent.Reason> closeHandler
+            @NotNull BiConsumer<? super W, ? super WindowCloseReason> closeHandler
     ) {
         this.closeHandlers.add(HandlerList.narrowBiConsumer(closeHandler));
         return this.self();
@@ -173,7 +172,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
     }
 
     @Override
-    public final @NotNull B addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> handler) {
+    public final @NotNull B addSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> handler) {
         this.sessionEndHandlers.add(HandlerList.narrowConsumer(handler));
         return this.self();
     }
@@ -271,9 +270,9 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
             Consumer<W> handler = this.openHandlers.get(index);
             boundOpenHandlers.add(() -> handler.accept(windowReference.get()));
         }
-        List<Consumer<InventoryCloseEvent.Reason>> boundCloseHandlers = new ArrayList<>(this.closeHandlers.size());
+        List<Consumer<WindowCloseReason>> boundCloseHandlers = new ArrayList<>(this.closeHandlers.size());
         for (int index = 0; index < this.closeHandlers.size(); index++) {
-            BiConsumer<W, InventoryCloseEvent.Reason> handler = this.closeHandlers.get(index);
+            BiConsumer<W, WindowCloseReason> handler = this.closeHandlers.get(index);
             boundCloseHandlers.add(reason -> handler.accept(windowReference.get(), reason));
         }
         List<Consumer<WindowOutsideClick>> boundOutsideClickHandlers = new ArrayList<>(this.outsideClickHandlers.size());

@@ -24,9 +24,9 @@ import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
 import net.momirealms.sparrow.ui.window.Window;
+import net.momirealms.sparrow.ui.window.WindowCloseReason;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -370,7 +370,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     }
 
     @Override
-    public void close(@NotNull InventoryCloseEvent.Reason reason) {
+    public void close(@NotNull WindowCloseReason reason) {
         Throwable failure = this.closeBindings();
         try {
             super.close(reason);

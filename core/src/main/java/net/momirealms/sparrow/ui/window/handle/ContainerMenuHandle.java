@@ -21,9 +21,11 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import net.momirealms.sparrow.ui.util.VersionHelper;
+import net.momirealms.sparrow.ui.window.WindowCloseReason;
+import net.momirealms.sparrow.ui.window.WindowCloseReasonAdapter;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryView;
@@ -130,7 +132,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         Object currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);     // NMS AbstractContainerMenu
         boolean replacingProxy = replacingWindow && currentMenu.getClass() == this.proxy.getClass();
         if (!replacingProxy && currentMenu != inventoryMenu) {
-            ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, InventoryCloseEvent.Reason.OPEN_NEW);
+            this.closeNativeContainer(WindowCloseReason.OPEN_NEW);
             currentMenu = PlayerProxy.INSTANCE.containerMenu(this.serverPlayer);
         }
 
@@ -298,20 +300,20 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     /**
-     * 按关闭原因和当前活动菜单的所有权接入 Paper 容器关闭流程.
+     * 按关闭原因和当前活动菜单的所有权接入服务端容器关闭流程.
      * <p>会话释放后, 尚未被新菜单接管的客户端投影恢复为原版状态. 断线关闭不再发包.
      *
      * @param reason 关闭原因
      */
     @Override
-    public void close(@NotNull InventoryCloseEvent.Reason reason) {
+    public void close(@NotNull WindowCloseReason reason) {
         if (this.lifecycle == Lifecycle.CLOSED) {
             return;
         }
         // 先停止入站捕获, 后续关闭步骤即使失败也不会再接收消息.
         Lifecycle previous = this.lifecycle;
         ClientboundStateProjection releasedProjection = null;
-        if (previous == Lifecycle.COMMITTED && reason != InventoryCloseEvent.Reason.DISCONNECT) {
+        if (previous == Lifecycle.COMMITTED && reason != WindowCloseReason.DISCONNECT) {
             MenuPacketGateway.Session currentSession = this.session;
             if (currentSession != null) {
                 releasedProjection = currentSession.releasedClientboundStateProjection();
@@ -331,10 +333,10 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         else if (PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == this.proxy) {
             try {
                 // 玩家关闭和断线先派发 Bukkit 事件, 主动关闭则走服务端入口.
-                if (reason == InventoryCloseEvent.Reason.PLAYER || reason == InventoryCloseEvent.Reason.DISCONNECT) {
-                    CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, reason);
+                if (reason == WindowCloseReason.PLAYER || reason == WindowCloseReason.DISCONNECT) {
+                    this.callInventoryCloseEvent(reason);
                 } else {
-                    ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, reason);
+                    this.closeNativeContainer(reason);
                 }
             } catch (RuntimeException | Error throwable) {
                 failure = ThrowableUtils.combine(failure, throwable);
@@ -350,7 +352,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         ThrowableUtils.throwIfUnchecked(failure);
         // 回到玩家背包菜单后重发完整状态, 清掉 Window 投影.
-        if (reason != InventoryCloseEvent.Reason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
+        if (reason != WindowCloseReason.DISCONNECT && PlayerProxy.INSTANCE.containerMenu(this.serverPlayer) == inventoryMenu) {
             try {
                 AbstractContainerMenuProxy.INSTANCE.sendAllDataToRemote(inventoryMenu);
             } catch (RuntimeException | Error throwable) {
@@ -360,6 +362,22 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         // 新会话未接管的客户端投影在旧容器关闭后恢复.
         if (releasedProjection != null) {
             this.packets.send(this.player, List.of(releasedProjection.createNativeRestorePacket()));
+        }
+    }
+
+    private void closeNativeContainer(WindowCloseReason reason) {
+        if (VersionHelper.isPaper()) {
+            ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, WindowCloseReasonAdapter.toPaper(reason));
+        } else {
+            ServerPlayerProxy.INSTANCE.closeContainer$0(this.serverPlayer);
+        }
+    }
+
+    private void callInventoryCloseEvent(WindowCloseReason reason) {
+        if (VersionHelper.isPaper()) {
+            CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, WindowCloseReasonAdapter.toPaper(reason));
+        } else {
+            CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent$0(this.serverPlayer);
         }
     }
 

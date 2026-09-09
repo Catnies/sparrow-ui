@@ -6,7 +6,6 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -19,13 +18,13 @@ import java.util.function.Consumer;
 abstract class AbstractWindowSession implements WindowSession {
     final WindowManager manager;
     private final Player viewer;
-    private final HandlerList<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers;
+    private final HandlerList<Consumer<WindowCloseReason>> sessionEndHandlers;
     private final Bindings bindings = new Bindings(); // 本会话持有的 Signal 绑定
 
     private volatile List<Window> chainSnapshot = List.of(); // 最近一次已应用的当前路径快照
     private final AtomicBoolean active = new AtomicBoolean(true); // 会话是否尚未结束
 
-    AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<InventoryCloseEvent.Reason>> sessionEndHandlers) {
+    AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         this.manager = manager;
         this.viewer = viewer;
         this.sessionEndHandlers = new HandlerList<>(sessionEndHandlers);
@@ -83,7 +82,7 @@ abstract class AbstractWindowSession implements WindowSession {
         boolean wasActive = this.active.get();
         return this.manager.submit(
                 this.viewer,
-                () -> this.endNow(InventoryCloseEvent.Reason.PLUGIN, true),
+                () -> this.endNow(WindowCloseReason.PLUGIN, true),
                 () -> wasActive ? EndResult.ENDED : EndResult.ALREADY_ENDED
         );
     }
@@ -96,7 +95,7 @@ abstract class AbstractWindowSession implements WindowSession {
      * @param closeCurrent 是否需要由本次结束关闭当前窗
      * @return 结束结果
      */
-    final EndResult endNow(@NotNull InventoryCloseEvent.Reason reason, boolean closeCurrent) {
+    final EndResult endNow(@NotNull WindowCloseReason reason, boolean closeCurrent) {
         if (!this.deactivate()) {
             return EndResult.ALREADY_ENDED;
         }
@@ -117,8 +116,8 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     // 玩家主动关闭且允许返回时回到上一扇, 其余情况结束整段会话.
-    void onChainTopClosed(@NotNull AbstractWindow<?> window, @NotNull InventoryCloseEvent.Reason reason) {
-        if (reason == InventoryCloseEvent.Reason.PLAYER && window.backOnPlayerClose() && this.backNow()) {
+    void onChainTopClosed(@NotNull AbstractWindow<?> window, @NotNull WindowCloseReason reason) {
+        if (reason == WindowCloseReason.PLAYER && window.backOnPlayerClose() && this.backNow()) {
             return;
         }
         this.endNow(reason, false);
@@ -149,7 +148,7 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     // 运行结束处理器.
-    private void fireSessionEndHandlers(@NotNull InventoryCloseEvent.Reason reason) {
+    private void fireSessionEndHandlers(@NotNull WindowCloseReason reason) {
         this.sessionEndHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
                 "Failed to handle Window session end",
@@ -195,24 +194,24 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     @Override
-    public void setSessionEndHandlers(@NotNull List<? extends Consumer<? super InventoryCloseEvent.Reason>> sessionEndHandlers) {
+    public void setSessionEndHandlers(@NotNull List<? extends Consumer<? super WindowCloseReason>> sessionEndHandlers) {
         this.sessionEndHandlers.set(HandlerList.copyConsumers(sessionEndHandlers));
     }
 
     @NotNull
     @Override
     @Unmodifiable
-    public List<Consumer<InventoryCloseEvent.Reason>> getSessionEndHandlers() {
+    public List<Consumer<WindowCloseReason>> getSessionEndHandlers() {
         return this.sessionEndHandlers.snapshot();
     }
 
     @Override
-    public void addSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler) {
+    public void addSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> sessionEndHandler) {
         this.sessionEndHandlers.append(HandlerList.narrowConsumer(sessionEndHandler));
     }
 
     @Override
-    public void removeSessionEndHandler(@NotNull Consumer<? super InventoryCloseEvent.Reason> sessionEndHandler) {
+    public void removeSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> sessionEndHandler) {
         this.sessionEndHandlers.remove(HandlerList.narrowConsumer(sessionEndHandler));
     }
 

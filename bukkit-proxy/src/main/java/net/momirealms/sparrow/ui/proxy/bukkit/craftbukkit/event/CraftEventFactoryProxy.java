@@ -5,15 +5,17 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 
 @ReflectionProxy(name = "org.bukkit.craftbukkit.event.CraftEventFactory")
 public interface CraftEventFactoryProxy {
     CraftEventFactoryProxy INSTANCE = ASMProxyFactory.create(CraftEventFactoryProxy.class);
 
-    @MethodInvoker(name = "handleInventoryCloseEvent", isStatic = true, activeIf = "min_version=1.20.1")
+    @MethodInvoker(name = "handleInventoryCloseEvent", isStatic = true, activeIf = "min_version=1.20.1 && has_patch=paper")
     void handleInventoryCloseEvent(
             @Type(clazz = PlayerProxy.class) Object player,
-            InventoryCloseEvent.Reason reason
+            @Type(name = "org.bukkit.event.inventory.InventoryCloseEvent$Reason") Object reason
     );
+
+    @MethodInvoker(name = "handleInventoryCloseEvent", isStatic = true, activeIf = "min_version=1.20.1 && !has_patch=paper")
+    void handleInventoryCloseEvent$0(@Type(clazz = PlayerProxy.class) Object player);
 }
