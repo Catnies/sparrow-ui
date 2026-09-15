@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.network.filter.ClientboundStateProjection;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.NonNullListProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.common.ClientboundPingPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetContentPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetSlotPacketProxy;
@@ -55,9 +56,9 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private final Object proxy; // 禁用原版自动同步的 NMS AbstractContainerMenu 代理
 
     // 客户端已知状态
-    private final Object[] remoteSlots; // NMS RemoteSlot[]
-    private final Object remoteCursor;  // NMS RemoteSlot
-    private final Object remoteOffHand; // NMS RemoteSlot
+    private final Object[] remoteSlots; // NMS ItemStack[] 或 RemoteSlot[]
+    private Object remoteCursor;        // NMS ItemStack 或 RemoteSlot
+    private Object remoteOffHand;       // NMS ItemStack 或 RemoteSlot
 
     // 增量同步工作区
     private final BitSet predictedSlots = new BitSet();
@@ -110,7 +111,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         this.view = new ProtocolInventoryView(player, upperSize, lowerStart, inventoryType, bukkitMenuType);
         this.proxy = MenuSubclassFactory.create(this.menuType, this.containerId, this);
         // 每个协议槽位, 光标和副手各自维护一份客户端已知状态.
-        this.remoteSlots = new Object[this.view.countSlots()]; // NMS RemoteSlot[]
+        this.remoteSlots = new Object[this.view.countSlots()]; // NMS ItemStack[] 或 RemoteSlot[]
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
             this.remoteSlots[slot] = this.createRemoteSlot();
         }
@@ -401,7 +402,8 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
         // 将客户端声称的槽位与光标变化并入复核集合.
         if (interaction.prediction() instanceof ClientMenuPrediction prediction) {
-            this.predictedCarried |= prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
+            this.remoteCursor = prediction.apply(this.remoteSlots, this.remoteCursor, this.predictedSlots);
+            this.predictedCarried = true;
         }
         // 子类在预测吸收完成后更新菜单专属状态.
         this.handleAcceptedInteraction();
@@ -506,18 +508,25 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
     // 为完整内容包复制槽位和视觉光标, 并推进菜单 state id.
     private FullContents prepareFullContents(ItemStack[] slots, CursorSnapshot cursor) {
-        // 数据包与客户端已知状态共用本批发送副本.
-        ArrayList<Object> items = new ArrayList<>(slots.length); // NMS ItemStack 数据包副本
+        // 旧包构造器复制物品, 新版在构造前准备发送副本.
+        List<Object> items = VersionHelper.isOrAbove1_21_5
+                ? new ArrayList<>(slots.length)
+                : NonNullListProxy.INSTANCE.createWithCapacity(slots.length);
         for (int index = 0; index < slots.length; index++) {
-            items.add(ItemStackProxy.INSTANCE.copy(this.toClientItem(index, slots[index])));
+            Object item = this.toClientItem(index, slots[index]);
+            items.add(VersionHelper.isOrAbove1_21_5 ? ItemStackProxy.INSTANCE.copy(item) : item);
         }
         Object visualCursor = ItemUtils.getItemStackHandle(cursor.visual()); // 借用的 NMS ItemStack
-        Object packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance(
-                this.containerId,
-                AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy),
-                items,
-                ItemStackProxy.INSTANCE.copy(visualCursor)
-        );
+        int stateId = AbstractContainerMenuProxy.INSTANCE.incrementStateId(this.proxy);
+        Object packet;
+        if (VersionHelper.isOrAbove1_21_5) {
+            visualCursor = ItemStackProxy.INSTANCE.copy(visualCursor);
+            packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance(this.containerId, stateId, items, visualCursor);
+        } else {
+            packet = ClientboundContainerSetContentPacketProxy.INSTANCE.newInstance$0(this.containerId, stateId, items, visualCursor);
+            items = ClientboundContainerSetContentPacketProxy.INSTANCE.getItems(packet);
+            visualCursor = ClientboundContainerSetContentPacketProxy.INSTANCE.getCarriedItem(packet);
+        }
         return new FullContents(
                 items,
                 visualCursor,
@@ -530,11 +539,11 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     private void commitFullContents(ItemStack[] slots, FullContents full) {
         // 槽位, 光标和副手对齐到刚进入发送路径的内容.
         for (int slot = 0; slot < this.remoteSlots.length; slot++) {
-            RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], full.slots().get(slot));
+            this.remoteSlots[slot] = RemoteSlotUtils.force(this.remoteSlots[slot], full.slots().get(slot));
             this.alignedSlots[slot] = slots[slot];
         }
-        RemoteSlotProxy.INSTANCE.force(this.remoteCursor, full.visualCursor());
-        RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(full.offHandPacket()));
+        this.remoteCursor = RemoteSlotUtils.force(this.remoteCursor, full.visualCursor());
+        this.remoteOffHand = RemoteSlotUtils.force(this.remoteOffHand, ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(full.offHandPacket()));
         // 全量状态覆盖此前的预测与强制重发要求.
         this.predictedSlots.clear();
         this.predictedCarried = false;
@@ -589,7 +598,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                 }
 
                 Object item = this.toClientItem(slot, rendered); // 借用的 NMS ItemStack
-                if (!this.forcedSlots.get(slot) && RemoteSlotProxy.INSTANCE.matches(this.remoteSlots[slot], item)) {
+                if (!this.forcedSlots.get(slot) && RemoteSlotUtils.matches(this.remoteSlots[slot], item)) {
                     // 客户端已经持有相同内容, 更新引用对齐缓存即可.
                     this.alignedSlots[slot] = rendered;
                     continue;
@@ -608,7 +617,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
 
             // 副手被预测修改或与已知状态不同时重发.
             Object offHand = ItemUtils.getPlayerItemStackHandle(this.player, EquipmentSlot.OFF_HAND); // 借用的 NMS ItemStack
-            if (this.offHandDirty || !RemoteSlotProxy.INSTANCE.matches(this.remoteOffHand, offHand)) {
+            if (this.offHandDirty || !RemoteSlotUtils.matches(this.remoteOffHand, offHand)) {
                 Object packet = this.createOffHandPacket(offHand);
                 outgoing.add(packet);
                 sentOffHand = ClientboundContainerSetSlotPacketProxy.INSTANCE.getItem(packet);
@@ -620,7 +629,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             Object sentVisualCursor = ItemStackProxy.EMPTY; // NMS ItemStack
             if (checkCursor) {
                 sentVisualCursor = ItemUtils.getItemStackHandle(cursor.visual());
-                if (!RemoteSlotProxy.INSTANCE.matches(this.remoteCursor, sentVisualCursor)) {
+                if (!RemoteSlotUtils.matches(this.remoteCursor, sentVisualCursor)) {
                     outgoing.add(ClientboundSetCursorItemPacketProxy.INSTANCE.newInstance(
                             ItemStackProxy.INSTANCE.copy(sentVisualCursor)
                     ));
@@ -641,14 +650,14 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
                     slot >= 0;
                     slot = changedSlots.nextSetBit(slot + 1)
             ) {
-                RemoteSlotProxy.INSTANCE.force(this.remoteSlots[slot], this.pendingRemoteItems[slot]);
+                this.remoteSlots[slot] = RemoteSlotUtils.force(this.remoteSlots[slot], this.pendingRemoteItems[slot]);
                 this.alignedSlots[slot] = slots[slot];
             }
             if (cursorChanged) {
-                RemoteSlotProxy.INSTANCE.force(this.remoteCursor, sentVisualCursor);
+                this.remoteCursor = RemoteSlotUtils.force(this.remoteCursor, sentVisualCursor);
             }
             if (sentOffHand != null) {
-                RemoteSlotProxy.INSTANCE.force(this.remoteOffHand, sentOffHand);
+                this.remoteOffHand = RemoteSlotUtils.force(this.remoteOffHand, sentOffHand);
                 this.offHandDirty = false;
             }
             // Bukkit 事件副本按实际发送和事件触碰范围对齐.
@@ -675,8 +684,9 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         }
     }
 
-    // 新 RemoteSlot 先强制为空, 第一次比较不会继承未知状态.
+    // 远端状态从空物品开始, 新版由 NMS 同步器创建 RemoteSlot.
     private Object createRemoteSlot() {
+        if (!VersionHelper.isOrAbove1_21_5) return ItemStackProxy.EMPTY;
         Object synchronizer = ServerPlayerProxy.INSTANCE.containerSynchronizer(this.serverPlayer); // NMS ContainerSynchronizer
         Object slot = ContainerSynchronizerProxy.INSTANCE.createSlot(synchronizer); // NMS RemoteSlot
         RemoteSlotProxy.INSTANCE.force(slot, ItemStackProxy.EMPTY);

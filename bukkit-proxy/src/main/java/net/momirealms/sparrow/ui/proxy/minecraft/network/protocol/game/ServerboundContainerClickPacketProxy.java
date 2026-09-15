@@ -12,27 +12,33 @@ public interface ServerboundContainerClickPacketProxy extends PacketProxy {
     ServerboundContainerClickPacketProxy INSTANCE = ASMProxyFactory.create(ServerboundContainerClickPacketProxy.class);
     Class<?> CLASS = SparrowClass.find("net.minecraft.network.protocol.game.ServerboundContainerClickPacket");
 
-    @MethodInvoker(name = "containerId", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = {"containerId", "getContainerId"}, activeIf = "min_version=1.21.2")
     int containerId(Object target);
 
-    @MethodInvoker(name = "stateId", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = {"stateId", "getStateId"}, activeIf = "min_version=1.21.2")
     int stateId(Object target);
 
-    @MethodInvoker(name = "slotNum", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = "slotNum", activeIf = "min_version=1.21.5")
     short slotNum(Object target);
 
-    @MethodInvoker(name = "buttonNum", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = "buttonNum", activeIf = "min_version=1.21.5")
     byte buttonNum(Object target);
+
+    @MethodInvoker(name = "getSlotNum", activeIf = "min_version=1.21.2 && max_version=1.21.4")
+    int getSlotNum(Object target);
+
+    @MethodInvoker(name = "getButtonNum", activeIf = "min_version=1.21.2 && max_version=1.21.4")
+    int getButtonNum(Object target);
 
     @MethodInvoker(name = "containerInput", activeIf = "min_version=26.1")
     Enum<?> containerInput(Object target);
 
-    @MethodInvoker(name = "clickType", activeIf = "min_version=1.21.2 && max_version=1.21.11")
+    @MethodInvoker(name = {"clickType", "getClickType"}, activeIf = "min_version=1.21.2 && max_version=1.21.11")
     Enum<?> clickType(Object target);
 
-    @MethodInvoker(name = "changedSlots", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = {"changedSlots", "getChangedSlots"}, activeIf = "min_version=1.21.2")
     Int2ObjectMap<Object> changedSlots(Object target);
 
-    @MethodInvoker(name = "carriedItem", activeIf = "min_version=1.21.2")
+    @MethodInvoker(name = {"carriedItem", "getCarriedItem"}, activeIf = "min_version=1.21.2")
     Object carriedItem(Object target);
 }

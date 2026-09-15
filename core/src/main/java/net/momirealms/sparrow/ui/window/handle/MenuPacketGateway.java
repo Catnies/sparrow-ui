@@ -279,35 +279,45 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
             ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
             Enum<?> containerInput = VersionHelper.isOrAbove26_1 ? proxy.containerInput(click) : proxy.clickType(click);
             return switch (containerInput.name()) {
-                case "PICKUP" -> switch (proxy.buttonNum(click)) {
-                    case 0 -> singleClick(click, proxy.slotNum(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT);
-                    case 1 -> singleClick(click, proxy.slotNum(click) == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT);
+                case "PICKUP" -> switch (buttonNum(click)) {
+                    case 0 -> singleClick(click, slotNum(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT);
+                    case 1 -> singleClick(click, slotNum(click) == -999 ? ClickType.WINDOW_BORDER_RIGHT : ClickType.RIGHT);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
-                case "QUICK_MOVE" -> switch (proxy.buttonNum(click)) {
+                case "QUICK_MOVE" -> switch (buttonNum(click)) {
                     case 0 -> singleClick(click, ClickType.SHIFT_LEFT);
                     case 1 -> singleClick(click, ClickType.SHIFT_RIGHT);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
                 case "SWAP" -> {
-                    if (proxy.buttonNum(click) >= 0 && proxy.buttonNum(click) <= 8) {
-                        yield singleClick(click, ClickType.NUMBER_KEY, proxy.buttonNum(click));
+                    if (buttonNum(click) >= 0 && buttonNum(click) <= 8) {
+                        yield singleClick(click, ClickType.NUMBER_KEY, buttonNum(click));
                     }
-                    if (proxy.buttonNum(click) == 40) {
+                    if (buttonNum(click) == 40) {
                         yield singleClick(click, ClickType.SWAP_OFFHAND);
                     }
                     yield singleClick(click, ClickType.UNKNOWN);
                 }
-                case "CLONE" -> singleClick(click, proxy.buttonNum(click) == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN);
-                case "THROW" -> switch (proxy.buttonNum(click)) {
+                case "CLONE" -> singleClick(click, buttonNum(click) == 2 ? ClickType.MIDDLE : ClickType.UNKNOWN);
+                case "THROW" -> switch (buttonNum(click)) {
                     case 0 -> singleClick(click, ClickType.DROP);
                     case 1 -> singleClick(click, ClickType.CONTROL_DROP);
                     default -> singleClick(click, ClickType.UNKNOWN);
                 };
                 case "QUICK_CRAFT" -> dragStep(click);
-                case "PICKUP_ALL" -> singleClick(click, proxy.buttonNum(click) == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN);
+                case "PICKUP_ALL" -> singleClick(click, buttonNum(click) == 0 ? ClickType.DOUBLE_CLICK : ClickType.UNKNOWN);
                 default -> singleClick(click, ClickType.UNKNOWN);
             };
+        }
+
+        private static int slotNum(Object packet) {
+            ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
+            return VersionHelper.isOrAbove1_21_5 ? proxy.slotNum(packet) : proxy.getSlotNum(packet);
+        }
+
+        private static int buttonNum(Object packet) {
+            ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
+            return VersionHelper.isOrAbove1_21_5 ? proxy.buttonNum(packet) : proxy.getButtonNum(packet);
         }
 
         private static MenuInput.Common.Click singleClick(Object packet, ClickType clickType) {
@@ -319,7 +329,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
             return new MenuInput.Common.Click(
                     proxy.containerId(packet),
                     proxy.stateId(packet),
-                    proxy.slotNum(packet),
+                    slotNum(packet),
                     clickType,
                     hotbarButton,
                     ClientMenuPrediction.from(packet)
@@ -328,7 +338,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
 
         // QUICK_CRAFT 的 button 编码不连续, 无效值交给实体线程触发状态纠正.
         private static MenuInput.Common.Interaction dragStep(Object packet) {
-            return switch (ServerboundContainerClickPacketProxy.INSTANCE.buttonNum(packet)) {
+            return switch (buttonNum(packet)) {
                 case 0 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.START);
                 case 1 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.ADD);
                 case 2 -> dragStep(packet, ClickType.LEFT, MenuInput.Common.DragPhase.END);
@@ -346,7 +356,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
             return new MenuInput.Common.DragStep(
                     ServerboundContainerClickPacketProxy.INSTANCE.containerId(packet),
                     ServerboundContainerClickPacketProxy.INSTANCE.stateId(packet),
-                    ServerboundContainerClickPacketProxy.INSTANCE.slotNum(packet),
+                    slotNum(packet),
                     clickType,
                     phase,
                     ClientMenuPrediction.from(packet)
