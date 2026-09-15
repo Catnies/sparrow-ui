@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.proxy.minecraft.core.component;
 
+import net.momirealms.sparrow.reflection.SReflection;
 import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
@@ -8,7 +9,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface DataComponentsProxy {
     DataComponentsProxy INSTANCE = ASMProxyFactory.create(DataComponentsProxy.class);
     Object CUSTOM_NAME = INSTANCE.CUSTOM_NAME();
-    Object TOOLTIP_DISPLAY = INSTANCE.TOOLTIP_DISPLAY();
     Object ITEM_MODEL = INSTANCE.ITEM_MODEL();
     Object MAP_ID = INSTANCE.MAP_ID();
     Object BUNDLE_CONTENTS = INSTANCE.BUNDLE_CONTENTS();
@@ -18,6 +18,9 @@ public interface DataComponentsProxy {
 
     @FieldGetter(name = "TOOLTIP_DISPLAY", isStatic = true, activeIf = "min_version=1.21.5")
     Object TOOLTIP_DISPLAY();
+
+    @FieldGetter(name = "HIDE_TOOLTIP", isStatic = true, activeIf = "min_version=1.20.5 && max_version=1.21.4")
+    Object HIDE_TOOLTIP();
 
     @FieldGetter(name = "ITEM_MODEL", isStatic = true, activeIf = "min_version=1.21.2")
     Object ITEM_MODEL();

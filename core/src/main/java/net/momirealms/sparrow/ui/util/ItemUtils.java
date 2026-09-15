@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemSta
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.chat.ComponentProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.resources.IdentifierProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.util.UnitProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
@@ -194,7 +195,11 @@ public final class ItemUtils {
      */
     public static void hideTooltips(Object item) {
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.CUSTOM_NAME, ComponentProxy.INSTANCE.empty());
-        ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.TOOLTIP_DISPLAY, TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>()));
+        if (VersionHelper.isOrAbove1_21_5) {
+            ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.INSTANCE.TOOLTIP_DISPLAY(), TooltipDisplayProxy.INSTANCE.newInstance(true, new LinkedHashSet<>()));
+        } else {
+            ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.INSTANCE.HIDE_TOOLTIP(), UnitProxy.INSTANCE.getInstance());
+        }
         ItemStackProxy.INSTANCE.set(item, DataComponentsProxy.ITEM_MODEL, IdentifierProxy.INSTANCE.withDefaultNamespace("air"));
     }
 
