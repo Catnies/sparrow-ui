@@ -2,12 +2,14 @@ package net.momirealms.sparrow.ui.network;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolInfoDetailsProviderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolInfoDetailsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolInfoUnboundProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.configuration.ConfigurationProtocolsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.GameProtocolsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.handshake.HandshakeProtocolsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.login.LoginProtocolsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.status.StatusProtocolsProxy;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -96,7 +98,9 @@ public final class PacketIdRegistry {
     private static PacketTable readPacketTable(Object template) {
         HashMap<String, Integer> ids = new HashMap<>();
         int[] largestId = {-1};
-        Class<?> visitorClass = ProtocolInfoDetailsProxy.PACKET_VISITOR_CLASS;
+        Class<?> visitorClass = VersionHelper.isOrAbove1_21_5
+                ? ProtocolInfoDetailsProxy.PACKET_VISITOR_CLASS
+                : ProtocolInfoUnboundProxy.PACKET_VISITOR_CLASS;
         if (visitorClass == null) {
             throw new IllegalStateException("Missing NMS packet visitor");
         }
@@ -116,8 +120,12 @@ public final class PacketIdRegistry {
                 default -> throw new UnsupportedOperationException(method.toString());
             };
         });
-        Object details = ProtocolInfoDetailsProviderProxy.INSTANCE.details(template);
-        ProtocolInfoDetailsProxy.INSTANCE.listPackets(details, visitor);
+        if (VersionHelper.isOrAbove1_21_5) {
+            Object details = ProtocolInfoDetailsProviderProxy.INSTANCE.details(template);
+            ProtocolInfoDetailsProxy.INSTANCE.listPackets(details, visitor);
+        } else {
+            ProtocolInfoUnboundProxy.INSTANCE.listPackets(template, visitor);
+        }
         return new PacketTable(Map.copyOf(ids), largestId[0] + 1);
     }
 
