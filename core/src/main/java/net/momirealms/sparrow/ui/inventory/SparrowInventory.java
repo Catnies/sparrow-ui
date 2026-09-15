@@ -34,6 +34,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -774,6 +775,39 @@ public abstract class SparrowInventory {
         // 整组槽位变更一次提交, 没提交成功视为一个都没移除
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
+    }
+
+    /**
+     * 清空全部槽位, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @return 事务结果
+     */
+    @NotNull
+    public TransactionResult clear() {
+        return this.clear(UpdateReason.Program.INSTANCE);
+    }
+
+    /**
+     * 清空全部槽位, 整个清除过程作为一次事务提交.
+     *
+     * @param reason 本次修改的原因
+     * @return 事务结果
+     */
+    @NotNull
+    public TransactionResult clear(@NotNull UpdateReason reason) {
+        PlannedRoot basis = this.openPlanForWrite();
+        @Nullable ItemStack[] planned = basis.planned();
+        // 只给非空槽位生成变更
+        List<SlotChange> deltas = new ArrayList<>(planned.length);
+        for (int slot = 0; slot < planned.length; slot++) {
+            if (planned[slot] != null) {
+                deltas.add(new SlotChange(slot, planned[slot], null));
+            }
+        }
+        if (deltas.isEmpty()) {
+            return EMPTY_COMMITTED;
+        }
+        return this.commitScoped(reason, basis, deltas);
     }
 
     /**

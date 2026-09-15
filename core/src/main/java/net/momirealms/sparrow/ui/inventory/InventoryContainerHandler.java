@@ -48,7 +48,7 @@ final class InventoryContainerHandler implements InvocationHandler {
             case SET_CHANGED, ON_OPEN, ON_CLOSE -> null;
             case STILL_VALID -> true;
             case CLEAR_CONTENT -> {
-                this.clearContent();
+                this.inventory.clear();
                 yield null;
             }
             case GET_CONTENTS -> this.contents();
@@ -125,15 +125,6 @@ final class InventoryContainerHandler implements InvocationHandler {
             int[] maxStackSizes = new int[virtualInventory.size()];
             Arrays.fill(maxStackSizes, maxStackSize);
             virtualInventory.setMaxStackSizes(maxStackSizes);
-        }
-    }
-
-    private void clearContent() {
-        ItemStack[] contents = this.inventory.unsafeSnapshot();
-        for (int slot = 0; slot < contents.length; slot++) {
-            if (contents[slot] != null && !contents[slot].isEmpty()) {
-                this.setItem(slot, null);
-            }
         }
     }
 
