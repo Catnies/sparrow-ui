@@ -26,14 +26,15 @@ public final class ShulkerBoxEditListener implements Listener {
 
         EquipmentSlot hand = event.getHand();
         Inventory playerInventory = ((CraftPlayer) player).getHandle().getInventory();
-        int sourceSlot = hand == EquipmentSlot.HAND ? playerInventory.getSelectedSlot() : Inventory.SLOT_OFFHAND;
+        int selectedSlot = player.getInventory().getHeldItemSlot();
+        int sourceSlot = hand == EquipmentSlot.HAND ? selectedSlot : Inventory.SLOT_OFFHAND;
         ItemStack shulker = playerInventory.getItem(sourceSlot);
         if (!shulker.is(ItemTags.SHULKER_BOXES)) return;
 
         event.setCancelled(true);
 
         // 双手同时持有潜影盒时只处理主手事件，避免同一次右键打开两次。
-        if (hand == EquipmentSlot.OFF_HAND && playerInventory.getSelectedItem().is(ItemTags.SHULKER_BOXES)) return;
+        if (hand == EquipmentSlot.OFF_HAND && playerInventory.getItem(selectedSlot).is(ItemTags.SHULKER_BOXES)) return;
 
         ShulkerBoxEditMenu.open(player, sourceSlot);
     }

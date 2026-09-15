@@ -366,7 +366,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     private void closeNativeContainer(WindowCloseReason reason) {
-        if (VersionHelper.isPaper()) {
+        if (VersionHelper.hasPaperPatch) {
             ServerPlayerProxy.INSTANCE.closeContainer(this.serverPlayer, WindowCloseReasonAdapter.toPaper(reason));
         } else {
             ServerPlayerProxy.INSTANCE.closeContainer$0(this.serverPlayer);
@@ -374,7 +374,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
     }
 
     private void callInventoryCloseEvent(WindowCloseReason reason) {
-        if (VersionHelper.isPaper()) {
+        if (VersionHelper.hasPaperPatch) {
             CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent(this.serverPlayer, WindowCloseReasonAdapter.toPaper(reason));
         } else {
             CraftEventFactoryProxy.INSTANCE.handleInventoryCloseEvent$0(this.serverPlayer);

@@ -17,7 +17,7 @@ paperweight.reobfArtifactConfiguration = io.papermc.paperweight.userdev.ReobfArt
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
@@ -28,7 +28,7 @@ repositories {
 
 dependencies {
     implementation(project(":core"))
-    paperweight.paperDevBundle("26.2.build.+")
+    paperweight.paperDevBundle(libs.versions.paper.api.get())
     compileOnly(libs.jetbrains.annotations)
     compileOnly(libs.jspecify)
 }
@@ -46,7 +46,7 @@ tasks {
 paper {
     name = "SparrowUIExample"
     main = "net.momirealms.sparrow.ui.example.SparrowExample"
-    apiVersion = "1.21.8"
+    apiVersion = "1.21.4"
     foliaSupported = true
 
     permissions {

@@ -277,7 +277,7 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
 
         static MenuInput.Common.Interaction interaction(Object click) {
             ServerboundContainerClickPacketProxy proxy = ServerboundContainerClickPacketProxy.INSTANCE;
-            Enum<?> containerInput = VersionHelper.isOrAbove26_1() ? proxy.containerInput(click) : proxy.clickType(click);
+            Enum<?> containerInput = VersionHelper.isOrAbove26_1 ? proxy.containerInput(click) : proxy.clickType(click);
             return switch (containerInput.name()) {
                 case "PICKUP" -> switch (proxy.buttonNum(click)) {
                     case 0 -> singleClick(click, proxy.slotNum(click) == -999 ? ClickType.WINDOW_BORDER_LEFT : ClickType.LEFT);

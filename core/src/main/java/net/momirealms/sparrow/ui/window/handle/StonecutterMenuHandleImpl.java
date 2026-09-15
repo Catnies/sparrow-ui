@@ -223,7 +223,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
             ItemStack button = buttons.get(index);
             Object stack = button.isEmpty() ? PLACEHOLDER : ItemUtils.getItemStackHandle(button);
             Object display;
-            if (VersionHelper.isOrAbove26_1()) {
+            if (VersionHelper.isOrAbove26_1) {
                 Object template = ItemStackTemplateProxy.INSTANCE.fromNonEmptyStack(stack);
                 display = ItemStackSlotDisplayProxy.INSTANCE.newInstance$0(template);
             } else {

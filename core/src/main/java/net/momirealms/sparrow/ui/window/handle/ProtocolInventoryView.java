@@ -299,7 +299,6 @@ final class ProtocolInventoryView implements InventoryView {
     }
 
     @Nullable
-    @Override
     public MenuType getMenuType() {
         return this.menuType;
     }

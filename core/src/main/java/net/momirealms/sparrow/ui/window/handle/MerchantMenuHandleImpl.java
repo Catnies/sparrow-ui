@@ -316,7 +316,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         Object stack = marked.stack(); // NMS ItemStack
 
         // 版本差异位于 Item holder 的访问入口.
-        Object holder = VersionHelper.isOrAbove26_1()
+        Object holder = VersionHelper.isOrAbove26_1
                 ? ItemStackProxy.INSTANCE.typeHolder(stack)
                 : ItemStackProxy.INSTANCE.getItemHolder(stack);
 

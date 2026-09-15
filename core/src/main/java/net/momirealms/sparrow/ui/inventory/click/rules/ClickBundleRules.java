@@ -24,7 +24,7 @@ public final class ClickBundleRules {
     public static boolean isBundle(@Nullable ItemStack item) {
         if (ItemUtils.isNullOrEmpty(item)) return false;
         Object itemStack = ItemUtils.getItemStackHandle(item);
-        return VersionHelper.isOrAbove26_1()
+        return VersionHelper.isOrAbove26_1
                 ? TypedInstanceProxy.INSTANCE.is(itemStack, ItemTagsProxy.BUNDLES)
                 : ItemStackProxy.INSTANCE.is(itemStack, ItemTagsProxy.BUNDLES);
     }
@@ -144,7 +144,7 @@ public final class ClickBundleRules {
                 : 0;
         Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
         // 26.1 起字段名改为 selectedItemIndex.
-        int previousSelection = VersionHelper.isOrAbove26_1()
+        int previousSelection = VersionHelper.isOrAbove26_1
                 ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)
                 : BundleContentsProxy.INSTANCE.selectedItem(contents);
         // toggle 是开关语义, 先清除旧选择才能稳定选中目标项.

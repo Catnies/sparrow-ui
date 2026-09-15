@@ -26,7 +26,7 @@ public final class BukkitSchedulerAdapter extends AbstractJavaScheduler<World> {
      */
     public BukkitSchedulerAdapter(@NotNull Plugin plugin) {
         super(plugin);
-        this.sync = VersionHelper.isFolia() ? new FoliaExecutor(plugin) : new BukkitExecutor(plugin);
+        this.sync = VersionHelper.hasFoliaPatch ? new FoliaExecutor(plugin) : new BukkitExecutor(plugin);
         this.entity = BukkitSchedulerAdapter.hasEntityScheduler()
                 ? new FoliaEntityExecutor(plugin)
                 : new BukkitEntityExecutor(plugin);

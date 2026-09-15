@@ -1,7 +1,7 @@
 [versions]
 project-version = "beta.25"
 kotlin = "2.3.10"
-paper-api = "1.21.8-R0.1-SNAPSHOT"
+paper-api = "1.21.4-R0.1-SNAPSHOT"
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

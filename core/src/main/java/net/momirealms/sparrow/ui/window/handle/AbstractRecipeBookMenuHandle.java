@@ -45,7 +45,7 @@ abstract class AbstractRecipeBookMenuHandle extends ContainerMenuHandle implemen
 
         Object holder = RecipeManagerServerDisplayInfoProxy.INSTANCE.parent(displayInfo);
         Object recipeKey = RecipeHolderProxy.INSTANCE.id(holder);
-        Object identifier = VersionHelper.isOrAbove1_21_11() ? ResourceKeyProxy.INSTANCE.identifier(recipeKey) : ResourceKeyProxy.INSTANCE.location(recipeKey);
+        Object identifier = VersionHelper.isOrAbove1_21_11 ? ResourceKeyProxy.INSTANCE.identifier(recipeKey) : ResourceKeyProxy.INSTANCE.location(recipeKey);
         return Key.key(IdentifierProxy.INSTANCE.getNamespace(identifier), IdentifierProxy.INSTANCE.getPath(identifier));
     }
 
