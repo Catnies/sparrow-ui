@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.window.handle;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.CraftRegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.component.DataComponentsProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.RegistriesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundMapItemDataPacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuTypeProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
@@ -11,6 +12,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapI
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapPatchProxy;
 import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.CartographyWindow;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -246,7 +248,9 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     private static Object toDecoration(CartographyWindow.MapIcon icon) {
         Optional<Object> name = Optional.ofNullable(icon.component()).map(PaperAdventureProxy.INSTANCE::asVanilla);
         return MapDecorationProxy.INSTANCE.newInstance(
-                CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder(icon.type()),
+                VersionHelper.isOrAbove1_21_7
+                        ? CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder(icon.type())
+                        : CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder$0(icon.type(), RegistriesProxy.MAP_DECORATION_TYPE),
                 (byte) (icon.x() - 128),
                 (byte) (icon.y() - 128),
                 (byte) icon.rot(),

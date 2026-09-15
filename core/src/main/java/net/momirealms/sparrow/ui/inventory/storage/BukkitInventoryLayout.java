@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInvento
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventorySaddledMountProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftResultInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.SimpleContainerProxy;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.inventory.Inventory;
@@ -44,16 +45,19 @@ enum BukkitInventoryLayout {
             );
         }
     },
-    // 鞍, 护甲和主仓依次拼接
+    // 按 Bukkit 槽号排列坐骑装备与储物格
     SADDLED_MOUNT {
         @Override
         @Nullable
         ExternalStorage build(@NotNull Inventory inventory, int size) {
             Object main = CraftInventorySaddledMountProxy.INSTANCE.getMainInventory(inventory);
-            // 鞍与护甲容器每次读取都会重建, 槽位身份取自坐骑.
+            // 坐骑 UUID 与 Bukkit 槽号共同标识物理位置.
             UUID mount = mountOf(main);
             if (mount == null) {
                 return null;
+            }
+            if (!VersionHelper.isOrAbove1_21_5) {
+                return new HorseContainerStorage(main, CraftInventorySaddledMountProxy.INSTANCE.getArmorInventory(inventory), mount);
             }
             return new SplicedStorage(
                     new MountContainerStorage(CraftInventorySaddledMountProxy.INSTANCE.getSaddleInventory(inventory), mount, SADDLE_SLOT),

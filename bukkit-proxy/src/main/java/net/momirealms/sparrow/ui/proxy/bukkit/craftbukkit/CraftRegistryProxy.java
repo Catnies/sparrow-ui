@@ -21,4 +21,7 @@ public interface CraftRegistryProxy {
 
     @MethodInvoker(name = "bukkitToMinecraftHolder", isStatic = true, activeIf = "min_version=1.21.7")
     Object bukkitToMinecraftHolder(Keyed bukkit);
+
+    @MethodInvoker(name = "bukkitToMinecraftHolder", isStatic = true, activeIf = "min_version=1.21.4 && max_version=1.21.6")
+    Object bukkitToMinecraftHolder$0(Keyed bukkit, @Type(name = "net.minecraft.resources.ResourceKey") Object registryKey);
 }
