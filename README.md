@@ -65,7 +65,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.momirealms:sparrow-ui:beta.27")
+    implementation("net.momirealms:sparrow-ui:beta.28")
 }
 ```
 
