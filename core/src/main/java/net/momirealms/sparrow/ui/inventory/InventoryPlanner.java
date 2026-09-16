@@ -10,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
 
@@ -24,11 +23,11 @@ public final class InventoryPlanner {
      * @param input 要放入的物品
      * @param slot 槽位序号
      * @param slotLimit 各槽位的堆叠上限
-     * @param includedSlot 槽位过滤器
+     * @param allowed 候选变更过滤器, null 表示放行
      * @return 放入方案与放不下的余量; 一个都放不进时方案为空
      */
     @NotNull
-    static AddPlan planPut(@Nullable ItemStack current, ItemStack input, int slot, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
+    static AddPlan planPut(@Nullable ItemStack current, ItemStack input, int slot, IntUnaryOperator slotLimit, @Nullable Predicate<SlotChange> allowed) {
         int amount = input.getAmount();
         int space;
         if (current == null) {
@@ -39,12 +38,13 @@ public final class InventoryPlanner {
             return new AddPlan(List.of(), amount);
         }
         int moved = Math.clamp(space, 0, amount);
-        if (moved == 0 || !includedSlot.test(slot)) {
+        if (moved == 0) {
             return new AddPlan(List.of(), amount);
         }
         ItemStack after = current != null ? current.clone() : input.clone();
         after.setAmount((current != null ? current.getAmount() : 0) + moved);
-        return new AddPlan(List.of(new SlotChange(slot, current, after)), amount - moved);
+        SlotChange delta = new SlotChange(slot, current, after);
+        return allowed == null || allowed.test(delta) ? new AddPlan(List.of(delta), amount - moved) : new AddPlan(List.of(), amount);
     }
 
     /**
@@ -88,11 +88,11 @@ public final class InventoryPlanner {
      * @param item 要放入的物品
      * @param order 槽位遍历顺序
      * @param slotLimit 各槽位的堆叠上限
-     * @param includedSlot 槽位过滤器, 只会对结构上能接收物品的槽位调用
+     * @param allowed 候选变更过滤器, null 表示放行
      * @return 放入方案与放不下的余量
      */
     @NotNull
-    public static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, IntPredicate includedSlot) {
+    public static AddPlan planAdd(@Nullable ItemStack[] snapshot, ItemStack item, SlotOrder order, IntUnaryOperator slotLimit, @Nullable Predicate<SlotChange> allowed) {
         List<SlotChange> deltas = new ArrayList<>();
         Object itemHandle = ItemUtils.getItemStackHandle(item);
         int remaining = item.getAmount();
@@ -105,11 +105,15 @@ public final class InventoryPlanner {
                 continue;
             }
             int space = effectiveMaxStackSize(slotLimit, slot, current) - current.getAmount();
-            if (space <= 0 || !includedSlot.test(slot)) {
+            if (space <= 0) {
                 continue;
             }
             int moved = Math.min(space, remaining);
-            deltas.add(new SlotChange(slot, current, ItemUtils.copyWithAmount(current, current.getAmount() + moved)));
+            SlotChange delta = new SlotChange(slot, current, ItemUtils.copyWithAmount(current, current.getAmount() + moved));
+            if (allowed != null && !allowed.test(delta)) {
+                continue;
+            }
+            deltas.add(delta);
             remaining -= moved;
         }
 
@@ -120,11 +124,15 @@ public final class InventoryPlanner {
                 continue;
             }
             int capacity = effectiveMaxStackSize(slotLimit, slot, item);
-            if (capacity <= 0 || !includedSlot.test(slot)) {
+            if (capacity <= 0) {
                 continue;
             }
             int moved = Math.min(capacity, remaining);
-            deltas.add(new SlotChange(slot, null, ItemUtils.copyWithAmount(item, moved)));
+            SlotChange delta = new SlotChange(slot, null, ItemUtils.copyWithAmount(item, moved));
+            if (allowed != null && !allowed.test(delta)) {
+                continue;
+            }
+            deltas.add(delta);
             remaining -= moved;
         }
         return new AddPlan(deltas, remaining);
@@ -138,10 +146,11 @@ public final class InventoryPlanner {
      * @param matcher 判断某个物品该不该移除; 它是调用方代码, 拿到的是零拷贝的内部引用
      * @param upTo 最多移除的数量
      * @param order 槽位遍历顺序
+     * @param allowed 候选变更过滤器, null 表示放行
      * @return 移除方案与实际能移除的数量
      */
     @NotNull
-    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order) {
+    static TakePlan planRemove(@Nullable ItemStack[] snapshot, Predicate<@NotNull ItemStack> matcher, int upTo, SlotOrder order, @Nullable Predicate<SlotChange> allowed) {
         List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
         for (int i = 0; i < order.size() && taken < upTo; i++) {
@@ -151,7 +160,11 @@ public final class InventoryPlanner {
                 continue;
             }
             int take = Math.min(current.getAmount(), upTo - taken);
-            deltas.add(new SlotChange(slot, current, reduced(current, take)));
+            SlotChange delta = new SlotChange(slot, current, reduced(current, take));
+            if (allowed != null && !allowed.test(delta)) {
+                continue;
+            }
+            deltas.add(delta);
             taken += take;
         }
         return new TakePlan(deltas, taken);
@@ -164,12 +177,12 @@ public final class InventoryPlanner {
      * @param template 物品样板, 只用来判断"像不像", 它自己的数量不影响结果
      * @param upTo 最多收集的数量
      * @param order 槽位遍历顺序
-     * @param includedSlot 槽位过滤器, 返回 {@code false} 的槽不参与; {@code null} 表示不过滤
+     * @param allowed 候选变更过滤器, 返回 false 时跳过该槽; null 表示放行
      * @param slotLimit 各槽位的堆叠上限, 用来判断一个堆满没满
      * @return 收集方案与实际能收到的数量
      */
     @NotNull
-    public static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable IntPredicate includedSlot, IntUnaryOperator slotLimit) {
+    public static TakePlan planCollect(@Nullable ItemStack[] snapshot, ItemStack template, int upTo, SlotOrder order, @Nullable Predicate<SlotChange> allowed, IntUnaryOperator slotLimit) {
         List<SlotChange> deltas = new ArrayList<>();
         int taken = 0;
         Object templateHandle = ItemUtils.getItemStackHandle(template);
@@ -188,12 +201,12 @@ public final class InventoryPlanner {
                 if (fullStack != wantFullStacks) {
                     continue;
                 }
-                // 每个匹配槽只进入一个 pass, 过滤器至多调用一次.
-                if (includedSlot != null && !includedSlot.test(slot)) {
+                int take = Math.min(current.getAmount(), upTo - taken);
+                SlotChange delta = new SlotChange(slot, current, reduced(current, take));
+                if (allowed != null && !allowed.test(delta)) {
                     continue;
                 }
-                int take = Math.min(current.getAmount(), upTo - taken);
-                deltas.add(new SlotChange(slot, current, reduced(current, take)));
+                deltas.add(delta);
                 touched[slot] = true;
                 taken += take;
             }

@@ -1,10 +1,8 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
 import net.momirealms.sparrow.ui.inventory.InventoryPlanner;
-import net.momirealms.sparrow.ui.inventory.PlacementContext;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickActions;
-import net.momirealms.sparrow.ui.inventory.click.rules.ClickBundleRules;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickOutcome;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickSlotRules;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
@@ -29,7 +27,6 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.IntPredicate;
 
 // 将当前 Window 状态与事件覆盖计算成可校验的交互候选.
 final class ClickPlanner {
@@ -122,17 +119,18 @@ final class ClickPlanner {
             return null;
         }
 
-        ItemStack incoming = placementInput(clickType, current, cursor, outcome);
-        if (incoming != null && !inventory.placementPredicate(new PlacementContext(incoming, context.viewer(), context.window())).test(link.slot())) {
+        SlotChange delta = new SlotChange(link.slot(), current, outcome.slotAfter());
+        boolean allowed = outcome.addedItem() != null || outcome.removedItem() != null
+                ? inventory.allowsAccess(reason, context.window(), delta, outcome.addedItem(), outcome.removedItem())
+                : inventory.allowsAccess(reason, context.window(), delta);
+        if (!allowed) {
             return null;
         }
 
         InventoryAction action = clickType == ClickType.LEFT
                 ? ClickActions.leftAction(current, cursor, outcome)
                 : ClickActions.rightAction(current, cursor);
-        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
-                new SlotChange(link.slot(), current, outcome.slotAfter())
-        )));
+        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(delta)));
         return ClickCandidate.plan(action, reason)
                 .eventTarget(link)
                 .scopes(scopes)
@@ -141,29 +139,6 @@ final class ClickPlanner {
                 .draft(InteractionDraft.cursorAfter(outcome.cursorAfter()))
                 .afterCommit(afterCommit)
                 .build();
-    }
-
-    // Bundle 取出时校验袋内物品, 放入 Bundle 不触发槽位放入规则.
-    @Nullable
-    private static ItemStack placementInput(
-            ClickType clickType,
-            @Nullable ItemStack current,
-            ItemStack cursor,
-            ClickOutcome outcome
-    ) {
-        if (cursor.isEmpty()) {
-            return null;
-        }
-        if (clickType == ClickType.LEFT && current != null && ClickBundleRules.isBundle(cursor)) {
-            return null;
-        }
-        if (clickType == ClickType.LEFT && ClickBundleRules.isBundle(current)) {
-            return null;
-        }
-        if (clickType == ClickType.RIGHT && current == null && ClickBundleRules.isBundle(cursor)) {
-            return outcome.placementInput();
-        }
-        return cursor;
     }
 
     @Nullable
@@ -198,7 +173,8 @@ final class ClickPlanner {
         if (!fitsReceiving(source, targetItem) || !fitsReceiving(target, sourceItem)) {
             return null;
         }
-        if (!allowsPlacement(context, source, targetItem) || !allowsPlacement(context, target, sourceItem)) {
+        if (!source.inventory().allowsAccess(reason, context.window(), new SlotChange(source.slot(), sourceItem, targetItem))
+                || !target.inventory().allowsAccess(reason, context.window(), new SlotChange(target.slot(), targetItem, sourceItem))) {
             return null;
         }
 
@@ -235,7 +211,7 @@ final class ClickPlanner {
         if (Objects.equals(current, offhand)) {
             return null;
         }
-        if (!fitsReceiving(source, offhand) || !allowsPlacement(context, source, offhand)) {
+        if (!fitsReceiving(source, offhand) || !source.inventory().allowsAccess(reason, context.window(), new SlotChange(source.slot(), current, offhand))) {
             return null;
         }
 
@@ -263,10 +239,6 @@ final class ClickPlanner {
         return incoming.getAmount() <= limit;
     }
 
-    private static boolean allowsPlacement(ClickSemantics.Context context, ClickSemantics.LinkedSlot target, @Nullable ItemStack incoming) {
-        return incoming == null || target.inventory().placementPredicate(new PlacementContext(incoming, context.viewer(), context.window())).test(target.slot());
-    }
-
     @Nullable
     private static ClickCandidate prepareDrop(
             ClickSemantics.Context context,
@@ -288,11 +260,11 @@ final class ClickPlanner {
         }
         int take = fullStack ? current.getAmount() : 1;
         int left = current.getAmount() - take;
-        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(new SlotChange(
-                link.slot(),
-                current,
-                left > 0 ? ItemUtils.copyWithAmount(current, left) : null
-        ))));
+        SlotChange delta = new SlotChange(link.slot(), current, left > 0 ? ItemUtils.copyWithAmount(current, left) : null);
+        if (!link.inventory().allowsAccess(reason, context.window(), delta)) {
+            return null;
+        }
+        List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(delta)));
         return ClickCandidate.plan(fullStack ? InventoryAction.DROP_ALL_SLOT : InventoryAction.DROP_ONE_SLOT, reason)
                 .eventTarget(link)
                 .scopes(scopes)
@@ -318,7 +290,11 @@ final class ClickPlanner {
         if (current == null) {
             return null;
         }
-        return ClickCandidate.plan(InventoryAction.CLONE_STACK, new PlayerUpdateReason.Click(context.viewer(), ClickType.MIDDLE, -1))
+        UpdateReason reason = new PlayerUpdateReason.Click(context.viewer(), ClickType.MIDDLE, -1);
+        if (!link.inventory().allowsAccess(reason, context.window(), new SlotChange(link.slot(), current, current))) {
+            return null;
+        }
+        return ClickCandidate.plan(InventoryAction.CLONE_STACK, reason)
                 .eventTarget(link)
                 .reads(List.of(plan))
                 .checkCursor(actualCursor)
@@ -385,7 +361,7 @@ final class ClickPlanner {
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
                     // 先判断可见性, 再认领可能由多个 Inventory 暴露的物理槽.
-                    slot -> linked.visible(slot) && coveredSlots.add(inventory.physicalKey(slot)),
+                    delta -> linked.visible(delta.slot()) && coveredSlots.add(inventory.physicalKey(delta.slot())) && inventory.allowsAccess(reason, context.window(), delta),
                     inventory::slotMaxStackSize
             );
             if (!takePlan.deltas().isEmpty()) {
@@ -428,7 +404,6 @@ final class ClickPlanner {
         List<PlannedRoot> readPlans = new ArrayList<>();
         readPlans.add(sourcePlan);
         int remaining = current.getAmount();
-        PlacementContext placementContext = new PlacementContext(current, context.viewer(), context.window());
 
         List<ClickSemantics.LinkedInventory> targets = addTargets(context, source.inventory());
         for (int targetIndex = 0; targetIndex < targets.size() && remaining > 0; targetIndex++) {
@@ -436,14 +411,13 @@ final class ClickPlanner {
             SparrowInventory target = linked.inventory();
             PlannedRoot targetPlan = openPlan(target, write);
             readPlans.add(targetPlan);
-            IntPredicate placement = target.placementPredicate(placementContext);
             InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
                     overlay.viewOf(targetPlan),
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
                     // 先判断可见性, 再认领物理槽.
-                    slot -> linked.visible(slot) && coveredSlots.add(target.physicalKey(slot)) && placement.test(slot)
+                    delta -> linked.visible(delta.slot()) && coveredSlots.add(target.physicalKey(delta.slot())) && target.allowsAccess(reason, context.window(), delta)
             );
             if (!addPlan.deltas().isEmpty()) {
                 targetScopes.add(new TransactionScope(targetPlan, addPlan.deltas()));
@@ -455,12 +429,12 @@ final class ClickPlanner {
             return null;
         }
 
+        SlotChange sourceChange = new SlotChange(source.slot(), current, remaining > 0 ? ItemUtils.copyWithAmount(current, remaining) : null);
+        if (!source.inventory().allowsAccess(reason, context.window(), sourceChange)) {
+            return null;
+        }
         List<TransactionScope> scopes = new ArrayList<>(targetScopes.size() + 1);
-        scopes.add(new TransactionScope(sourcePlan, List.of(new SlotChange(
-                source.slot(),
-                current,
-                remaining > 0 ? ItemUtils.copyWithAmount(current, remaining) : null
-        ))));
+        scopes.add(new TransactionScope(sourcePlan, List.of(sourceChange)));
         scopes.addAll(targetScopes);
         return ClickCandidate.plan(InventoryAction.MOVE_TO_OTHER_INVENTORY, reason)
                 .eventTarget(source)

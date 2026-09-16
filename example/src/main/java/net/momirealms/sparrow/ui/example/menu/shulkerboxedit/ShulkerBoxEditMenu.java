@@ -52,6 +52,7 @@ public final class ShulkerBoxEditMenu {
         this.sourceSlot = sourceSlot;
         this.shulker = this.playerInventory.getItem(sourceSlot);
         this.contents = new VirtualInventory(readContents(this.shulker));
+        this.contents.setAccessRule(context -> context.player() == this.viewer);
 
         // 创建 Pane
         NormalPane pane = Pane.empty(9, 3);
@@ -72,7 +73,7 @@ public final class ShulkerBoxEditMenu {
             this.window.frozenAt(this.window.windowSlotAtHotbar(sourceSlot), true);
         }
 
-        // 在发起事务时应该检查源是否还在.
+        // Pre 审核本次编辑所依赖的原物品身份, 失效时取消并关闭会话.
         this.contents.subscribePreUpdate(event -> {
             if (!this.validateSource()) {
                 event.setCancelled(true);

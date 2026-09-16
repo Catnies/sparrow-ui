@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.ObservableDispatcher;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPostUpdateEvent;
 import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
+import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -27,6 +28,7 @@ import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.window.Window;
 import net.momirealms.sparrow.ui.visual.InventoryVisual;
 import net.momirealms.sparrow.ui.visual.InventoryVisualImpl;
 import org.bukkit.inventory.ItemStack;
@@ -42,7 +44,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
@@ -50,7 +51,7 @@ import java.util.function.UnaryOperator;
  * 受事务保护并可订阅内容变更的 Inventory 基类, 空槽使用 {@code null}.
  * <p>普通读取返回副本. 名称以 {@code unsafe} 开头的入口会暴露内部对象, <strong>只读, 不得修改或持有</strong>.
  * 内容相等的写入仍可产生事务和事件, 实现也可以保留原物品实例.
- * <p>try 方法提交可取消、可冲突的请求; 无 try 的修改方法取得写权限后基于当前内容执行,
+ * <p>try 方法按 AccessRule 审核候选, 提交可取消、可冲突的请求; 无 try 的修改方法取得写权限后基于当前内容执行,
  * 跳过规则和 Pre, 解锁后派发 Post. UpdateReason 只记录来源.
  * 引用库存仍须在存储所属线程访问; 存储落地或通知抛出异常时, 已生效的修改不会回滚.
  */
@@ -67,8 +68,8 @@ public abstract class SparrowInventory {
     private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
     // 内容状态与放入规则
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
-    @Nullable private volatile PlacementRule placementRule; // 容器全局物品放入规则, null 表示放行
-    @Nullable private volatile PlacementRule @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
+    @Nullable private volatile AccessRule accessRule; // 全局请求准入规则, null 表示放行
+    @Nullable private volatile AccessRule @NotNull [] accessRulesBySlot; // 槽级请求准入规则, 与全局规则取交集
     // 玩家操作配置
     private volatile int addOperationPriority;
     private volatile int collectOperationPriority;
@@ -94,8 +95,8 @@ public abstract class SparrowInventory {
         this.naturalOrder = SlotOrder.natural(initial.length);
         this.visual = new InventoryVisualImpl(this.bindings, initial.length);
         @SuppressWarnings("unchecked")
-        @Nullable PlacementRule[] placementRulesBySlot = new PlacementRule[initial.length];
-        this.placementRulesBySlot = placementRulesBySlot;
+        @Nullable AccessRule[] accessRulesBySlot = new AccessRule[initial.length];
+        this.accessRulesBySlot = accessRulesBySlot;
     }
 
     public int size() {
@@ -151,58 +152,63 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 替换适用于所有未声明逐槽规则的槽位放入规则.
-     * 规则收到完整原始输入. 传入 {@code null} 表示这些槽位全部放行.
-     * 规则异常会原样传播, 当前规划不会派发事件或提交事务.
-     * <p><strong>规则拿到的 {@link PlacementContext#item()} 是内部只读引用, 不得修改或持有</strong>.
+     * 设置所有槽位的请求准入规则, 与槽级规则取交集; 权威修改不经过规则.
+     * <p><strong>规则与上下文物品只读, 不得产生业务副作用</strong>. 异常原样传播.
      *
-     * @param rule 新的全局放入规则, {@code null} 表示放行
+     * @param rule 全局规则, null 表示放行
      */
-    public void setPlacementRule(@Nullable PlacementRule rule) {
-        this.placementRule = rule;
+    public void setAccessRule(@Nullable AccessRule rule) {
+        this.accessRule = rule;
     }
 
     @Nullable
-    public PlacementRule getPlacementRule() {
-        return this.placementRule;
+    public AccessRule getAccessRule() {
+        return this.accessRule;
     }
 
     /**
-     * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则.
-     * 传入 {@code null} 会清除逐槽覆盖, 使该槽重新使用全局规则.
-     * <p><strong>规则拿到的 {@link PlacementContext#item()} 是内部只读引用, 不得修改或持有</strong>.
-     * 详见 {@link #setPlacementRule(PlacementRule)}.
+     * 设置槽级请求准入规则, 不覆盖全局规则.
      *
      * @param slot 槽位序号
-     * @param rule 新的逐槽放入规则, {@code null} 表示回退到全局规则
+     * @param rule 槽级规则, null 表示只受全局规则约束
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setPlacementRule(int slot, @Nullable PlacementRule rule) {
+    public void setAccessRule(int slot, @Nullable AccessRule rule) {
         Objects.checkIndex(slot, this.size());
-        @Nullable PlacementRule[] placementRulesBySlot = this.placementRulesBySlot.clone();
-        placementRulesBySlot[slot] = rule;
-        this.placementRulesBySlot = placementRulesBySlot;
+        @Nullable AccessRule[] rules = this.accessRulesBySlot.clone();
+        rules[slot] = rule;
+        this.accessRulesBySlot = rules;
     }
 
     @Nullable
-    public PlacementRule getPlacementRule(int slot) {
+    public AccessRule getAccessRule(int slot) {
         Objects.checkIndex(slot, this.size());
-        return this.placementRulesBySlot[slot];
+        return this.accessRulesBySlot[slot];
     }
 
-    // 同一次规划固定使用一组规则快照与同一个上下文实例.
-    @NotNull
+    // 普通槽位变更从前后内容计算流动; 没有规则时不创建上下文.
     @ApiStatus.Internal
-    public IntPredicate placementPredicate(@NotNull PlacementContext context) {
-        @Nullable PlacementRule placementRule = this.placementRule;
-        @Nullable PlacementRule[] placementRulesBySlot = this.placementRulesBySlot;
-        return slot -> {
-            @Nullable PlacementRule rule = placementRulesBySlot[slot];
-            if (rule == null) {
-                rule = placementRule;
-            }
-            return rule == null || rule.test(context);
-        };
+    public boolean allowsAccess(@NotNull UpdateReason reason, @Nullable Window window, @NotNull SlotChange change) {
+        if (this.accessRule == null && this.accessRulesBySlot[change.slot()] == null) {
+            return true;
+        }
+        int added = change.addedAmount();
+        int removed = change.removedAmount();
+        return this.allowsAccess(reason, window, change,
+                added == 0 ? null : ItemUtils.copyWithAmount(change.unsafeAfter(), added),
+                removed == 0 ? null : ItemUtils.copyWithAmount(change.unsafeBefore(), removed));
+    }
+
+    // 收纳袋的实际流动由点击语义提供, 全局和槽级规则检查同一个候选.
+    @ApiStatus.Internal
+    public boolean allowsAccess(@NotNull UpdateReason reason, @Nullable Window window, @NotNull SlotChange change, @Nullable ItemStack addedItem, @Nullable ItemStack removedItem) {
+        @Nullable AccessRule global = this.accessRule;
+        @Nullable AccessRule local = this.accessRulesBySlot[change.slot()];
+        if (global == null && local == null) {
+            return true;
+        }
+        AccessContext context = new AccessContext(this, reason, window, change, addedItem, removedItem);
+        return (global == null || global.test(context)) && (local == null || local.test(context));
     }
 
     /**
@@ -584,7 +590,7 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryTransactions.mutate(reason, this,
-                basis -> InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, ignored -> true),
+                basis -> InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, null),
                 InventoryPlanner.AddPlan::deltas).remaining();
     }
 
@@ -676,7 +682,7 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryTransactions.mutate(reason, this,
-                basis -> InventoryPlanner.planAdd(basis.planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, ignored -> true),
+                basis -> InventoryPlanner.planAdd(basis.planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, null),
                 InventoryPlanner.AddPlan::deltas).remaining();
     }
 
@@ -739,7 +745,7 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryTransactions.mutate(reason, this,
-                basis -> InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER)),
+                basis -> InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER), null),
                 InventoryPlanner.TakePlan::deltas).taken();
     }
 
@@ -799,6 +805,11 @@ public abstract class SparrowInventory {
 
     // 把规划好的变更作为只涉及本 Inventory 的一笔请求提交.
     private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
+        for (int i = 0; i < deltas.size(); i++) {
+            if (!this.allowsAccess(reason, null, deltas.get(i))) {
+                return TransactionResult.Cancelled.INSTANCE;
+            }
+        }
         return InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, deltas)), false);
     }
 
@@ -853,11 +864,11 @@ public abstract class SparrowInventory {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        InventoryPlanner.AddPlan plan = InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)));
+        InventoryPlanner.AddPlan plan = InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, delta -> this.allowsAccess(reason, null, delta));
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
-        TransactionResult result = this.commitScoped(reason, basis, plan.deltas());
+        TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
 
@@ -968,7 +979,7 @@ public abstract class SparrowInventory {
                 input,
                 this.iterationOrder(OperationCategory.ADD),
                 this::slotMaxStackSize,
-                this.placementPredicate(new PlacementContext(input, null, null))
+                delta -> this.allowsAccess(reason, null, delta)
         );
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
@@ -1013,7 +1024,7 @@ public abstract class SparrowInventory {
                 sample,
                 upTo,
                 this.iterationOrder(OperationCategory.COLLECT),
-                null,
+                delta -> this.allowsAccess(reason, null, delta),
                 this::slotMaxStackSize
         );
         if (plan.deltas().isEmpty()) {
@@ -1054,7 +1065,7 @@ public abstract class SparrowInventory {
         }
         PlannedRoot basis = this.openPlanForWrite();
         // 在规划内容上计算要动哪些槽, matcher 由规划器在锁外逐个调用
-        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER));
+        InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER), delta -> this.allowsAccess(reason, null, delta));
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
@@ -1141,7 +1152,7 @@ public abstract class SparrowInventory {
      * 判断 Inventory 能否完整取出给定物品.
      * <p>{@code item} 同时参与相似判断并提供需要取出的数量.
      * {@link #simulateCollect(ItemStack, int)} 的样板则只管相似判断, 数量单独由 {@code upTo} 指定.
-     * <p>取出侧没有与放入规则对应的过滤, 结果只取决于 Inventory 里现有的内容.
+     * <p>只检查现有内容, 不调用 AccessRule 或 Pre.
      *
      * @param item 要检查的物品, 它的数量就是需要取出的数量
      * @return 能完整取出时返回 {@code true}
@@ -1185,7 +1196,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 试算现在放入给定物品后会有多少数量剩余.
+     * 按容量试算放入后的剩余数量, 不调用 AccessRule 或 Pre.
      *
      * @param item 要试算的物品
      * @return 预计放不下的数量
@@ -1196,7 +1207,7 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryPlanner
-                .planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)))
+                .planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, null)
                 .remaining();
     }
 
@@ -1217,17 +1228,23 @@ public abstract class SparrowInventory {
      * @return 与列表顺序一致的剩余数量数组
      */
     public int[] simulateAdd(@NotNull List<? extends ItemStack> items) {
+        return this.simulateAdd(items, null);
+    }
+
+    // 同一快照连续推演, 有来源时按请求规则筛选候选.
+    private int[] simulateAdd(List<? extends ItemStack> items, @Nullable UpdateReason reason) {
         @Nullable ItemStack[] working = this.openPlan().planned().clone();
         int[] remaining = new int[items.size()];
         int index = 0;
-        for (ItemStack item : items) {
-            @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        for (int i = 0; i < items.size(); i++) {
+            @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(items.get(i)));
             if (input == null) {
                 index++;
                 continue;
             }
             InventoryPlanner.AddPlan plan = InventoryPlanner
-                    .planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)));
+                    .planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize,
+                            reason == null ? null : delta -> this.allowsAccess(reason, null, delta));
             remaining[index] = plan.remaining();
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
@@ -1240,7 +1257,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 试算现在收集与 template 相似的物品时能收集多少数量.
+     * 按现有内容试算可收集数量, 不调用 AccessRule 或 Pre.
      *
      * @param template 物品样板, 只参与相似判断
      * @param upTo 最多收集的数量
@@ -1252,6 +1269,112 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryPlanner.planCollect(this.openPlan().planned(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize).taken();
+    }
+
+    /**
+     * 按请求来源与 AccessRule 试算放入, 不派发 Pre 或写入内容.
+     *
+     * @param reason 请求来源
+     * @param item 要试算的物品
+     * @return 预计放不下的数量, 不承诺后续请求能够提交
+     */
+    public int simulateTryAdd(@NotNull UpdateReason reason, @NotNull ItemStack item) {
+        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (input == null) {
+            return 0;
+        }
+        if (reason instanceof PlayerUpdateReason && this.frozen()) {
+            return input.getAmount();
+        }
+        return InventoryPlanner.planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD),
+                this::slotMaxStackSize, delta -> this.allowsAccess(reason, null, delta)).remaining();
+    }
+
+    /**
+     * 按 Program 来源试算请求放入.
+     *
+     * @param item 要试算的物品
+     * @return 预计放不下的数量
+     */
+    public int simulateTryAdd(@NotNull ItemStack item) {
+        return this.simulateTryAdd(UpdateReason.Program.INSTANCE, item);
+    }
+
+    /**
+     * 按同一请求来源连续试算列表中的放入, 共享一份规划内容.
+     *
+     * @param reason 请求来源
+     * @param items 按顺序试算的物品
+     * @return 对应每个输入的剩余数量, 不派发 Pre
+     */
+    public int[] simulateTryAdd(@NotNull UpdateReason reason, @NotNull List<? extends ItemStack> items) {
+        if (reason instanceof PlayerUpdateReason && this.frozen()) {
+            int[] remaining = new int[items.size()];
+            for (int i = 0; i < items.size(); i++) {
+                remaining[i] = ItemUtils.amountOf(ItemUtils.nullIfEmpty(items.get(i)));
+            }
+            return remaining;
+        }
+        return this.simulateAdd(items, reason);
+    }
+
+    /**
+     * 按 Program 来源连续试算请求放入.
+     *
+     * @param items 按顺序试算的物品
+     * @return 对应每个输入的剩余数量
+     */
+    public int[] simulateTryAdd(@NotNull List<? extends ItemStack> items) {
+        return this.simulateTryAdd(UpdateReason.Program.INSTANCE, items);
+    }
+
+    /**
+     * 按指定来源连续试算请求放入.
+     *
+     * @param reason 请求来源
+     * @param items 按顺序试算的物品
+     * @return 对应每个输入的剩余数量
+     */
+    public int[] simulateTryAdd(@NotNull UpdateReason reason, ItemStack @NotNull ... items) {
+        return this.simulateTryAdd(reason, Arrays.asList(items));
+    }
+
+    /**
+     * 按 Program 来源连续试算请求放入.
+     *
+     * @param items 按顺序试算的物品
+     * @return 对应每个输入的剩余数量
+     */
+    public int[] simulateTryAdd(ItemStack @NotNull ... items) {
+        return this.simulateTryAdd(UpdateReason.Program.INSTANCE, Arrays.asList(items));
+    }
+
+    /**
+     * 按请求来源与 AccessRule 试算收集, 不派发 Pre 或写入内容.
+     *
+     * @param reason 请求来源
+     * @param template 用于相似判断的样板
+     * @param upTo 最多收集的数量
+     * @return 预计可收集数量, 不承诺后续请求能够提交
+     */
+    public int simulateTryCollect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
+        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
+        if (sample == null || upTo <= 0 || (reason instanceof PlayerUpdateReason && this.frozen())) {
+            return 0;
+        }
+        return InventoryPlanner.planCollect(this.openPlan().planned(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT),
+                delta -> this.allowsAccess(reason, null, delta), this::slotMaxStackSize).taken();
+    }
+
+    /**
+     * 按 Program 来源试算请求收集.
+     *
+     * @param template 用于相似判断的样板
+     * @param upTo 最多收集的数量
+     * @return 预计可收集数量
+     */
+    public int simulateTryCollect(@NotNull ItemStack template, int upTo) {
+        return this.simulateTryCollect(UpdateReason.Program.INSTANCE, template, upTo);
     }
 
     /**

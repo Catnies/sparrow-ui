@@ -8,9 +8,6 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.sparrow.ui.example.SparrowExample;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
-import net.momirealms.sparrow.ui.inventory.event.InventoryPreUpdateEvent;
-import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
-import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -111,7 +108,8 @@ public final class StoneAppraisalMenu {
         this.input.setMaxStackSize(0, 1);                  // 一次只鉴定一块
         this.input.setBackgroundItem(hintItem());          // 容器空着时的提示, 放进东西就被真实内容顶掉
         // 订阅由 Inventory 自己强持有, 回执只用来提前退订, 这里不需要
-        this.input.subscribePreUpdate(this::rejectNonStone);
+        this.input.setAccessRule(context -> context.player() == this.viewer);
+        this.input.setAccessRule(0, context -> !context.isAdd() || context.addedItem().getType() == Material.STONE);
         this.input.subscribePostUpdate(ignoredEvent -> this.scheduleSpin());
 
         this.pane = Pane.builder(
@@ -131,36 +129,9 @@ public final class StoneAppraisalMenu {
     }
 
     /**
-     * 只放石头进来. 转盘转着的时候一律拒绝, 冻结之外再加一道.
-     *
-     * <p><strong>只管玩家自己的放入</strong>: 换奖励和关窗归还都是程序写入, 它们要照常落地,
-     * 被这道过滤拦下的话石头就永远换不成结果.
-     *
-     * @param event 输入槽的写入前事件
-     */
-    private void rejectNonStone(@NotNull InventoryPreUpdateEvent event) {
-        if (!(event.reason() instanceof PlayerUpdateReason)) {
-            return;
-        }
-        if (this.spinning != null) {
-            event.setCancelled(true);
-            return;
-        }
-        SlotChange change = event.changeAt(0);
-        if (change == null) {
-            return;
-        }
-        // 只在这一帧读一下类型, 因此用零拷贝的那个访问器; 取空这一格时为 null
-        ItemStack after = change.unsafeAfter();
-        if (after != null && after.getType() != Material.STONE) {
-            event.setCancelled(true);
-        }
-    }
-
-    /**
      * 输入槽变动后排一次开转检查.
      *
-     * <p>事务通知里不适合再改 Inventory, 因此排到玩家自己的实体线程再动手, 那里也正是点击的落点.
+     * <p>开转涉及玩家会话与动画, 因此排到玩家所属线程执行.
      */
     private void scheduleSpin() {
         if (this.spinning != null) {

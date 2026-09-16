@@ -5,15 +5,16 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-// placementInput 记录 Bundle 取出路径中真正进入槽位的物品.
+// 收纳袋语义显式记录袋内物品流动, 普通点击由槽位前后内容推导.
 @ApiStatus.Internal
 public record ClickOutcome(
         @Nullable ItemStack slotAfter,
         @NotNull ItemStack cursorAfter,
-        @Nullable ItemStack placementInput
+        @Nullable ItemStack addedItem,
+        @Nullable ItemStack removedItem
 ) {
 
     ClickOutcome(@Nullable ItemStack slotAfter, @NotNull ItemStack cursorAfter) {
-        this(slotAfter, cursorAfter, null);
+        this(slotAfter, cursorAfter, null, null);
     }
 }

@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
-import net.momirealms.sparrow.ui.inventory.PlacementContext;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -21,7 +20,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntPredicate;
 
 final class DragPlanner {
 
@@ -59,8 +57,6 @@ final class DragPlanner {
         }
         UpdateReason reason = new PlayerUpdateReason.Drag(context.viewer(), clickType, reasonSlots);
         Map<SparrowInventory, PlannedRoot> plans = new LinkedHashMap<>();
-        Map<SparrowInventory, IntPredicate> placements = new LinkedHashMap<>();
-        PlacementContext placementContext = new PlacementContext(cursor, context.viewer(), context.window());
         List<DragTarget> targets = new ArrayList<>(candidates.size());
         for (DragLink candidate : candidates.values()) {
             ClickSemantics.LinkedSlot link = candidate.link();
@@ -74,46 +70,56 @@ final class DragPlanner {
             if (capacity <= 0) {
                 continue;
             }
-            IntPredicate placement = placements.computeIfAbsent(
-                    inventory,
-                    key -> key.placementPredicate(placementContext)
-            );
-            if (!placement.test(link.slot())) {
-                continue;
-            }
             targets.add(new DragTarget(candidate.windowSlot(), link, current, capacity));
         }
         if (targets.isEmpty()) {
             return null;
         }
 
-        // 左键均分, 右键每格一个, 创造模式中键填满且不消耗光标.
-        int perSlot = switch (clickType) {
-            case LEFT -> cursor.getAmount() / targets.size();
-            case RIGHT -> 1;
-            default -> cursor.getMaxStackSize();
-        };
-        if (perSlot <= 0) {
-            return null;
-        }
-
         Map<SparrowInventory, List<SlotChange>> deltasByInventory = new LinkedHashMap<>();
         LinkedHashMap<Integer, ItemStack> newItems = new LinkedHashMap<>();
-        int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
-        int placedTotal = 0;
-        for (int targetIndex = 0; targetIndex < targets.size() && budget > 0; targetIndex++) {
-            DragTarget target = targets.get(targetIndex);
-            int placed = Math.min(Math.min(perSlot, target.capacity()), budget);
-            if (placed <= 0) {
-                continue;
+        int placedTotal;
+        // 每轮按实际分配量检查规则, 剔除拒绝槽后重新均分, 直到剩余候选全部通过.
+        while (true) {
+            if (targets.isEmpty()) {
+                return null;
             }
-            ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
-            deltasByInventory.computeIfAbsent(target.link().inventory(), inventory -> new ArrayList<>())
-                    .add(new SlotChange(target.link().slot(), target.current(), after));
-            newItems.put(target.windowSlot(), after);
-            if (!creative) {
-                budget -= placed;
-                placedTotal += placed;
+            int perSlot = switch (clickType) {
+                case LEFT -> cursor.getAmount() / targets.size();
+                case RIGHT -> 1;
+                default -> cursor.getMaxStackSize();
+            };
+            if (perSlot <= 0) {
+                return null;
+            }
+            deltasByInventory.clear();
+            newItems.clear();
+            int budget = creative ? Integer.MAX_VALUE : cursor.getAmount();
+            placedTotal = 0;
+            boolean rejected = false;
+            for (int targetIndex = 0; targetIndex < targets.size() && budget > 0; targetIndex++) {
+                DragTarget target = targets.get(targetIndex);
+                int placed = Math.min(Math.min(perSlot, target.capacity()), budget);
+                if (placed <= 0) {
+                    continue;
+                }
+                ItemStack after = ItemUtils.copyWithAmount(cursor, ItemUtils.amountOf(target.current()) + placed);
+                SlotChange delta = new SlotChange(target.link().slot(), target.current(), after);
+                SparrowInventory inventory = target.link().inventory();
+                if (!inventory.allowsAccess(reason, context.window(), delta)) {
+                    targets.remove(targetIndex--);
+                    rejected = true;
+                    continue;
+                }
+                deltasByInventory.computeIfAbsent(inventory, key -> new ArrayList<>()).add(delta);
+                newItems.put(target.windowSlot(), after);
+                if (!creative) {
+                    budget -= placed;
+                    placedTotal += placed;
+                }
+            }
+            if (!rejected) {
+                break;
             }
         }
         if (newItems.isEmpty()) {

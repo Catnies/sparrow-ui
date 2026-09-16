@@ -44,8 +44,8 @@ public final class MountInventoryMenu {
     private MountInventoryMenu(@NotNull Player viewer, @NotNull AbstractHorse mount) {
         this.storage = ReferencingInventory.fromContents(mount.getInventory());
         // 装备位按原版的口径收物
-        this.storage.setPlacementRule(0, context -> context.item().getType() == Material.SADDLE);
-        this.storage.setPlacementRule(1, context -> isBodyArmor(context.item()));
+        this.storage.setAccessRule(0, context -> !context.isAdd() || context.addedItem().getType() == Material.SADDLE);
+        this.storage.setAccessRule(1, context -> !context.isAdd() || isBodyArmor(context.addedItem()));
 
         // 上半部分一格接一格地铺开, 坐骑格数不够整行时由背景补齐
         NormalPane pane = Pane.empty(COLUMNS, rows());
