@@ -1885,6 +1885,11 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         @Override
+        public Window window() {
+            return AbstractWindow.this;
+        }
+
+        @Override
         @Nullable
         public ClickSemantics.LinkedSlot linkAt(int windowSlot) {
             Element.InventoryLink link = AbstractWindow.this.requirePath(windowSlot).inventoryLink();

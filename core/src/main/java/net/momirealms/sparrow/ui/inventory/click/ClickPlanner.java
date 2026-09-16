@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
 import net.momirealms.sparrow.ui.inventory.InventoryPlanner;
+import net.momirealms.sparrow.ui.inventory.PlacementContext;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickActions;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickBundleRules;
@@ -122,7 +123,7 @@ final class ClickPlanner {
         }
 
         ItemStack incoming = placementInput(clickType, current, cursor, outcome);
-        if (incoming != null && !inventory.placementPredicate(incoming).test(link.slot())) {
+        if (incoming != null && !inventory.placementPredicate(new PlacementContext(incoming, context.viewer(), context.window())).test(link.slot())) {
             return null;
         }
 
@@ -197,7 +198,7 @@ final class ClickPlanner {
         if (!fitsReceiving(source, targetItem) || !fitsReceiving(target, sourceItem)) {
             return null;
         }
-        if (!allowsPlacement(source, targetItem) || !allowsPlacement(target, sourceItem)) {
+        if (!allowsPlacement(context, source, targetItem) || !allowsPlacement(context, target, sourceItem)) {
             return null;
         }
 
@@ -234,7 +235,7 @@ final class ClickPlanner {
         if (Objects.equals(current, offhand)) {
             return null;
         }
-        if (!fitsReceiving(source, offhand) || !allowsPlacement(source, offhand)) {
+        if (!fitsReceiving(source, offhand) || !allowsPlacement(context, source, offhand)) {
             return null;
         }
 
@@ -262,8 +263,8 @@ final class ClickPlanner {
         return incoming.getAmount() <= limit;
     }
 
-    private static boolean allowsPlacement(ClickSemantics.LinkedSlot target, @Nullable ItemStack incoming) {
-        return incoming == null || target.inventory().placementPredicate(incoming).test(target.slot());
+    private static boolean allowsPlacement(ClickSemantics.Context context, ClickSemantics.LinkedSlot target, @Nullable ItemStack incoming) {
+        return incoming == null || target.inventory().placementPredicate(new PlacementContext(incoming, context.viewer(), context.window())).test(target.slot());
     }
 
     @Nullable
@@ -427,6 +428,7 @@ final class ClickPlanner {
         List<PlannedRoot> readPlans = new ArrayList<>();
         readPlans.add(sourcePlan);
         int remaining = current.getAmount();
+        PlacementContext placementContext = new PlacementContext(current, context.viewer(), context.window());
 
         List<ClickSemantics.LinkedInventory> targets = addTargets(context, source.inventory());
         for (int targetIndex = 0; targetIndex < targets.size() && remaining > 0; targetIndex++) {
@@ -434,7 +436,7 @@ final class ClickPlanner {
             SparrowInventory target = linked.inventory();
             PlannedRoot targetPlan = openPlan(target, write);
             readPlans.add(targetPlan);
-            IntPredicate placement = target.placementPredicate(current);
+            IntPredicate placement = target.placementPredicate(placementContext);
             InventoryPlanner.AddPlan addPlan = InventoryPlanner.planAdd(
                     overlay.viewOf(targetPlan),
                     ItemUtils.copyWithAmount(current, remaining),

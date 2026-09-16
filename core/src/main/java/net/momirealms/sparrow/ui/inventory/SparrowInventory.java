@@ -64,8 +64,8 @@ public abstract class SparrowInventory {
     private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
     // 内容状态与放入规则
     @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
-    @Nullable private volatile Predicate<ItemStack> placementRule; // 容器全局物品放入规则, null 表示放行
-    @Nullable private volatile Predicate<ItemStack> @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
+    @Nullable private volatile PlacementRule placementRule; // 容器全局物品放入规则, null 表示放行
+    @Nullable private volatile PlacementRule @NotNull [] placementRulesBySlot; // 容器槽位的物品放入规则, 非 null 时覆盖全局规则
     // 玩家操作配置
     private volatile int addOperationPriority;
     private volatile int collectOperationPriority;
@@ -91,7 +91,7 @@ public abstract class SparrowInventory {
         this.naturalOrder = SlotOrder.natural(initial.length);
         this.visual = new InventoryVisualImpl(this.bindings, initial.length);
         @SuppressWarnings("unchecked")
-        @Nullable Predicate<ItemStack>[] placementRulesBySlot = (Predicate<ItemStack>[]) new Predicate<?>[initial.length];
+        @Nullable PlacementRule[] placementRulesBySlot = new PlacementRule[initial.length];
         this.placementRulesBySlot = placementRulesBySlot;
     }
 
@@ -151,54 +151,54 @@ public abstract class SparrowInventory {
      * 替换适用于所有未声明逐槽规则的槽位放入规则.
      * 规则收到完整原始输入. 传入 {@code null} 表示这些槽位全部放行.
      * 规则异常会原样传播, 当前规划不会派发事件或提交事务.
-     * <p><strong>规则拿到的是内部只读引用, 不得修改或持有</strong>.
+     * <p><strong>规则拿到的 {@link PlacementContext#item()} 是内部只读引用, 不得修改或持有</strong>.
      *
      * @param rule 新的全局放入规则, {@code null} 表示放行
      */
-    public void setPlacementRule(@Nullable Predicate<@NotNull ItemStack> rule) {
+    public void setPlacementRule(@Nullable PlacementRule rule) {
         this.placementRule = rule;
     }
 
     @Nullable
-    public Predicate<ItemStack> getPlacementRule() {
+    public PlacementRule getPlacementRule() {
         return this.placementRule;
     }
 
     /**
      * 替换一个槽位的显式放入规则. 该规则完全覆盖全局规则.
      * 传入 {@code null} 会清除逐槽覆盖, 使该槽重新使用全局规则.
-     * <p><strong>规则拿到的是内部只读引用, 不得修改或持有</strong>.
-     * 详见 {@link #setPlacementRule(Predicate)}.
+     * <p><strong>规则拿到的 {@link PlacementContext#item()} 是内部只读引用, 不得修改或持有</strong>.
+     * 详见 {@link #setPlacementRule(PlacementRule)}.
      *
      * @param slot 槽位序号
      * @param rule 新的逐槽放入规则, {@code null} 表示回退到全局规则
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
-    public void setPlacementRule(int slot, @Nullable Predicate<@NotNull ItemStack> rule) {
+    public void setPlacementRule(int slot, @Nullable PlacementRule rule) {
         Objects.checkIndex(slot, this.size());
-        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot.clone();
+        @Nullable PlacementRule[] placementRulesBySlot = this.placementRulesBySlot.clone();
         placementRulesBySlot[slot] = rule;
         this.placementRulesBySlot = placementRulesBySlot;
     }
 
     @Nullable
-    public Predicate<ItemStack> getPlacementRule(int slot) {
+    public PlacementRule getPlacementRule(int slot) {
         Objects.checkIndex(slot, this.size());
         return this.placementRulesBySlot[slot];
     }
 
-    // 同一次规划固定使用一组规则快照.
+    // 同一次规划固定使用一组规则快照与同一个上下文实例.
     @NotNull
     @ApiStatus.Internal
-    public IntPredicate placementPredicate(@NotNull ItemStack item) {
-        @Nullable Predicate<ItemStack> placementRule = this.placementRule;
-        @Nullable Predicate<ItemStack>[] placementRulesBySlot = this.placementRulesBySlot;
+    public IntPredicate placementPredicate(@NotNull PlacementContext context) {
+        @Nullable PlacementRule placementRule = this.placementRule;
+        @Nullable PlacementRule[] placementRulesBySlot = this.placementRulesBySlot;
         return slot -> {
-            @Nullable Predicate<ItemStack> rule = placementRulesBySlot[slot];
+            @Nullable PlacementRule rule = placementRulesBySlot[slot];
             if (rule == null) {
                 rule = placementRule;
             }
-            return rule == null || rule.test(item);
+            return rule == null || rule.test(context);
         };
     }
 
@@ -621,7 +621,7 @@ public abstract class SparrowInventory {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        InventoryPlanner.AddPlan plan = InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, this.placementPredicate(input));
+        InventoryPlanner.AddPlan plan = InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)));
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
@@ -709,7 +709,7 @@ public abstract class SparrowInventory {
                 input,
                 this.iterationOrder(OperationCategory.ADD),
                 this::slotMaxStackSize,
-                this.placementPredicate(input)
+                this.placementPredicate(new PlacementContext(input, null, null))
         );
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
@@ -895,7 +895,7 @@ public abstract class SparrowInventory {
             return 0;
         }
         return InventoryPlanner
-                .planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(input))
+                .planAdd(this.openPlan().planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)))
                 .remaining();
     }
 
@@ -926,7 +926,7 @@ public abstract class SparrowInventory {
                 continue;
             }
             InventoryPlanner.AddPlan plan = InventoryPlanner
-                    .planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(input));
+                    .planAdd(working, input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, this.placementPredicate(new PlacementContext(input, null, null)));
             remaining[index] = plan.remaining();
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {

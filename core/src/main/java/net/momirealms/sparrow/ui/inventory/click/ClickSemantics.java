@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
 import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
 import net.momirealms.sparrow.ui.item.click.BundleSelectClick;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryAction;
@@ -169,6 +170,16 @@ public final class ClickSemantics {
 
         @NotNull
         Player viewer();
+
+        /**
+         * 返回本次交互发生的 Window.
+         *
+         * @return 交互发生的 Window, 没有承载 Window 的实现返回 {@code null}
+         */
+        @Nullable
+        default Window window() {
+            return null;
+        }
 
         /**
          * 查出 Window 槽位当前连接的 Inventory 槽位.

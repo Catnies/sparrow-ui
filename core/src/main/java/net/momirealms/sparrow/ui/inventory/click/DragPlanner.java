@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
+import net.momirealms.sparrow.ui.inventory.PlacementContext;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -59,6 +60,7 @@ final class DragPlanner {
         UpdateReason reason = new PlayerUpdateReason.Drag(context.viewer(), clickType, reasonSlots);
         Map<SparrowInventory, PlannedRoot> plans = new LinkedHashMap<>();
         Map<SparrowInventory, IntPredicate> placements = new LinkedHashMap<>();
+        PlacementContext placementContext = new PlacementContext(cursor, context.viewer(), context.window());
         List<DragTarget> targets = new ArrayList<>(candidates.size());
         for (DragLink candidate : candidates.values()) {
             ClickSemantics.LinkedSlot link = candidate.link();
@@ -74,7 +76,7 @@ final class DragPlanner {
             }
             IntPredicate placement = placements.computeIfAbsent(
                     inventory,
-                    key -> key.placementPredicate(cursor)
+                    key -> key.placementPredicate(placementContext)
             );
             if (!placement.test(link.slot())) {
                 continue;
