@@ -24,6 +24,7 @@ import java.util.function.Function;
 public final class InventoryTransactions {
     private static final VersionSource VERSION_SOURCE = new VersionSource(System::currentTimeMillis);
     private static final ThreadLocal<ArrayDeque<Runnable>> POST_DISPATCH = new ThreadLocal<>();
+    private static final ThreadLocal<SparrowInventory> AUTHORITY_SCOPE = new ThreadLocal<>(); // 本线程正在执行权威命令的 Inventory, 只在写入临界区内有值
 
     private InventoryTransactions() {
     }
@@ -69,6 +70,7 @@ public final class InventoryTransactions {
             @NotNull List<PlannedRoot> readSet,
             @NotNull BooleanSupplier commitGuard
     ) {
+        checkOutsideAuthorityScope();
         return new Commit(reason, draft, interaction, bypassPre, committedCallback, readSet, commitGuard, true).run();
     }
 
@@ -81,10 +83,11 @@ public final class InventoryTransactions {
      */
     @NotNull
     public static TransactionResult commitExternalSync(@NotNull TransactionScope scope) {
+        checkOutsideAuthorityScope();
         return new Commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false).run();
     }
 
-    // 权威命令先取得写权限再规划; 回调只计算本次变更, 不得重入库存写入或访问其他库存.
+    // 权威命令先取得写权限再规划; 回调只计算本次变更, 重入库存写入会被 AUTHORITY_SCOPE 拦住.
     // 引用存储依赖调用方的所属线程串行保证, 写前刷新在临界区外完成.
     public static <P> P mutate(
             @NotNull UpdateReason reason,
@@ -92,6 +95,7 @@ public final class InventoryTransactions {
             @NotNull Function<PlannedRoot, P> planner,
             @NotNull Function<P, List<SlotChange>> changes
     ) {
+        checkOutsideAuthorityScope();
         inventory.prepareWrite();
         if (inventory.retired()) {
             throw new IllegalStateException("Cannot modify a retired inventory");
@@ -103,6 +107,8 @@ public final class InventoryTransactions {
             lock.lock().lock();
         }
         try {
+            // 规划基准在这里定下, 到状态交换为止都不复查, 期间任何写入都必须被挡在外面.
+            AUTHORITY_SCOPE.set(inventory);
             PlannedRoot basis = inventory.openPlan();
             plan = planner.apply(basis);
             List<SlotChange> deltas = changes.apply(plan);
@@ -114,12 +120,23 @@ public final class InventoryTransactions {
             commit.seal(declaredCount);
             commit.swapStates();
         } finally {
+            AUTHORITY_SCOPE.remove();
             if (lock != null) {
                 lock.lock().unlock();
             }
         }
+        // 落地与 Post 已经离开临界区, 处理器里的嵌套事务照常受理.
         commit.landAndNotify();
         return plan;
+    }
+
+    // 权威回调运行在写入临界区内. 它再开一笔事务, 外层会按过期基准构造状态并盖掉内层写入,
+    // 写到别的 Inventory 还会在固定锁序之外多拿一把锁. 两种后果都不会自己暴露, 因此在入口拦住.
+    private static void checkOutsideAuthorityScope() {
+        @Nullable SparrowInventory owner = AUTHORITY_SCOPE.get();
+        if (owner == null) return;
+        throw new IllegalStateException("Cannot start an inventory transaction from inside an authoritative callback of " + owner
+                + ". The callback may only compute the item handed to it; move the extra write after the authoritative call returns.");
     }
 
     private static final class Commit {

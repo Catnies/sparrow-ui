@@ -52,8 +52,12 @@ import java.util.function.UnaryOperator;
  * <p>普通读取返回副本. 名称以 {@code unsafe} 开头的入口会暴露内部对象, <strong>只读, 不得修改或持有</strong>.
  * 内容相等的写入仍可产生事务和事件, 实现也可以保留原物品实例.
  * <p>try 方法按 AccessRule 审核候选, 提交可取消、可冲突的请求; 无 try 的修改方法取得写权限后基于当前内容执行,
- * 跳过规则和 Pre, 解锁后派发 Post. UpdateReason 只记录来源.
- * 引用库存仍须在存储所属线程访问; 存储落地或通知抛出异常时, 已生效的修改不会回滚.
+ * 跳过规则和 Pre, 派发 Post 时已经交还写权限. UpdateReason 只记录来源.
+ * 存储落地或通知抛出异常时, 已生效的修改不会回滚.
+ * <p>写权限在两个实现上是两回事, 无 try 方法的原子性也跟着分开.
+ * {@link VirtualInventory} 用一把写锁串行化, 同一个槽位连续两次 {@code changeAmount(slot, 1)} 一定各记一次.
+ * {@link ReferencingInventory} 不加锁, 串行完全依赖<strong>调用方只从存储所属线程进来</strong>;
+ * 两个线程同时进来会读到同一个旧值并各写一遍, 丢掉的那次增量不体现在返回值里, 也不会报错.
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
@@ -609,13 +613,13 @@ public abstract class SparrowInventory {
     /**
      * 在同一个写入临界区内读取、修改并覆盖指定槽位, 不经过规则、Pre 或玩家冻结检查.
      * <p>modifier 调用一次, 接收当前物品副本, 返回值也会复制, null 表示清空.
-     * 回调只能计算传入物品, 不得访问其他库存或重入库存写入; 回调抛出时不提交.
+     * <strong>回调只能计算传入物品, 不得读写任何库存</strong>; 回调抛出时不提交.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
      * @param slot 槽位序号, 从 0 开始
      * @param modifier 计算新物品的函数
      * @throws IndexOutOfBoundsException 当槽号越界时
-     * @throws IllegalStateException 当引用库存已退役时
+     * @throws IllegalStateException 当引用库存已退役, 或 modifier 在回调中发起了库存写入时
      */
     public void modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
         Objects.checkIndex(slot, this.size());
@@ -732,13 +736,13 @@ public abstract class SparrowInventory {
     /**
      * 在写入临界区内按 OTHER 顺序移除匹配物品, 最多取出 upTo 个.
      * <p>不经过规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
-     * matcher 接收内部只读物品, 不得修改或持有, 不得访问其他库存或重入库存写入; 回调抛出时不提交.
+     * <strong>matcher 接收内部只读物品, 不得修改或持有, 也不得读写任何库存</strong>; 回调抛出时不提交.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
      * @param matcher 判断物品是否应被移除的函数
      * @param upTo 最多移除的数量
      * @return 实际移除数量
-     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     * @throws IllegalStateException 当引用库存已退役且需要规划写入, 或 matcher 在回调中发起了库存写入时
      */
     public int remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
         if (upTo <= 0) {
@@ -1592,7 +1596,8 @@ public abstract class SparrowInventory {
 
         @Override
         protected @Nullable ItemStack @NotNull [] buildNextState(@NotNull List<SlotChange> deltas) {
-            // isStale 刚在同一临界区内通过, planned 与当前状态是同一个数组, 克隆它即克隆当前状态.
+            // planned 与当前状态是同一个数组, 克隆它即克隆当前状态. 请求路径靠同一临界区内刚通过的
+            // isStale 保证, 权威路径靠从 openPlan 起就持有写锁保证.
             @Nullable ItemStack[] next = this.planned().clone();
             for (int i = 0; i < deltas.size(); i++) {
                 SlotChange delta = deltas.get(i);
