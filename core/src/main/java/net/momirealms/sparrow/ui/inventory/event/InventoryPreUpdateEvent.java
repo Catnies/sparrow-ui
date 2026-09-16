@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.inventory.event;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
 import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -38,6 +39,51 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         this.interaction = interaction;
         this.handlerThread = Thread.currentThread();
         this.editable = editable;
+    }
+
+    /**
+     * 读取当前 Inventory 指定槽位的候选物品副本, 空槽返回 {@code null}.
+     *
+     * @param slot 当前 Inventory 的槽位
+     * @return 本事件可见的候选物品副本
+     * @throws IndexOutOfBoundsException 槽号超出规划时的 Inventory 大小
+     * @see #after(SparrowInventory, int)
+     */
+    @Nullable
+    public ItemStack after(int slot) {
+        return this.after(this.inventory(), slot);
+    }
+
+    /**
+     * 读取参与库存指定槽位的候选物品副本, 未编辑的槽位使用规划时的内容.
+     * <p>读取本事件最后可见的候选快照, 处理器结束后仍可查询. 新库存需要先通过 {@link #include(SparrowInventory)} 纳入.
+     *
+     * @param inventory 本事件已经参与的 Inventory 实例
+     * @param slot Inventory 槽位
+     * @return 候选物品的独立副本, 候选槽位为空时返回 {@code null}
+     * @throws IllegalArgumentException 传入的 Inventory 没有参与本事件
+     * @throws IndexOutOfBoundsException 槽号超出规划时的 Inventory 大小
+     */
+    @Nullable
+    public ItemStack after(@NotNull SparrowInventory inventory, int slot) {
+        List<TransactionScope> scopes = this.scopes();
+        for (int i = 0; i < scopes.size(); i++) {
+            TransactionScope scope = scopes.get(i);
+            if (scope.inventory() != inventory) {
+                continue;
+            }
+            ItemStack[] planned = scope.planned();
+            Objects.checkIndex(slot, planned.length);
+            List<SlotChange> changes = scope.slotChanges();
+            for (int j = 0; j < changes.size(); j++) {
+                SlotChange change = changes.get(j);
+                if (change.slot() == slot) {
+                    return change.after();
+                }
+            }
+            return ItemUtils.copyOrNull(planned[slot]);
+        }
+        throw new IllegalArgumentException("inventory is not participating in this transaction");
     }
 
     /**

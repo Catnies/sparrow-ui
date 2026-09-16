@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory.ContainerOperation;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryFactory;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
@@ -38,10 +37,10 @@ final class InventoryContainerHandler implements InvocationHandler {
             case GET_CONTAINER_SIZE -> this.inventory.size();
             case IS_EMPTY -> this.isEmpty();
             case GET_ITEM -> ownedHandle(this.inventory.unsafeItemAt((int) arguments[0]));
-            case REMOVE_ITEM -> CraftInventoryFactory.toNms(this.removeItem((int) arguments[0], (int) arguments[1]));
-            case REMOVE_ITEM_NO_UPDATE -> CraftInventoryFactory.toNms(this.removeItemNoUpdate((int) arguments[0]));
+            case REMOVE_ITEM -> CraftInventoryFactory.toNms(this.inventory.takeItem((int) arguments[0], (int) arguments[1]));
+            case REMOVE_ITEM_NO_UPDATE -> CraftInventoryFactory.toNms(this.inventory.takeItem((int) arguments[0], Integer.MAX_VALUE));
             case SET_ITEM -> {
-                this.setItem((int) arguments[0], CraftInventoryFactory.toBukkit(arguments[1]));
+                this.inventory.setItem((int) arguments[0], CraftInventoryFactory.toBukkit(arguments[1]));
                 yield null;
             }
             case GET_MAX_STACK_SIZE -> this.maxStackSize();
@@ -79,37 +78,6 @@ final class InventoryContainerHandler implements InvocationHandler {
             }
         }
         return true;
-    }
-
-    @Nullable
-    private ItemStack removeItem(int slot, int amount) {
-        ItemStack current = this.inventory.itemAt(slot);
-        if (current == null || current.isEmpty() || amount <= 0) {
-            return null;
-        }
-        int removedAmount = Math.min(amount, current.getAmount());
-        ItemStack removed = current.clone();
-        removed.setAmount(removedAmount);
-        if (removedAmount == current.getAmount()) {
-            this.setItem(slot, null);
-        } else {
-            current.setAmount(current.getAmount() - removedAmount);
-            this.setItem(slot, current);
-        }
-        return removed;
-    }
-
-    @Nullable
-    private ItemStack removeItemNoUpdate(int slot) {
-        ItemStack current = this.inventory.itemAt(slot);
-        if (current != null && !current.isEmpty()) {
-            this.setItem(slot, null);
-        }
-        return current;
-    }
-
-    private void setItem(int slot, @Nullable ItemStack item) {
-        this.inventory.setItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
     private int maxStackSize() {

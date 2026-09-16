@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.inventory.transaction;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.TransactionResult;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
+import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import org.bukkit.inventory.ItemStack;
@@ -16,6 +17,7 @@ import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 // Inventory 事务引擎, 跨 Inventory 提交使用固定锁序.
 @ApiStatus.Internal
@@ -82,6 +84,44 @@ public final class InventoryTransactions {
         return new Commit(UpdateReason.External.INSTANCE, new TransactionDraft(List.of(scope)), null, true, null, List.of(), () -> true, false).run();
     }
 
+    // 权威命令先取得写权限再规划; 回调只计算本次变更, 不得重入库存写入或访问其他库存.
+    // 引用存储依赖调用方的所属线程串行保证, 写前刷新在临界区外完成.
+    public static <P> P mutate(
+            @NotNull UpdateReason reason,
+            @NotNull SparrowInventory inventory,
+            @NotNull Function<PlannedRoot, P> planner,
+            @NotNull Function<P, List<SlotChange>> changes
+    ) {
+        inventory.prepareWrite();
+        if (inventory.retired()) {
+            throw new IllegalStateException("Cannot modify a retired inventory");
+        }
+        @Nullable PlannedRoot.StateLock lock = inventory.stateLock();
+        P plan;
+        Commit commit;
+        if (lock != null) {
+            lock.lock().lock();
+        }
+        try {
+            PlannedRoot basis = inventory.openPlan();
+            plan = planner.apply(basis);
+            List<SlotChange> deltas = changes.apply(plan);
+            if (deltas.isEmpty()) {
+                return plan;
+            }
+            commit = new Commit(reason, new TransactionDraft(List.of(new TransactionScope(basis, deltas))), null, true, null, List.of(), () -> true, true);
+            int declaredCount = commit.prepareDeclaredUpdates();
+            commit.seal(declaredCount);
+            commit.swapStates();
+        } finally {
+            if (lock != null) {
+                lock.lock().unlock();
+            }
+        }
+        commit.landAndNotify();
+        return plan;
+    }
+
     private static final class Commit {
         // 事务输入与提交策略
         private final UpdateReason reason;
@@ -95,7 +135,6 @@ public final class InventoryTransactions {
         // 流水线准备结果
         private List<TransactionNotification> updates;              // 本笔事务需要通知的订阅者
         private List<TransactionScope> scopes;                      // 封笔后的最终写集
-        private List<PlannedRoot.StateLock> locks;                  // 按全序排好的锁凭证
         private long version;                                       // 状态交换成功后取得的事务逻辑版本
 
         private Commit(
@@ -135,7 +174,8 @@ public final class InventoryTransactions {
             if (!this.swapUnderLocks()) {
                 return TransactionResult.Conflicted.INSTANCE;
             }
-            return this.landAndNotify();
+            this.landAndNotify();
+            return new TransactionResult.Committed(this.draft.rootChanges());
         }
 
         // Inventory 级冻结兜底, 玩家侧写入在规划层就该被拒, 这里拦住漏网的玩家事务.
@@ -177,7 +217,6 @@ public final class InventoryTransactions {
                 this.interaction.seal();
             }
             this.scopes = this.draft.scopes();
-            this.locks = collectLocks(this.scopes, this.readSet);
             List<TransactionScope> included = this.scopes.subList(declaredCount, this.scopes.size());
             if (!included.isEmpty()) {
                 this.updates.addAll(prepareUpdates(this.reason, included, false));
@@ -186,11 +225,12 @@ public final class InventoryTransactions {
 
         // 所有基准通过校验后才构造并交换状态.
         private boolean swapUnderLocks() {
+            List<PlannedRoot.StateLock> locks = collectLocks(this.scopes, this.readSet);
             int locked = 0;
             try {
                 // 固定锁序覆盖写集与读集.
-                for (; locked < this.locks.size(); locked++) {
-                    this.locks.get(locked).lock().lock();
+                for (; locked < locks.size(); locked++) {
+                    locks.get(locked).lock().lock();
                 }
 
                 // 乐观校验. 任一规划基准已失效说明有并发提交插入, 整体放弃.
@@ -205,32 +245,34 @@ public final class InventoryTransactions {
                     }
                 }
 
-                // 先完成全部状态构造, 再进入交换阶段.
-                @Nullable ItemStack[][] staged = new ItemStack[this.scopes.size()][];
-                for (int i = 0; i < this.scopes.size(); i++) {
-                    TransactionScope scope = this.scopes.get(i);
-                    staged[i] = scope.basis().buildNextState(scope.slotChanges());
-                }
-                for (int i = 0; i < this.scopes.size(); i++) {
-                    this.scopes.get(i).basis().swapTo(staged[i]);
-                }
-                // 版本和 Post 票号都在锁内取得, 顺序与状态提交一致.
-                this.version = VERSION_SOURCE.next();
-                // 票号同样在这里领. 只有临界区内领到的号才等于提交顺序, 未开启串行派发的 Inventory 不领号.
-                for (int i = 0; i < this.updates.size(); i++) {
-                    this.updates.get(i).takePostTicket();
-                }
+                this.swapStates();
                 return true;
             } finally {
                 for (int i = locked - 1; i >= 0; i--) {
-                    this.locks.get(i).lock().unlock();
+                    locks.get(i).lock().unlock();
                 }
             }
         }
 
+        // 调用方已持有全部写权限, 先完成全部构造再交换; 版本和票号沿用同一提交顺序.
+        private void swapStates() {
+            @Nullable ItemStack[][] staged = new ItemStack[this.scopes.size()][];
+            for (int i = 0; i < this.scopes.size(); i++) {
+                TransactionScope scope = this.scopes.get(i);
+                staged[i] = scope.basis().buildNextState(scope.slotChanges());
+            }
+            for (int i = 0; i < this.scopes.size(); i++) {
+                this.scopes.get(i).basis().swapTo(staged[i]);
+            }
+            this.version = VERSION_SOURCE.next();
+            // 未开启串行派发的 Inventory 不领票号.
+            for (int i = 0; i < this.updates.size(); i++) {
+                this.updates.get(i).takePostTicket();
+            }
+        }
+
         // 提交生效之后的收尾, 依次做落地, 提交回调和 Post 派发.
-        @NotNull
-        private TransactionResult landAndNotify() {
+        private void landAndNotify() {
             Throwable failure = null;
             try {
                 // 各参与者独立落地, 单个失败不跳过后续参与者.
@@ -248,7 +290,6 @@ public final class InventoryTransactions {
                 dispatchPostBatch(this::publishPost);
             }
             ThrowableUtils.throwIfUnchecked(failure);
-            return new TransactionResult.Committed(this.draft.rootChanges());
         }
 
         // 所有参与者共享事务版本, 单个派发失败不阻断后续票号.

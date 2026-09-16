@@ -219,7 +219,7 @@ public final class ReferencingInventory extends SparrowInventory {
     }
 
     /**
-     * 释放外部存储并使本 Inventory 退役. 后续读取为空且写入会冲突, 重复调用没有效果.
+     * 释放外部存储并使本 Inventory 退役. 后续读取为空, 请求写入会冲突, 权威修改抛出 IllegalStateException, 重复调用没有效果.
      */
     public void retire() {
         if (this.retired) {
@@ -283,6 +283,14 @@ public final class ReferencingInventory extends SparrowInventory {
     @ApiStatus.Internal
     public void prepareWrite() {
         this.refresh();
+    }
+
+    // 外部存储依赖所属线程串行访问, 不获取 VirtualInventory 的状态锁.
+    @Override
+    @Nullable
+    @ApiStatus.Internal
+    public PlannedRoot.StateLock stateLock() {
+        return null;
     }
 
     // 规划基准由存储快照和当前 modCount 组成.

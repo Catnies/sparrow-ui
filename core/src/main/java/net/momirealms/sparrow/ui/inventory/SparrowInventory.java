@@ -50,6 +50,9 @@ import java.util.function.UnaryOperator;
  * 受事务保护并可订阅内容变更的 Inventory 基类, 空槽使用 {@code null}.
  * <p>普通读取返回副本. 名称以 {@code unsafe} 开头的入口会暴露内部对象, <strong>只读, 不得修改或持有</strong>.
  * 内容相等的写入仍可产生事务和事件, 实现也可以保留原物品实例.
+ * <p>try 方法提交可取消、可冲突的请求; 无 try 的修改方法取得写权限后基于当前内容执行,
+ * 跳过规则和 Pre, 解锁后派发 Post. UpdateReason 只记录来源.
+ * 引用库存仍须在存储所属线程访问; 存储落地或通知抛出异常时, 已生效的修改不会回滚.
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
@@ -537,8 +540,272 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 直接覆盖写入单个槽位, {@code null} 表示清空.
+     * 权威覆盖指定槽位, null 表示清空; 即使内容相等也派发 Post.
+     * <p>取得写权限后读取当前内容并交换, 不经过放入规则、Pre 或玩家冻结检查.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要写入的物品, 会复制; null 表示清空
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IllegalStateException 当引用库存已退役时
+     */
+    public void setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable ItemStack input = ItemUtils.copyOrNull(item);
+        InventoryTransactions.mutate(reason, this, basis -> List.of(new SlotChange(slot, basis.planned()[slot], input)), Function.identity());
+    }
+
+    /**
+     * 以 Program 来源权威覆盖指定槽位.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要写入的物品, null 表示清空
+     * @see #setItem(UpdateReason, int, ItemStack)
+     */
+    public void setItem(int slot, @Nullable ItemStack item) {
+        this.setItem(UpdateReason.Program.INSTANCE, slot, item);
+    }
+
+    /**
+     * 权威地向指定槽位尽量放入物品, 空槽直接放入, 相似堆合并.
+     * <p>在写入临界区内计算容量, 不经过放入规则、Pre 或玩家冻结检查.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要放入的物品, 会复制
+     * @return 实际放不下的数量
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     */
+    public int putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (input == null) {
+            return 0;
+        }
+        return InventoryTransactions.mutate(reason, this,
+                basis -> InventoryPlanner.planPut(basis.planned()[slot], input, slot, this::slotMaxStackSize, ignored -> true),
+                InventoryPlanner.AddPlan::deltas).remaining();
+    }
+
+    /**
+     * 以 Program 来源权威放入指定槽位.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要放入的物品
+     * @return 实际放不下的数量
+     * @see #putItem(UpdateReason, int, ItemStack)
+     */
+    public int putItem(int slot, @NotNull ItemStack item) {
+        return this.putItem(UpdateReason.Program.INSTANCE, slot, item);
+    }
+
+    /**
+     * 在同一个写入临界区内读取、修改并覆盖指定槽位, 不经过规则、Pre 或玩家冻结检查.
+     * <p>modifier 调用一次, 接收当前物品副本, 返回值也会复制, null 表示清空.
+     * 回调只能计算传入物品, 不得访问其他库存或重入库存写入; 回调抛出时不提交.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param slot 槽位序号, 从 0 开始
+     * @param modifier 计算新物品的函数
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IllegalStateException 当引用库存已退役时
+     */
+    public void modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+        Objects.checkIndex(slot, this.size());
+        InventoryTransactions.mutate(reason, this, basis -> {
+            @Nullable ItemStack before = basis.planned()[slot];
+            return List.of(new SlotChange(slot, before, modifier.apply(ItemUtils.copyOrNull(before))));
+        }, Function.identity());
+    }
+
+    /**
+     * 以 Program 来源权威修改指定槽位.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param modifier 接收当前物品副本并计算新物品的函数
+     * @see #modifyItem(UpdateReason, int, UnaryOperator)
+     */
+    public void modifyItem(int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+        this.modifyItem(UpdateReason.Program.INSTANCE, slot, modifier);
+    }
+
+    /**
+     * 在写入临界区内增减当前槽内数量, 减量最低为 0, 增量最高为有效堆叠上限.
+     * <p>不经过规则、Pre 或玩家冻结检查; 空槽和无需变更时返回 0, 不派发 Post.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param slot 槽位序号, 从 0 开始
+     * @param change 数量变化, 正数为增加, 负数为减少
+     * @return 实际数量变化, 正数为增加, 负数为减少
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IllegalStateException 当引用库存已退役时
+     */
+    public int changeAmount(@NotNull UpdateReason reason, int slot, int change) {
+        Objects.checkIndex(slot, this.size());
+        @Nullable SlotChange delta = InventoryTransactions.mutate(reason, this,
+                basis -> InventoryPlanner.planAmountChange(basis.planned()[slot], slot, change, this::slotMaxStackSize),
+                changeResult -> changeResult == null ? List.of() : List.of(changeResult));
+        return delta == null ? 0 : delta.addedAmount() - delta.removedAmount();
+    }
+
+    /**
+     * 以 Program 来源权威增减指定槽位数量.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param change 数量变化, 正数为增加, 负数为减少
+     * @return 实际数量变化
+     * @see #changeAmount(UpdateReason, int, int)
+     */
+    public int changeAmount(int slot, int change) {
+        return this.changeAmount(UpdateReason.Program.INSTANCE, slot, change);
+    }
+
+    /**
+     * 在写入临界区内按 ADD 顺序尽量放入物品, 先合并相似堆再占空槽.
+     * <p>不经过放入规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param item 要放入的物品, 会复制
+     * @return 实际放不下的数量
+     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     */
+    public int add(@NotNull UpdateReason reason, @NotNull ItemStack item) {
+        @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
+        if (input == null) {
+            return 0;
+        }
+        return InventoryTransactions.mutate(reason, this,
+                basis -> InventoryPlanner.planAdd(basis.planned(), input, this.iterationOrder(OperationCategory.ADD), this::slotMaxStackSize, ignored -> true),
+                InventoryPlanner.AddPlan::deltas).remaining();
+    }
+
+    /**
+     * 以 Program 来源权威放入物品.
+     *
+     * @param item 要放入的物品
+     * @return 实际放不下的数量
+     * @see #add(UpdateReason, ItemStack)
+     */
+    public int add(@NotNull ItemStack item) {
+        return this.add(UpdateReason.Program.INSTANCE, item);
+    }
+
+    /**
+     * 在写入临界区内按 COLLECT 顺序收集相似物品, 最多取出 upTo 个.
+     * <p>不经过规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param template 物品样板, 只用于相似判断
+     * @param upTo 最多收集的数量
+     * @return 实际收集数量
+     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     */
+    public int collect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
+        @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
+        if (sample == null || upTo <= 0) {
+            return 0;
+        }
+        return InventoryTransactions.mutate(reason, this,
+                basis -> InventoryPlanner.planCollect(basis.planned(), sample, upTo, this.iterationOrder(OperationCategory.COLLECT), null, this::slotMaxStackSize),
+                InventoryPlanner.TakePlan::deltas).taken();
+    }
+
+    /**
+     * 以 Program 来源权威收集相似物品.
+     *
+     * @param template 物品样板
+     * @param upTo 最多收集的数量
+     * @return 实际收集数量
+     * @see #collect(UpdateReason, ItemStack, int)
+     */
+    public int collect(@NotNull ItemStack template, int upTo) {
+        return this.collect(UpdateReason.Program.INSTANCE, template, upTo);
+    }
+
+    /**
+     * 在写入临界区内按 OTHER 顺序移除匹配物品, 最多取出 upTo 个.
+     * <p>不经过规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
+     * matcher 接收内部只读物品, 不得修改或持有, 不得访问其他库存或重入库存写入; 回调抛出时不提交.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @param matcher 判断物品是否应被移除的函数
+     * @param upTo 最多移除的数量
+     * @return 实际移除数量
+     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     */
+    public int remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
+        if (upTo <= 0) {
+            return 0;
+        }
+        return InventoryTransactions.mutate(reason, this,
+                basis -> InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER)),
+                InventoryPlanner.TakePlan::deltas).taken();
+    }
+
+    /**
+     * 以 Program 来源权威移除匹配物品.
+     *
+     * @param matcher 判断物品是否应被移除的只读函数
+     * @param upTo 最多移除的数量
+     * @return 实际移除数量
+     * @see #remove(UpdateReason, Predicate, int)
+     */
+    public int remove(@NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
+        return this.remove(UpdateReason.Program.INSTANCE, matcher, upTo);
+    }
+
+    /**
+     * 在写入临界区内清空全部槽位, 不经过规则、Pre 或玩家冻结检查.
+     * <p>只为非空槽生成变更, 已为空时不派发 Post.
+     *
+     * @param reason 仅记录修改来源, 不改变执行模式
+     * @throws IllegalStateException 当引用库存已退役时
+     */
+    public void clear(@NotNull UpdateReason reason) {
+        InventoryTransactions.mutate(reason, this, basis -> {
+            @Nullable ItemStack[] current = basis.planned();
+            List<SlotChange> deltas = new ArrayList<>(current.length);
+            for (int slot = 0; slot < current.length; slot++) {
+                if (current[slot] != null) {
+                    deltas.add(new SlotChange(slot, current[slot], null));
+                }
+            }
+            return deltas;
+        }, Function.identity());
+    }
+
+    /**
+     * 以 Program 来源权威清空全部槽位.
+     *
+     * @see #clear(UpdateReason)
+     */
+    public void clear() {
+        this.clear(UpdateReason.Program.INSTANCE);
+    }
+
+    // Bukkit 包装器在同一临界区内读取并取出, 返回实际移除的独立副本.
+    @Nullable
+    ItemStack takeItem(int slot, int amount) {
+        Objects.checkIndex(slot, this.size());
+        if (amount <= 0) {
+            return null;
+        }
+        @Nullable SlotChange delta = InventoryTransactions.mutate(UpdateReason.Program.INSTANCE, this,
+                basis -> InventoryPlanner.planAmountChange(basis.planned()[slot], slot, -amount, this::slotMaxStackSize),
+                change -> change == null ? List.of() : List.of(change));
+        return delta == null ? null : ItemUtils.copyWithAmount(delta.unsafeBefore(), delta.removedAmount());
+    }
+
+    // 把规划好的变更作为只涉及本 Inventory 的一笔请求提交.
+    private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
+        return InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, deltas)), false);
+    }
+
+    /**
+     * 请求覆盖写入单个槽位, {@code null} 表示清空.
      * 即使新值与当前值相等也会产生事务与事件.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -547,65 +814,30 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        return this.commitSingle(reason, slot, item, false);
-    }
-
-    /**
-     * 直接覆盖写入单个槽位, 以 {@link UpdateReason.Program} 的名义.
-     *
-     * @param slot 槽位序号, 从 0 开始
-     * @param item 要覆盖进去的物品, {@code null} 表示清空
-     * @return 事务结果
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @NotNull
-    public TransactionResult setItem(int slot, @Nullable ItemStack item) {
-        return this.setItem(UpdateReason.Program.INSTANCE, slot, item);
-    }
-
-    /**
-     * 与 {@link #setItem} 相同, 但跳过 pre 事件且无法被取消. post 事件仍会正常派发.
-     *
-     * @param reason 本次修改的原因
-     * @param slot 槽位序号, 从 0 开始
-     * @param item 要覆盖进去的物品, {@code null} 表示清空
-     * @return 事务结果
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @NotNull
-    public TransactionResult forceSetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
-        return this.commitSingle(reason, slot, item, true);
-    }
-
-    /**
-     * 与 {@link #setItem(int, ItemStack)} 相同, 但跳过 pre 事件且无法被取消. post 事件仍会正常派发.
-     *
-     * @param slot 槽位序号, 从 0 开始
-     * @param item 要覆盖进去的物品, {@code null} 表示清空
-     * @return 事务结果
-     * @throws IndexOutOfBoundsException 当槽号越界时
-     */
-    @NotNull
-    public TransactionResult forceSetItem(int slot, @Nullable ItemStack item) {
-        return this.forceSetItem(UpdateReason.Program.INSTANCE, slot, item);
-    }
-
-    private TransactionResult commitSingle(UpdateReason reason, int slot, @Nullable ItemStack item, boolean bypassPre) {
+    public TransactionResult trySetItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
-        @Nullable ItemStack[] planned = basis.planned();
-        SlotChange delta = new SlotChange(slot, planned[slot], item);
-        return InventoryTransactions.commit(
-                reason,
-                List.of(new TransactionScope(basis, List.of(delta))),
-                bypassPre
-        );
+        return this.commitScoped(reason, basis, List.of(new SlotChange(slot, basis.planned()[slot], item)));
+    }
+
+    /**
+     * 请求覆盖指定槽位, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param item 要覆盖进去的物品, {@code null} 表示清空
+     * @return 事务结果
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @see #trySetItem(UpdateReason, int, ItemStack)
+     */
+    @NotNull
+    public TransactionResult trySetItem(int slot, @Nullable ItemStack item) {
+        return this.trySetItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
     /**
      * 往指定槽位尽量放入物品.
      * 空槽会直接放入, 相似物品会合并, 不相似时全部数量都会剩余.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -614,7 +846,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public AddResult putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
+    public AddResult tryPutItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
         Objects.checkIndex(slot, this.size());
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
@@ -630,21 +862,23 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 往指定槽位尽量放入物品, 以 {@link UpdateReason.Program} 的名义.
+     * 请求往指定槽位尽量放入物品, 以 {@link UpdateReason.Program} 的名义.
      *
      * @param slot 槽位序号, 从 0 开始
      * @param item 要放入的物品
      * @return 放入结果, 其中 remaining 是没能放入的数量
      * @throws IndexOutOfBoundsException 当槽号越界时
+     * @see #tryPutItem(UpdateReason, int, ItemStack)
      */
     @NotNull
-    public AddResult putItem(int slot, @NotNull ItemStack item) {
-        return this.putItem(UpdateReason.Program.INSTANCE, slot, item);
+    public AddResult tryPutItem(int slot, @NotNull ItemStack item) {
+        return this.tryPutItem(UpdateReason.Program.INSTANCE, slot, item);
     }
 
     /**
-     * 读, 改, 写指定槽位.
-     * modifier 接收当前物品的副本, 返回 {@code null} 表示清空.
+     * 请求根据旧物品副本修改指定槽位.
+     * modifier 在提交锁外调用一次, 接收当前物品的副本, 返回 {@code null} 表示清空.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -653,7 +887,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+    public TransactionResult tryModifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable ItemStack[] planned = basis.planned();
@@ -663,7 +897,22 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 请求根据旧物品副本修改指定槽位, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param modifier 接收旧物品副本并返回新物品的函数
+     * @return 事务结果
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @see #tryModifyItem(UpdateReason, int, UnaryOperator)
+     */
+    @NotNull
+    public TransactionResult tryModifyItem(int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
+        return this.tryModifyItem(UpdateReason.Program.INSTANCE, slot, modifier);
+    }
+
+    /**
      * 增减槽内物品数量. 减少时最低到 0, 增加时最高到有效堆叠上限.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param slot 槽位序号, 从 0 开始
@@ -672,7 +921,7 @@ public abstract class SparrowInventory {
      * @throws IndexOutOfBoundsException 当槽号越界时
      */
     @NotNull
-    public TransactionResult changeAmount(@NotNull UpdateReason reason, int slot, int change) {
+    public TransactionResult tryChangeAmount(@NotNull UpdateReason reason, int slot, int change) {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable SlotChange delta = InventoryPlanner.planAmountChange(basis.planned()[slot], slot, change, this::slotMaxStackSize);
@@ -682,21 +931,31 @@ public abstract class SparrowInventory {
         return this.commitScoped(reason, basis, List.of(delta));
     }
 
-    // 把规划好的变更作为只涉及本 Inventory 的一笔事务提交, basis 兼任提交时的并发校验依据.
-    private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
-        return InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, deltas)), false);
+    /**
+     * 请求增减指定槽位的数量, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param slot 槽位序号, 从 0 开始
+     * @param change 数量变化, 正数为增加, 负数为减少
+     * @return 事务结果
+     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @see #tryChangeAmount(UpdateReason, int, int)
+     */
+    @NotNull
+    public TransactionResult tryChangeAmount(int slot, int change) {
+        return this.tryChangeAmount(UpdateReason.Program.INSTANCE, slot, change);
     }
 
     /**
      * 按 ADD 遍历顺序把物品尽量放进 Inventory, 先合并相似物品堆, 再占用空槽.
      * 整个放入过程作为一次事务提交.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param item 要放入的物品
      * @return 放入结果, 其中 remaining 是没能放入的数量
      */
     @NotNull
-    public AddResult add(@NotNull UpdateReason reason, @NotNull ItemStack item) {
+    public AddResult tryAdd(@NotNull UpdateReason reason, @NotNull ItemStack item) {
         // 先复制物品再判断是否为空, 保证后续读取的对象不受调用方修改影响
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
@@ -720,16 +979,29 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 请求把物品尽量放入库存, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param item 要放入的物品
+     * @return 放入结果, 其中 remaining 是没能放入的数量
+     * @see #tryAdd(UpdateReason, ItemStack)
+     */
+    @NotNull
+    public AddResult tryAdd(@NotNull ItemStack item) {
+        return this.tryAdd(UpdateReason.Program.INSTANCE, item);
+    }
+
+    /**
      * 按 COLLECT 遍历顺序收集与 template 相似的物品, 最多收集 {@code upTo} 个.
      * 整个收集过程作为一次事务提交.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param template 物品样板, 只参与相似判断
      * @param upTo 最多收集的数量
-     * @return 收集结果, 包含实际收集数量
+     * @return 收集结果, 包含规划收集数量; 取消或冲突时为 0
      */
     @NotNull
-    public CollectResult collect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
+    public CollectResult tryCollect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
         @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
         if (sample == null || upTo <= 0) {
             return new CollectResult(EMPTY_COMMITTED, 0);
@@ -753,16 +1025,30 @@ public abstract class SparrowInventory {
     }
 
     /**
+     * 请求收集与样板相似的物品, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @param template 物品样板, 只参与相似判断
+     * @param upTo 最多收集的数量
+     * @return 收集结果, 包含规划收集数量; 取消或冲突时为 0
+     * @see #tryCollect(UpdateReason, ItemStack, int)
+     */
+    @NotNull
+    public CollectResult tryCollect(@NotNull ItemStack template, int upTo) {
+        return this.tryCollect(UpdateReason.Program.INSTANCE, template, upTo);
+    }
+
+    /**
      * 按 OTHER 遍历顺序移除 matcher 选中的物品, 最多移除 {@code upTo} 个, 整个移除过程作为一次事务提交.
      * <p><strong>matcher 拿到内部只读引用, 不得修改或持有</strong>.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @param matcher 判断某个物品是否应被移除的函数
      * @param upTo 最多移除的数量
-     * @return 移除结果, 包含实际移除数量
+     * @return 移除结果, 包含规划移除数量; 取消或冲突时为 0
      */
     @NotNull
-    public RemoveResult remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
+    public RemoveResult tryRemove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
         if (upTo <= 0) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
@@ -778,23 +1064,27 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 清空全部槽位, 以 {@link UpdateReason.Program} 的名义.
+     * 请求移除条件匹配的物品, 以 {@link UpdateReason.Program} 的名义.
      *
-     * @return 事务结果
+     * @param matcher 判断某个物品是否应被移除的函数
+     * @param upTo 最多移除的数量
+     * @return 移除结果, 包含规划移除数量; 取消或冲突时为 0
+     * @see #tryRemove(UpdateReason, Predicate, int)
      */
     @NotNull
-    public TransactionResult clear() {
-        return this.clear(UpdateReason.Program.INSTANCE);
+    public RemoveResult tryRemove(@NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
+        return this.tryRemove(UpdateReason.Program.INSTANCE, matcher, upTo);
     }
 
     /**
      * 清空全部槽位, 整个清除过程作为一次事务提交.
+     * <p>Pre 可以取消或编辑候选结果, 规划基准失效时返回冲突结果.
      *
      * @param reason 本次修改的原因
      * @return 事务结果
      */
     @NotNull
-    public TransactionResult clear(@NotNull UpdateReason reason) {
+    public TransactionResult tryClear(@NotNull UpdateReason reason) {
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable ItemStack[] planned = basis.planned();
         // 只给非空槽位生成变更
@@ -808,6 +1098,17 @@ public abstract class SparrowInventory {
             return EMPTY_COMMITTED;
         }
         return this.commitScoped(reason, basis, deltas);
+    }
+
+    /**
+     * 请求清空全部槽位, 以 {@link UpdateReason.Program} 的名义.
+     *
+     * @return 事务结果
+     * @see #tryClear(UpdateReason)
+     */
+    @NotNull
+    public TransactionResult tryClear() {
+        return this.tryClear(UpdateReason.Program.INSTANCE);
     }
 
     /**
@@ -1126,6 +1427,13 @@ public abstract class SparrowInventory {
         return this.updateChannel;
     }
 
+    // 请求提交和权威命令共用同一把写锁; 引用存储由所属线程串行访问, 返回 null.
+    @Nullable
+    @ApiStatus.Internal
+    public PlannedRoot.StateLock stateLock() {
+        return new PlannedRoot.StateLock(this.writeLock, this.lockOrder);
+    }
+
     // 纯读用途的规划基准, 给 simulate 这类零副作用的路径使用.
     @NotNull
     @ApiStatus.Internal
@@ -1149,10 +1457,9 @@ public abstract class SparrowInventory {
         }
 
         @Override
-        @NotNull
+        @Nullable
         protected StateLock stateLock() {
-            SparrowInventory inventory = this.inventory();
-            return new StateLock(inventory.writeLock, inventory.lockOrder);
+            return this.inventory().stateLock();
         }
 
         @Override
