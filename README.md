@@ -10,7 +10,7 @@
   <img alt="Version" src="https://img.shields.io/badge/version-beta.21-7c5cff">
   <img alt="Java" src="https://img.shields.io/badge/Java-21-ef6c00">
   <img alt="Platform" src="https://img.shields.io/badge/Paper%20%7C%20Folia-supported-2f80ed">
-  <img alt="Minecraft 1.21.4 - 26.3" src="https://img.shields.io/badge/Minecraft-1.21.8--26.3-3c8527">
+  <img alt="Minecraft 1.21.4 - 26.3" src="https://img.shields.io/badge/Minecraft-1.21.4--26.3-3c8527">
 </p>
 
 <p align="center">
