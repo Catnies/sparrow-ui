@@ -28,6 +28,8 @@ import java.util.function.UnaryOperator;
 /**
  * 将逻辑槽位映射到 {@link ExternalStorage}, 存储保有权威内容, 本对象只留一份外部变更比对基准.
  * <p><strong>调用方必须在存储所属线程串行访问</strong>. {@link #refresh()} 会吸收外部变更, 存储失效后本 Inventory 退役.
+ * <p>无 try 的修改方法在这里不加锁, 读到旧值和写回新值之间没有任何保护, 所属线程这条约束就是它全部的串行来源.
+ * 请求路径还有 modCount 乐观校验兜一层, 撞上并发会返回 {@link TransactionResult.Conflicted}; 权威路径连这层也没有.
  */
 public final class ReferencingInventory extends SparrowInventory {
     private static final ExternalStorage RETIRED_STORAGE = new ExternalStorage() {

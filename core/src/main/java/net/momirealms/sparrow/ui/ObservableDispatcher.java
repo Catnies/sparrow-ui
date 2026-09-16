@@ -1,16 +1,16 @@
 package net.momirealms.sparrow.ui;
 
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class ObservableDispatcher<T> {
     private final CopyOnWriteArrayList<Entry<T>> entries = new CopyOnWriteArrayList<>();
 
-    public Subscription subscribe(Observer<? super T> observer) {
-        Objects.requireNonNull(observer, "observer");
+    @NotNull
+    public Subscription subscribe(@NotNull Observer<? super T> observer) {
         Entry<T> entry = new Entry<>(this, observer);
         entries.add(entry);
         return entry;

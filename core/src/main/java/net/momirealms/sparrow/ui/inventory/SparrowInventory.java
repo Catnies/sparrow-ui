@@ -66,7 +66,7 @@ public abstract class SparrowInventory {
 
     // 事务身份与固定协作组件
     private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
-    private final ReentrantLock writeLock = new ReentrantLock();        // 只用来串行化写操作, 临界区内全是纯内存操作
+    private final ReentrantLock writeLock = new ReentrantLock();        // 串行化写操作, 临界区内全是纯内存操作; 引用库存不用它
     private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
     private final Bindings bindings = new Bindings();                   // 本 Inventory 持有的 Signal 绑定
     private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
@@ -578,7 +578,7 @@ public abstract class SparrowInventory {
 
     /**
      * 权威地向指定槽位尽量放入物品, 空槽直接放入, 相似堆合并.
-     * <p>在写入临界区内计算容量, 不经过放入规则、Pre 或玩家冻结检查.
+     * <p>容量按执行时的槽内容算, 不经过放入规则、Pre 或玩家冻结检查.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
      * @param slot 槽位序号, 从 0 开始
@@ -611,7 +611,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在同一个写入临界区内读取、修改并覆盖指定槽位, 不经过规则、Pre 或玩家冻结检查.
+     * 取得写权限后读出槽内容, 交给 modifier 算出新值再写回, 不经过规则、Pre 或玩家冻结检查.
      * <p>modifier 调用一次, 接收当前物品副本, 返回值也会复制, null 表示清空.
      * <strong>回调只能计算传入物品, 不得读写任何库存</strong>; 回调抛出时不提交.
      *
@@ -641,7 +641,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在写入临界区内增减当前槽内数量, 减量最低为 0, 增量最高为有效堆叠上限.
+     * 按执行时的槽内数量增减, 减量最低为 0, 增量最高为有效堆叠上限.
      * <p>不经过规则、Pre 或玩家冻结检查; 空槽和无需变更时返回 0, 不派发 Post.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
@@ -672,7 +672,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在写入临界区内按 ADD 顺序尽量放入物品, 先合并相似堆再占空槽.
+     * 权威地按 ADD 顺序尽量放入物品, 先合并相似堆再占空槽.
      * <p>不经过放入规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
@@ -702,7 +702,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在写入临界区内按 COLLECT 顺序收集相似物品, 最多取出 upTo 个.
+     * 权威地按 COLLECT 顺序收集相似物品, 最多取出 upTo 个.
      * <p>不经过规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
@@ -734,7 +734,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在写入临界区内按 OTHER 顺序移除匹配物品, 最多取出 upTo 个.
+     * 权威地按 OTHER 顺序移除匹配物品, 最多取出 upTo 个.
      * <p>不经过规则、Pre 或玩家冻结检查, 无槽位变化时不派发 Post.
      * <strong>matcher 接收内部只读物品, 不得修改或持有, 也不得读写任何库存</strong>; 回调抛出时不提交.
      *
@@ -766,7 +766,7 @@ public abstract class SparrowInventory {
     }
 
     /**
-     * 在写入临界区内清空全部槽位, 不经过规则、Pre 或玩家冻结检查.
+     * 权威清空全部槽位, 不经过规则、Pre 或玩家冻结检查.
      * <p>只为非空槽生成变更, 已为空时不派发 Post.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
@@ -794,7 +794,7 @@ public abstract class SparrowInventory {
         this.clear(UpdateReason.Program.INSTANCE);
     }
 
-    // Bukkit 包装器在同一临界区内读取并取出, 返回实际移除的独立副本.
+    // Bukkit 包装器取得写权限后一次读改写, 返回实际移除的独立副本.
     @Nullable
     ItemStack takeItem(int slot, int amount) {
         Objects.checkIndex(slot, this.size());
