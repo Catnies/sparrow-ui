@@ -10,7 +10,7 @@
   <img alt="Version" src="https://img.shields.io/badge/version-beta.21-7c5cff">
   <img alt="Java" src="https://img.shields.io/badge/Java-21-ef6c00">
   <img alt="Platform" src="https://img.shields.io/badge/Paper%20%7C%20Folia-supported-2f80ed">
-  <img alt="Minecraft 1.21.8 - 26.2" src="https://img.shields.io/badge/Minecraft-1.21.8--26.2-3c8527">
+  <img alt="Minecraft 1.21.4 - 26.3" src="https://img.shields.io/badge/Minecraft-1.21.8--26.2-3c8527">
 </p>
 
 <p align="center">
@@ -46,11 +46,11 @@ Sparrow UI 是面向 Paper 与 Folia 的响应式库存 UI 库。它将菜单状
 
 ## 兼容性
 
-Sparrow UI 使用同一个构件支持 Paper 与 Folia `1.21.8` ~ `26.2`，无需按 Minecraft 版本分别引入依赖。
+Sparrow UI 使用同一个构件支持 Paper 与 Folia `1.21.4` ~ `26.3`，无需按 Minecraft 版本分别引入依赖。
 
-| Minecraft 版本 | Paper | Folia |
-| :---: | :---: | :---: |
-| `1.21.8` ~ `26.2` | ✅ | ✅ |
+|  Minecraft 版本   | Paper | Folia |
+|:-----------------:| :---: | :---: |
+| `1.21.4` ~ `26.3` | ✅ | ✅ |
 
 > [!NOTE]
 > Sparrow UI 以 Java 21 编译。实际运行时请使用对应 Paper 或 Folia 版本要求的 Java 环境。
@@ -65,7 +65,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.momirealms:sparrow-ui:beta.23")
+    implementation("net.momirealms:sparrow-ui:beta.26")
 }
 ```
 

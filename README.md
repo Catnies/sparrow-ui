@@ -10,7 +10,7 @@
   <img alt="Version" src="https://img.shields.io/badge/version-beta.21-7c5cff">
   <img alt="Java" src="https://img.shields.io/badge/Java-21-ef6c00">
   <img alt="Platform" src="https://img.shields.io/badge/Paper%20%7C%20Folia-supported-2f80ed">
-  <img alt="Minecraft 1.21.8 - 26.2" src="https://img.shields.io/badge/Minecraft-1.21.8--26.2-3c8527">
+  <img alt="Minecraft 1.21.4 - 26.3" src="https://img.shields.io/badge/Minecraft-1.21.8--26.2-3c8527">
 </p>
 
 <p align="center">
@@ -46,11 +46,11 @@ Sparrow UI is a reactive inventory UI library for Paper and Folia. It brings men
 
 ## Compatibility
 
-Sparrow UI uses one artifact for Paper and Folia from `1.21.8` through `26.2`; no per-version dependency changes are required.
+Sparrow UI uses one artifact for Paper and Folia from `1.21.4` through `26.3`; no per-version dependency changes are required.
 
 | Minecraft version | Paper | Folia |
-| :---: | :---: | :---: |
-| `1.21.8` ~ `26.2` | ✅ | ✅ |
+|:-----------------:| :---: | :---: |
+| `1.21.4` ~ `26.3` | ✅ | ✅ |
 
 > [!NOTE]
 > Sparrow UI is compiled for Java 21. At runtime, use the Java version required by your Paper or Folia server version.
@@ -65,7 +65,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.momirealms:sparrow-ui:beta.23")
+    implementation("net.momirealms:sparrow-ui:beta.26")
 }
 ```
 
