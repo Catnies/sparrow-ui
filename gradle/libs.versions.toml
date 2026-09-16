@@ -1,8 +1,7 @@
 [versions]
 project-version = "beta.26"
 kotlin = "2.3.10"
-paper-api = "1.21.4-R0.1-SNAPSHOT"
-test-paper-api = "1.21.8-R0.1-SNAPSHOT"
+paper-api = "1.21.8-R0.1-SNAPSHOT"
 run-task = "3.0.2"
 paperweight = "2.0.0-beta.21"
 
@@ -27,4 +26,4 @@ junit-platformLauncher = { module = "org.junit.platform:junit-platform-launcher"
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
 kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
 mockbukkit = { module = "org.mockbukkit.mockbukkit:mockbukkit-v1.21", version = "4.93.0" }
-test-paper-api = { module = "io.papermc.paper:paper-api", version.ref = "test-paper-api" }
+test-paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }

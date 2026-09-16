@@ -10,7 +10,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapDecorationProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapIdProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.level.saveddata.maps.MapPatchProxy;
-import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
+import net.momirealms.sparrow.ui.util.AdventureUtils;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.CartographyWindow;
@@ -246,7 +246,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     }
 
     private static Object toDecoration(CartographyWindow.MapIcon icon) {
-        Optional<Object> name = Optional.ofNullable(icon.component()).map(PaperAdventureProxy.INSTANCE::asVanilla);
+        Optional<Object> name = Optional.ofNullable(icon.component()).map(AdventureUtils::asVanilla);
         return MapDecorationProxy.INSTANCE.newInstance(
                 VersionHelper.isOrAbove1_21_7
                         ? CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder(icon.type())

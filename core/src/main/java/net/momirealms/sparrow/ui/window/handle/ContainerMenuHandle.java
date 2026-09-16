@@ -19,7 +19,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.ContainerSynchr
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.MenuSubclassFactory;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.inventory.RemoteSlotProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
-import net.momirealms.sparrow.ui.proxy.paper.adventure.PaperAdventureProxy;
+import net.momirealms.sparrow.ui.util.AdventureUtils;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
@@ -222,7 +222,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
             this.submitPackets(outgoing, true);
             this.packets.send(this.player, outgoing);
             this.commitFullContents(slots, full);
-            this.view.initialize(slots, cursor.actual(), this.view.title());
+            this.view.initialize(slots, cursor.actual(), this.view.componentTitle());
             return;
         }
         this.synchronizeChanges(slots, dirtySlots, cursor, cursorDirty);
@@ -497,7 +497,7 @@ class ContainerMenuHandle implements MenuHandle, MenuSubclassFactory.State {
         outgoing.add(ClientboundOpenScreenPacketProxy.INSTANCE.newInstance(
                 this.containerId,
                 this.menuType,
-                PaperAdventureProxy.INSTANCE.asVanilla(title)
+                AdventureUtils.asVanilla(title)
         ));
         outgoing.add(full.packet());
         outgoing.add(full.offHandPacket());

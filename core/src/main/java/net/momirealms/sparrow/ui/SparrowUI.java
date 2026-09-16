@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 public class SparrowUI implements Listener {
     private static final String WARNINGS_PROPERTY = "sparrow.ui.warnings";
@@ -31,8 +32,8 @@ public class SparrowUI implements Listener {
     private WindowManager windowManager;
     private volatile boolean fireBukkitInventoryEvents = true;
     private boolean warningsEnabled = Boolean.parseBoolean(System.getProperty(WARNINGS_PROPERTY, "true"));
-    private Consumer<? super String> warningHandler = msg -> this.getPlugin().getComponentLogger().warn(msg);
-    private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getComponentLogger().error(msg, e);
+    private Consumer<? super String> warningHandler = msg -> this.getPlugin().getLogger().warning(msg);
+    private BiConsumer<? super String, ? super Throwable> exceptionHandler = (msg, e) -> this.getPlugin().getLogger().log(Level.SEVERE, msg, e);
     private final HandlerList<Runnable> disableHandlers = new HandlerList<>(List.of());
 
     private SparrowUI() {}

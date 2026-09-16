@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.SimpleContainerProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.AdventureUtils;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -133,8 +134,8 @@ final class ProtocolInventoryView implements InventoryView {
         }
     }
 
-    @Override
-    public @NotNull Component title() {
+    @NotNull
+    Component componentTitle() {
         return this.title;
     }
 
@@ -286,7 +287,7 @@ final class ProtocolInventoryView implements InventoryView {
 
     @Override
     public @NotNull String getTitle() {
-        return this.title.toString();
+        return AdventureUtils.asLegacy(this.title);
     }
 
     @Override
