@@ -1,13 +1,10 @@
 import net.minecrell.pluginyml.bukkit.BukkitPluginDescription
-import xyz.jpenilla.runpaper.task.RunServer
-import xyz.jpenilla.runtask.service.DownloadsAPIService
 
 plugins {
     `java-library`
     alias(libs.plugins.shadow)
-    id("io.papermc.paperweight.userdev") version "2.0.0-beta.21"
     id("de.eldoria.plugin-yml.paper") version "0.9.0"
-    id("xyz.jpenilla.run-paper") version "3.0.2"
+    id("sparrow-ui.run-servers")
 }
 
 group = "net.momirealms"
@@ -37,10 +34,6 @@ tasks {
     assemble {
         dependsOn(shadowJar)
     }
-
-    runServer {
-        group = null
-    }
 }
 
 paper {
@@ -54,28 +47,5 @@ paper {
             description = "Allows using the SparrowUI example commands"
             default = BukkitPluginDescription.Permission.Default.OP
         }
-    }
-}
-
-val exampleJar = tasks.shadowJar.flatMap { it.archiveFile }
-val minecraftVersions = listOf("1.20.4", "1.21.4", "1.21.8", "1.21.11", "26.1.2", "26.2")
-for (minecraftVersion in minecraftVersions) {
-    tasks.register<RunServer>("runPaper_$minecraftVersion") {
-        group = "run paper"
-        description = "Run a Paper $minecraftVersion server with the example plugin."
-        displayName.set("Paper $minecraftVersion")
-        minecraftVersion(minecraftVersion)
-        runDirectory.set(layout.projectDirectory.dir("run/paper/$minecraftVersion"))
-        pluginJars.from(exampleJar)
-    }
-
-    tasks.register<RunServer>("runFolia_$minecraftVersion") {
-        group = "run paper"
-        description = "Run a Folia $minecraftVersion server with the example plugin."
-        displayName.set("Folia $minecraftVersion")
-        downloadsApiService.set(DownloadsAPIService.folia(project))
-        minecraftVersion(minecraftVersion)
-        runDirectory.set(layout.projectDirectory.dir("run/folia/$minecraftVersion"))
-        pluginJars.from(exampleJar)
     }
 }

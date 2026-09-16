@@ -3,6 +3,8 @@ project-version = "beta.25"
 kotlin = "2.3.10"
 paper-api = "1.21.4-R0.1-SNAPSHOT"
 test-paper-api = "1.21.8-R0.1-SNAPSHOT"
+run-task = "3.0.2"
+paperweight = "2.0.0-beta.21"
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
