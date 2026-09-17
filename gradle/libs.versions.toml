@@ -1,5 +1,5 @@
 [versions]
-project-version = "beta.29"
+project-version = "beta.30"
 kotlin = "2.3.10"
 paper-api = "1.21.8-R0.1-SNAPSHOT"
 run-task = "3.0.2"
