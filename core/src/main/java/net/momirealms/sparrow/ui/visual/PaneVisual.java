@@ -6,30 +6,29 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * 一个 Pane 的视觉配置, 两层视觉映射, 加上空槽背景.
- * <p>槽位使用 Pane 坐标, 映射盖在经过这一槽的显示路径上. 映射命中后直接给出显示结果,
- * 映射的输入是路径终点的同步可读内容, 终点连接 Inventory 时是该槽当前内容(空槽为 {@code null}),
- * 终点是 Item 或空槽位元素时为 {@code null}. <strong>输入只读, 不得修改</strong>.
+ * 槽号用 Pane 坐标, 映射盖在经过这一格的显示路径上, 命中就按映射给的结果显示.
+ * <p>输入是路径终点的同步可读内容. 终点连着 Inventory 时就是那一格当前的内容, 空槽给 {@code null};
+ * 终点是 Item 或者干脆是空槽位时也给 {@code null}. <strong>输入只读, 不得修改</strong>.
  */
 public interface PaneVisual extends SlotVisual {
 
     /**
-     * 返回空槽背景.
+     * 空槽位显示什么.
      *
-     * @return 空槽背景, 未设置时为 {@code null}
+     * @return 空槽背景; 没设时为 null
      */
     @Nullable
     ItemProvider background();
 
     /**
-     * 替换空槽背景并标脏全部 Pane 槽位.
+     * 换掉空槽背景, 顺手把 Pane 的所有槽位标脏: 空槽显示的就是它.
      *
      * @param background 空槽背景, {@code null} 表示清除
      */
     void background(@Nullable ItemProvider background);
 
     /**
-     * 使用固定 ItemStack 设置空槽背景.
+     * 用固定的 ItemStack 当空槽背景.
      *
      * @param background 空槽背景
      */

@@ -6,10 +6,10 @@ import java.util.Arrays;
 import java.util.function.IntConsumer;
 
 public final class SlotSequence {
-    private final PaneSize paneSize;  // 槽位所属的 Pane 尺寸
-    private final int[] slots;      // 按选择顺序排列的槽位编号, 不重复
-    private final int minX;         // 选中槽位的最小 x 坐标, 空选择为 -1
-    private final int minY;         // 选中槽位的最小 y 坐标, 空选择为 -1
+    private final PaneSize paneSize;  // 这些槽号属于哪个 Pane 尺寸
+    private final int[] slots;        // 按使用顺序排的槽号, 不重复
+    private final int minX;           // 选中槽位里最靠左的那一列, 空选择是 -1
+    private final int minY;           // 选中槽位里最靠上的那一行, 空选择是 -1
 
     SlotSequence(PaneSize paneSize, int[] slots) {
         this.paneSize = paneSize;
@@ -22,24 +22,24 @@ public final class SlotSequence {
             minX = Math.min(minX, slot % width);
             minY = Math.min(minY, slot / width);
         }
-        // 空选择用 -1 作为哨兵, 表示没有最小坐标
+        // 空选择没有最小坐标, 用 -1 顶着, 免得调用方去猜 Integer.MAX_VALUE 之类的巧合值算不算空
         this.minX = slots.length == 0 ? -1 : minX;
         this.minY = slots.length == 0 ? -1 : minY;
     }
 
     /**
-     * 按参数给出的顺序选择槽位.
+     * 按给的顺序选中这些槽位, 顺序就是要用的顺序.
      *
      * @param paneSize 槽位所属的 Pane 尺寸
-     * @param slots 要选择的槽位编号, 创建时复制
+     * @param slots 要选的槽号, <strong>创建时复制一份</strong>
      * @return 槽位选择
-     * @throws IndexOutOfBoundsException 槽位编号超出 Pane 范围时抛出
-     * @throws IllegalArgumentException 槽位编号重复时抛出
+     * @throws IndexOutOfBoundsException 槽号超出 Pane 范围时
+     * @throws IllegalArgumentException 同一个槽号出现两次时
      */
     @NotNull
     public static SlotSequence of(@NotNull PaneSize paneSize, int... slots) {
         int[] copy = slots.clone();
-        // 不足两个槽位不可能重复, 只查范围, 不为查重白开一张面积位图
+        // 两个以下不可能是重复, 只查范围, 不为判重白开一张面积大小的位图
         if (copy.length < 2) {
             for (int slot : copy) {
                 paneSize.checkSlot(slot);
@@ -47,7 +47,7 @@ public final class SlotSequence {
             return new SlotSequence(paneSize, copy);
         }
 
-        // 校验范围并拒绝重复槽位
+        // 两个以上就得判重了, 位图按面积开, 每个槽号一格
         boolean[] seen = new boolean[paneSize.area()];
         for (int slot : copy) {
             paneSize.checkSlot(slot);
@@ -60,7 +60,7 @@ public final class SlotSequence {
     }
 
     /**
-     * 选择 Pane 中的所有槽位.
+     * 整个 Pane 的槽位, 按行优先顺序.
      *
      * @param paneSize Pane 尺寸
      * @return 包含所有槽位的选择
@@ -73,13 +73,13 @@ public final class SlotSequence {
     }
 
     /**
-     * 选择 {@code startInclusive} 到 {@code endExclusive} 之间的槽位.
+     * 选一段连续的槽号, 左闭右开.
      *
      * @param paneSize Pane 尺寸
      * @param startInclusive 起始槽位, 包含
      * @param endExclusive 结束槽位, 不包含
      * @return 指定范围的槽位选择
-     * @throws IndexOutOfBoundsException 范围超出 Pane 时抛出
+     * @throws IndexOutOfBoundsException 范围超出 Pane 时
      */
     @NotNull
     public static SlotSequence range(@NotNull PaneSize paneSize, int startInclusive, int endExclusive) {
@@ -94,12 +94,12 @@ public final class SlotSequence {
     }
 
     /**
-     * 从左到右选择一整行槽位.
+     * 一整行槽位, 从左到右.
      *
      * @param paneSize Pane 尺寸
      * @param row 行号, 从 0 开始
      * @return 一整行槽位
-     * @throws IndexOutOfBoundsException 行号超出 Pane 高度时抛出
+     * @throws IndexOutOfBoundsException 行号超出 Pane 高度时
      */
     @NotNull
     public static SlotSequence row(@NotNull PaneSize paneSize, int row) {
@@ -113,12 +113,12 @@ public final class SlotSequence {
     }
 
     /**
-     * 从上到下选择一整列槽位.
+     * 一整列槽位, 从上到下.
      *
      * @param paneSize Pane 尺寸
      * @param column 列号, 从 0 开始
      * @return 一整列槽位
-     * @throws IndexOutOfBoundsException 列号超出 Pane 宽度时抛出
+     * @throws IndexOutOfBoundsException 列号超出 Pane 宽度时
      */
     @NotNull
     public static SlotSequence column(@NotNull PaneSize paneSize, int column) {
@@ -132,16 +132,16 @@ public final class SlotSequence {
     }
 
     /**
-     * 从左上角开始, 逐行选择一个矩形范围内的槽位.
+     * 选一块矩形区域, 从左上角开始一行一行收.
      *
      * @param paneSize Pane 尺寸
-     * @param x 矩形左上角 x 坐标
-     * @param y 矩形左上角 y 坐标
+     * @param x 矩形左上角在第几列
+     * @param y 矩形左上角在第几行
      * @param width 矩形宽度
      * @param height 矩形高度
      * @return 矩形内的槽位选择
-     * @throws IllegalArgumentException 矩形宽高不是正数时抛出
-     * @throws IndexOutOfBoundsException 矩形超出 Pane 范围时抛出
+     * @throws IllegalArgumentException 矩形的宽或高不是正数时
+     * @throws IndexOutOfBoundsException 矩形探出 Pane 时
      */
     @NotNull
     public static SlotSequence rectangle(@NotNull PaneSize paneSize, int x, int y, int width, int height) {
@@ -154,7 +154,7 @@ public final class SlotSequence {
             );
         }
 
-        // 逐行收集, 每行从行首槽位连续取 width 个
+        // 一行一行收: 行首那个槽号拿到之后, 这一行剩下的就是挨着的
         int[] slots = new int[Math.multiplyExact(width, height)];
         int index = 0;
         for (int row = y; row < y + height; row++) {
@@ -167,7 +167,7 @@ public final class SlotSequence {
     }
 
     /**
-     * 选择 Pane 四周的边框槽位.
+     * Pane 四周那一圈槽位.
      *
      * @param paneSize Pane 尺寸
      * @return 边框槽位选择
@@ -176,7 +176,7 @@ public final class SlotSequence {
     public static SlotSequence borders(@NotNull PaneSize paneSize) {
         int width = paneSize.width();
         int height = paneSize.height();
-        // 零面积和单行或单列 Pane 的全部槽位都属于边框
+        // 零面积和只有一行或一列的 Pane, 每一格都在边框上
         if (paneSize.area() == 0 || width == 1 || height == 1) {
             return all(paneSize);
         }
@@ -201,12 +201,12 @@ public final class SlotSequence {
     }
 
     /**
-     * 按原有顺序合并多个槽位选择.
-     * <p>所有选择必须属于相同尺寸的 Pane, 且不能包含重复槽位.
+     * 按给的顺序把几组槽位接成一组.
+     * <p>每组必须属于同一个 Pane 尺寸, 而且彼此之间不能有重复的格.
      *
      * @param sequences 要合并的槽位选择
-     * @return 合并后的槽位选择
-     * @throws IllegalArgumentException 没有输入, 尺寸不一致或槽位重复时抛出
+     * @return 接好的一整组槽位
+     * @throws IllegalArgumentException 一组都没给, 尺寸对不上, 或者有重复槽位时
      */
     @NotNull
     public static SlotSequence concat(@NotNull SlotSequence... sequences) {
@@ -214,7 +214,7 @@ public final class SlotSequence {
             throw new IllegalArgumentException("at least one slot sequence is required");
         }
 
-        // 校验所有选择属于同一尺寸, 并统计总长度
+        // 先确认它们属于同一个 Pane 尺寸, 顺便算一下一共多少格
         PaneSize size = sequences[0].paneSize;
         int length = 0;
         for (SlotSequence sequence : sequences) {
@@ -224,7 +224,7 @@ public final class SlotSequence {
             length = Math.addExact(length, sequence.slots.length);
         }
 
-        // 按原有顺序收集槽位, 同时拒绝跨选择重复
+        // 按给的顺序收格, 跨组的重复当场拒绝
         int[] slots = new int[length];
         boolean[] seen = new boolean[size.area()];
         int index = 0;
@@ -254,58 +254,58 @@ public final class SlotSequence {
     }
 
     /**
-     * 返回选择中第 occurrence 个槽位.
+     * 按使用顺序取第 occurrence 个槽号.
      *
-     * @param occurrence 选择顺序中的位置
-     * @return Pane 槽位编号
-     * @throws IndexOutOfBoundsException 当 occurrence 越界时
+     * @param occurrence 使用顺序里的位置
+     * @return Pane 槽号
+     * @throws IndexOutOfBoundsException occurrence 越界时
      */
     public int slotAt(int occurrence) {
         return this.slots[occurrence];
     }
 
     /**
-     * 返回选择中第 occurrence 个槽位的横坐标.
+     * 第 occurrence 个槽位在第几列.
      *
-     * @param occurrence 选择顺序中的位置
-     * @return 横坐标
-     * @throws IndexOutOfBoundsException 当 occurrence 越界时
+     * @param occurrence 使用顺序里的位置
+     * @return 列号
+     * @throws IndexOutOfBoundsException occurrence 越界时
      */
     public int xAt(int occurrence) {
         return this.slots[occurrence] % this.paneSize.width();
     }
 
     /**
-     * 返回选择中第 occurrence 个槽位的纵坐标.
+     * 第 occurrence 个槽位在第几行.
      *
-     * @param occurrence 选择顺序中的位置
-     * @return 纵坐标
-     * @throws IndexOutOfBoundsException 当 occurrence 越界时
+     * @param occurrence 使用顺序里的位置
+     * @return 行号
+     * @throws IndexOutOfBoundsException occurrence 越界时
      */
     public int yAt(int occurrence) {
         return this.slots[occurrence] / this.paneSize.width();
     }
 
     /**
-     * 返回选中槽位的最小横坐标.
+     * 选中槽位里最靠左的那一列.
      *
-     * @return 最小横坐标, 空选择为 -1
+     * @return 最左的列号; 空选择是 -1
      */
     public int minX() {
         return this.minX;
     }
 
     /**
-     * 返回选中槽位的最小纵坐标.
+     * 选中槽位里最靠上的那一行.
      *
-     * @return 最小纵坐标, 空选择为 -1
+     * @return 最上的行号; 空选择是 -1
      */
     public int minY() {
         return this.minY;
     }
 
     /**
-     * 复制按选择顺序排列的槽位编号.
+     * 按使用顺序把槽号复制成数组.
      *
      * @return 槽位数组副本
      */
@@ -314,7 +314,7 @@ public final class SlotSequence {
     }
 
     /**
-     * 按选择顺序访问槽位编号.
+     * 按使用顺序把每个槽号交给 action.
      *
      * @param action 槽位访问器
      */
@@ -325,20 +325,20 @@ public final class SlotSequence {
     }
 
     /**
-     * 使用 Pattern 重新选择或排列当前槽位.
-     * <p>Pattern 只能使用当前已选槽位, 不能输出越界, 未选中或重复槽位.
-     * emit 返回后输出通道立即关闭, 此后的输出会抛出 IllegalStateException.
+     * 拿 Pattern 在这组槽位上再挑一遍, 或者重新排个序.
+     * <p>Pattern 只能动现有槽位: 输出越界槽号, 没被选中的格, 或者重复槽号都会当场失败.
+     * 而且 output 只在 {@link SlotPattern#emit} 返回之前能用, 之后再输出会抛 IllegalStateException.
      *
      * @param pattern 槽位选择方式
-     * @return 新的槽位选择
-     * @throws IndexOutOfBoundsException 当 Pattern 输出越界槽位时
-     * @throws IllegalArgumentException 当 Pattern 输出非候选或重复槽位时
+     * @return 新的槽位选择; 内容和顺序都没变时还给原来这个实例
+     * @throws IndexOutOfBoundsException Pattern 输出了越界槽位时
+     * @throws IllegalArgumentException Pattern 输出了非候选或重复槽位时
      */
     @NotNull
     public SlotSequence transform(@NotNull SlotPattern pattern) {
         PatternCollector collector = new PatternCollector(this);
         try {
-            // 常用排序直接读取收集器状态
+            // 行优先和列优先走收集器自己的快路径, 别的 pattern 才走回调
             if (pattern == SlotPatterns.ROW_MAJOR) {
                 collector.emitRowMajor();
             } else if (pattern == SlotPatterns.COLUMN_MAJOR) {
@@ -347,25 +347,26 @@ public final class SlotSequence {
                 pattern.emit(this, collector);
             }
         } finally {
-            // emit 返回后关闭输出通道, 延迟输出会失败
+            // emit 一返回就把输出口关掉, 留着回调以后再写会被拒
             collector.deactivate();
         }
         return collector.finish();
     }
 
+    // 内部数组原样给出, 同包的快路径读它不做复制; 拿到的数组不许改.
     int[] unsafeSlots() {
         return this.slots;
     }
 
     /**
-     * 接收 Pattern 的输出, 同时检查输出是否仍属于候选槽位.
+     * 接 Pattern 的输出, 一边收一边盯着它别越界, 别重复, 也别写非候选的格.
      */
     private static final class PatternCollector implements IntConsumer {
-        private final SlotSequence candidates; // 允许输出的候选槽位
-        private final byte[] states; // 每个 Pane 槽位的输出状态: 0 表示非候选, 1 表示未输出, 2 表示已输出
-        private final int[] result; // 按输出顺序收集的槽位
-        private int size; // 已输出的槽位数量
-        private boolean active = true; // 输出通道是否仍然可用
+        private final SlotSequence candidates; // 允许输出的那组槽位
+        private final byte[] states;           // 每个 Pane 槽位一个字节: 0 非候选, 1 还没输出, 2 已经输出
+        private final int[] result;            // 按输出顺序收下来的槽号
+        private int size;                      // 已经输出几个
+        private boolean active = true;         // 输出口还开着吗
 
         private PatternCollector(SlotSequence candidates) {
             this.candidates = candidates;
@@ -376,7 +377,7 @@ public final class SlotSequence {
             }
         }
 
-        // 接收 Pattern 输出的一个槽位, 校验它合法且未重复.
+        // 收一个槽号: 先看输出口开没开, 再看它在不在候选里, 最后看有没有重复.
         @Override
         public void accept(int slot) {
             if (!this.active) {
@@ -397,12 +398,12 @@ public final class SlotSequence {
             this.result[this.size++] = slot;
         }
 
-        // 关闭输出通道, 之后的输出会抛出异常.
+        // 之后的输出一律拒绝.
         private void deactivate() {
             this.active = false;
         }
 
-        // 按从上到下, 每行从左到右的顺序输出未输出过的候选槽位.
+        // 行优先快路径: 按槽号升序把候选全部输出, 等于按行优先排了一遍
         private void emitRowMajor() {
             for (int slot = 0; slot < this.states.length; slot++) {
                 if (this.states[slot] == 1) {
@@ -411,7 +412,7 @@ public final class SlotSequence {
             }
         }
 
-        // 按从左到右, 每列从上到下的顺序输出未输出过的候选槽位.
+        // 列优先快路径: 外层走列, 内层走行, 把候选全部输出
         private void emitColumnMajor() {
             PaneSize size = this.candidates.paneSize;
             for (int x = 0; x < size.width(); x++) {
@@ -424,9 +425,9 @@ public final class SlotSequence {
             }
         }
 
-        // 用收集到的槽位构建新的选择.
+        // 用收下来的槽位组装新的选择.
         private SlotSequence finish() {
-            // Pattern 未改变内容和顺序时复用原实例
+            // 内容和顺序都没变就把原实例还回去, 省一次分配
             if (this.size == this.candidates.slots.length
                     && Arrays.equals(this.result, this.candidates.slots)) {
                 return this.candidates;

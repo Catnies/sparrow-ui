@@ -4,16 +4,20 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.function.IntConsumer;
 
+/**
+ * 内置的几种见 {@link SlotPatterns}.
+ */
 @FunctionalInterface
 public interface SlotPattern {
 
     /**
-     * 决定如何从候选槽位中选出一组槽位, 以及选中槽位的顺序.
-     * 选择槽位并按结果顺序传给 {@code output}.
-     * 可以跳过某些候选槽位, 也可以改变顺序, 但不能输出非候选槽位或重复槽位.
+     * 挑出要用的槽位, 按结果顺序交给 {@code output}.
      *
-     * @param candidates 可以选择的槽位
-     * @param output 接收选中槽位, 只能在本方法返回前调用
+     * <p>可以跳过候选里的某些槽位, 也可以改顺序, 但只能输出候选里有的槽位, 而且不能重复.
+     * {@code output} 只在这次调用期间有效, 方法返回之后就别再碰它了.
+     *
+     * @param candidates 可以选的槽位
+     * @param output 接收选中的槽位
      */
     void emit(@NotNull SlotSequence candidates, @NotNull IntConsumer output);
 }

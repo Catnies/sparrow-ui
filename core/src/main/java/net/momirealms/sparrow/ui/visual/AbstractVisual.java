@@ -14,6 +14,7 @@ public abstract class AbstractVisual implements Visual {
         this.bindings = bindings;
     }
 
+    // 绑定记在宿主身上, 使用方丢不丢句柄都不影响它继续工作
     @NotNull
     @Override
     public final Subscription bind(@NotNull Signal<?> signal) {

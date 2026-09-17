@@ -29,16 +29,15 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * 一名玩家正在查看的 Pane 窗口.
- * <p>会触碰菜单或协议状态的命令按玩家串行送入实体线程. 其余方法的线程行为由各自说明,
- * 查询方法会注明返回配置值还是最近一次已应用的快照.
- * <p>实现由库内 Window 层级提供, 外部代码不应自行实现此接口.
+ * 一名玩家正在看的 Pane 窗口.
+ * <p>会碰菜单或协议状态的方法都按玩家串行送到实体线程上执行; 其余方法各自的线程说明写在方法上,
+ * 查询方法会写清返回的是配置值还是最近一次已应用的快照.
+ * <p>实现由库内的 Window 层级提供, <strong>外部代码不应自行实现此接口</strong>.
  */
 public interface Window {
 
     /**
-     * 创建普通窗口的 Builder.
-     * 普通窗口由 {@code pane} 作为上半部分, 下半部分映射玩家原生物品栏.
+     * 建一个普通窗口的 Builder: {@code pane} 当上半部分, 下半部分映射玩家原生物品栏.
      *
      * @param pane 上半部分 Pane
      * @return 可重复使用的 Builder
@@ -48,8 +47,7 @@ public interface Window {
     }
 
     /**
-     * 创建上下分离窗口的 Builder.
-     * 上下两个 Pane 分别控制容器和玩家物品栏区域.
+     * 建一个上下分离窗口的 Builder: 两个 Pane 分别管容器和玩家物品栏那一片.
      *
      * @param upperPane 上半部分 Pane
      * @param lowerPane 下半部分 9x4 Pane
@@ -60,8 +58,7 @@ public interface Window {
     }
 
     /**
-     * 创建合并窗口的 Builder.
-     * 单个 Pane 同时覆盖容器和玩家物品栏区域.
+     * 建一个合并窗口的 Builder: 一个 Pane 同时盖住容器和玩家物品栏.
      *
      * @param pane 合并后的 Pane
      * @return 可重复使用的 Builder
@@ -71,16 +68,16 @@ public interface Window {
     }
 
     /**
-     * 请求打开 Window. CompletableFuture 完成表示服务端已执行打开流程, 不表示客户端已经显示.
+     * 请求打开这扇窗. Future 完成只说明服务端把打开流程走完了, 不代表客户端已经把它显示出来.
      *
      * @return 打开请求的执行结果
      */
     @NotNull CompletableFuture<OpenResult> open();
 
     /**
-     * 从本 Window 打开下一扇 Window, 本 Window 成为它的上一扇等着被返回.
-     * <p>本 Window 已在某个会话中时新窗口加入那个会话, 不在时两者组成一段新会话.
-     * 因此无论本 Window 原本是否属于会话, 新窗口都可以经 {@link #back()} 回到这里.
+     * 从这扇窗打开下一扇, 本 Window 成为它的上一扇, 等着被返回.
+     * <p>本 Window 已经在某个会话里时, 新窗口加入那个会话; 不在时两者凑成一段新会话.
+     * 所以不论本 Window 原来属不属于会话, 新窗口都能用 {@link #back()} 回到这里.
      *
      * @param next 要打开的下一扇 Window, 必须与本 Window 属于同一名玩家
      * @return 打开后的 next, 玩家不可用或所在会话已结束等打不开的情况以 null 完成
@@ -88,9 +85,9 @@ public interface Window {
     @NotNull CompletableFuture<Window> navigate(@NotNull Window next);
 
     /**
-     * 以本 Window 的查看者创建下一扇 Window 并打开它, 语义同 {@link #navigate(Window)}.
-     * <p>Builder 会在调用线程同步构建, 因而同样受 {@link Builder#build(Player)} 的线程约束.
-     * 需要异步构建时, 先取得 CompletionStage 再调用 {@link #navigate(CompletionStage)}.
+     * 拿本 Window 的查看者把下一扇建出来再打开, 其余语义同 {@link #navigate(Window)}.
+     * <p>Builder 是在调用线程上同步建的, 所以这里同样受 {@link Builder#build(Player)} 的线程约束.
+     * 想异步建的话先把 CompletionStage 拿到手, 再走 {@link #navigate(CompletionStage)}.
      *
      * @param next 下一扇 Window 的 Builder
      * @return 打开后的 Window, 打不开时以 null 完成
@@ -101,10 +98,10 @@ public interface Window {
     }
 
     /**
-     * 等待一扇还在构建中的 Window 完成, 再从本 Window 打开它, 语义同 {@link #navigate(Window)}.
-     * <p>构建线程由调用方决定, 构建完成后再由玩家实体线程执行打开流程.
-     * <p>发起本次调用时本 Window 所在的位置会被记下. 构建结果到达时本 Window 已经关闭, 被顶替,
-     * 或者不再是所在会话的当前窗, 本次导航就此作罢, 以 null 完成, 原会话与玩家正在看的菜单都不改变.
+     * 等一扇还在构建中的 Window 建完, 再从本 Window 打开它, 其余语义同 {@link #navigate(Window)}.
+     * <p>在哪儿构建由调用方定; 建完之后仍旧由玩家实体线程来跑打开流程.
+     * <p>发起这次调用时会把本 Window 当时的位置记下来. 构建结果回来的时候本 Window 已经关了, 被顶替了,
+     * 或者已经不是所在会话的当前窗, 这次导航就作罢, 以 null 完成, 原会话和玩家正看着的菜单都不动.
      *
      * @param next 构建中的下一扇 Window
      * @return 打开后的 Window, 打不开时以 null 完成
@@ -115,18 +112,18 @@ public interface Window {
     }
 
     /**
-     * 回到上一扇, 上一扇以原实例重新打开.
-     * <p>只有本 Window 是某个会话的当前窗且有上一扇时才发生返回. 位于根窗或不属于任何会话时
-     * 不做任何事, 本 Window 保持打开.
+     * 退回上一扇, 上一扇拿原实例重新打开.
+     * <p>只有本 Window 是某个会话的当前窗, 而且上面真有上一扇时才会返回.
+     * 在根窗上或者不属于任何会话时什么都不做, 本 Window 继续开着.
      *
      * @return 返回后的新当前窗, 没有发生返回时以 null 完成
      */
     @NotNull CompletableFuture<Window> back();
 
     /**
-     * 回到上一扇, 没有上一扇可回时关闭本 Window.
-     * <p>有上一扇时等同 {@link #back()}. 位于根窗或不属于任何会话时等同 {@link #close()},
-     * 根窗的关闭会照常结束所在会话. 通用"返回/关闭"按钮用这个.
+     * 退回上一扇; 没有上一扇可退就把本 Window 关掉.
+     * <p>有上一扇时等同 {@link #back()}; 在根窗上或者不属于任何会话时等同 {@link #close()},
+     * 根窗一关, 所在会话照常结束. 返回/关闭按钮一般接这个.
      *
      * @return 返回后的新当前窗, 走了关闭路径时以 null 完成
      */
@@ -134,8 +131,8 @@ public interface Window {
 
     /**
      * 本 Window 所属的会话.
-     * <p>{@code build()} 后尚未打开时为 null. 经 {@link #open()} 直接打开时成为新根窗并在此刻创建会话,
-     * 经 {@link #navigate} 被打开时归属上一扇所在的会话. 离开会话(栈弹出丢弃, 被会话外 Window 顶替, 会话结束)后回到 null.
+     * <p>{@code build()} 完还没打开时是 null. 经 {@link #open()} 直接打开就成为新根窗并当场建会话,
+     * 经 {@link #navigate} 打开的窗归属上一扇所在的会话. 离开会话之后(被弹出丢弃, 被会话外的 Window 顶替, 会话结束)又回到 null.
      *
      * @return 所属会话, 不属于任何会话时为 null
      */
@@ -143,9 +140,9 @@ public interface Window {
     WindowSession session();
 
     /**
-     * 随本 Window 携带的用户对象, 通常是构建它的菜单对象.
-     * <p>库只保管这份引用, 不读取其中内容. 会话类型决定会话持有本 Window 的时长.
-     * 调用方继续持有 Window 时, 用户对象也会随之保留.
+     * 跟着这扇窗走的用户对象, 一般就是建它的那个菜单对象.
+     * <p>库只保管这份引用, 不读里面的东西. 这份对象能活多久, 看会话类型让会话持有多久的 Window;
+     * 调用方自己还拿着 Window 的话, 它也跟着在.
      *
      * @return 携带的对象, 未设置时为 null
      */
@@ -153,12 +150,12 @@ public interface Window {
     Object data();
 
     /**
-     * 以给定类型读取携带的用户对象.
+     * 按类型读携带的用户对象.
      *
      * @param <T> 期望类型
      * @param type 期望类型
-     * @return 携带的对象, 未设置时为 null
-     * @throws ClassCastException 携带对象不是该类型时
+     * @return 携带的对象; 没设时为 null
+     * @throws ClassCastException 带着的对象不是这个类型时
      */
     @Nullable
     default <T> T data(@NotNull Class<T> type) {
@@ -166,30 +163,30 @@ public interface Window {
     }
 
     /**
-     * 请求关闭 Window.
-     * <p>closeable 只限制玩家主动关闭, 不限制插件命令.
+     * 请求关闭这扇窗.
+     * <p>closeable 拦的只是玩家主动关, 插件发起的关闭不受它管.
      *
      * @return 关闭请求的执行结果
      */
     @NotNull CompletableFuture<CloseResult> close();
 
     /**
-     * 设置动态标题来源并请求刷新.
-     * Supplier 在玩家实体线程读取, 返回 null 时显示空标题.
+     * 换掉动态标题来源, 并请求刷新一次.
+     * <p>Supplier 在玩家实体线程上读; 它返回 null 就显示空标题.
      *
      * @param titleSupplier 标题来源
      */
     void setTitleSupplier(@NotNull Supplier<? extends Component> titleSupplier);
 
     /**
-     * 设置固定标题并请求刷新.
+     * 换成固定标题, 并请求刷新一次.
      *
      * @param title 新标题
      */
     void setTitle(@NotNull Component title);
 
     /**
-     * 使用纯文本组件设置固定标题.
+     * 拿纯文本当固定标题.
      *
      * @param title 新标题
      */
@@ -198,55 +195,56 @@ public interface Window {
     }
 
     /**
-     * 请求重新读取当前标题 Supplier.
-     * 多次请求会在玩家实体 tick 中合并.
+     * 请求把当前的标题 Supplier 重新读一遍.
+     * <p>连着请求几次会在玩家实体 tick 里合并成一次.
      */
     void updateTitle();
 
     /**
-     * 当前菜单标题, 也就是最近一次已应用的标题快照.
+     * 当前这个标题, 也就是最近一次已经应用上去的那一份.
      *
      * @return 当前标题
      */
     @NotNull Component title();
 
     /**
-     * 播放一次标题动画, 播放期间的标题帧盖住配置标题({@link #setTitle}/{@link #setTitleSupplier}),
-     * 帧返回 {@code null} 时放行显示配置标题, 播放结束后配置标题原样露出.
-     * 同窗多次播放按开始序后来者优先, 后开始的帧放行时逐层下落到更早开始的播放.
+     * 播一次标题动画.
+     * <p>播放期间标题帧盖住配置标题({@link #setTitle}/{@link #setTitleSupplier}), 帧返回 {@code null} 的地方放行,
+     * 露出配置标题; 播完之后配置标题原样回来. 同一扇窗里播多次按开始顺序后来者优先,
+     * 后开始的帧放行时逐层下落到更早开始的播放.
      * <p><strong>每一拍真正的标题变化都是一次同容器编号的菜单重开加全量内容重发</strong>,
-     * 所以容器现在展示的内容越复杂, 方法越贵.
+     * 所以容器里现在摆的东西越复杂, 这个方法越贵.
      *
      * @param animationDefinition 标题动画描述
      * @return 这次播放的句柄
-     * @throws IllegalArgumentException 当动画周期不是正数时
+     * @throws IllegalArgumentException 动画周期不是正数时
      */
     @NotNull
     AnimationHandle playTitleAnimation(@NotNull TitleAnimationDefinition animationDefinition);
 
     /**
-     * 设置是否接受客户端主动关闭.
-     * 此设置不阻止插件, 断线或 Bukkit 外部关闭.
+     * 设置玩家能不能自己关掉这扇窗.
+     * <p>拦不住的还有插件, 断线, 以及 Bukkit 那边的外部关闭.
      *
      * @param closeable 是否可由客户端主动关闭
      */
     void setCloseable(boolean closeable);
 
     /**
-     * 返回指定协议槽位是否被本 Window 冻结.
-     * 只反映 {@link #frozenAt(int, boolean)} 设置的窗口侧状态, 路径上 Pane 自身的冻结不计入.
+     * 这个协议槽位(raw slot)有没有被本 Window 冻住.
+     * <p>只反映 {@link #frozenAt(int, boolean)} 设的窗口侧状态, 路径上 Pane 自己的冻结不算在里面.
      *
      * @param windowSlot 协议槽位(raw slot)
-     * @return 该槽位被本 Window 冻结时返回 true
+     * @return 被本 Window 冻住时为 true
      * @throws IndexOutOfBoundsException 槽位超出 Window 范围时
      */
     boolean frozenAt(int windowSlot);
 
     /**
-     * 设置指定协议槽位是否被本 Window 冻结.
-     * 冻结后该槽位与路径经过已冻结 Pane 同待遇. 它不参与点击语义, 不派发事件, 也不分派 Item 点击,
+     * 冻住或者解冻一个协议槽位(raw slot).
+     * <p>冻住之后这一格和显示路径经过冻结 Pane 是同等待遇: 不参与点击语义, 不派发事件, 也不分派 Item 点击,
      * 客户端预测会被纠正回来, 显示内容不受影响.
-     * 与 {@link Pane#setFrozen} 相互独立, 任一生效该槽位即被冻结, 本方法的解冻只撤销窗口侧的这一份.
+     * <p>它和 {@link Pane#setFrozen} 各算各的, 任一生效这一格就是冻的; 在这里解冻只撤掉窗口侧那一份.
      *
      * @param windowSlot 协议槽位(raw slot)
      * @param frozen true 表示冻结
@@ -255,44 +253,45 @@ public interface Window {
     void frozenAt(int windowSlot, boolean frozen);
 
     /**
-     * 返回本 Window 是否冻结玩家副手交互.
-     * <p>副手不属于 Window 的协议槽位, 因此不会出现在 {@link #frozenAt(int)} 或 Pane 路径中.
-     * 本状态只阻止玩家经当前 Window 发起的副手交换, 不阻止插件或其他服务端逻辑直接修改副手.
+     * 本 Window 有没有冻住玩家的副手交互.
      *
-     * @return 副手交互被冻结时返回 true
+     * <p>副手不在 Window 的协议槽位里, 所以 {@link #frozenAt(int)} 和 Pane 的路径都看不见它.
+     * 这个状态只拦玩家经当前 Window 发起的副手交换, 插件或者别处的服务端逻辑直接改副手它管不着.
+     *
+     * @return 副手交互被冻住时为 true
      */
     boolean offhandFrozen();
 
     /**
-     * 设置本 Window 是否冻结玩家副手交互.
-     * <p>冻结后, 玩家在当前 Window 内按下副手交换键时不会改变被点击槽位或副手,
-     * 也不会派发 Bukkit, Sparrow Inventory 或 Item 点击事件.
+     * 冻住或者解冻玩家的副手交互.
+     * <p>冻住之后玩家在这扇窗里按副手交换键, 被点的槽位和副手都不会变,
+     * Bukkit, Sparrow Inventory 和 Item 点击事件也都不会派发.
      *
      * @param frozen true 表示冻结副手交互
      */
     void offhandFrozen(boolean frozen);
 
     /**
-     * 返回玩家主动关闭本窗口时, 所在会话是否返回上一扇.
+     * 玩家主动关这扇窗时, 所在会话要不要退回上一扇.
      *
      * @return 玩家主动关闭时是否返回上一扇
      */
     boolean backOnPlayerClose();
 
     /**
-     * 设置玩家主动关闭本窗口时, 所在会话是否返回上一扇. 默认 false.
-     * <p>仅当本窗口是某个会话的当前窗时有意义, true 且存在上一扇时返回上一扇,
-     * 否则会话以 PLAYER 原因结束. 不在任何会话中的窗口忽略此开关, 玩家关闭就是关闭.
-     * <p>本开关只作用于玩家主动关闭(reason == PLAYER), 不影响程序化导航.
+     * 设置玩家主动关窗时要不要退回上一扇, 默认 false.
+     * <p>只有本窗口正好是某个会话的当前窗时这条开关才有意义: 为 true 而且有上一扇就退回去,
+     * 否则会话以 PLAYER 原因结束. 不在任何会话里的窗口不认这条开关, 玩家关就是关.
+     * <p>它只管玩家主动关闭(reason == PLAYER), 程序化导航不受影响.
      *
      * @param backOnPlayerClose true 表示返回上一扇
      */
     void backOnPlayerClose(boolean backOnPlayerClose);
 
     /**
-     * 绑定到指定的 Signal, 当 Signal 被标脏时, 会触发传入的回调函数.
-     * <p>绑定不补发当前值, 第一次回调发生在下一次标脏.
-     * <p><strong>绑定跟随打开期</strong>, 首次打开时才挂上订阅, 关闭时摘掉, 重新打开时按声明重新挂上.
+     * 让 Signal 每次被标脏都回调一次.
+     * <p>不会补一趟当前值, 第一次回调要等下一次标脏.
+     * <p><strong>绑定跟着打开期走</strong>: 第一次打开时才把订阅挂上, 关掉时摘掉, 重新打开再按声明挂回去.
      *
      * @param signal 数据源
      * @param callback 失效回调
@@ -302,14 +301,14 @@ public interface Window {
     Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super Window> callback);
 
     /**
-     * 替换打开后依次执行的处理器列表.
+     * 整批换掉打开时要跑的处理器.
      *
      * @param openHandlers 新处理器列表
      */
     void setOpenHandlers(@NotNull List<? extends Runnable> openHandlers);
 
     /**
-     * 当前打开处理器列表的快照.
+     * 现在的打开处理器, 给一份快照.
      *
      * @return 不可变的处理器列表
      */
@@ -317,28 +316,28 @@ public interface Window {
     @NotNull List<Runnable> getOpenHandlers();
 
     /**
-     * 在现有打开处理器末尾追加一个处理器.
+     * 在打开处理器末尾追加一个.
      *
      * @param openHandler 打开处理器
      */
     void addOpenHandler(@NotNull Runnable openHandler);
 
     /**
-     * 移除一个与给定对象相等的打开处理器.
+     * 按 equals 摘掉一个打开处理器.
      *
      * @param openHandler 要移除的打开处理器
      */
     void removeOpenHandler(@NotNull Runnable openHandler);
 
     /**
-     * 替换关闭后依次执行的处理器列表.
+     * 整批换掉关闭之后要跑的处理器.
      *
      * @param closeHandlers 新处理器列表
      */
     void setCloseHandlers(@NotNull List<? extends Consumer<? super WindowCloseReason>> closeHandlers);
 
     /**
-     * 当前关闭处理器列表的快照.
+     * 现在的关闭处理器, 给一份快照.
      *
      * @return 不可变的处理器列表
      */
@@ -346,29 +345,29 @@ public interface Window {
     @NotNull List<Consumer<WindowCloseReason>> getCloseHandlers();
 
     /**
-     * 在现有关闭处理器末尾追加一个处理器.
+     * 在关闭处理器末尾追加一个, 它拿到的参数是关闭原因.
      *
      * @param closeHandler 关闭处理器, 参数为关闭原因
      */
     void addCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler);
 
     /**
-     * 移除一个与给定对象相等的关闭处理器.
+     * 按 equals 摘掉一个关闭处理器.
      *
      * @param closeHandler 要移除的关闭处理器
      */
     void removeCloseHandler(@NotNull Consumer<? super WindowCloseReason> closeHandler);
 
     /**
-     * 替换容器外点击处理器列表.
-     * 处理器可以取消 {@link WindowOutsideClick} 以阻止该次点击.
+     * 整批换掉容器外点击的处理器.
+     * <p>处理器可以取消 {@link WindowOutsideClick} 来拦下这次点击.
      *
      * @param outsideClickHandlers 新处理器列表
      */
     void setOutsideClickHandlers(@NotNull List<? extends Consumer<? super WindowOutsideClick>> outsideClickHandlers);
 
     /**
-     * 当前容器外点击处理器列表的快照.
+     * 现在的容器外点击处理器, 给一份快照.
      *
      * @return 不可变的处理器列表
      */
@@ -376,54 +375,54 @@ public interface Window {
     @NotNull List<Consumer<WindowOutsideClick>> getOutsideClickHandlers();
 
     /**
-     * 在现有容器外点击处理器末尾追加一个处理器.
+     * 在容器外点击处理器末尾追加一个.
      *
      * @param outsideClickHandler 容器外点击处理器
      */
     void addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
     /**
-     * 移除一个与给定对象相等的容器外点击处理器.
+     * 按 equals 摘掉一个容器外点击处理器.
      *
      * @param outsideClickHandler 要移除的容器外点击处理器
      */
     void removeOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
     /**
-     * 设置服务器窗口状态, 并在已打开时发送 Ping 等待客户端确认.
+     * 设置服务端这边的窗口状态, 已经开着的话顺带发个 Ping 等客户端确认.
      *
      * @param windowState 新服务器窗口状态
      */
     void setWindowState(int windowState);
 
     /**
-     * 将服务器窗口状态加一, 并在已打开时等待客户端确认.
+     * 把服务端的窗口状态加一, 同样在已打开时等客户端确认.
      */
     void incrementWindowState();
 
     /**
-     * 返回最近一次设置的服务器窗口状态.
+     * 最近一次设的服务端窗口状态.
      *
      * @return 服务器窗口状态
      */
     int serverWindowState();
 
     /**
-     * 返回最近一次收到 Pong 确认的客户端窗口状态.
+     * 最近一次收到 Pong 确认的客户端窗口状态.
      *
      * @return 客户端已确认窗口状态
      */
     int clientWindowState();
 
     /**
-     * 替换客户端 Pong 确认窗口状态时依次执行的处理器列表.
+     * 整批换掉客户端 Pong 确认窗口状态时要跑的处理器.
      *
      * @param handlers 新处理器列表
      */
     void setWindowStateChangeHandlers(@NotNull List<? extends Consumer<? super Integer>> handlers);
 
     /**
-     * 当前客户端 Pong 确认窗口状态的处理器列表的快照.
+     * 现在的状态确认处理器, 给一份快照.
      *
      * @return 不可变的处理器列表
      */
@@ -431,23 +430,23 @@ public interface Window {
     @NotNull List<Consumer<Integer>> getWindowStateChangeHandlers();
 
     /**
-     * 在现有客户端 Pong 确认窗口状态处理器末尾追加一个处理器.
+     * 在状态确认处理器末尾追加一个.
      *
      * @param handler 状态确认处理器
      */
     void addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
-     * 移除一个与给定对象相等的客户端 Pong 确认窗口状态处理器.
+     * 按 equals 摘掉一个状态确认处理器.
      *
      * @param handler 要移除的状态确认处理器
      */
     void removeWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
     /**
-     * 返回本 Window 的两层槽位视觉配置.
-     * <p>同一 Window 始终返回同一个对象. 配置只影响本 Window 的查看者,
-     * 并盖在显示路径的最外层, 先于沿途 Pane 与路径终点求值.
+     * 本 Window 的两层槽位视觉配置.
+     * <p>同一扇窗始终给同一个对象. 这份配置只影响本 Window 的查看者, 而且盖在显示路径最外层,
+     * 先于沿途 Pane 和路径终点求值.
      *
      * @return 槽位视觉配置
      */
@@ -455,9 +454,9 @@ public interface Window {
     WindowVisual visual();
 
     /**
-     * 返回当前的全局视觉映射.
+     * 现在这一层的全局视觉映射.
      *
-     * @return 全局视觉映射, 没有设置过时为 {@code null}, 表示按路径终点显示
+     * @return 全局视觉映射; 没设过时是 null, 表示按路径终点显示
      */
     @Nullable
     default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider() {
@@ -465,9 +464,10 @@ public interface Window {
     }
 
     /**
-     * 设置 Window 全局视觉映射. 映射盖在本 Window 每条显示路径的最外层, 命中时沿途 Pane 与路径终点不再参与显示.
-     * 输入是路径终点的同步可读内容, 约定见 {@link WindowVisual}. 返回 {@code null} 表示放行, 交给下一层.
-     * <p>映射只改变本 Window 中的展示结果, 不影响槽位元素, 事务与点击语义. 光标不归它管.
+     * 换掉 Window 的全局视觉映射, 它盖在本 Window 每条显示路径的最外面.
+     * <p>命中时沿途 Pane 和路径终点都不再参与显示. 输入是路径终点的同步可读内容, 约定见 {@link WindowVisual};
+     * 映射返回 {@code null} 就是放行, 交给下一层.
+     * <p>映射改的只是本 Window 里的展示结果, 槽位元素, 事务和点击语义都不动, 光标也不归它管.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      */
@@ -476,8 +476,8 @@ public interface Window {
     }
 
     /**
-     * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同. 提供器当场算得出结果时首帧就是真值, 用不到占位.
+     * 同 {@link #setVisualizerProvider(Function)}, 顺带给它配一个占位.
+     * <p>提供器当场算得出结果时首帧就是真值, 占位用不上.
      *
      * @param visualizerProvider 新的全局视觉映射, {@code null} 表示不参与这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
@@ -487,8 +487,8 @@ public interface Window {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射设置 Window 全局视觉映射.
-     * <p>约定与 {@link #setVisualizerProvider(Function)} 相同.
+     * 用直接返回 ItemStack 的映射当 Window 的全局视觉映射.
+     * <p>约定跟 {@link #setVisualizerProvider(Function)} 一样.
      *
      * @param visualizer 新的全局物品映射, {@code null} 表示不参与这一层
      */
@@ -497,11 +497,11 @@ public interface Window {
     }
 
     /**
-     * 返回一个 Window 槽位的显式视觉映射, 不含回退到的全局映射.
+     * 这一格自己的视觉映射, 不含会回退过去的全局那层.
      *
      * @param windowSlot Window 槽位
-     * @return 该槽的逐槽视觉映射, 没有覆盖时为 {@code null}, 表示这个槽用的是全局映射
-     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @return 逐槽视觉映射; 这一格没覆盖时是 null, 也就是走全局映射
+     * @throws IndexOutOfBoundsException 槽号越界时
      */
     @Nullable
     default Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider(int windowSlot) {
@@ -509,47 +509,46 @@ public interface Window {
     }
 
     /**
-     * 替换一个 Window 槽位的逐槽视觉映射, 它是整条显示路径层级最高的一层.
-     * 返回非 {@code null} 结果直接采用, 返回 {@code null} 表示放行, 继续询问全局映射.
-     * 传入 {@code null} 会移除这一层, 使该槽直接从全局映射开始.
-     * <p>映射的输入输出约定与 {@link #setVisualizerProvider(Function)} 相同.
+     * 换掉某一格的逐槽视觉映射, 它是整条显示路径上最高的一层.
+     * <p>映射给非 null 结果就直接用; 给 {@code null} 就是放行, 接着问全局映射.
+     * 传 {@code null} 进来则是把这一层撤掉, 这一格从全局映射开始.
+     * <p>输入输出的约定跟 {@link #setVisualizerProvider(Function)} 一样.
      *
      * @param windowSlot Window 槽位
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
-     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IndexOutOfBoundsException 槽号越界时
      */
     default void setVisualizerProvider(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider) {
         this.visual().setVisualizerProvider(windowSlot, visualizerProvider);
     }
 
     /**
-     * 替换一个 Window 槽位的逐槽视觉映射, 并指定提供器给出结果前显示的占位.
-     * <p>约定与 {@link #setVisualizerProvider(int, Function)} 相同.
+     * 同 {@link #setVisualizerProvider(int, Function)}, 顺带给它配一个占位.
      *
      * @param windowSlot Window 槽位
      * @param visualizerProvider 新的逐槽视觉映射, {@code null} 表示移除这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
-     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IndexOutOfBoundsException 槽号越界时
      */
     default void setVisualizerProvider(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
         this.visual().setVisualizerProvider(windowSlot, visualizerProvider, placeholder);
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射替换一个 Window 槽位的逐槽视觉映射.
-     * 映射返回 {@code null} 表示放行, 返回空 ItemStack 表示覆盖为空视觉.
+     * 用直接返回 ItemStack 的映射当这一格的视觉映射.
+     * <p>映射返回 {@code null} 就是放行, 返回空 ItemStack 则是把它盖成空视觉.
      *
      * @param windowSlot Window 槽位
      * @param visualizer 新的逐槽物品映射, {@code null} 表示移除这一层
-     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @throws IndexOutOfBoundsException 槽号越界时
      */
     default void setVisualizerItem(int windowSlot, @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer) {
         this.visual().setVisualizerItem(windowSlot, visualizer);
     }
 
     /**
-     * 返回只控制客户端光标的视觉配置与失效范围.
-     * <p>同一 Window 始终返回同一个对象. 标脏不会影响 Window 槽位或请求全量同步.
+     * 只管客户端光标的那份视觉配置.
+     * <p>同一扇窗始终给同一个对象. 它标脏只影响光标, 不会碰 Window 槽位, 也不会请求全量同步.
      *
      * @return 光标视觉配置与失效范围
      */
@@ -557,9 +556,9 @@ public interface Window {
     CursorVisual cursorVisual();
 
     /**
-     * 返回当前的光标视觉映射.
+     * 现在这一层的光标视觉映射.
      *
-     * @return 光标视觉映射, 没有设置过时为 {@code null}, 表示按菜单实际光标显示
+     * @return 光标视觉映射; 没设过时是 null, 也就是按菜单实际光标显示
      */
     @Nullable
     default Function<@Nullable ItemStack, @Nullable ItemProvider> cursorVisualizerProvider() {
@@ -567,10 +566,10 @@ public interface Window {
     }
 
     /**
-     * 设置光标视觉映射.
-     * <p>参数为实际光标副本, 空光标以 null 表示. 返回 null 时保留实际光标显示.
-     * 映射本身在渲染线程求值, 只挑出这次用哪个提供器, 重活放进返回的提供器里.
-     * 提供器给出结果之前显示菜单实际光标, 光标内容变化会作废尚未完成的计算与已完成的结果.
+     * 换掉光标视觉映射.
+     * <p>映射收到的是菜单实际光标的副本, 空光标给 null; 它返回 null 就还是显示菜单实际光标.
+     * 映射本身在渲染线程上求值, 它只负责挑这次用哪个提供器, 重活放进返回的提供器里.
+     * 提供器出结果之前显示菜单实际光标; 光标内容一变, 没算完的计算和已经算完的结果都作废.
      *
      * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示移除这一层
      */
@@ -579,7 +578,7 @@ public interface Window {
     }
 
     /**
-     * 设置光标视觉映射, 并指定提供器给出结果前显示的占位.
+     * 同 {@link #setCursorVisualizerProvider(Function)}, 顺带给它配一个占位.
      *
      * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示移除这一层
      * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示菜单实际光标
@@ -589,8 +588,8 @@ public interface Window {
     }
 
     /**
-     * 使用直接返回 ItemStack 的映射设置光标视觉映射.
-     * 参数为实际光标副本, 空光标以 null 表示. 返回 null 时保留实际光标显示.
+     * 用直接返回 ItemStack 的映射当光标视觉.
+     * <p>映射收到的是实际光标的副本, 空光标给 null; 它返回 null 就仍旧显示菜单实际光标.
      *
      * @param cursorVisualizer 光标物品映射, {@code null} 表示移除这一层
      */
@@ -599,63 +598,63 @@ public interface Window {
     }
 
     /**
-     * 通知 Window 更新指定槽位的显示内容.
-     * <p>通知可以来自任意线程, 实际渲染和协议同步会合并到玩家实体 tick.
-     * 超出 Window 范围的槽位会被忽略.
+     * 让 Window 重算某一格的显示.
+     * <p>从哪个线程喊都行, 真正的渲染和协议同步会合并到玩家实体 tick.
+     * 超出 Window 范围的槽号会被忽略.
      *
      * @param windowSlot Window 槽位
      */
     void notifyUpdate(int windowSlot);
 
     /**
-     * 通知 Window 进行一次强制全量更新.
+     * 让 Window 整片重算一遍, 不看缓存.
      */
     void notifyUpdateAll();
 
     /**
-     * 读取某个 Window 槽位最近一次推给客户端的显示内容.
-     * <p>返回的是渲染缓存的副本, 不会触发重新渲染. 槽位越界或尚未渲染时返回空物品.
+     * 读某一格最近一次推给客户端的内容.
+     * <p>拿到的是渲染缓存的副本, 不会触发重新渲染; 槽号越界或者还没渲染过就给空物品.
      *
      * @param windowSlot Window 槽位
-     * @return 显示内容的副本, 没有内容时为空物品
+     * @return 显示内容的副本; 没有内容时是空物品
      */
     @NotNull
     ItemStack displayedAt(int windowSlot);
 
     /**
-     * 读取某个 Window 槽位最近一次渲染记下的东西, 见 {@code RenderContext.remember}.
-     * <p>槽位越界, 尚未渲染或没记过时返回 {@code null}.
+     * 读这一格在最近一次渲染里记下的东西.
+     * <p>槽号越界, 还没渲染, 或者当时没记, 都给 {@code null}.
      *
      * @param windowSlot Window 槽位
-     * @return 记下的东西, 没有时为 {@code null}
+     * @return 记下的东西; 没有时是 {@code null}
      */
     @Nullable
     Object rememberedAt(int windowSlot);
 
     /**
-     * 此 Window 的所属玩家.
+     * 这扇窗的查看者.
      *
      * @return 查看者
      */
     @NotNull Player viewer();
 
     /**
-     * Window 当前是否打开.
+     * 这扇窗现在开着.
      *
-     * @return 是否打开
+     * @return 开着时为 true
      */
     boolean isOpen();
 
     /**
-     * 返回是否接受客户端主动发送的关闭请求.
+     * 玩家主动发来的关闭请求收不收.
      *
-     * @return 是否接受客户端主动关闭
+     * @return 收时为 true
      */
     boolean isCloseable();
 
     /**
-     * 返回占据玩家物品栏区域的下部 Pane.
-     * <p>合并窗口的 upper 与 lower 区域会返回同一个根 Pane.
+     * 占着玩家物品栏那一片的下部 Pane.
+     * <p>合并窗口里 upper 和 lower 是同一个根 Pane.
      *
      * @return 下部 Pane
      */
@@ -663,10 +662,10 @@ public interface Window {
     Pane lowerPane();
 
     /**
-     * 尝试从下部 Pane 的首槽识别 ReferencingInventory.
-     * <p>下部 Pane 必须是 9x4, 且首槽连接该 Inventory 的槽位 0. 同形的自定义 Pane 也会匹配.
+     * 从下部 Pane 的第一格试着认一下那个 ReferencingInventory.
+     * <p>下部 Pane 得是 9x4, 而且第一格接的是那个 Inventory 的 0 号槽; 形状一样的自定义 Pane 照样匹配.
      *
-     * @return 默认 ReferencingInventory
+     * @return 认出来的 ReferencingInventory; 对不上时为 null
      */
     @Nullable
     default ReferencingInventory defaultLowerInventory() {
@@ -680,7 +679,7 @@ public interface Window {
     }
 
     /**
-     * 返回 Window 直接拥有的根 Pane, 不包含嵌套 Pane.
+     * Window 直接拥有的根 Pane, 嵌在里面的子 Pane 不算.
      *
      * @return 根 Pane 列表
      */
@@ -688,7 +687,7 @@ public interface Window {
     @NotNull List<Pane> panes();
 
     /**
-     * 返回 Window 槽位对应的根 Pane 链接.
+     * 这一格对应的根 Pane 链接.
      *
      * @param windowSlot Window 槽位
      * @return 根 Pane 链接
@@ -698,7 +697,7 @@ public interface Window {
     Element.PaneLink paneAt(int windowSlot);
 
     /**
-     * 返回玩家快捷栏槽位对应的根 Pane 链接.
+     * 快捷栏这一格对应的根 Pane 链接.
      *
      * @param hotbarSlot 快捷栏索引
      * @return 根 Pane 链接
@@ -708,7 +707,7 @@ public interface Window {
     Element.PaneLink paneAtHotbar(int hotbarSlot);
 
     /**
-     * 返回玩家快捷栏槽位对应的协议槽位.
+     * 快捷栏这一格落在哪个协议槽位.
      *
      * @param hotbarSlot 快捷栏索引(0-8)
      * @return 对应的协议槽位(raw slot)
@@ -717,24 +716,25 @@ public interface Window {
     int windowSlotAtHotbar(int hotbarSlot);
 
     /**
-     * 打开请求的执行结果.
+     * 这次 open() 的结果.
      */
     enum OpenResult {
-        OPENED,              // 已执行打开流程
-        ALREADY_OPEN,        // Window 已经打开
-        VIEWER_UNAVAILABLE   // 玩家当前无法打开菜单
+        OPENED,              // 已经走完打开流程
+        ALREADY_OPEN,        // 它本来就开着
+        VIEWER_UNAVAILABLE   // 玩家现在打不开菜单
     }
 
     /**
-     * 关闭请求的执行结果.
+     * 这次 close() 的结果.
      */
     enum CloseResult {
-        CLOSED,          // 已执行关闭流程
-        ALREADY_CLOSED   // Window 已经关闭
+        CLOSED,          // 已经走完关闭流程
+        ALREADY_CLOSED   // 它本来就关着
     }
 
     /**
-     * 可重复使用的类型化 Window Builder.
+     * 可以反复用的类型化 Window Builder.
+     * <p>一份配置可以拿去建多扇窗; 想各建各互不影响, 先 {@link #clone()} 一份.
      *
      * @param <W> 创建的 Window 类型
      * @param <B> 具体 Builder 类型
@@ -742,7 +742,7 @@ public interface Window {
     interface Builder<W extends Window, B extends Builder<W, B>> extends Cloneable {
 
         /**
-         * 设置 {@link #build()} 使用的玩家.
+         * 指定 {@link #build()} 用哪个玩家.
          *
          * @param viewer 查看者
          * @return 此 Builder
@@ -751,7 +751,7 @@ public interface Window {
 
         /**
          * 设置动态标题来源.
-         * Supplier 返回 null 时显示空标题.
+         * <p>Supplier 返回 null 就显示空标题.
          *
          * @param titleSupplier 标题来源
          * @return 此 Builder
@@ -767,7 +767,7 @@ public interface Window {
         @NotNull B setTitle(@NotNull Component title);
 
         /**
-         * 使用纯文本组件设置固定标题.
+         * 拿纯文本当固定标题.
          *
          * @param title 标题
          * @return 此 Builder
@@ -777,7 +777,7 @@ public interface Window {
         }
 
         /**
-         * 设置是否接受客户端主动关闭.
+         * 设置玩家能不能自己关掉这扇窗.
          *
          * @param closeable 是否可由客户端主动关闭
          * @return 此 Builder
@@ -785,7 +785,7 @@ public interface Window {
         @NotNull B setCloseable(boolean closeable);
 
         /**
-         * 替换打开后依次执行的处理器列表.
+         * 整批换掉打开时要跑的处理器.
          *
          * @param openHandlers 打开处理器
          * @return 此 Builder
@@ -793,7 +793,7 @@ public interface Window {
         @NotNull B setOpenHandlers(@NotNull List<? extends Consumer<? super W>> openHandlers);
 
         /**
-         * 追加一个打开处理器. 处理器接收本 Builder 创建的具体 Window, 查看者经 {@link Window#viewer()} 取得.
+         * 追加一个打开处理器. 它收到的是本 Builder 建出来的那个具体 Window, 想看查看者用 {@link Window#viewer()}.
          *
          * @param openHandler 打开处理器
          * @return 此 Builder
@@ -801,7 +801,7 @@ public interface Window {
         @NotNull B addOpenHandler(@NotNull Consumer<? super W> openHandler);
 
         /**
-         * 替换关闭后依次执行的处理器列表.
+         * 整批换掉关闭之后要跑的处理器.
          *
          * @param closeHandlers 关闭处理器
          * @return 此 Builder
@@ -811,7 +811,7 @@ public interface Window {
         );
 
         /**
-         * 追加一个关闭处理器. 处理器接收本 Builder 创建的具体 Window, 查看者经 {@link Window#viewer()} 取得.
+         * 追加一个关闭处理器. 第一个参数是本 Builder 建出来的具体 Window, 第二个是关闭原因.
          *
          * @param closeHandler 关闭处理器, 第二个参数为关闭原因
          * @return 此 Builder
@@ -819,7 +819,7 @@ public interface Window {
         @NotNull B addCloseHandler(@NotNull BiConsumer<? super W, ? super WindowCloseReason> closeHandler);
 
         /**
-         * 替换容器外点击处理器列表. 每个处理器同时接收本 Builder 创建的具体 Window.
+         * 整批换掉容器外点击的处理器, 每个处理器还会收到本 Builder 建出来的具体 Window.
          *
          * @param outsideClickHandlers 容器外点击处理器
          * @return 此 Builder
@@ -830,7 +830,7 @@ public interface Window {
         );
 
         /**
-         * 追加一个容器外点击处理器. 处理器同时接收本 Builder 创建的具体 Window.
+         * 追加一个容器外点击处理器, 它同时收到本 Builder 建出来的具体 Window.
          *
          * @param outsideClickHandler 容器外点击处理器
          * @return 此 Builder
@@ -841,7 +841,7 @@ public interface Window {
         }
 
         /**
-         * 追加一个只接收点击上下文的容器外点击处理器.
+         * 追加一个只看点击上下文的容器外点击处理器.
          *
          * @param outsideClickHandler 容器外点击处理器
          * @return 此 Builder
@@ -850,8 +850,8 @@ public interface Window {
         B addOutsideClickHandler(@NotNull Consumer<? super WindowOutsideClick> outsideClickHandler);
 
         /**
-         * 设置玩家主动关闭时是否返回上一扇, 默认 false.
-         * 语义同 {@link Window#backOnPlayerClose(boolean)}.
+         * 设置玩家主动关窗时要不要退回上一扇, 默认 false.
+         * <p>语义同 {@link Window#backOnPlayerClose(boolean)}.
          *
          * @param backOnPlayerClose true 表示返回上一扇
          * @return 此 Builder
@@ -859,7 +859,7 @@ public interface Window {
         @NotNull B setBackOnPlayerClose(boolean backOnPlayerClose);
 
         /**
-         * 设置随 Window 携带的用户对象, 语义见 {@link Window#data()}.
+         * 设置跟着这扇窗走的用户对象, 语义见 {@link Window#data()}.
          *
          * @param data 携带的对象
          * @return 此 Builder
@@ -867,8 +867,8 @@ public interface Window {
         @NotNull B setData(@NotNull Object data);
 
         /**
-         * 设置本 Window 成为根窗时新会话的类型, 默认 {@link WindowSession.Kind#STACK}.
-         * 本 Window 经 {@link Window#navigate} 接入既有会话时此声明不生效.
+         * 设置本 Window 成为根窗时新会话用哪种结构, 默认 {@link WindowSession.Kind#STACK}.
+         * <p>本 Window 经 {@link Window#navigate} 接进别人的会话时, 这条声明不生效.
          *
          * @param kind 会话类型
          * @return 此 Builder
@@ -876,8 +876,8 @@ public interface Window {
         @NotNull B setSessionKind(@NotNull WindowSession.Kind kind);
 
         /**
-         * 追加一个会话结束处理器. 本 Window 成为根窗时把它装进新会话, 整段交互结束时恰好触发一次.
-         * 本 Window 经 {@link Window#navigate} 接入既有会话时此声明不生效.
+         * 追加一个会话结束处理器: 本 Window 成为根窗时它被装进新会话, 整段交互结束时恰好跑一次.
+         * <p>本 Window 经 {@link Window#navigate} 接进既有会话时这条声明不生效.
          *
          * @param handler 结束处理器, 参数为结束原因
          * @return 此 Builder
@@ -885,7 +885,7 @@ public interface Window {
         @NotNull B addSessionEndHandler(@NotNull Consumer<? super WindowCloseReason> handler);
 
         /**
-         * 设置初始服务器窗口状态.
+         * 设置初始的服务端窗口状态.
          *
          * @param windowState 初始状态
          * @return 此 Builder
@@ -893,7 +893,7 @@ public interface Window {
         @NotNull B setWindowState(int windowState);
 
         /**
-         * 替换客户端状态确认处理器列表.
+         * 整批换掉客户端状态确认的处理器.
          *
          * @param handlers 状态确认处理器
          * @return 此 Builder
@@ -911,8 +911,8 @@ public interface Window {
         @NotNull B addWindowStateChangeHandler(@NotNull Consumer<? super Integer> handler);
 
         /**
-         * 设置 Window 全局视觉映射, 提供器给出结果前显示该槽真实内容.
-         * <p>约定与 {@link Window#setVisualizerProvider(Function)} 相同, 打开前即已生效.
+         * 设置 Window 全局视觉映射; 提供器出结果之前, 先显示那一格的真实内容.
+         * <p>约定跟 {@link Window#setVisualizerProvider(Function)} 一样, 而且打开之前就已经生效.
          *
          * @param visualizerProvider 全局视觉映射, {@code null} 表示不设置这一层
          * @return 此 Builder
@@ -923,7 +923,7 @@ public interface Window {
         }
 
         /**
-         * 设置 Window 全局视觉映射, 并指定提供器给出结果前显示的占位.
+         * 同 {@link #setVisualizerProvider(Function)}, 顺带指定占位.
          *
          * @param visualizerProvider 全局视觉映射, {@code null} 表示不设置这一层
          * @param placeholder 首次成功结果前显示的占位, {@code null} 表示终点连接 Inventory 时显示该槽真实内容, 其余终点显示空
@@ -936,7 +936,7 @@ public interface Window {
         );
 
         /**
-         * 使用直接返回 ItemStack 的映射设置 Window 全局视觉映射.
+         * 用直接返回 ItemStack 的映射当 Window 的全局视觉映射.
          *
          * @param visualizer 全局物品映射, {@code null} 表示不设置这一层
          * @return 此 Builder
@@ -947,7 +947,7 @@ public interface Window {
         }
 
         /**
-         * 设置光标视觉映射, 提供器给出结果前显示菜单实际光标.
+         * 设置光标视觉映射; 提供器出结果之前先显示菜单实际光标.
          *
          * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示不设置这一层
          * @return 此 Builder
@@ -958,7 +958,7 @@ public interface Window {
         }
 
         /**
-         * 设置光标视觉映射, 并指定提供器给出结果前显示的占位.
+         * 同 {@link #setCursorVisualizerProvider(Function)}, 顺带指定占位.
          *
          * @param cursorVisualizerProvider 光标视觉映射, {@code null} 表示不设置这一层
          * @param placeholder 首次成功结果前显示的占位, {@code null} 表示显示菜单实际光标
@@ -971,8 +971,8 @@ public interface Window {
         );
 
         /**
-         * 使用直接返回 ItemStack 的映射设置光标视觉映射.
-         * 参数为实际光标副本, 空光标以 null 表示.
+         * 用直接返回 ItemStack 的映射当光标视觉.
+         * <p>映射收到的是实际光标的副本, 空光标给 null.
          *
          * @param cursorVisualizer 光标物品映射, {@code null} 表示不设置这一层
          * @return 此 Builder
@@ -983,7 +983,7 @@ public interface Window {
         }
 
         /**
-         * 替换创建完成后依次执行的 Window 修改器列表.
+         * 整批换掉创建完成之后要跑的修改器.
          *
          * @param modifiers Window 修改器
          * @return 此 Builder
@@ -991,7 +991,7 @@ public interface Window {
         @NotNull B setModifiers(@NotNull List<? extends Consumer<? super W>> modifiers);
 
         /**
-         * 追加一个创建完成后执行的 Window 修改器.
+         * 追加一个创建完成之后要跑的修改器.
          *
          * @param modifier Window 修改器
          * @return 此 Builder
@@ -999,27 +999,27 @@ public interface Window {
         @NotNull B addModifier(@NotNull Consumer<? super W> modifier);
 
         /**
-         * 创建独立的 Builder 副本.
-         * 可变处理器列表会被复制, 已引用的 Pane 与函数对象保持复用.
+         * 复制一份独立的 Builder.
+         * <p>可变的处理器列表会复制一份, 已经引用的 Pane 和函数对象照旧共用.
          *
          * @return Builder 副本
          */
         @NotNull B clone();
 
         /**
-         * 使用已设置的查看者创建 Window.
-         * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
-         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包.
+         * 拿设置好的查看者建一扇 Window.
+         * <p>没显式设过 lower Pane 时, 这个调用会同步读查看者的 Bukkit 背包来建
+         * {@link ReferencingInventory}; 调用方得保证当前线程能合法访问那个背包.
          *
          * @return 新的未打开 Window
-         * @throws IllegalStateException 未设置查看者时抛出
+         * @throws IllegalStateException 没设查看者时
          */
         @NotNull W build();
 
         /**
-         * 为指定查看者创建 Window.
-         * <p>若未显式设置 lower Pane, 此调用会同步读取查看者的 Bukkit 背包来创建
-         * {@link ReferencingInventory}. 调用方必须保证当前线程可以合法访问该背包.
+         * 给指定查看者建一扇 Window.
+         * <p>没显式设过 lower Pane 时, 这个调用会同步读查看者的 Bukkit 背包来建
+         * {@link ReferencingInventory}; 调用方得保证当前线程能合法访问那个背包.
          *
          * @param viewer 查看者
          * @return 新的未打开 Window
@@ -1027,8 +1027,8 @@ public interface Window {
         @NotNull W build(@NotNull Player viewer);
 
         /**
-         * 为指定查看者创建并请求打开 Window.
-         * <p>此入口先在调用线程执行 {@link #build(Player)}, 因而同样受其 Bukkit 背包线程约束.
+         * 给指定查看者建一扇 Window 并请求打开.
+         * <p>这个入口先在调用线程上跑 {@link #build(Player)}, 所以同样受它的 Bukkit 背包线程约束.
          *
          * @param viewer 查看者
          * @return 打开请求的执行结果

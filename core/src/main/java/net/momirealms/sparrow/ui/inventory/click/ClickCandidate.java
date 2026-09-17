@@ -16,19 +16,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-// 已规划的写集及其提交前置条件, 每道用户代码闸门后都要重新校验.
+// 一次点击算出来的完整结论, 包括要改哪些槽位, 以及提交之前必须仍然成立的那些前提.
+// 中间每跑过一轮别人的代码, 这些前提都要重新验一遍, 光标被换掉、基准状态被别的写操作顶掉, 这一笔就不能提交了.
 record ClickCandidate(
         @NotNull InventoryAction action,                    // 候选对应的 Bukkit 操作
-        @Nullable ClickSemantics.LinkedSlot eventTarget,    // 派发 Sparrow 点击事件的目标槽位, 拖拽候选为 {@code null}
+        @Nullable ClickSemantics.LinkedSlot eventTarget,    // Sparrow 点击事件发给哪一格; 拖拽没有单一落点, 是 null
         @NotNull UpdateReason reason,                       // 提交时使用的变更原因
-        @NotNull List<TransactionScope> scopes,             // 候选的写集, 空写集表示只改光标等 Window 侧状态
-        @NotNull List<PlannedRoot> plannedRoots,            // 规划所依据的 Inventory 基准状态
+        @NotNull List<TransactionScope> scopes,             // 要改的槽位; 空的表示这一下只动光标之类的 Window 侧状态
+        @NotNull List<PlannedRoot> plannedRoots,            // 规划时读过哪些 Inventory 的基准状态, 提交前逐个验它们还没被换掉
         @NotNull ItemStack expectedCursor,                  // 规划时的光标物品
         boolean checkCursor,                                // 是否需要复核光标
         @Nullable ItemStack expectedOffhand,                // 规划时的副手物品
         boolean checkOffhand,                               // 是否需要复核副手
         boolean requireCreative,                            // 是否要求提交时仍处于创造模式
-        @NotNull InteractionDraft draft,                    // 提交后要应用的容器外副作用, 规划期先填好光标, 副手和掉落物的最终值
+        @NotNull InteractionDraft draft,                    // 容器外面的那些改动, 光标、副手和掉落物的最终值在规划期就填好了
         @NotNull Runnable afterCommit                       // 提交成功后执行的 Window 侧收尾动作
 ) {
 
@@ -37,7 +38,8 @@ record ClickCandidate(
         return new Builder(action, reason);
     }
 
-    // 覆盖层只改变规划输入, 事件中的 before 仍应来自真实规划基准.
+    // 覆盖层改的是规划输入, 不该篡改事件里那个 before.
+    // 监听器看到的 before 必须是真实的规划基准, 否则它读到的是另一个监听器写的东西, 分不清谁改了什么.
     @NotNull
     ClickCandidate withRealBefore(@NotNull InteractionOverlay overlay) {
         if (overlay.isEmpty() || this.scopes.isEmpty()) {
@@ -51,7 +53,7 @@ record ClickCandidate(
             List<SlotChange> restored = new ArrayList<>(changes.size());
             for (int changeIndex = 0; changeIndex < changes.size(); changeIndex++) {
                 SlotChange change = changes.get(changeIndex);
-                // 只换 before 的来源, after 沿用候选算出的内容.
+                // 只把 before 换回真实基准, after 还是候选算出来的那份.
                 restored.add(new SlotChange(change.slot(), planned[change.slot()], change.unsafeAfter()));
             }
             rewritten.add(scope.withSlotChanges(restored));
@@ -72,7 +74,7 @@ record ClickCandidate(
         );
     }
 
-    // 同步引用存储后复核全部候选前提.
+    // 别人的代码跑过之后用这个复核. 先把 ReferencingInventory 重新同步一遍, 期间外部容器可能已经被直接改过, 然后再验全部前提.
     @Nullable
     StaleReason revalidate(ClickSemantics.Context context) {
         for (int rootIndex = 0; rootIndex < this.plannedRoots.size(); rootIndex++) {
@@ -81,7 +83,7 @@ record ClickCandidate(
         return this.staleReason(context);
     }
 
-    // 只检查规划路径明确依赖的状态, 不触发刷新.
+    // 只验规划时明确依赖过的那几样, 不去碰外部容器. 没人插手的路径走这条, 省一次读容器.
     @Nullable
     StaleReason staleReason(ClickSemantics.Context context) {
         if (this.checkCursor && !ItemUtils.isHandleContentEqual(context.unsafeCursor(), this.expectedCursor)) {
@@ -101,7 +103,7 @@ record ClickCandidate(
         return null;
     }
 
-    // 事务提交成功后先落地容器外的副作用, 再做 Window 本地收尾, 顺序与规划期的闭包保持一致.
+    // 提交成功之后的收尾. 先落地容器外的那些改动, 再做 Window 自己的清理, 顺序和规划期定下的一致.
     void applyAfterCommit(ClickSemantics.Context context) {
         this.draft.apply(context);
         this.afterCommit.run();
@@ -115,7 +117,7 @@ record ClickCandidate(
         ROOT_STATE  // 某个 Inventory 的基准状态被另一笔写操作换掉了
     }
 
-    // 候选的建造器, 什么都不设就是"什么都不复核".
+    // 候选的建造器. 什么都不设就表示这一笔没有任何提交前提, 算出来就能交.
     static final class Builder {
         // Bukkit 操作与事件目标
         private final InventoryAction action;
@@ -150,21 +152,21 @@ record ClickCandidate(
             return this;
         }
 
-        // 规划期读过的全部基准状态, 提交前逐个复核失效.
+        // 规划期读过的全部基准状态. 提交前逐个看有没有失效, 有一个失效整笔就算冲突.
         @NotNull
         Builder reads(@NotNull List<PlannedRoot> reads) {
             this.reads = reads;
             return this;
         }
 
-        // 记下规划时读到的光标, 并要求提交前复核它没被换掉.
+        // 调这个就等于要求提交前复核光标没被换掉.
         @NotNull
         Builder checkCursor(@NotNull ItemStack expected) {
             this.expectedCursor = expected;
             return this;
         }
 
-        // 记下规划时读到的副手, 并要求提交前复核它没被换掉; null 表示空副手.
+        // 调这个就等于要求提交前复核副手没被换掉; null 表示空副手.
         @NotNull
         Builder checkOffhand(@Nullable ItemStack expected) {
             this.expectedOffhand = expected;
@@ -172,28 +174,25 @@ record ClickCandidate(
             return this;
         }
 
-        // 要求提交时玩家仍处于创造模式.
         @NotNull
         Builder requireCreative(boolean requireCreative) {
             this.requireCreative = requireCreative;
             return this;
         }
 
-        // 提交后要应用的容器外副作用.
         @NotNull
         Builder draft(@NotNull InteractionDraft draft) {
             this.draft = draft;
             return this;
         }
 
-        // 提交成功后的 Window 侧收尾动作.
         @NotNull
         Builder afterCommit(@NotNull Runnable afterCommit) {
             this.afterCommit = afterCommit;
             return this;
         }
 
-        // 候选持有独立的光标与副手基准.
+        // 光标和副手各存一份自己的基准, 复核时互不干扰.
         @NotNull
         ClickCandidate build() {
             @Nullable ItemStack expectedCursor = this.expectedCursor;

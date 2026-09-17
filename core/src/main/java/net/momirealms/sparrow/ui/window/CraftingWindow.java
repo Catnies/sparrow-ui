@@ -14,7 +14,7 @@ public interface CraftingWindow extends RecipeBookWindow {
     interface Builder extends RecipeBookWindow.Builder<CraftingWindow, Builder> {
 
         /**
-         * 设置必须为 3x3 的合成网格 Pane.
+         * 设置合成网格 Pane, 尺寸必须是 3x3.
          *
          * @param craftingPane 合成网格 Pane
          * @return 此 Builder
@@ -23,7 +23,7 @@ public interface CraftingWindow extends RecipeBookWindow {
         Builder setCraftingPane(@NotNull Pane craftingPane);
 
         /**
-         * 设置必须为 1x1 的结果 Pane.
+         * 设置结果 Pane, 尺寸必须是 1x1.
          *
          * @param resultPane 结果 Pane
          * @return 此 Builder
@@ -32,7 +32,7 @@ public interface CraftingWindow extends RecipeBookWindow {
         Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder

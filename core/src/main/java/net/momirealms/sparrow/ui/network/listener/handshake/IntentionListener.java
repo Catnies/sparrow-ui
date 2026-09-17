@@ -1,7 +1,6 @@
 package net.momirealms.sparrow.ui.network.listener.handshake;
 
 import io.netty.channel.Channel;
-import io.netty.handler.codec.DecoderException;
 import net.momirealms.sparrow.ui.network.*;
 import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
 import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
@@ -21,8 +20,8 @@ public final class IntentionListener implements ByteBufPacketListener {
         ConnectionState nextState;
         try {
             buffer.readVarInt();        // protocolVersion
-            // serverAddress 只跳过不解析, BungeeCord/Floodgate 转发会把 IP/UUID/属性塞进该字段,
-            // Paper 的上限是 Short.MAX_VALUE 而非 vanilla 的 255, 这里不能比平台解码器更严.
+            // serverAddress 只跳过不解析. BungeeCord 和 Floodgate 转发会把 IP, UUID 和属性都塞进这个字段,
+            // 长度上限也比 vanilla 宽松(Paper 到 Short.MAX_VALUE), 照着 vanilla 的 255 读会把转发的玩家挡在门外.
             buffer.skipBytes(buffer.readVarInt());
             buffer.readUnsignedShort(); // serverPort
             nextState = switch (buffer.readVarInt()) {
@@ -31,12 +30,12 @@ public final class IntentionListener implements ByteBufPacketListener {
                 default -> null;
             };
         } catch (Throwable e) {
-            // 握手解析失败时丢弃当前帧并关闭连接.
+            // 帧本身就坏, 没什么好继续谈的, 丢掉这一帧并断开.
             event.cancelled(true);
             user.channel().close();
             return;
         }
-        // 如果乱发包直接强行断开连接
+        // 既不是状态查询(1)也不是登录(2, 3), 这种握手下不去, 断开.
         if (nextState == null) {
             event.cancelled(true);
             user.channel().close();
@@ -44,7 +43,8 @@ public final class IntentionListener implements ByteBufPacketListener {
         }
         user.setConnectionState(nextState);
         if (nextState == ConnectionState.LOGIN) {
-            // CraftEngine 存在时先提交自己的重排任务, Sparrow 随后收口最终顺序.
+            // 推到 event loop 上重排: 这一刻可能还有别的插件在排队改 pipeline(CraftEngine 就会在此时重排),
+            // 等它们的任务先跑完, Sparrow 再按最终形状收口, handler 的相对顺序才定得下来.
             Channel channel = user.channel();
             channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.networkManager(), channel));
         }

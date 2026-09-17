@@ -5,16 +5,21 @@ import org.jetbrains.annotations.NotNull;
 import java.util.function.IntConsumer;
 
 public final class SlotPatterns {
-    public static final SlotPattern ROW_MAJOR = SlotPatterns::emitRowMajor;             // 从上到下逐行选择, 每行从左到右
-    public static final SlotPattern COLUMN_MAJOR = SlotPatterns::emitColumnMajor;       // 从左到右逐列选择, 每列从上到下
-    public static final SlotPattern CHECKERBOARD_EVEN = SlotPatterns::emitEvenSquares;  // 只选择为偶数的棋盘格
-    public static final SlotPattern CHECKERBOARD_ODD = SlotPatterns::emitOddSquares;    // 只选择为奇数的棋盘格
+    public static final SlotPattern ROW_MAJOR = SlotPatterns::emitRowMajor;             // 从上到下逐行, 每行从左到右
+    public static final SlotPattern COLUMN_MAJOR = SlotPatterns::emitColumnMajor;       // 从左到右逐列, 每列从上到下
+    public static final SlotPattern CHECKERBOARD_EVEN = SlotPatterns::emitEvenSquares;  // 棋盘格中 x + y 为偶数的一半
+    public static final SlotPattern CHECKERBOARD_ODD = SlotPatterns::emitOddSquares;    // 棋盘格中 x + y 为奇数的一半
 
     private SlotPatterns() {
     }
 
-    // 返回只选择棋盘格其中一种颜色位置的 Pattern.
-    // parity {@code 0} 表示偶数格, {@code 1} 表示奇数格
+    /**
+     * 要棋盘格的其中一半时, 用它按奇偶挑一个.
+     *
+     * @param parity {@code 0} 是 x + y 为偶数的那半, {@code 1} 是奇数的那半
+     * @return 对应的棋盘格 Pattern
+     * @throws IllegalArgumentException parity 不是 0 或 1 时
+     */
     @NotNull
     public static SlotPattern checkerboard(int parity) {
         return switch (parity) {
@@ -24,9 +29,8 @@ public final class SlotPatterns {
         };
     }
 
-    // 按从上到下, 每行从左到右的顺序输出选中槽位.
+    // 槽号本身就是行优先编号, 直接按编号升序输出就够了
     private static void emitRowMajor(SlotSequence candidates, IntConsumer output) {
-        // 槽位编号本身就是行优先顺序, 直接按编号升序输出
         boolean[] selected = selectedSlots(candidates);
         for (int slot = 0; slot < selected.length; slot++) {
             if (selected[slot]) {
@@ -35,10 +39,9 @@ public final class SlotPatterns {
         }
     }
 
-    // 按从左到右, 每列从上到下的顺序输出选中槽位.
+    // 列优先得换个走法: 外层遍历列, 内层遍历行, 再把坐标换算回槽号
     private static void emitColumnMajor(SlotSequence candidates, IntConsumer output) {
         boolean[] selected = selectedSlots(candidates);
-        // 外层遍历列, 内层遍历行, 把坐标换算回槽位编号
         PaneSize size = candidates.paneSize();
         for (int x = 0; x < size.width(); x++) {
             for (int y = 0; y < size.height(); y++) {
@@ -50,17 +53,15 @@ public final class SlotPatterns {
         }
     }
 
-    // 输出 {@code x + y} 为偶数的选中槽位.
     private static void emitEvenSquares(SlotSequence candidates, IntConsumer output) {
         emitCheckerboard(candidates, output, 0);
     }
 
-    // 输出 {@code x + y} 为奇数的选中槽位.
     private static void emitOddSquares(SlotSequence candidates, IntConsumer output) {
         emitCheckerboard(candidates, output, 1);
     }
 
-    // 按 {@code x + y} 的奇偶性过滤并输出选中槽位, 保持候选原有顺序.
+    // 按 x + y 的奇偶过滤, 顺序沿用候选自己的
     private static void emitCheckerboard(SlotSequence candidates, IntConsumer output, int parity) {
         for (int index = 0; index < candidates.length(); index++) {
             if (((candidates.xAt(index) + candidates.yAt(index)) & 1) == parity) {
@@ -69,7 +70,7 @@ public final class SlotPatterns {
         }
     }
 
-    // 把候选槽位转成按槽位编号索引的位图, 便于按任意顺序判定选中.
+    // 把候选摊成一张按槽号索引的位图, 之后不管用什么顺序遍历都能随手判它选没选中
     private static boolean[] selectedSlots(SlotSequence candidates) {
         boolean[] selected = new boolean[candidates.paneSize().area()];
         int[] slots = candidates.unsafeSlots();

@@ -58,35 +58,39 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * 数据包监听的接管者, 在服务端 acceptor 与每条玩家连接上安装 ByteBuf 与 NMS 对象两层 handlers.
+ * 接管服务端每条连接上的数据包, 让菜单能在出入两个方向改写或取消它们.
  *
- * <p>全服共用一个实例, 经 {@link SparrowUI#networkManager()} 获取. 另行构造的实例会使用相同的 handler 名,
- * 后者的注入将顶掉前者.</p>
+ * <p>一条连接上装两层: 一层贴着原始 ByteBuf 帧, 一层贴着解码后的 NMS 包对象. 全服只需要一个实例,
+ * 从 {@link SparrowUI#networkManager()} 取; handler 名是写死的, 再建一个会把前一个装好的顶掉.
  */
 @ApiStatus.Experimental
 public final class NetworkManager implements Listener, AutoCloseable {
     private static final String MINECRAFT_SPLITTER = "splitter";
 
-    private final PacketIdRegistry packetIds; // 当前服务端运行期包 ID 索引
-    final String connectionHandlerName;      // acceptor 上的子连接捕获 handler
-    final String preInitializerName;         // 子连接注册前的临时 initializer
-    final String packetBridgeName;           // NMS 对象层双向监听 handler
-    final String decoderName;                // ByteBuf 入站监听 handler
-    final String encoderName;                // ByteBuf 出站监听 handler
+    private final PacketIdRegistry packetIds; // 运行期包 ID 索引, 注册监听器时拿它把包名换成路由下标
 
+    // 这五个名字都会出现在 Minecraft 的 ChannelPipeline 上, 一律带插件前缀, 出问题时一眼能认出是谁装的
+    final String connectionHandlerName;      // acceptor 上拦新子连接的 handler
+    final String preInitializerName;         // 子连接注册前临时顶上的 initializer, 注入完就摘掉
+    final String packetBridgeName;           // 贴着 NMS Connection, 两个方向都能看到解码后的包对象
+    final String decoderName;                // 客户端 -> 服务端, 在原始 ByteBuf 帧上派发
+    final String encoderName;                // 服务端 -> 客户端, 在原始 ByteBuf 帧上派发
+
+    // 派发线程不拿锁, 直接读这四个 volatile 引用; 注册时整体换一份新表, 已经在跑的派发用手上那份跑完就好
     private volatile ByteBufPacketListenerHolder[][] serverboundByteBufListeners;
     private volatile ByteBufPacketListenerHolder[][] clientboundByteBufListeners;
-    private volatile Map<Class<?>, NMSPacketListener> serverboundNMSListeners = Map.of(); // NMS Class COW 快照
+    private volatile Map<Class<?>, NMSPacketListener> serverboundNMSListeners = Map.of(); // 按 NMS Class 查, 发布新快照而不改旧表
     private volatile Map<Class<?>, NMSPacketListener> clientboundNMSListeners = Map.of();
 
-    private final Map<ChannelPipeline, NetworkUser> users = new ConcurrentHashMap<>();
-    private final Map<UUID, NetworkUser> onlineUsers = new ConcurrentHashMap<>();
-    private final Set<Channel> serverChannels = ConcurrentHashMap.newKeySet();
-    final AtomicBoolean closed = new AtomicBoolean(); // 与 pipeline 重定位共享的关闭门闩
-    @Nullable private Subscription acceptorHook;      // acceptor 列表的元素钩子凭证
+    private final Map<ChannelPipeline, NetworkUser> users = new ConcurrentHashMap<>();  // 装过 handler 的连接, 派发时由它把 channel 换成 NetworkUser
+    private final Map<UUID, NetworkUser> onlineUsers = new ConcurrentHashMap<>();      // 玩家进世界后额外挂一份, 按玩家查连接就不用走反射
+    private final Set<Channel> serverChannels = ConcurrentHashMap.newKeySet();         // acceptor channel, 关管理器时要把 handler 从它们上面摘掉
+    final AtomicBoolean closed = new AtomicBoolean();                                  // 只让 close() 跑一次; pipeline 重定位每次都先看它
+    @Nullable private Subscription acceptorHook;                                       // acceptor 名单的元素钩子凭证, 关掉它 NMS 手里的包装器就退回普通 List
 
     /**
-     * 创建管理器并立即接管服务端 acceptor 与已有玩家连接.
+     * 建好管理器, 并马上接管服务端 acceptor 和已经在线的玩家连接.
+     * <p>全服只该有一份: handler 名固定, 再建一个会把前一份的注入顶掉.
      */
     @ApiStatus.Internal
     public NetworkManager() {
@@ -111,7 +115,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.injectExistingConnections(ServerConnectionListenerProxy.INSTANCE.connections(serverConnection));
     }
 
-    // 按运行期 ID 空间创建无锁读取的定长路由表.
+    // 每个协议阶段一张定长表, 下标就是包 ID, 派发时不用查 Map 也不用加锁.
+    // 长度问 PacketIdRegistry 要, 版本之间包数不同, 表也就跟着不同.
     private static ByteBufPacketListenerHolder[][] createByteBufListeners(PacketIdRegistry packetIds, PacketFlow flow) {
         ConnectionState[] states = ConnectionState.values();
         ByteBufPacketListenerHolder[][] listeners = new ByteBufPacketListenerHolder[states.length][];
@@ -121,7 +126,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         return listeners;
     }
 
-    // 注册两条方向各自推进协议阶段所需的内部监听器.
+    // 协议阶段靠这几个包推进: 收到或发出它们时把 NetworkUser 的阶段换掉, 后面的帧才知道该查哪张路由表.
     private void registerProtocolStateListeners() {
         this.registerByteBufPacketListener(IntentionListener.INSTANCE, "minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND);
         this.registerByteBufPacketListener(LoginAcknowledgedListener.INSTANCE, "minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
@@ -131,18 +136,18 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.registerByteBufPacketListener(ConfigurationAcknowledgedListener.INSTANCE, "minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
     }
 
-    // 注入已有 acceptor 与在线连接, 并接管后续新增的 acceptor.
+    // 接管 acceptor: 已有的当场补注入, 之后新增的靠 ListSignal 的元素钩子接住.
     private void installServerInjection(Object server) {
         Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
         List<ChannelFuture> channels = ServerConnectionListenerProxy.INSTANCE.channels(serverConnection);
         ListSignal<ChannelFuture> listener = ListSignal.wrap(channels);
-        // 凭证是这个钩子的唯一强引用, 关掉它包装器就退化成纯转发, 不再吊着本管理器.
+        // 凭证是这个钩子的唯一强引用. close() 关掉它之后, NMS 手里那份包装器就退回普通 List, 不会再吊着本管理器.
         this.acceptorHook = listener.beforeAdd(future -> {
             this.injectAcceptorChannel(future);
             return future;
         });
         synchronized (channels) {
-            // 持有原 channels monitor 补注入已有 acceptor, 再发布监听新增元素的包装器.
+            // 拿着原来的 monitor 补注入已有的 acceptor, 再把包装器发布出去, 这中间进来的新 acceptor 一个都漏不掉.
             for (int index = 0; index < channels.size(); index++) {
                 this.injectAcceptorChannel(channels.get(index));
             }
@@ -150,7 +155,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 在 acceptor pipeline 上安装子连接预注入 handler.
+    // 在 acceptor pipeline 上装一个 handler, 它读出新的子连接时就把那条连接先注入掉.
+    // 锚点按平台挑: Spigot 系, Floodgate 和 vanilla 的初始 handler 名字各不相同, 一个都没命中就装到最前面.
     private void injectAcceptorChannel(ChannelFuture future) {
         if (this.closed.get()) return;
         Channel channel = future.channel();
@@ -170,7 +176,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 只接管能与当前在线 Bukkit 玩家对应的已有连接.
+    // 库是中途装进来的时候, 把和在线玩家对得上号的已有连接补上注入.
+    // 对不上号的先放过, 它们进世界时会走 handleJoin 那条路.
     private void injectExistingConnections(List<?> connections) {
         HashMap<Channel, Player> playersByChannel = new HashMap<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -199,12 +206,12 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 在已完成 vanilla 初始化的连接上建立用户索引与两层数据包 handlers.
+    // 给一条连接建好 NetworkUser 再装上两层 handler. 重复调用沿用同一个 user, 并按当时 pipeline 的样子把 handler 重装一遍.
     @Nullable
     NetworkUser injectConnectionChannel(Channel channel) {
         if (isFakeChannel(channel)) return null;
         ChannelPipeline pipeline = channel.pipeline();
-        // splitter 出现后 vanilla 基础 pipeline 已稳定, 后续 handlers 可以使用固定锚点.
+        // splitter 是 vanilla 基础 pipeline 搭完的标志; 没有它说明这条连接不是 Minecraft 协议, 直接关掉.
         if (pipeline.get(MINECRAFT_SPLITTER) == null) {
             channel.close();
             return null;
@@ -215,22 +222,22 @@ public final class NetworkManager implements Listener, AutoCloseable {
             NetworkUser created = new NetworkUser(this, channel);
             NetworkUser existing = this.users.putIfAbsent(pipeline, created);
             user = existing != null ? existing : created;
-            // 已经关闭的 channel 会同步回调, 因此登记完成之后才挂断开清理.
+            // 已经关掉的 channel 会同步回调 closeFuture, 所以先登记再挂清理, 免得清理抢先一步把登记又抹掉.
             if (existing == null) {
                 channel.closeFuture().addListener((ChannelFutureListener) future -> this.handleDisconnection(created));
             }
         }
-        // 重复注入沿用同一个 NetworkUser, handler 则按当前第三方顺序重新安装.
+        // 先把旧的摘掉再交给下面重装, 重复注入因此不会留下两份 handler.
         this.removeConnectionHandlers(user);
 
-        // 对象桥紧贴 NMS Connection 前方, 两个方向都能看到解码后的包对象.
+        // 对象桥紧贴 NMS Connection 前方装: 解码出来的包对象进 Connection 之前先经过它, 出站也走这同一个 handler.
         for (Map.Entry<String, ChannelHandler> entry : pipeline.toMap().entrySet()) {
             if (ConnectionProxy.CLASS.isInstance(entry.getValue())) {
                 pipeline.addBefore(entry.getKey(), this.packetBridgeName, new NMSPacketBridge(user));
                 break;
             }
         }
-        // Buffer handlers 的第三方相对位置由 NetworkPipelineOrder 单独维护.
+        // 两个 ByteBuf handler 该插在哪由 NetworkPipelineOrder 现算, 这里不用管第三方装了什么.
         NetworkPipelineOrder.addByteBufHandlers(
                 this,
                 pipeline,
@@ -240,6 +247,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         return user;
     }
 
+    // Leaves 的假人有完整的 NMS 连接对象, 但 channel 从没真接过包, 往上装 handler 会出事.
     static boolean isFakeChannel(Channel channel) {
         String name = channel.getClass().getSimpleName();
         return name.equals("FakeChannel") || name.equals("SpoofedChannel");
@@ -252,15 +260,15 @@ public final class NetworkManager implements Listener, AutoCloseable {
         if (this.closed.get()) return;
         Player player = event.getPlayer();
         Channel channel = this.channel(player);
-        // 跳过假人.
+        // 假人没有真实 channel, 放过.
         if (channel == null || isFakeChannel(channel)) return;
         NetworkUser user = this.user(channel);
         if (user != null) {
             this.bindPlayer(user, player);
             return;
         }
-        // 说明这条连接在管理器安装之前就登录到一半, acceptor 与在线玩家两条注入都错过了.
-        // 这里重新补注入, 并且玩家此刻已经进入游戏, 两个方向的协议阶段都是 PLAY.
+        // 走到这里说明这条连接是中途插进来的, acceptor 和在线玩家两条注入都没赶上.
+        // 此刻玩家已经进了游戏, 补注完直接把两个方向都按 PLAY 起算.
         this.execute(channel, () -> {
             if (this.closed.get()) return;
             NetworkUser injected = this.injectConnectionChannel(channel);
@@ -286,7 +294,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 同时撤销 pipeline 与 UUID 两份索引, 随后清理当前连接的 handlers.
+    // channel 关掉之后把两份索引都摘掉, 再从 pipeline 上收回自己装的 handler.
     private void handleDisconnection(NetworkUser user) {
         this.users.remove(user.channel().pipeline(), user);
         UUID uuid = user.uuid();
@@ -309,7 +317,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 假人拥有完整的 NMS 连接对象, 但它从未真正建立过 channel.
+    // 从 Bukkit 玩家一路摸到 NMS Connection 上的 channel; 假人没有真连接, 这里会给出 null 或者 FakeChannel.
     @Nullable
     private Channel channel(Player player) {
         Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
@@ -322,12 +330,13 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
     /**
      * 按运行期注册名, 协议阶段和方向注册 ByteBuf 监听器.
+     * <p>注册名在当前版本不存在时静默跳过, 同一个监听器因此可以跨版本共用.
      *
      * @param listener 监听器
-     * @param name 完整注册名, 当前版本不存在时跳过注册
+     * @param name 完整注册名
      * @param state 包所属协议阶段
      * @param flow 包的传输方向
-     * @throws IllegalStateException 管理器已关闭或该路由已有监听器时
+     * @throws IllegalStateException 管理器已关闭, 或者这条路由上已经有人了
      */
     public synchronized void registerByteBufPacketListener(@NotNull ByteBufPacketListener listener, @NotNull String name, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
         this.requireOpen();
@@ -339,7 +348,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         if (currentRoute[packetId] != null) {
             throw new IllegalStateException("Packet listener already registered for " + name + " (" + state + "/" + flow + "/" + packetId + ")");
         }
-        // 只复制命中的 route 与状态索引, Netty 线程继续无锁读取旧快照.
+        // 只把命中的那一行和状态索引复制出来改, 派发线程手上的旧表继续有效, 不用加锁.
         ByteBufPacketListenerHolder[] updatedRoute = currentRoute.clone();
         updatedRoute[packetId] = new ByteBufPacketListenerHolder(name, listener);
         ByteBufPacketListenerHolder[][] updated = current.clone();
@@ -354,10 +363,12 @@ public final class NetworkManager implements Listener, AutoCloseable {
     /**
      * 按 NMS 包的运行期 Class 和方向注册对象层监听器.
      *
+     * <p>Class 在当前版本不存在时传 null 就行, 注册会被跳过.
+     *
      * @param listener 对象层监听器
-     * @param packetClass NMS 包类型, 当前版本不存在时为 null, 跳过注册
+     * @param packetClass NMS 包类型, null 表示这个版本没有它
      * @param flow 包的传输方向, 决定监听器收到的是 onPacketReceive 还是 onPacketSend
-     * @throws IllegalStateException 管理器已关闭或该方向的该类型已有监听器时
+     * @throws IllegalStateException 管理器已关闭, 或者这个类上已经有人了
      */
     public synchronized void registerNMSPacketListener(@NotNull NMSPacketListener listener, @Nullable Class<?> packetClass, @NotNull PacketFlow flow) {
         this.requireOpen();
@@ -367,7 +378,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         if (current.containsKey(packetClass)) {
             throw new IllegalStateException("NMS packet listener already registered for " + packetClass.getName() + " (" + flow + ")");
         }
-        // 发布新的只读快照, 已经进入派发的线程仍可安全读完旧表.
+        // 发布一份新的只读快照, 已经在派发的线程可以把手上的旧表读完.
         HashMap<Class<?>, NMSPacketListener> listeners = new HashMap<>(current);
         listeners.put(packetClass, listener);
         if (serverbound) {
@@ -377,13 +388,13 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    // 在原始帧上按 route 派发监听器, 并维护取消、改写与异常后的指针契约.
-    // serverbound 决定读哪个方向的定长表与回调, 两个 handler 各自恒定传常量.
+    // 在原始帧上按包 ID 派发监听器, 返回值决定这一帧还往不往下走.
+    // serverbound 决定查哪张表, 调哪个回调; 两个方向的 handler 各自传常量.
     private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, boolean serverbound) {
         if (!buffer.isReadable() || user.bypassing()) {
             return buffer.isReadable();
         }
-        // 先读包 ID 探测定长路由, 未命中时恢复 readerIndex 且不创建事件对象.
+        // 先读包 ID 试路由. 没命中就把读指针拨回去, 连事件对象都不建, 这一帧照常往下走.
         int initialReaderIndex = buffer.readerIndex();
         int packetId = PacketBuf.readVarInt(buffer);
         ByteBufPacketListenerHolder[] listeners = serverbound
@@ -398,7 +409,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             buffer.readerIndex(initialReaderIndex);
             return true;
         }
-        // 命中后才记录完整写指针并创建事件, 供异常路径恢复原帧.
+        // 真的命中才记下写指针并建事件, 后面出异常要靠它把整帧还原.
         int initialWriterIndex = buffer.writerIndex();
         PacketBuf packetBuffer = new PacketBuf(buffer);
         ByteBufPacketEvent event = new ByteBufPacketEvent(packetId, packetBuffer, buffer.readerIndex());
@@ -410,7 +421,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             }
         } catch (Throwable throwable) {
             SparrowUI.getInstance().handleException("Failed to handle packet " + holder.name(), throwable);
-            // 已经变更或取消的半成品帧不可继续传播, 纯读取失败则恢复原始指针.
+            // 半路改过或取消过的帧不能就这么放出去, 一律丢掉; 只是读失败的话把指针还原, 原样的帧还给原版处理.
             if (event.changed() || event.cancelled()) {
                 buffer.clear();
                 return false;
@@ -428,8 +439,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         return buffer.isReadable();
     }
 
-    // bundle 子包递归共用根事件, 让取消与替换作用于完整的出站对象.
-    // 表随递归传递, 整个 bundle 因此读的是同一份快照.
+    // bundle 的子包跟着根包走同一套监听, 事件挂在根包上, 所以取消和替换落到整个 bundle 上, 而不是单个子包.
+    // 监听器表沿递归往下传, 一个 bundle 里所有子包读到的都是同一份快照.
     @Nullable
     private NMSPacketEvent handleNMSPacketSend(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event, Map<Class<?>, NMSPacketListener> listeners) {
         if (ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
@@ -454,10 +465,10 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 查询与诊断
 
     /**
-     * 返回 Bukkit 玩家当前绑定的连接用户.
+     * 这个 Bukkit 玩家当前绑在哪个 {@link NetworkUser} 上.
      *
      * @param player Bukkit 玩家
-     * @return 连接用户, 注入尚未建立或玩家没有真实连接时为 null
+     * @return 对应的 NetworkUser; 注入还没建立, 或者玩家没有真实连接时为 null
      */
     @Nullable
     public NetworkUser user(@NotNull Player player) {
@@ -468,10 +479,10 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     /**
-     * 返回 channel 当前绑定的连接用户.
+     * 这条 channel 当前对应哪个 {@link NetworkUser}.
      *
      * @param channel Minecraft 连接 channel
-     * @return 连接用户, 注入尚未建立时为 null
+     * @return 对应的 NetworkUser; 注入还没建立时为 null
      */
     @Nullable
     public NetworkUser user(@NotNull Channel channel) {
@@ -479,7 +490,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     /**
-     * 返回当前服务端的运行期包 ID 索引.
+     * 当前服务端的运行期包 ID 索引.
      *
      * @return 包 ID 注册表
      */
@@ -500,7 +511,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 发送
 
     /**
-     * 在连接 event loop 中发送一个 NMS 客户端包, 并绕过当前管理器自己的监听器.
+     * 给连接发一个 NMS 客户端包, 写入落在连接自己的 event loop 上.
+     * <p>发送期间临时绕过本管理器的监听器, 库自己造的包不会再被自己处理一遍.
      *
      * @param user 接收数据包的连接
      * @param packet NMS 客户端包
@@ -512,7 +524,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     /**
-     * 在连接 event loop 中发送一批 NMS 客户端包, 多个包会合成一个原版 bundle.
+     * 给连接发一批 NMS 客户端包, 多个包合成一个原版 bundle 一起走.
+     * <p>绕过监听器的规则与单包发送一致.
      *
      * @param user 接收数据包的连接
      * @param packets NMS 客户端包列表
@@ -535,7 +548,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     }
 
     /**
-     * 发送已经包含包 ID 的预序列化帧, buffer 所有权随调用转交给 Netty pipeline.
+     * 发一条已经带好包 ID 的预序列化帧, buffer 的所有权随之交给 Netty pipeline.
      *
      * @param user 接收数据包的连接
      * @param buffer 预序列化帧
@@ -546,6 +559,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.writeBypassed(user, buffer);
     }
 
+    // 写入前后成对开关 bypass, 让这次发送不被自己的监听器再处理一遍.
     private void writeBypassed(NetworkUser user, Object message) {
         Runnable write = () -> {
             user.beginBypass();
@@ -558,6 +572,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.execute(user.channel(), write);
     }
 
+    // 已经在 event loop 里就当场跑, 省一次排队, 也省得调用方以为任务还没执行.
     private void execute(Channel channel, Runnable task) {
         if (channel.eventLoop().inEventLoop()) {
             task.run();
@@ -580,7 +595,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             return;
         }
         HandlerList.unregisterAll(this);
-        // 摘掉钩子, NMS 手里那个包装器随即退化成纯转发.
+        // 摘掉钩子, 之后再开的 acceptor 就不再被接管了.
         Subscription acceptorHook = this.acceptorHook;
         if (acceptorHook != null) {
             acceptorHook.close();
@@ -601,6 +616,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
     // Netty handlers
 
+    // acceptor 读出来的元素就是一条刚建好的子连接: 先给它挂上预注入 initializer, 再交回 vanilla 继续初始化.
     private final class ServerChannelHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
@@ -611,6 +627,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
+    // 抢在 vanilla 的 initializer 之前把连接注入掉, 跑完把自己摘下来, 让 vanilla 照常往下走.
     private final class PreChannelInitializer extends ChannelInboundHandlerAdapter {
         private static final InternalLogger LOGGER = InternalLoggerFactory.getInstance(ChannelInitializer.class);
 
@@ -637,6 +654,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
+    // 两个 ByteBuf handler 都是每条连接一个实例; 标 Sharable 是为了重定位时先 remove 再 add 不被 Netty 拒绝.
     @ChannelHandler.Sharable
     final class ByteBufDecoder extends MessageToMessageDecoder<ByteBuf> {
         private final NetworkUser user;
@@ -647,6 +665,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         protected void decode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
+            // 放行就 retain 一份交给下一个 handler, 不放行这一帧就到此为止.
             if (NetworkManager.this.handleByteBuf(this.user, buffer, true)) {
                 output.add(buffer.retain());
             }
@@ -662,7 +681,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         public void channelRead(ChannelHandlerContext context, Object packet) throws Exception {
-            // 该方向没有监听器时不必碰包对象.
+            // 这个方向一个监听器都没有, 包对象连碰都不用碰.
             Map<Class<?>, NMSPacketListener> listeners = NetworkManager.this.serverboundNMSListeners;
             if (listeners.isEmpty()) {
                 super.channelRead(context, packet);
@@ -687,7 +706,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
         @Override
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
-            // 该方向没有监听器时不必展开 bundle, 也不必碰包对象.
+            // 这个方向没有监听器, 或者这次发送本来就该绕过时, 连 bundle 都不用展开.
             Map<Class<?>, NMSPacketListener> listeners = NetworkManager.this.clientboundNMSListeners;
             if (listeners.isEmpty() || this.user.bypassing()) {
                 super.write(context, packet, promise);
@@ -719,6 +738,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             try {
                 super.write(context, message, promise);
             } catch (EncoderException exception) {
+                // encode 抛的取消异常会被包成 EncoderException, 翻一遍因果链认领下来, 认到就当写入成功.
                 if (this.hasCause(exception, CancelPacketException.INSTANCE)) {
                     promise.trySuccess();
                     return;
@@ -727,7 +747,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             }
         }
 
-        // vanilla 把 compress 挂在 prepender 之后, 出站时它恒在本 handler 之后执行, 因此这里看到的一定是明文帧.
+        // vanilla 的 compress 挂在 prepender 之后, 出站时它总是排在本 handler 后面执行, 所以这里拿到的一定是明文帧.
         @Override
         protected void encode(ChannelHandlerContext context, ByteBuf buffer, List<Object> output) {
             NetworkManager.this.handleByteBuf(this.user, buffer, false);
@@ -748,9 +768,11 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
+    // 路由表里的一项: 监听器连同它的注册名, 出错时报名字比报包 ID 好查.
     private record ByteBufPacketListenerHolder(String name, ByteBufPacketListener listener) {
     }
 
+    // 出站帧被取消时用它从编码链里跳出来, 由 ByteBufEncoder 自己认领, 不会漏到别的 handler 上.
     private static final class CancelPacketException extends RuntimeException {
         private static final CancelPacketException INSTANCE = new CancelPacketException();
 

@@ -23,6 +23,7 @@ public final class InventoryVisualImpl extends AbstractSlotVisual implements Inv
 
     @Override
     public void background(@Nullable ItemProvider background) {
+        // 同一个实例就不标脏, 免得白走一轮
         if (this.background != background) {
             this.background = background;
             this.dirty();
@@ -32,6 +33,7 @@ public final class InventoryVisualImpl extends AbstractSlotVisual implements Inv
     @Nullable
     @Override
     public ResolvedVisual visualizeWithBackground(int slot, @Nullable ItemStack actual) {
+        // 映射都放行之后才轮到背景, 而且只有这一格真的是空的才用, 非空槽按真实内容显示
         ResolvedVisual bound = this.visualize(slot, actual);
         if (bound != null) {
             return bound;

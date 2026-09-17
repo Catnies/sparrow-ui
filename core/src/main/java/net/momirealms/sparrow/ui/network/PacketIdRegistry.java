@@ -27,7 +27,8 @@ public final class PacketIdRegistry {
     private final int[][] packetCounts;
 
     /**
-     * 枚举当前服务端的五个协议阶段并建立只读索引.
+     * 把五个协议阶段的包表读一遍, 建立只读索引.
+     * <p>某个组合在当前版本没有包表时保持空表, 查它一律得到 -1.
      */
     @SuppressWarnings("unchecked")
     public PacketIdRegistry() {
@@ -51,23 +52,24 @@ public final class PacketIdRegistry {
      * @param name 完整注册名, 例如 {@code minecraft:container_click}
      * @param state 包所属协议阶段
      * @param flow 包的传输方向
-     * @return 当前 ID, 不存在时为 -1
+     * @return 当前 ID; 注册名在当前版本不存在时为 -1, 调用方通常据此跳过注册
      */
     public int byName(@NotNull String name, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
         return this.packetIds[state.ordinal()][flow.ordinal()].getOrDefault(name, -1);
     }
 
     /**
-     * 返回一个协议阶段和方向实际注册的 ID 空间长度.
+     * 该阶段该方向的 ID 空间长度, 也就是最大包 ID 加一.
      *
      * @param state 包所属协议阶段
      * @param flow 包的传输方向
-     * @return 可用于定长路由数组的长度
+     * @return 可以用来开定长路由数组的长度, 数组下标就是包 ID
      */
     public int count(@NotNull ConnectionState state, @NotNull PacketFlow flow) {
         return this.packetCounts[state.ordinal()][flow.ordinal()];
     }
 
+    // 按 ID 排序打印, 出问题时拿来和 NMS 的实际包表对账
     void dump(@NotNull Consumer<String> output) {
         for (ConnectionState state : ConnectionState.values()) {
             for (PacketFlow flow : PacketFlow.values()) {
@@ -98,12 +100,14 @@ public final class PacketIdRegistry {
     private static PacketTable readPacketTable(Object template) {
         HashMap<String, Integer> ids = new HashMap<>();
         int[] largestId = {-1};
+        // 1.21.5 起包表挂在 ProtocolInfo 的 details 上, 之前的版本直接把 unbound 模板交出去
         Class<?> visitorClass = VersionHelper.isOrAbove1_21_5
                 ? ProtocolInfoDetailsProxy.PACKET_VISITOR_CLASS
                 : ProtocolInfoUnboundProxy.PACKET_VISITOR_CLASS;
         if (visitorClass == null) {
             throw new IllegalStateException("Missing NMS packet visitor");
         }
+        // 用一个动态代理实现 NMS 的包访问器, 免得每个版本都手写一份实现类; listPackets 回调的每个包都从 accept 进来
         Object visitor = Proxy.newProxyInstance(visitorClass.getClassLoader(), new Class<?>[]{visitorClass}, (proxy, method, arguments) -> {
             if (method.getName().equals("accept")) {
                 Object packetType = arguments[0];
@@ -113,6 +117,7 @@ public final class PacketIdRegistry {
                 largestId[0] = Math.max(largestId[0], packetId);
                 return null;
             }
+            // Object 的三个方法得自己给结果, 动态代理会把它们也转到 invoke 上来
             return switch (method.getName()) {
                 case "toString" -> "SparrowUI packet table visitor";
                 case "hashCode" -> System.identityHashCode(proxy);

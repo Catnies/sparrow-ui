@@ -36,17 +36,17 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个最多占五字节的 Minecraft VarInt.
+     * 按 Minecraft 的格式读一个 VarInt, 一个值最多占五字节.
      *
      * @return 解码后的整数
-     * @throws DecoderException 编码超过五字节时
+     * @throws DecoderException 读到第六个字节还没结束, 说明这个头本身就不合法
      */
     public int readVarInt() {
         return readVarInt(this.source);
     }
 
     /**
-     * 写入 Minecraft VarInt.
+     * 把一个整数按 Minecraft 的格式写成 VarInt.
      *
      * @param value 要写入的整数
      * @return 当前包装对象
@@ -62,10 +62,10 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 返回一个整数编码为 VarInt 后占用的字节数.
+     * 算一个整数编码成 VarInt 之后占几个字节, 用来提前预留空间.
      *
      * @param value 要估算的整数
-     * @return 一到五之间的字节数
+     * @return 1 到 5 之间的字节数
      */
     public static int getVarIntSize(int value) {
         for (int size = 1; size < 5; size++) {
@@ -77,10 +77,10 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个最多占十字节的 Minecraft VarLong.
+     * 按 Minecraft 的格式读一个 VarLong, 一个值最多占十字节.
      *
      * @return 解码后的长整数
-     * @throws DecoderException 编码超过十字节时
+     * @throws DecoderException 读到第十一个字节还没结束, 说明这个头本身就不合法
      */
     public long readVarLong() {
         long value = 0L;
@@ -97,7 +97,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 写入 Minecraft VarLong.
+     * 把一个长整数按 Minecraft 的格式写成 VarLong.
      *
      * @param value 要写入的长整数
      * @return 当前包装对象
@@ -113,7 +113,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个 UUID.
+     * 读一个 UUID, 按两个 long 拼起来, 高位在前.
      *
      * @return 解码后的 UUID
      */
@@ -123,7 +123,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 写入一个 UUID.
+     * 写一个 UUID, 先写高 64 位再写低 64 位.
      *
      * @param uuid 要写入的 UUID
      * @return 当前包装对象
@@ -136,7 +136,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个以 VarInt 标注长度的字节数组.
+     * 读一个带 VarInt 长度前缀的字节数组, 长度上限就是剩下的可读字节.
      *
      * @return 解码后的字节数组
      */
@@ -145,11 +145,11 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个以 VarInt 标注长度且不超过给定上限的字节数组.
+     * 读一个带 VarInt 长度前缀的字节数组, 顺便卡一下长度上限.
      *
      * @param maxSize 允许的最大数组长度
      * @return 解码后的字节数组
-     * @throws DecoderException 声明长度为负数或超过上限时
+     * @throws DecoderException 长度是负数, 或者超过了上限时
      */
     public byte[] readByteArray(int maxSize) {
         int size = this.readVarInt();
@@ -165,7 +165,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 写入一个以 VarInt 标注长度的字节数组.
+     * 写一个字节数组, 前面先用 VarInt 标出长度.
      *
      * @param bytes 要写入的字节数组
      * @return 当前包装对象
@@ -178,7 +178,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 按 Minecraft 默认字符上限读取 UTF-8 字符串.
+     * 按 Minecraft 默认的字符上限读一个 UTF-8 字符串.
      *
      * @return 解码后的字符串
      */
@@ -188,7 +188,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 读取一个带 VarInt 字节长度的 UTF-8 字符串.
+     * 读一个带 VarInt 字节长度前缀的 UTF-8 字符串.
      *
      * @param maxLength 允许的最大字符数
      * @return 解码后的字符串
@@ -196,6 +196,7 @@ public final class PacketBuf extends ByteBuf {
      */
     @NotNull
     public String readUtf(int maxLength) {
+        // UTF-8 一个字符最多 3 字节, 先用字符上限折出字节上限, 免得读完一整个超长字符串才发现超标
         int maxEncodedLength = maxLength * 3;
         int encodedLength = this.readVarInt();
         if (encodedLength < 0) {
@@ -206,6 +207,7 @@ public final class PacketBuf extends ByteBuf {
         }
         String value = this.toString(this.readerIndex(), encodedLength, StandardCharsets.UTF_8);
         this.skipBytes(encodedLength);
+        // 长度前缀只能卡字节数, 真正的字符数要解码完才知道
         if (value.length() > maxLength) {
             throw new DecoderException("Decoded string length exceeds maximum allowed: " + value.length() + " > " + maxLength);
         }
@@ -213,7 +215,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 按 Minecraft 默认字符上限写入 UTF-8 字符串.
+     * 按 Minecraft 默认的字符上限写一个 UTF-8 字符串.
      *
      * @param value 要写入的字符串
      * @return 当前包装对象
@@ -224,7 +226,7 @@ public final class PacketBuf extends ByteBuf {
     }
 
     /**
-     * 写入一个带 VarInt 字节长度的 UTF-8 字符串.
+     * 写一个 UTF-8 字符串, 前面先用 VarInt 标出字节长度.
      *
      * @param value 要写入的字符串
      * @param maxLength 允许的最大字符数
@@ -237,6 +239,7 @@ public final class PacketBuf extends ByteBuf {
             throw new EncoderException("String is too large: " + value.length() + " > " + maxLength);
         }
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        // 字符数先卡一道, 编码之后按实际字节数再卡一道
         int maxEncodedLength = maxLength * 3;
         if (bytes.length > maxEncodedLength) {
             throw new EncoderException("Encoded string is too large: " + bytes.length + " > " + maxEncodedLength);
@@ -246,10 +249,12 @@ public final class PacketBuf extends ByteBuf {
         return this;
     }
 
+    // 派发路径在裸 ByteBuf 上读包 ID 用的那一份, 不建包装对象; 头坏了直接抛, 怎么处理由调用方决定.
     static int readVarInt(ByteBuf source) {
         int value = 0;
         int shift = 0;
         byte current;
+        // 每个字节低 7 位是数据, 最高位表示后面还有没有
         do {
             current = source.readByte();
             value |= (current & 127) << shift++ * 7;

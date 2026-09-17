@@ -21,22 +21,23 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 将 Window 上的点击或拖拽转换为 Inventory 事务.
- * <p>{@link Context} 提供当前状态, {@link InteractionGate} 连接事件派发.
+ * 玩家在 Window 上点一下或者拖一趟, 到这里被翻译成一笔 Inventory 事务.
+ * <p>{@link Context} 交出当前的现场, {@link InteractionGate} 负责把事件发给外面的代码并把结果带回来.
  */
 public final class ClickSemantics {
 
     private ClickSemantics() {
     }
 
-    // Window 槽位当前连接的 Inventory 槽位.
+    // 一个 Window 槽位此刻连到哪个 Inventory 的哪一格.
     public record LinkedSlot(@NotNull SparrowInventory inventory, int slot) {
         SlotKey physicalKey() {
             return this.inventory.physicalKey(this.slot);
         }
     }
 
-    // 参与交互的 Inventory 及其可见逻辑槽位.
+    // 参与这次交互的一个 Inventory, 以及它当前被 Pane 展示出来的那些槽位.
+    // 快速转移和双击收集只在这些槽位里挑, 没展示出来的默认不参与.
     public record LinkedInventory(@NotNull SparrowInventory inventory, @NotNull BitSet visibleSlots) {
         boolean visible(int slot) {
             return this.visibleSlots.get(slot);
@@ -83,9 +84,9 @@ public final class ClickSemantics {
     }
 
     /**
-     * 处理带 Window 本地 Bundle 选择状态与交互闸门的单击.
+     * 处理一次单击, 带上 Window 自己记的收纳袋选择状态, 以及负责派发事件的 gate.
      * <p>语义接管且参与者启用了 Bukkit 事件时, {@link InteractionGate#allowClick} 会被调用一次,
-     * 即使这次点击没有候选. 冻结槽不会进入闸门.
+     * 即使这次点击算不出候选也照样调一次. 冻结槽连这一步都不走.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 已解析的点击类型
@@ -94,7 +95,7 @@ public final class ClickSemantics {
      * @param observedBundle 记录选择时客户端看到的 Bundle, 没有选择时为 {@code null}
      * @param selectedIndex 记录的 Bundle 内部索引, 没有选择时为 {@code -1}
      * @param afterCommit 右键事务提交后清理 Window 选择状态的回调
-     * @param gate 派发事件并复核 Window 状态的交互闸门
+     * @param gate 负责派发事件并复核 Window 状态
      * @return 语义已接管返回 {@code true}, 交给 Item 分派时返回 {@code false}
      */
     @ApiStatus.Internal
@@ -282,9 +283,9 @@ public final class ClickSemantics {
     }
 
     /**
-     * 候选形成后, 事务提交前依次经过的交互闸门.
-     * <p>语义引擎在每次派发前后都会自己复核 {@link #stillValid()} 并重新校验候选,
-     * 实现只负责派发事件本身, 不需要重复检查 Window 状态.
+     * 候选算出来之后、事务提交之前, 引擎靠这组方法把事件发给外面的代码, 再看它们放不放行.
+     * <p>每次派发前后引擎都会自己调 {@link #stillValid()} 并重新校验候选, 实现只管把事件发出去,
+     * 不用再去操心 Window 状态变没变.
      */
     @ApiStatus.Internal
     public interface InteractionGate {
@@ -323,6 +324,7 @@ public final class ClickSemantics {
          * @param newCursor 候选提交后的光标物品
          * @param newItems 候选提交后的协议槽位内容, 已经过放入规则过滤和重新分配.
          *                 只包含背后有 Inventory 且未冻结的槽位, 同一趟拖拽经过的 Item 槽, 空槽和冻结槽不会出现在这里
+         *
          * @param edits 把事件写入合并进本次候选草稿的句柄
          * @return 事件没有被取消时返回 {@code true}
          */
@@ -332,7 +334,8 @@ public final class ClickSemantics {
 
         /**
          * 返回 {@link #allowClick} 与 {@link #allowDrag} 是否实际派发 Bukkit 事件.
-         * 返回 {@code false} 表示那一段只是放行, 中途没有任何用户代码跑过, 引擎据此省掉闸门之后的外部容器重同步.
+         * 返回 {@code false} 表示那两个方法只是直接放行, 中途一行外部代码都没跑过.
+         * 引擎凭这一点省掉事件之后的外部容器重新同步, 没人插手就没必要再读一遍容器.
          *
          * @return 本次交互会派发 Bukkit 事件时返回 {@code true}
          */

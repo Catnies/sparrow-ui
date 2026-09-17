@@ -13,47 +13,47 @@ import java.util.function.Consumer;
 public interface EnchantmentWindow extends Window {
 
     /**
-     * 设置一个附魔选项, null 表示禁用该按钮.
+     * 设置其中一个附魔按钮; 给 null 就是把这个按钮禁掉.
      *
      * @param index 选项索引, 范围为 [0, 3)
-     * @param option 新选项或 null
+     * @param option 新选项, null 表示禁用
      * @throws IndexOutOfBoundsException 索引超出范围时
      */
     void setOption(int index, @Nullable EnchantOption option);
 
     /**
-     * 返回最近已在玩家实体线程应用的选项.
+     * 最近一次在玩家实体线程上应用过的选项.
      *
      * @param index 选项索引, 范围为 [0, 3)
-     * @return 当前选项或 null
+     * @return 选项; 这个按钮没开时是 null
      * @throws IndexOutOfBoundsException 索引超出范围时
      */
     @Nullable
     EnchantOption getOption(int index);
 
     /**
-     * 设置只影响客户端符文文字的随机种子.
+     * 设置附魔种子, 它只管客户端那几行符文文字怎么长.
      *
      * @param seed 附魔种子
      */
     void setEnchantmentSeed(int seed);
 
     /**
-     * 返回最近已在玩家实体线程应用的附魔种子.
+     * 最近一次在玩家实体线程上应用过的附魔种子.
      *
      * @return 附魔种子
      */
     int getEnchantmentSeed();
 
     /**
-     * 替换选择处理器.
+     * 整批换掉附魔选择处理器.
      *
      * @param handlers 新处理器列表
      */
     void setEnchantSelectHandlers(@NotNull List<? extends Consumer<? super EnchantSelectClick>> handlers);
 
     /**
-     * 返回当前选择处理器快照.
+     * 现在的附魔选择处理器, 给一份快照.
      *
      * @return 不可修改的处理器列表
      */
@@ -62,25 +62,25 @@ public interface EnchantmentWindow extends Window {
     List<Consumer<EnchantSelectClick>> getEnchantSelectHandlers();
 
     /**
-     * 追加选择处理器.
+     * 在附魔选择处理器末尾追加一个.
      *
      * @param handler 新处理器
      */
     void addEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
-     * 移除首个匹配的选择处理器.
+     * 按 equals 摘掉第一个匹配的附魔选择处理器.
      *
      * @param handler 待移除的处理器
      */
     void removeEnchantSelectHandler(@NotNull Consumer<? super EnchantSelectClick> handler);
 
     /**
-     * 一个附魔按钮的客户端展示数据.
+     * 一个附魔按钮在客户端上展示的数据.
      *
-     * @param cost 客户端显示和校验的经验等级, 必须至少为 1
-     * @param clue tooltip 使用的附魔, null 表示不显示 tooltip
-     * @param clueLevel tooltip 使用的附魔等级
+     * @param cost 客户端显示的等级, 它自己也拿这个校验, <strong>至少为 1</strong>
+     * @param clue tooltip 上的附魔; null 表示不出 tooltip
+     * @param clueLevel tooltip 上的附魔等级
      */
     record EnchantOption(int cost, @Nullable Enchantment clue, int clueLevel) {
     }
@@ -93,7 +93,7 @@ public interface EnchantmentWindow extends Window {
     interface Builder extends Window.Builder<EnchantmentWindow, Builder> {
 
         /**
-         * 设置必须为 2x1 的上部 Pane.
+         * 设置上部 Pane, 待附魔物品和青金石都摆在这上面, 尺寸必须是 2x1.
          *
          * @param upperPane 待附魔物品和青金石展示 Pane
          * @return 此 Builder
@@ -102,7 +102,7 @@ public interface EnchantmentWindow extends Window {
         Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -111,10 +111,10 @@ public interface EnchantmentWindow extends Window {
         Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
-         * 设置一个初始附魔选项, null 表示禁用该按钮.
+         * 设置一个初始附魔按钮; 给 null 就是这个按钮一开始就禁用.
          *
          * @param index 选项索引, 范围为 [0, 3)
-         * @param option 初始选项或 null
+         * @param option 初始选项, null 表示禁用
          * @return 此 Builder
          * @throws IndexOutOfBoundsException 索引超出范围时
          */
@@ -122,7 +122,7 @@ public interface EnchantmentWindow extends Window {
         Builder setOption(int index, @Nullable EnchantOption option);
 
         /**
-         * 设置初始附魔种子.
+         * 设置一开始的附魔种子.
          *
          * @param seed 附魔种子
          * @return 此 Builder
@@ -131,7 +131,7 @@ public interface EnchantmentWindow extends Window {
         Builder setEnchantmentSeed(int seed);
 
         /**
-         * 替换初始选择处理器.
+         * 整批换掉初始的附魔选择处理器.
          *
          * @param handlers 新处理器列表
          * @return 此 Builder
@@ -142,7 +142,7 @@ public interface EnchantmentWindow extends Window {
         );
 
         /**
-         * 追加初始选择处理器.
+         * 追加一个初始的附魔选择处理器.
          *
          * @param handler 新处理器
          * @return 此 Builder

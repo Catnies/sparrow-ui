@@ -7,16 +7,16 @@ import org.jetbrains.annotations.Nullable;
 public interface StonecutterWindow extends Window {
 
     /**
-     * 返回当前选中的配方按钮索引.
+     * 当前选中的是哪个配方按钮.
      *
-     * @return 配方按钮索引, -1 表示未选择
+     * @return 配方按钮索引; -1 表示没选
      */
     int getSelectedRecipeIndex();
 
     /**
      * 设置当前选中的配方按钮.
-     * <p>-1 表示清除选择. Window 打开时, 非负索引必须属于当前发送给客户端的有效
-     * 按钮前缀. Window 未打开时只按按钮 Pane 的容量校验, 并在下次初始渲染时把越界选择校正为 -1.
+     * <p>-1 就是清掉选择. Window 开着的时候, 非负索引必须落在当前真的发给客户端的那个按钮前缀里;
+     * 还没打开时只按按钮 Pane 的容量校验, 越界的选择留到下次初始渲染时校正成 -1.
      *
      * @param index 配方按钮索引或 -1
      * @throws IndexOutOfBoundsException 索引超出按钮 Pane 容量时
@@ -31,7 +31,7 @@ public interface StonecutterWindow extends Window {
     interface Builder extends Window.Builder<StonecutterWindow, Builder> {
 
         /**
-         * 设置必须为 2x1 的上部 Pane.
+         * 设置上部 Pane, 输入和结果都在这一块上, 尺寸必须是 2x1.
          *
          * @param upperPane 输入与结果 Pane
          * @return 此 Builder
@@ -40,7 +40,7 @@ public interface StonecutterWindow extends Window {
         Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -49,9 +49,9 @@ public interface StonecutterWindow extends Window {
         Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
-         * 设置固定宽度为 4 的配方按钮 Pane.
-         * <p>Builder 默认使用 4x0 空 Pane. Window 构建后不允许替换此 Pane,
-         * 调用方可以继续直接修改同一个 Pane 的内容.
+         * 设置配方按钮 Pane, 宽度固定为 4.
+         * <p>Builder 默认给一块 4x0 的空 Pane. Window 建好之后不能再换这块 Pane,
+         * 调用方想改内容就接着改同一个 Pane.
          *
          * @param buttonsPane 配方按钮 Pane
          * @return 此 Builder
@@ -60,7 +60,7 @@ public interface StonecutterWindow extends Window {
         Builder setButtonsPane(@NotNull Pane buttonsPane);
 
         /**
-         * 设置初始选择.
+         * 设置一开始选中的那个按钮.
          *
          * @param index 配方按钮索引或 -1
          * @return 此 Builder

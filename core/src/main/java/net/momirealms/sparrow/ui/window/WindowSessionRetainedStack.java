@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 final class WindowSessionRetainedStack extends WindowSessionStack {
-    private final List<Window> retained = new ArrayList<>(); // 被弹出的窗
+    private final List<Window> retained = new ArrayList<>(); // 弹出之后还留着的窗, 一直挂到会话结束
 
     WindowSessionRetainedStack(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         super(manager, viewer, sessionEndHandlers);
@@ -23,6 +23,7 @@ final class WindowSessionRetainedStack extends WindowSessionStack {
     @Override
     void discard(@NotNull AbstractWindow<?> popped, boolean stillPresent) {
         super.discard(popped, stillPresent);
+        // 除了常规的解除归属, 还把它收进保留区, 免得刚退出的那一扇马上被回收掉
         if (!stillPresent && !this.retained.contains(popped)) {
             this.retained.add(popped);
         }

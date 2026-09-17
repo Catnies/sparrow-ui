@@ -17,7 +17,6 @@ public final class LoginAcknowledgedListener implements ByteBufPacketListener {
     @Override
     public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
         user.setConnectionState(ConnectionState.CONFIGURATION);
-        // PacketEvents 可能到登录确认才装完, 再按最终 pipeline 收口一次.
         Channel channel = user.channel();
         channel.eventLoop().execute(() -> NetworkPipelineOrder.relocateByteBufHandlers(user.networkManager(), channel));
     }

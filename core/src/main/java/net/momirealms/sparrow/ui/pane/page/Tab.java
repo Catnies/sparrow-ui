@@ -42,18 +42,18 @@ import java.util.function.Supplier;
 public final class Tab<K> {
     private final Set<K> keys;                                 // 合法标签集, 建组时定死
     private final Function<? super K, ? extends Pane> paneOf;  // 取某个标签的子 Pane, lazy 版内含建造缓存
-    private final MutableSignal<K> selected;
-    private final Signal<Pane> pane;
+    private final MutableSignal<K> selected;                    // 当前选中的 key, 切标签就是写它
+    private final Signal<Pane> pane;                            // 跟着选中走的子 Pane, 内容区显示的就是它
 
     /**
-     * 把若干个子 Pane 组成一组标签, 全部当场就是现成的.
-     * <p>子 Pane 建出来就持续存活, 它身上挂的投影从建好那一刻起就在跟随数据源.
+     * 把现成的几个子 Pane 组成一组标签.
+     * <p>建出来之后每个子 Pane 都活着, 挂在它们身上的投影从这一刻起就在跟随数据源.
      *
      * @param <K> 标签 key 类型
-     * @param tabs 每个 key 对应一个子 Pane, 不能为空. 会复制一份, 之后改动传进来的那个 Map 不影响这组标签
+     * @param tabs 每个 key 对应一个子 Pane, <strong>不能为空</strong>, <strong>会复制一份</strong>
      * @param initial 一开始选中哪一个, 必须是 {@code tabs} 里有的 key
      * @return 标签组
-     * @throws IllegalArgumentException 当 tabs 为空或不含 initial 时
+     * @throws IllegalArgumentException tabs 里没有 initial 时
      */
     @NotNull
     public static <K> Tab<K> of(@NotNull Map<K, ? extends Pane> tabs, @NotNull K initial) {
@@ -62,14 +62,14 @@ public final class Tab<K> {
     }
 
     /**
-     * 把子 Pane 的建造函数组成标签, 某个标签第一次显示时才创建并缓存对应 Pane.
-     * <p>已经创建的 Pane 切走后仍继续跟随自己的数据源.
+     * 只给建造函数, 某个标签第一次显示的时候才把那个子 Pane 建出来并缓存住.
+     * <p>已经建出来的 Pane 切走之后照样跟着自己的数据源.
      *
      * @param <K> 标签 key 类型
-     * @param tabs 每个 key 对应一个子 Pane 的建造函数, 不能为空, 不得返回 {@code null}
+     * @param tabs 每个 key 对应一个子 Pane 的建造函数, <strong>不能为空, 也不能返回 null</strong>
      * @param initial 一开始选中哪一个, 必须是 {@code tabs} 里有的 key
      * @return 标签组
-     * @throws IllegalArgumentException 当 tabs 为空或不含 initial 时
+     * @throws IllegalArgumentException tabs 里没有 initial 时
      */
     @NotNull
     public static <K> Tab<K> lazy(@NotNull Map<K, ? extends Supplier<? extends Pane>> tabs, @NotNull K initial) {
@@ -93,10 +93,10 @@ public final class Tab<K> {
     }
 
     /**
-     * 切到指定的标签.
+     * 切到这个标签, 内容区之后显示的就是它的子 Pane.
      *
      * @param key 目标 key
-     * @throws IllegalArgumentException 当 {@code key} 不在这组标签里时
+     * @throws IllegalArgumentException {@code key} 不在这组标签里时
      */
     public void select(@NotNull K key) {
         if (!this.keys.contains(key)) {
@@ -106,8 +106,7 @@ public final class Tab<K> {
     }
 
     /**
-     * 返回当前选中的是哪一个.
-     * <p>按钮的选中态挂在它上面.
+     * 当前选中的是哪个 key, 按钮的选中态挂在它上面.
      *
      * @return 当前选中的 key
      */
@@ -117,7 +116,7 @@ public final class Tab<K> {
     }
 
     /**
-     * 返回当前选中的子 Pane.
+     * 跟着选中走的子 Pane, 内容区铺的就是它.
      *
      * @return 当前选中的子 Pane
      */

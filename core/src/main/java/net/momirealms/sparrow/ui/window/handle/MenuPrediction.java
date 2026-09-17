@@ -4,8 +4,8 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 在 Window 层传递客户端预测, 不向上暴露 NMS 类型.
- * <p>Paper 适配器只接收自己创建的预测实现.
+ * 把客户端预测传到 Window 这一层用的载体, 免得把 NMS 类型往外露.
+ * <p>Paper 那边的适配器只认自己创建出来的预测实现.
  */
 @ApiStatus.Internal
 public interface MenuPrediction {

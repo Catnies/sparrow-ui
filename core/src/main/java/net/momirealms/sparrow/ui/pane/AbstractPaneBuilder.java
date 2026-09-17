@@ -20,14 +20,15 @@ import java.util.function.Supplier;
 
 abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPaneBuilder<G, B>> implements Pane.Builder<G, B> {
     private final Structure structure;
-    private final ElementSupplier[] ingredients; // 三种内容数组都按 Structure 标志符编号索引
-    private final ProjectionIngredient[] projections;
-    private final Tab<?>[] tabIngredients;
-    private final ArrayList<Consumer<? super G>> modifiers;
-    private final LinkedHashSet<SparrowInventory> linkedInventories;
+    // 下面三个数组都用标志符编号当下标, 一格只会有其中一种声明
+    private final ElementSupplier[] ingredients;       // 静态元素
+    private final ProjectionIngredient[] projections;  // 跟着序列走的投影
+    private final Tab<?>[] tabIngredients;             // 标签组
+    private final ArrayList<Consumer<? super G>> modifiers;          // 建好 Pane 之后挨个跑一遍
+    private final LinkedHashSet<SparrowInventory> linkedInventories; // 要关联到 Pane 上的 Inventory, 去重并保持声明顺序
 
-    private ItemProvider background;
-    private boolean frozen;
+    private ItemProvider background;  // 空槽位显示什么
+    private boolean frozen;           // 建出来的 Pane 一开始冻不冻
 
     AbstractPaneBuilder(Structure structure) {
         this.structure = structure;
@@ -267,7 +268,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     ) {
         @SuppressWarnings("unchecked")
         Function<Object, ? extends Element> erased = (Function<Object, ? extends Element>) toElement;
-        // 横向内容按列切片, 槽位也按列主序投影
+        // 横滚的内容按列切片, 槽位就得按列主序摆; 竖滚本来就是行优先, 不用转
         SlotPattern pattern = scroll.orientation() == Scroll.Orientation.HORIZONTAL ? SlotPatterns.COLUMN_MAJOR : null;
         return this.bindProjection(identifier, scroll.content(), erased, executor, pattern);
     }
@@ -368,7 +369,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @Override
     @NotNull
     public final B setModifiers(@NotNull List<? extends Consumer<? super G>> modifiers) {
-        // 先校验整批输入, 失败时保留原 modifiers
+        // 整批先查 null, 有一个不合格就原样留着旧的那批
         for (int i = 0; i < modifiers.size(); i++) {
             if (modifiers.get(i) == null) {
                 throw new NullPointerException("modifiers must not contain null");
@@ -388,10 +389,11 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     @Override
     @NotNull
     public final G build() {
+        // 先把 elements 数组铺满, 中间任何一个 supplier 抛了都不建 Pane
         Element[] elements = new Element[this.structure.size().area()];
         Arrays.fill(elements, Element.Empty.INSTANCE);
 
-        // 静态 ingredient 失败时附加模板位置
+        // 静态元素这一轮是就地生成, 出错时报错要能指回模板的哪一格
         for (int identifierIndex = 0; identifierIndex < this.ingredients.length; identifierIndex++) {
             ElementSupplier supplier = this.ingredients[identifierIndex];
             if (supplier == null) {
@@ -411,12 +413,12 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             }
         }
 
-        // 所有槽位都生成成功后才创建 Pane, 然后挂投影, 最后执行修改器
+        // 元素都齐了才建 Pane, 建完先把声明过的 Inventory 关联上
         G pane = this.create(this.structure, elements, this.background, this.frozen);
         for (SparrowInventory inventory : this.linkedInventories) {
             pane.linkInventory(inventory);
         }
-        // 投影就地求值一次, 因此 build 返回时这些槽位已经是序列当前的样子
+        // 投影建出来会马上求值一轮, 所以 build 返回时这些槽位就是序列当前的样子
         for (int identifierIndex = 0; identifierIndex < this.projections.length; identifierIndex++) {
             ProjectionIngredient projection = this.projections[identifierIndex];
             if (projection == null) {
@@ -434,7 +436,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
                     projection.executor()
             );
         }
-        // 标签组同样就地铺一轮, build 返回时区域已经是选中标签的样子
+        // 标签组同样当场铺一遍, 铺的是当前选中的那个标签
         for (int identifierIndex = 0; identifierIndex < this.tabIngredients.length; identifierIndex++) {
             Tab<?> tab = this.tabIngredients[identifierIndex];
             if (tab == null) {
@@ -442,6 +444,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             }
             attachTab(pane, this.structure.slots(identifierIndex), tab);
         }
+        // 修改器放在最后, 它们想改的东西这时候都已经挂好了
         for (Consumer<? super G> modifier : this.modifiers) {
             modifier.accept(pane);
         }
@@ -462,7 +465,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
             boolean frozen
     );
 
-    // 将标志符转换为内部编号并保存绑定.
+    // 存静态元素声明, 顺手把同下标的另外两种清掉.
     private B bindIngredient(String identifier, ElementSupplier supplier) {
         int identifierIndex = this.structure.identifierIndex(identifier);
         this.ingredients[identifierIndex] = supplier;
@@ -471,7 +474,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         return this.self();
     }
 
-    // 将标志符转换为内部编号并保存投影声明.
+    // 存投影声明, 同下标的另外两种一样要清掉.
     private B bindProjection(
             String identifier,
             Signal<? extends List<?>> source,
@@ -489,14 +492,14 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         return this.self();
     }
 
-    // 绑定由宿主 Pane 持有, 标签切换时在调用线程同步重铺
+    // 订阅挂在宿主 Pane 上, 标签一换就在调用线程同步重铺; 寿命跟着 Pane 走, 不用使用方操心.
     private static void attachTab(AbstractPane pane, SlotSequence slots, Tab<?> tab) {
         Signal<Pane> selected = tab.pane();
         pane.bind(selected, host -> layTab(host, slots, selected.get()));
         layTab(pane, slots, selected.get());
     }
 
-    // 保持区域二维形状, 子 Pane 覆盖不到的位置补空
+    // 按区域原来的二维形状接过去, 子 Pane 盖不到的位置补空
     private static void layTab(Pane host, SlotSequence slots, Pane selected) {
         PaneSize childSize = selected.size();
         int length = slots.length();
@@ -513,8 +516,8 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
         }
     }
 
-    // 一条投影声明, 跟随序列, 把序列里的一条数据变成 Element, 以及在哪里求值.
-    // 它保存在与 ingredients 同下标的位置上, 因此是哪个标志符由下标决定.
+    // 一条投影声明: 序列来源, 怎么变成 Element, 在哪儿求值, 要不要换个槽位顺序.
+    // 它和静态元素放在同一个下标上, 所以自己是哪个标志符不用记.
     private record ProjectionIngredient(
             Signal<? extends List<?>> source,
             Function<Object, ? extends Element> toElement,
@@ -523,7 +526,7 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
     ) {
     }
 
-    // 给 ingredient 异常补上模板位置
+    // 报错时把位置凑齐: 哪个标志符, 模板的第几行第几列, 以及槽号
     private IllegalStateException instantiationFailure(int identifierIndex, int slot, RuntimeException cause) {
         int width = this.structure.size().width();
         int row = slot / width;

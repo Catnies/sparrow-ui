@@ -17,7 +17,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-// Bukkit Inventory 与底层 NMS Container 的槽位布局.
+// 同一个容器, Bukkit 那层的槽号和底层 NMS Container 的槽号不一定对得上.
+// 这里按容器类型记住两边怎么换算, 对得上就能直接走 NMS 通道读写, 对不上就只能退回 Bukkit 接口.
 enum BukkitInventoryLayout {
     // Bukkit 与 NMS 槽号相同
     ALIGNED {
@@ -35,7 +36,7 @@ enum BukkitInventoryLayout {
             return owner == null ? null : new PlayerContainerStorage(owner, size);
         }
     },
-    // 结果格位于合成格之前
+    // 合成台这类, Bukkit 把结果格排在合成格前面, NMS 那边也是 0 号位放结果
     CRAFTING {
         @Override
         ExternalStorage build(@NotNull Inventory inventory, int size) {
@@ -66,7 +67,7 @@ enum BukkitInventoryLayout {
             );
         }
     },
-    // 未知排布
+    // 认不出来的排布, 一律走 Bukkit 接口
     FOREIGN {
         @Override
         @Nullable
@@ -85,7 +86,7 @@ enum BukkitInventoryLayout {
         }
     };
 
-    // 返回布局匹配的 NMS 存储, 未知或尺寸不符时回退 Bukkit 通道.
+    // 布局认得出、尺寸也对得上, 就给一份直通 NMS 的存储; 否则老实退回 Bukkit 通道.
     @Nullable
     static ExternalStorage storageOf(@NotNull Inventory inventory, int size) {
         ExternalStorage storage = LAYOUTS.get(inventory.getClass()).build(inventory, size);
@@ -96,7 +97,7 @@ enum BukkitInventoryLayout {
     abstract ExternalStorage build(@NotNull Inventory inventory, int size);
 
     private static BukkitInventoryLayout layoutOf(Class<?> type) {
-        // 玩家背包使用玩家身份, 重生后仍能判定为相同槽位.
+        // 玩家背包的槽位身份挂在玩家上, 而不是挂在容器实例上. 玩家重生之后容器换了, 槽位还得认得出是同一格.
         if (CraftInventoryPlayerProxy.CLASS != null && CraftInventoryPlayerProxy.CLASS.isAssignableFrom(type)) {
             return PLAYER;
         }
@@ -104,7 +105,7 @@ enum BukkitInventoryLayout {
         if (owner == null) {
             return FOREIGN;
         }
-        // ResultInventory 的内容区仍与 getInventory() 的槽号对齐.
+        // ResultInventory 只暴露结果格, 但它的内容区槽号和 getInventory() 那边仍然是对齐的.
         if (owner == CraftInventoryProxy.CLASS || owner == CraftResultInventoryProxy.CLASS) {
             return ALIGNED;
         }
@@ -117,7 +118,7 @@ enum BukkitInventoryLayout {
         return FOREIGN;
     }
 
-    // <strong>读写方法必须由同一层声明</strong>, 才能确认两边使用同一套槽号.
+    // <strong>读和写必须由同一层声明</strong>. 一边被子类改过槽号另一边没改, 两套坐标就对不上了, 写进去会落到别的格.
     @Nullable
     private static Class<?> slotCoordinateOwner(Class<?> type) {
         if (!CraftInventoryProxy.CLASS.isAssignableFrom(type)) return null;
@@ -130,7 +131,7 @@ enum BukkitInventoryLayout {
         }
     }
 
-    // 主仓记着自己属于哪只坐骑.
+    // 主仓要记住自己属于哪只坐骑, 换一只坐骑就是另一批槽位.
     @Nullable
     private static UUID mountOf(Object mainContainer) {
         if (!SimpleContainerProxy.CLASS.isInstance(mainContainer)) {

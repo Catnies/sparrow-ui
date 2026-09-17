@@ -11,12 +11,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class Structure {
-    private final PaneSize size;          // Pane 尺寸
-    private final String[] identifiers;  // 内部编号到标志符文本
-    private final Map<String, Integer> identifierIndexes; // 标志符文本到内部编号
-    private final int[] identifierBySlot;   // 每个槽位对应的标志符编号, -1 表示没有标志符
-    private final int[] sourceColumns;      // 用于 Builder 失败信息的模板原始列号
-    private final SlotSequence[] slotsByIdentifier; // 每个标志符预先选好的槽位
+    private final PaneSize size;                            // Pane 尺寸
+    private final String[] identifiers;                     // 标志符内部编号 -> 模板里写的文本
+    private final Map<String, Integer> identifierIndexes;   // 模板里写的文本 -> 内部编号
+    private final int[] identifierBySlot;                   // 每个槽位的标志符编号, -1 表示这一格没有标志符
+    private final int[] sourceColumns;                      // 每个槽位在模板里的原始列号, 报错时指回模板
+    private final SlotSequence[] slotsByIdentifier;         // 每个标志符的槽位, 解析完就选好不再动
 
     private Structure(
             PaneSize size,
@@ -35,7 +35,7 @@ public final class Structure {
     }
 
     /**
-     * 创建只有尺寸, 没有任何标志符的布局.
+     * 只要一块给定尺寸的空白布局, 一个标志符都没有.
      *
      * @param size Pane 尺寸
      * @return 空布局
@@ -56,26 +56,26 @@ public final class Structure {
     }
 
     /**
-     * 根据多行字符串创建布局.
-     * <p>每个普通 Unicode 字符占一个槽位. 反引号包围的文本作为一个完整标志符,
-     * 例如 {@code `confirm button`}. 所有行必须包含相同数量的槽位.
+     * 按多行模板建布局.
+     * <p>每个普通 Unicode 字符占一格, 反引号里的文本算一个标志符, 例如 {@code `confirm button`}.
+     * 所有行的槽位数必须一样.
      *
      * @param rows 从上到下排列的模板行
-     * @return 解析后的布局
-     * @throws IllegalArgumentException 没有模板行, 首行为空, 行宽不一致或模板语法错误时抛出
+     * @return 解析好的布局
+     * @throws IllegalArgumentException 没有模板行, 首行是空的, 各行宽度对不上, 或者模板语法有错时
      */
     @NotNull
     public static Structure of(String @NotNull ... rows) {
         if (rows.length == 0)
             throw new IllegalArgumentException("structure must contain at least one row");
 
-        // 先解析第一行并暂存, 用它确定 Pane 宽度
+        // 第一行先解析暂存, 整块 Pane 有多宽由它说了算
         Compiler compiler = new Compiler();
         ParsedRow first = compiler.parseBuffered(rows[0], 0);
         if (first.width() == 0)
             throw new IllegalArgumentException("structure rows must contain at least one slot");
 
-        // 第一行确定尺寸后, 其余行必须包含相同数量的 Pane 槽位
+        // 宽度定下来之后, 后面每行都按同一宽度落位, 对不上就是模板自己有毛病
         PaneSize size = new PaneSize(first.width(), rows.length);
         int[] identifierBySlot = new int[size.area()];
         int[] sourceColumns = new int[size.area()];
@@ -96,20 +96,20 @@ public final class Structure {
     }
 
     /**
-     * 使用一段连续文本创建指定尺寸的布局.
-     * <p>文本中解析出的槽位数量必须等于 {@link PaneSize#area()}.
+     * 把一整段文本按槽号顺序摊进给定尺寸的布局.
+     * <p>文本里的格子数必须正好等于 {@link PaneSize#area()}.
      *
      * @param size Pane 尺寸
-     * @param flatData 按槽位顺序连续排列的模板文本
-     * @return 解析后的布局
-     * @throws IllegalArgumentException 槽位数量与尺寸不符或模板语法错误时抛出
+     * @param flatData 按槽号顺序连成一段的模板文本
+     * @return 解析好的布局
+     * @throws IllegalArgumentException 格子数和尺寸对不上, 或者模板语法有错时
      */
     @NotNull
     public static Structure of(@NotNull PaneSize size, @NotNull String flatData) {
         Compiler compiler = new Compiler();
         int[] identifierBySlot = new int[size.area()];
         int[] sourceColumns = new int[size.area()];
-        // 超出面积的槽位直接失败, 避免写入越界
+        // 多出来的格子当场失败, 别让它写到数组外面
         int actualWidth = compiler.parse(flatData, 0, (identifier, sourceColumn, column) -> {
             if (column >= size.area())
                 throw new IllegalArgumentException("flat structure has more than " + size.area() + " slots");
@@ -122,11 +122,11 @@ public final class Structure {
     }
 
     /**
-     * 指定槽位的标志符, 没有标志符时返回 null.
+     * 这一格的标志符, 这一格没有标志符时给 null.
      *
      * @param slot 槽位编号
-     * @return 槽位标志符, 或 null
-     * @throws IndexOutOfBoundsException 当槽号越界时
+     * @return 槽位标志符, 没有就是 null
+     * @throws IndexOutOfBoundsException 槽号越界时
      */
     @Nullable
     public String identifierAt(int slot) {
@@ -135,12 +135,11 @@ public final class Structure {
     }
 
     /**
-     * 选择所有使用指定标志符的槽位.
-     * <p>结果按从上到下, 每行从左到右的顺序排列.
+     * 这个标志符占的全部槽位, 按从上到下, 每行从左到右排.
      *
      * @param identifier 标志符
-     * @return 对应的槽位选择
-     * @throws IllegalArgumentException 标志符为空或未在模板中出现时抛出
+     * @return 这个标志符的槽位
+     * @throws IllegalArgumentException 标志符是空串, 或者模板里根本没有它时
      */
     @NotNull
     public SlotSequence slots(@NotNull String identifier) {
@@ -148,25 +147,25 @@ public final class Structure {
     }
 
     /**
-     * 选择所有使用指定标志符的槽位, 再使用 Pattern 决定取舍和顺序.
+     * 把几个标志符的槽位合到一起, 再按 Pattern 决定留哪些, 什么顺序.
      *
      * @param pattern 槽位选择方式
      * @param identifiers 要合并的标志符
-     * @return 筛选并排列后的槽位选择
-     * @throws IllegalArgumentException 没有标志符, 标志符为空或未在模板中出现时抛出
+     * @return 筛过也排过的槽位选择
+     * @throws IllegalArgumentException 一个标志符都没给, 给了空串, 或者模板里根本没有它时
      */
     @NotNull
     public SlotSequence slots(@NotNull SlotPattern pattern, String @NotNull ... identifiers) {
         if (identifiers.length == 0) {
             throw new IllegalArgumentException("at least one identifier is required");
         }
-        // 单标志符直接使用预先选好的槽位, 无需重新收集
+        // 只有一个标志符时, 解析期选好的槽位直接能用, 不用重收
         if (identifiers.length == 1) {
             SlotSequence candidates = this.slots(identifiers[0]);
             return pattern == SlotPatterns.ROW_MAJOR ? candidates : candidates.transform(pattern);
         }
 
-        // 先把要合并的标志符标成位图, 同时统计槽位总数
+        // 先把要用到的标志符标成位图, 顺便数清楚一共要收多少格
         boolean[] selectedIdentifiers = new boolean[this.identifiers.length];
         int slotCount = 0;
         for (int identifier = 0; identifier < identifiers.length; identifier++) {
@@ -177,7 +176,7 @@ public final class Structure {
             }
         }
 
-        // 再按槽位编号顺序收集所有选中标志符的槽位
+        // 按槽号从小到大收, 收出来的顺序天然就是行优先
         int[] selectedSlots = new int[slotCount];
         int index = 0;
         for (int slot = 0; slot < this.identifierBySlot.length; slot++) {
@@ -187,7 +186,7 @@ public final class Structure {
             }
         }
         SlotSequence candidates = new SlotSequence(this.size, selectedSlots);
-        // 收集顺序本身就是行优先, ROW_MAJOR 无需再走 Pattern
+        // 顺序已经是行优先, ROW_MAJOR 不用再走一遍 pattern
         return pattern == SlotPatterns.ROW_MAJOR ? candidates : candidates.transform(pattern);
     }
 
@@ -201,12 +200,12 @@ public final class Structure {
         return this.identifierIndexes.containsKey(identifier);
     }
 
-    // 布局中不同标志符的数量.
+    // 模板里出现过多少种标志符, 重复的不另算
     int identifierCount() {
         return this.identifiers.length;
     }
 
-    // 标志符的内部编号; 为空或未在模板中出现时抛 IllegalArgumentException.
+    // 把模板里写的名字换成内部编号. 查不到就抛, 这个编号要当下标用, 不能含糊过去.
     int identifierIndex(String identifier) {
         if (identifier.isEmpty()) {
             throw new IllegalArgumentException("identifier must not be empty");
@@ -218,28 +217,26 @@ public final class Structure {
         return index;
     }
 
-    // 按内部编号返回标志符文本.
     String identifier(int index) {
         return this.identifiers[index];
     }
 
-    // 按内部编号返回预先选好的槽位.
     SlotSequence slots(int identifierIndex) {
         return this.slotsByIdentifier[identifierIndex];
     }
 
-    // 槽位在模板中的原始列号, 用于错误定位.
+    // 槽位在模板里的原始列号, 报错时靠它指回模板的那一格.
     int sourceColumn(int slot) {
         return this.sourceColumns[slot];
     }
 
-    // 只在创建 Structure 时使用, 负责读取模板并记录每个标志符的槽位.
+    // 模板解析器: 一边读字符一边认标志符, 顺手把每个标志符占的槽位记下来.
     private static final class Compiler {
         private final ArrayList<String> identifiers = new ArrayList<>();
         private final HashMap<String, Integer> identifierIndexes = new HashMap<>();
         private final ArrayList<IntArrayList> slotsByIdentifier = new ArrayList<>();
 
-        // 先暂存第一行, 因读完它确定 Pane 宽度.
+        // 第一行只解析不落位, 整块 Pane 有多宽要等它读完才知道.
         private ParsedRow parseBuffered(String row, int rowIndex) {
             IntArrayList identifiers = new IntArrayList();
             IntArrayList sourceColumns = new IntArrayList();
@@ -251,13 +248,13 @@ public final class Structure {
         }
 
         /**
-         * 从左到右读取一行, 把标志符编号, 模板列号和 Pane 列号交给 consumer.
+         * 从左到右读一行, 每读出一格就把标志符编号, 模板列号和行内列号交给 consumer.
          *
          * @param row 模板行文本
-         * @param rowIndex 行号, 用于错误定位
-         * @param tokenConsumer 标志符回调
-         * @return Pane 槽位数量
-         * @throws IllegalArgumentException 模板语法错误时抛出
+         * @param rowIndex 行号, 报错时用
+         * @param tokenConsumer 每一格的回调
+         * @return 这一行有多少格
+         * @throws IllegalArgumentException 模板语法不对时
          */
         private int parse(String row, int rowIndex, TriIntConsumer tokenConsumer) {
             int sourceIndex = 0;
@@ -267,7 +264,7 @@ public final class Structure {
             while (sourceIndex < row.length()) {
                 int tokenSourceColumn = sourceColumn;
                 int codePoint = checkedCodePointAt(row, sourceIndex, rowIndex);
-                // 控制字符不能作为可见模板内容
+                // 控制字符在模板里看不见, 也不该当内容用, 一律判语法错
                 if (Character.isISOControl(codePoint)) {
                     throw syntaxError(rowIndex, sourceColumn, "control characters are not allowed");
                 }
@@ -280,7 +277,7 @@ public final class Structure {
                     continue;
                 }
 
-                // 反引号内的文本组成一个标志符
+                // 反引号开场, 一直读到配对的反引号, 中间这段算一个标志符
                 sourceIndex++;
                 sourceColumn++;
                 StringBuilder decoded = new StringBuilder();
@@ -299,7 +296,7 @@ public final class Structure {
                         closed = true;
                         break;
                     }
-                    // 引用标志符只接受反引号和反斜杠转义
+                    // 引号里只认反引号和反斜杠这两种转义, 别的一律报错
                     if (codePoint == '\\') {
                         int escapeColumn = sourceColumn;
                         sourceIndex++;
@@ -326,7 +323,7 @@ public final class Structure {
             return logicalColumn;
         }
 
-        // 标志符的内部编号, 首次出现时登记新编号.
+        // 现给标志符编个号, 头一次见到就登记一个.
         private int identifier(String identifier) {
             Integer existing = this.identifierIndexes.get(identifier);
             if (existing != null) {
@@ -340,7 +337,7 @@ public final class Structure {
             return index;
         }
 
-        // 把暂存的一行写入槽位映射.
+        // 把暂存的那一行正式落位.
         private void commit(
                 ParsedRow row,
                 int offset,
@@ -360,7 +357,7 @@ public final class Structure {
             }
         }
 
-        // 把单个标志符写入槽位映射, 并记录到该标志符的槽位列表.
+        // 一格落位: 记下这格是谁的, 同时挂进那个标志符的槽位列表.
         private void commit(
                 int identifier,
                 int slot,
@@ -373,10 +370,10 @@ public final class Structure {
             this.slotsByIdentifier.get(identifier).add(slot);
         }
 
-        // 把解析结果整理成不可变的 Structure.
+        // 收尾: 把解析结果整理成不可变的 Structure.
         private Structure finish(PaneSize size, int[] identifierBySlot, int[] sourceColumns) {
             String[] identifiers = this.identifiers.toArray(String[]::new);
-            // 每个标志符的槽位列表整理成预先选好的 SlotSequence
+            // 每个标志符的槽位收成 SlotSequence, 之后查它就不用再挑一遍
             SlotSequence[] slots = new SlotSequence[identifiers.length];
             for (int index = 0; index < slots.length; index++) {
                 slots[index] = SlotSequence.of(size, this.slotsByIdentifier.get(index).toIntArray());
@@ -393,10 +390,10 @@ public final class Structure {
     }
 
     /**
-     * 暂存的第一行解析结果.
+     * 第一行解析出来的东西, 先攒着等宽度定下来.
      *
-     * @param identifiers 按槽位顺序的标志符内部编号
-     * @param sourceColumns 每个槽位在模板中的原始列号
+     * @param identifiers 按格子顺序的标志符内部编号
+     * @param sourceColumns 每格在模板里的原始列号
      */
     private record ParsedRow(int[] identifiers, int[] sourceColumns) {
         private int width() {
@@ -404,22 +401,22 @@ public final class Structure {
         }
     }
 
-    // 每个 Unicode code point 占一个槽位, surrogate 必须成对
+    // 一个 code point 算一格, 所以代理对必须成对出现, 只有半个字符的模板没法解释
     private static int checkedCodePointAt(String source, int index, int rowIndex) {
         char first = source.charAt(index);
-        // 高 surrogate 后必须紧跟低 surrogate, 否则模板只包含半个字符
+        // 高位后面必须跟着低位, 不然就是半个字符
         if (Character.isHighSurrogate(first)) {
             if (index + 1 >= source.length() || !Character.isLowSurrogate(source.charAt(index + 1))) {
                 throw syntaxError(rowIndex, source.codePointCount(0, index) + 1, "unpaired high surrogate");
             }
-        // 低 surrogate 不能单独出现
+        // 低位单独出现同样是半个字符
         } else if (Character.isLowSurrogate(first)) {
             throw syntaxError(rowIndex, source.codePointCount(0, index) + 1, "unpaired low surrogate");
         }
         return Character.codePointAt(source, index);
     }
 
-    // 对外错误位置使用从 1 开始的行列号
+    // 报给用户的行列号从 1 数起, 和编辑器里看到的位置对上
     private static IllegalArgumentException syntaxError(int rowIndex, int sourceColumn, String message) {
         return new IllegalArgumentException(message + " at row " + (rowIndex + 1) + ", source column " + sourceColumn);
     }

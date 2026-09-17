@@ -11,7 +11,7 @@ public final class NormalPane extends AbstractPane {
     }
 
     /**
-     * 创建一个所有槽位都为空的 Pane.
+     * 建一个全空的 Pane, 槽位内容以后再填.
      *
      * @param size Pane 尺寸
      * @return 空 Pane
@@ -22,7 +22,7 @@ public final class NormalPane extends AbstractPane {
     }
 
     /**
-     * 使用已有布局创建 Pane, 未绑定的槽位保持为空.
+     * 拿现成的布局建 Pane, 布局里没绑定的槽位就空着.
      *
      * @param structure Pane 布局
      * @return 空 Pane
@@ -33,7 +33,7 @@ public final class NormalPane extends AbstractPane {
     }
 
     /**
-     * 为指定尺寸创建 Builder.
+     * 从尺寸建一个 Builder, 布局按空白尺寸算.
      *
      * @param size Pane 尺寸
      * @return 普通 Pane Builder
@@ -44,7 +44,7 @@ public final class NormalPane extends AbstractPane {
     }
 
     /**
-     * 为指定尺寸创建 Builder.
+     * 从宽高建一个 Builder.
      *
      * @param width Pane 宽度
      * @param height Pane 高度
@@ -56,7 +56,7 @@ public final class NormalPane extends AbstractPane {
     }
 
     /**
-     * 为已有布局创建 Builder.
+     * 从现成的布局建一个 Builder.
      *
      * @param structure Pane 布局
      * @return 普通 Pane Builder

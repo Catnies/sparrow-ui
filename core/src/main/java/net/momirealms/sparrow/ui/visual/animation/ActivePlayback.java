@@ -14,6 +14,7 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public abstract class ActivePlayback<H> implements AnimationHandle {
+    // 还没开始就已经结束的播放(比如槽位序列是空的), 取消它是空操作, 回调立刻收到 COMPLETED
     public static final AnimationHandle FINISHED = new AnimationHandle() {
         @Override
         public void cancel() {
@@ -27,10 +28,10 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
 
     private final WeakReference<H> host;
     private final long startTick;
-    private final long totalTicks;                  // 播放开始时从描述读定的总时长, 负数表示无限
-    private volatile Subscription clock;            // 帧推进的时钟订阅凭证, 由播放自己持有, 结束时解绑
-    private volatile FinishReason finishReason;     // 有值即已结束, 写入由锁保护
-    private List<Consumer<FinishReason>> callbacks; // 等待结束的回调, 由锁保护, 结束时与终态一起整批取走并置 null, 之后注册的改为当场触发
+    private final long totalTicks;                  // 开播时从描述读定的总时长, 负数表示无限播
+    private volatile Subscription clock;            // 帧推进的订阅凭证, 播放自己拿着它, 结束时解绑
+    private volatile FinishReason finishReason;     // 有值就说明已经结束, 赋值在 this 锁里做
+    private List<Consumer<FinishReason>> callbacks; // 等着结束的回调; 结束时连同终态整批取走并置 null, 之后注册的就当场触发
 
     protected ActivePlayback(@NotNull H host, long startTick, long totalTicks) {
         this.host = new WeakReference<>(host);
@@ -38,17 +39,17 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.totalTicks = totalTicks;
     }
 
-    // 播放弱持有宿主, 宿主消亡后时钟在下一拍自行解绑
+    // 挂上时钟; 播放弱持有宿主, 宿主被回收之后时钟在下一拍自己解绑
     public final void startClock(@NotNull Signal<Long> clock) {
         Subscription subscription = clock.onDirty(this::onTick);
         this.clock = subscription;
-        // 挂钟与并发结束竞争时, 晚到的一方关闭订阅
+        // 挂钟和结束撞在一起时, 晚到的那一方负责把订阅关掉
         if (this.finishReason != null) {
             subscription.close();
         }
     }
 
-    // 到点自然结束, 宿主已被回收时自行停钟
+    // 每一拍: 该结束就结束, 宿主已经不在了就停钟, 否则推进一帧
     private void onTick() {
         H host = this.host.get();
         if (host == null || this.finishReason != null) {
@@ -65,7 +66,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.advanceFrame(host);
     }
 
-    // 帧推进动作, 让被盖住的显示按当前帧重新求值.
+    // 换帧: 把被这次播放盖住的显示标脏, 让它们按当前帧重算.
     protected abstract void advanceFrame(@NotNull H host);
 
     @Override
@@ -73,7 +74,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         this.finish(FinishReason.CANCELLED);
     }
 
-    // 结束顺序固定为停钟, 摘层, 回调
+    // 结束只能发生一次, 顺序固定为停钟, 摘层, 回调
     public final void finish(@NotNull FinishReason reason) {
         List<Consumer<FinishReason>> pending;
         synchronized (this) {
@@ -82,7 +83,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
             pending = this.callbacks;
             this.callbacks = null;
         }
-        // 先停钟摘层再回调, 回调运行时被盖的显示已经恢复
+        // 先把钟停掉, 再把层摘掉, 回调跑的时候被盖住的显示已经恢复
         Subscription clock = this.clock;
         if (clock != null) {
             clock.close();
@@ -91,7 +92,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         if (host != null) {
             this.detach(host);
         }
-        // 某个回调失败也会继续触发剩余回调
+        // 一个回调抛了也要把剩下的叫完, 异常攒着最后一起抛
         if (pending != null) {
             RuntimeException failure = null;
             for (int index = 0; index < pending.size(); index++) {
@@ -107,7 +108,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
         }
     }
 
-    // 把自己从宿主的动画通道移除并恢复被盖住的显示, 只在宿主仍存活时被调用.
+    // 把自己从宿主的动画通道里摘掉, 只会在宿主还活着的时候被调用.
     protected abstract void detach(@NotNull H host);
 
     @Override
@@ -123,7 +124,7 @@ public abstract class ActivePlayback<H> implements AnimationHandle {
             }
             finished = this.finishReason;
         }
-        // 用户回调在锁外执行
+        // 已经结束了的话就在锁外当场回调
         callback.accept(finished);
     }
 

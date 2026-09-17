@@ -14,7 +14,7 @@ public interface SmithingWindow extends Window {
     interface Builder extends Window.Builder<SmithingWindow, Builder> {
 
         /**
-         * 设置必须为 4x1 的上部 Pane.
+         * 设置上部 Pane, 尺寸必须是 4x1.
          *
          * @param upperPane 上部 Pane
          * @return 此 Builder
@@ -23,7 +23,7 @@ public interface SmithingWindow extends Window {
         Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder

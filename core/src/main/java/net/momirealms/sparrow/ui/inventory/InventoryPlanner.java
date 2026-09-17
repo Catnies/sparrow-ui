@@ -61,7 +61,7 @@ public final class InventoryPlanner {
         if (current == null || change == 0) {
             return null;
         }
-        // 超上限物品仍可减量, 只在增量时应用上限.
+        // 上限只在加的时候管. 一堆本来就超了上限的东西还是要允许往下减, 不然它永远清不掉.
         long desired = (long) current.getAmount() + change;
         int target;
         if (change < 0) {
@@ -188,7 +188,8 @@ public final class InventoryPlanner {
         Object templateHandle = ItemUtils.getItemStackHandle(template);
         boolean[] touched = new boolean[snapshot.length];
 
-        // 两个 pass 分别处理未满堆和满堆, touched 防止同一槽重复进入.
+        // 走两遍, 第一遍只收没堆满的零头, 第二遍才动满堆, 这样满堆能尽量留着不拆.
+        // touched 记住谁已经被收过了, 一格只许进一遍, 顺带保证过滤器对每格最多问一次.
         for (int pass = 0; pass < 2 && taken < upTo; pass++) {
             boolean wantFullStacks = pass == 1;
             for (int i = 0; i < order.size() && taken < upTo; i++) {
@@ -214,23 +215,23 @@ public final class InventoryPlanner {
         return new TakePlan(deltas, taken);
     }
 
-    // 槽位上限与物品自身上限取小, 得到这个物品在这一格真正生效的堆叠上限.
+    // 槽位上限和物品自身上限取小的那个, 才是这件东西在这一格真正放得下多少.
     private static int effectiveMaxStackSize(IntUnaryOperator slotLimit, int slot, ItemStack item) {
         return Math.min(slotLimit.applyAsInt(slot), item.getMaxStackSize());
     }
 
-    // 从一个堆里取走若干之后槽位剩下的内容, 取光了就是空槽(null).
+    // 取光了就是 null, 不留数量为 0 的空壳.
     @Nullable
     private static ItemStack reduced(ItemStack current, int take) {
         int left = current.getAmount() - take;
         return left > 0 ? ItemUtils.copyWithAmount(current, left) : null;
     }
 
-    // remaining 是规划完仍然放不下的数量.
+    // deltas 是要写哪些格, remaining 是算完之后还剩多少件放不下.
     public record AddPlan(List<SlotChange> deltas, int remaining) {
     }
 
-    // taken 是实际能取出的总数量.
+    // deltas 是要写哪些格, taken 是实际能取出多少件.
     public record TakePlan(List<SlotChange> deltas, int taken) {
     }
 }

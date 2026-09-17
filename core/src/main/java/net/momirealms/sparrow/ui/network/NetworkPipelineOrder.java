@@ -26,9 +26,7 @@ public final class NetworkPipelineOrder {
     private NetworkPipelineOrder() {
     }
 
-    // 按当前第三方 codec 的实际位置安装 Sparrow ByteBuf handlers.
-    // 入站要读服务端当前版本的 wire 布局, 排在 ViaVersion 的版本转换之后,
-    // 出站要让取消掉的帧对第三方彻底不可见, 所以排在它们之前.
+    // 每次调用都按 pipeline 此刻的样子重新算位置, 所以第三方是先装还是后装都不影响结果.
     static void addByteBufHandlers(
             NetworkManager manager,
             ChannelPipeline pipeline,
@@ -40,13 +38,14 @@ public final class NetworkPipelineOrder {
     }
 
     /**
-     * 按当前 pipeline 重新安装连接的 ByteBuf handlers.
+     * 摘下自己的两个 handler, 再照 pipeline 当前的样子装回去.
      *
      * @param manager handlers 所属的网络管理器
      * @param channel 要重定位的连接 channel
      */
     @ApiStatus.Internal
     public static void relocateByteBufHandlers(@NotNull NetworkManager manager, @NotNull Channel channel) {
+        // 管理器已经关了就不用再碰 pipeline, 假人的 channel 上本来也没装过东西
         if (manager.closed.get() || NetworkManager.isFakeChannel(channel)) return;
         ChannelPipeline pipeline = channel.pipeline();
         if (pipeline.get(manager.encoderName) == null) return;
@@ -79,12 +78,12 @@ public final class NetworkPipelineOrder {
             }
         }
         if (anchor != null) {
-            // 入站正向传播, Sparrow 跟在解压, ViaVersion 和 CraftEngine 之后.
+            // 入站顺着 pipeline 往下走, 锚在最后一个在场的 codec 后面, Sparrow 于是落在解压, ViaVersion 和 CraftEngine 之后.
             pipeline.addAfter(anchor, name, decoder);
             return;
         }
 
-        // PacketEvents 在 Sparrow 之后接收入站帧.
+        // 一个 codec 都还没装, 就贴着 vanilla 的位置装; PacketEvents 的 decoder 要留在 Sparrow 后面收帧, 所以优先插到它前面.
         pipeline.addBefore(packetEventsTarget == null ? vanillaTarget : packetEventsTarget, name, decoder);
     }
 
@@ -103,10 +102,12 @@ public final class NetworkPipelineOrder {
             }
         }
         if (anchor != null) {
-            // 出站反向传播, Sparrow 在 pipeline 中后置并先于 CraftEngine, PacketEvents 和 ViaVersion 处理帧.
+            // 出站逆着 pipeline 传播, 越靠后的 handler 越早拿到帧. Sparrow 锚在最后一个在场的 codec 之后,
+            // 于是被取消的帧在 CraftEngine, PacketEvents 和 ViaVersion 看到它之前就没了.
             pipeline.addAfter(anchor, name, encoder);
             return;
         }
+        // 同样一个 codec 都没装, 贴着 vanilla encoder 装, 等第三方再插进来时由重定位收口.
         pipeline.addBefore(target, name, encoder);
     }
 }

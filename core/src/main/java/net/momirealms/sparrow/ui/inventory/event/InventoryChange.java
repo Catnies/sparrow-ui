@@ -10,8 +10,6 @@ import java.util.Objects;
 import java.util.function.Predicate;
 
 /**
- * 一笔事务中单个 Inventory 的变更组.
- *
  * @param inventory 发生变更的 Inventory
  * @param slotChanges 使用该 Inventory 槽位坐标的变更记录, 不可变列表
  */

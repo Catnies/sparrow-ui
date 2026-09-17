@@ -22,7 +22,7 @@ public record VisualLayer(
         }
     }
 
-    // 求值这一层, 没有配置或映射放行时返回 null, 命中时产出带占位的结果.
+    // null 表示这一层放行, 交给下一层.
     @Nullable
     public ResolvedVisual visualize(@Nullable ItemStack actual) {
         if (this.visualizer == null) {
@@ -32,7 +32,7 @@ public record VisualLayer(
         return mapped == null ? null : new ResolvedVisual(this, mapped, this.placeholder);
     }
 
-    // 判断是否和当前配置一致, 用来跳过不改变任何东西的重设.
+    // 配置没变就跳过重设, 免得白标脏一轮; 映射和占位都跟现在一样才算没变.
     public boolean isSameVisualizerSamePlaceholder(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizer,
             @Nullable ImmediateItemProvider placeholder
@@ -41,7 +41,7 @@ public record VisualLayer(
         return visualizer == null || this.placeholder == placeholder;
     }
 
-    // ItemStack 映射每次都会新建适配器, 来源身份取内部 delegate
+    // ItemStack 映射每次设置都会新建一层适配器, 所以比身份要看里面的 delegate, 不然同一份映射会被当成两次不同的配置
     private static boolean sameVisualizer(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> left,
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> right
@@ -52,7 +52,7 @@ public record VisualLayer(
                 && leftDelegate == rightDelegate;
     }
 
-    // 把直接产出 ItemStack 的映射包成视觉映射, 入参为 null 时原样返回.
+    // 把直接产出 ItemStack 的映射包成视觉映射; 传 null 就还 null, 表示不参与这一层.
     @Nullable
     public static Function<@Nullable ItemStack, @Nullable ItemProvider> itemVisualizer(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemStack> visualizer
@@ -60,7 +60,7 @@ public record VisualLayer(
         return visualizer == null ? null : new ItemVisualizer(visualizer);
     }
 
-    // 具名适配器保留 delegate 身份, 供重设配置时比较
+    // 用具名记录而不是匿名 lambda, 身份比较时才能摸到 delegate
     private record ItemVisualizer(
             @NotNull Function<@Nullable ItemStack, @Nullable ItemStack> delegate
     ) implements Function<@Nullable ItemStack, @Nullable ItemProvider> {

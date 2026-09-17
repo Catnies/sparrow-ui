@@ -17,7 +17,7 @@ import java.util.UUID;
  */
 public final class VirtualInventory extends SparrowInventory {
     private final UUID uuid; // 持久化身份, 序列化时作为主键
-    private volatile int @Nullable [] slotMaxStackSizes; // null 表示全部使用默认上限, 写入时整组替换
+    private volatile int @Nullable [] slotMaxStackSizes; // null 表示每格都用默认上限, 省一个数组. 改配置时整组换新, 读者永远看到完整的一份
     private volatile @Nullable SlotOrder addOrder;
     private volatile @Nullable SlotOrder collectOrder;
     private volatile @Nullable SlotOrder otherOrder;
@@ -94,7 +94,7 @@ public final class VirtualInventory extends SparrowInventory {
     }
 
     public boolean serialPostDispatch() {
-        // 查询配置时不创建空的更新通道.
+        // 只是问一句配置, 不值得为它建一个空的更新通道.
         InventoryUpdateChannel channel = this.updateChannelIfPresent();
         return channel != null && channel.serialPostDispatch();
     }
@@ -131,7 +131,7 @@ public final class VirtualInventory extends SparrowInventory {
     public synchronized void setMaxStackSize(int slot, int max) {
         if (max < 1)
             throw new IllegalArgumentException("max stack size must be at least 1: " + max);
-        // 写者串行完成复制与发布, 读者始终看到完整数组.
+        // synchronized 让写者一个一个来, 各自复制再整组发布. 读者不加锁, 但看到的一定是完整的一份, 不会是改了一半的.
         int[] current = this.slotMaxStackSizes;
         int[] next = current != null ? current.clone() : filledWithDefault(this.size());
         next[slot] = max;

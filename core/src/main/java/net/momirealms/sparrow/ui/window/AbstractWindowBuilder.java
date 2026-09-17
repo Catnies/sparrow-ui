@@ -239,7 +239,8 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
 
     @Override
     public final @NotNull W build(@NotNull Player viewer) {
-        // 构造期间先让处理器持有本次 build 的引用容器, Window 完成创建后再发布精确的 W
+        // Window 还没造出来, 处理器却要先拿到它. 这里先给一个空的 AtomicReference 让它们攥着,
+        // 等 Window 真造好了再填进去, 处理器实际跑起来的时候读到的就是确切的那一扇.
         AtomicReference<W> windowReference = new AtomicReference<>();
         W window = this.createWindow(viewer, this.settings(windowReference));
         windowReference.set(window);
@@ -263,7 +264,7 @@ abstract class AbstractWindowBuilder<W extends Window, B extends Window.Builder<
         return pane;
     }
 
-    // 处理器经引用容器绑定到本次 build 创建的具体 Window.
+    // 把处理器绑到本次 build 造出来的那一扇 Window 上, 中间隔着上面那个 AtomicReference.
     private AbstractWindow.Settings settings(@NotNull AtomicReference<W> windowReference) {
         List<Runnable> boundOpenHandlers = new ArrayList<>(this.openHandlers.size());
         for (int index = 0; index < this.openHandlers.size(); index++) {

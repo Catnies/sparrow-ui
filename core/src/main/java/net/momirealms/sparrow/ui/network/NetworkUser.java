@@ -12,10 +12,11 @@ import java.util.UUID;
 public final class NetworkUser {
     private final NetworkManager networkManager;
     private final Channel channel;
+    // 两个方向各记一份协议阶段: 阶段切换包一发出去出站那侧就先动, 对方的确认包回来之前两边是对不上的
     private volatile ConnectionState decoderState = ConnectionState.HANDSHAKING;
     private volatile ConnectionState encoderState = ConnectionState.HANDSHAKING;
-    private volatile @Nullable Player player;
-    private int bypassDepth;
+    private volatile @Nullable Player player;   // 连接建起来的时候还没有玩家对象, 要等进世界才绑得上
+    private int bypassDepth;                    // 库自己发包期间加一, 这段时间里派发会整帧放过
 
     NetworkUser(@NotNull NetworkManager networkManager, @NotNull Channel channel) {
         this.networkManager = networkManager;
@@ -63,6 +64,7 @@ public final class NetworkUser {
         this.player = player;
     }
 
+    // 握手和登录这些阶段切换的包会把两个方向一起换掉
     @ApiStatus.Internal
     public void setConnectionState(@NotNull ConnectionState state) {
         this.decoderState = state;

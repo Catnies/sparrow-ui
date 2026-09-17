@@ -12,26 +12,24 @@ import java.util.function.Consumer;
 public interface RecipeBookWindow extends Window {
 
     /**
-     * 向当前菜单发送指定配方的 ghost recipe.
-     *
-     * <p>此操作不要求玩家已经解锁配方. CompletableFuture 完成表示协议包已经进入发送路径,
-     * 不表示客户端已经显示或确认.</p>
+     * 往当前菜单发一个配方的 ghost recipe.
+     * <p>不要求玩家解锁过这个配方. Future 完成只说明协议包进了发送路径, 不代表客户端显示或者确认了.
      *
      * @param recipeId 配方资源标识符
-     * @return ghost recipe 发送结果
+     * @return ghost recipe 的发送结果
      */
     @NotNull
     CompletableFuture<GhostRecipeResult> sendGhostRecipe(@NotNull Key recipeId);
 
     /**
-     * 替换玩家选择原版配方时调用的处理器.
+     * 整批换掉玩家在原版配方书里选配方时的处理器.
      *
      * @param handlers 新处理器列表
      */
     void setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers);
 
     /**
-     * 返回配方选择处理器快照.
+     * 现在的配方选择处理器, 给一份快照.
      *
      * @return 不可修改的有序处理器列表
      */
@@ -40,21 +38,21 @@ public interface RecipeBookWindow extends Window {
     List<Consumer<RecipeBookSelectClick>> getRecipeSelectHandlers();
 
     /**
-     * 在现有配方选择处理器末尾追加一个处理器.
+     * 在配方选择处理器末尾追加一个.
      *
      * @param handler 要添加的处理器
      */
     void addRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
 
     /**
-     * 移除一个与给定对象相等的配方选择处理器.
+     * 按 equals 摘掉一个配方选择处理器.
      *
      * @param handler 要移除的处理器
      */
     void removeRecipeSelectHandler(@NotNull Consumer<? super RecipeBookSelectClick> handler);
 
     /**
-     * 配方书 Window 共用的类型化 Builder.
+     * 配方书窗口共用的类型化 Builder.
      *
      * @param <W> 创建的配方书 Window 类型
      * @param <B> 具体 Builder 类型
@@ -62,7 +60,7 @@ public interface RecipeBookWindow extends Window {
     interface Builder<W extends RecipeBookWindow, B extends Builder<W, B>> extends Window.Builder<W, B> {
 
         /**
-         * 替换初始配方选择处理器.
+         * 整批换掉初始的配方选择处理器.
          *
          * @param handlers 初始处理器列表
          * @return 此 Builder
@@ -71,7 +69,7 @@ public interface RecipeBookWindow extends Window {
         B setRecipeSelectHandlers(@NotNull List<? extends Consumer<? super RecipeBookSelectClick>> handlers);
 
         /**
-         * 追加一个初始配方选择处理器.
+         * 追加一个初始的配方选择处理器.
          *
          * @param handler 要添加的处理器
          * @return 此 Builder

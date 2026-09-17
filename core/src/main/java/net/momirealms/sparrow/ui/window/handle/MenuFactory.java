@@ -8,22 +8,24 @@ import org.jetbrains.annotations.NotNull;
 import java.util.function.BiConsumer;
 
 /**
- * 为具体 Window 类型创建尚未打开的协议菜单.
- * <p><strong>创建和后续 MenuHandle 调用必须在玩家实体线程执行.</strong> generation 用于丢弃旧会话的迟到输入.
+ * 给各种 Window 类型建还没打开的协议菜单.
+ * <p><strong>创建和之后所有 MenuHandle 调用都必须在玩家实体线程上做.</strong>
+ * generation 用来把旧会话迟到的输入丢掉.
  */
 @ApiStatus.Internal
 public interface MenuFactory {
 
     /**
-     * 为指定玩家创建尚未打开的普通箱子菜单.
+     * 给玩家建一个还没打开的普通箱子菜单.
      *
-     * @param viewer 菜单观察者
+     * @param viewer 菜单的查看者
      * @param rows 顶部箱子行数
-     * @param generation 此 Window 会话的代际
-     * @return 可由 Window 生命周期驱动的菜单句柄
+     * @param generation 这扇窗所在会话的代际
+     * @return 能由 Window 生命周期驱动的菜单句柄
      */
     @NotNull MenuHandle normal(@NotNull Player viewer, int rows, long generation);
 
+    // 下面这一串都是同形的入口: 给查看者和代际, 换一个对应的菜单类型
     @NotNull MenuHandle hopper(@NotNull Player viewer, long generation);
 
     @NotNull AnvilMenuHandle anvil(@NotNull Player viewer, long generation);
@@ -68,12 +70,12 @@ public interface MenuFactory {
     StonecutterMenuHandle stonecutter(@NotNull Player viewer, long generation);
 
     /**
-     * 为指定玩家创建尚未打开的商人菜单.
+     * 给玩家建一个还没打开的商人菜单.
      *
-     * @param viewer 菜单观察者
-     * @param generation 此 Window 会话的代际
-     * @param window 渲染 Trade Item 时使用的 Window
-     * @param reporter 渲染与清理失败的上报目标
+     * @param viewer 菜单的查看者
+     * @param generation 这扇窗所在会话的代际
+     * @param window 渲染交易物品时用的那扇窗
+     * @param reporter 渲染和清理失败往哪儿报
      * @return 商人菜单句柄
      */
     @NotNull

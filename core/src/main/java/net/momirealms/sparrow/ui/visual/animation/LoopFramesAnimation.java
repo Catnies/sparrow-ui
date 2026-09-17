@@ -6,7 +6,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-// 帧序列取模无限循环, 只能被取消或随宿主关闭而结束.
+// 帧序列取模循环, 永远播不完, 只能取消或者等宿主关闭.
 record LoopFramesAnimation(
         int @NotNull [] slots,
         long periodTicks,
@@ -15,6 +15,7 @@ record LoopFramesAnimation(
 
     @Override
     public long totalTicks() {
+        // 无限时长, 对外报 -1
         return -1L;
     }
 

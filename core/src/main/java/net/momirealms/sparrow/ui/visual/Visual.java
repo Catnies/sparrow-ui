@@ -4,21 +4,18 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * 可主动标脏并跟随 Signal 失效的视觉配置.
- */
 public interface Visual {
 
     /**
-     * 标记此 Visual 需要重新渲染.
+     * 把这份配置标脏, 让宿主重新算一遍显示.
      */
     void dirty();
 
     /**
-     * 在 Signal 后续失效时自动标脏此 Visual.
+     * 让这个 Signal 每次失效都把这份配置标脏.
      *
      * @param signal 失效来源
-     * @return 可用于提前解绑的非持有型句柄
+     * @return 提前解绑用的句柄; <strong>丢掉它不等于退订</strong>, 绑定由宿主自己持有
      */
     @NotNull
     Subscription bind(@NotNull Signal<?> signal);

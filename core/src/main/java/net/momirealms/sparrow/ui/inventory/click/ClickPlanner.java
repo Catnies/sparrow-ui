@@ -28,10 +28,10 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 
-// 将当前 Window 状态与事件覆盖计算成可校验的交互候选.
+// 这里只算不写, 一格都不会落地. 读的是当前 Window 状态叠上覆盖层里监听器的那些改动.
 final class ClickPlanner {
 
-    // handled 表示语义归属, 候选为空仍可能由引擎接管.
+    // 算一次单击. handled 说的是这一格归不归点击语义管, 跟算不算得出候选是两件事.
     @NotNull
     static PreparedClick prepareClick(
             ClickSemantics.Context context,
@@ -47,11 +47,11 @@ final class ClickPlanner {
         if (windowSlot == InventoryView.OUTSIDE) {
             return new PreparedClick(false, ClickActions.outsideAction(overlay.cursorOr(context.cursor()), clickType), null);
         }
-        // 未知点击保持 UNKNOWN, 冻结只影响事件闸门.
+        // 认不出来的点击类型原样报 UNKNOWN, 交给上层决定. 冻结与否只影响后面要不要发事件, 不改这个结论.
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
             return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
         }
-        // 冻结槽由引擎接管, 只纠正客户端预测.
+        // 冻结槽归引擎管, 但什么都不改, 只把客户端猜出来的画面纠回去.
         if (context.frozenAt(windowSlot)) {
             return new PreparedClick(true, InventoryAction.NOTHING, null);
         }
@@ -227,7 +227,7 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 交换保持整堆, 接收槽不拆分超限物品.
+    // 交换是整堆换整堆, 不拆分. 所以接收方那一格装不下整堆的时候, 这次交换就不成立.
     private static boolean fitsReceiving(
             ClickSemantics.LinkedSlot target,
             @Nullable ItemStack incoming
@@ -303,7 +303,8 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 双击的第二个包只在被点槽显示为空且真实内容也为空时执行收集.
+    // 双击收集. 客户端双击会连着发两个包, 第二个包落在被点的那一格上;
+    // 只有那一格看起来是空的、真实内容也确实是空的, 才把它当收集处理, 否则就是普通的第二次点击.
     @Nullable
     private static ClickCandidate prepareLinkedCollect(
             ClickSemantics.Context context,
@@ -360,7 +361,8 @@ final class ClickPlanner {
                     cursor,
                     space - collected,
                     inventory.iterationOrder(OperationCategory.COLLECT),
-                    // 先判断可见性, 再认领可能由多个 Inventory 暴露的物理槽.
+                    // 先看这一格 Pane 有没有展示出来, 再认领它的物理槽.
+                    // 同一格真实位置可能被两个 Inventory 同时映射出来, 谁先认领算谁的, 免得同一格被收两遍.
                     delta -> linked.visible(delta.slot()) && coveredSlots.add(inventory.physicalKey(delta.slot())) && inventory.allowsAccess(reason, context.window(), delta),
                     inventory::slotMaxStackSize
             );
@@ -382,7 +384,8 @@ final class ClickPlanner {
                 .build();
     }
 
-    // 每个检查过的 shift 目标都会影响后续分配, <strong>即使没有接收物品也必须进入读集</strong>.
+    // Shift 快速转移. 依次试每个目标能接多少, 前面接走多少直接决定后面还剩多少,
+    // 所以凡是被试过的目标都得进读集, <strong>哪怕它一个物品都没接</strong>, 否则它在提交前被人改了也发现不了.
     @Nullable
     private static ClickCandidate prepareShift(
             ClickSemantics.Context context,
@@ -416,7 +419,7 @@ final class ClickPlanner {
                     ItemUtils.copyWithAmount(current, remaining),
                     target.iterationOrder(OperationCategory.ADD),
                     target::slotMaxStackSize,
-                    // 先判断可见性, 再认领物理槽.
+                    // 同样是先看可见性再认领物理槽, 避免一格真实位置被两个 Inventory 各放一份.
                     delta -> linked.visible(delta.slot()) && coveredSlots.add(target.physicalKey(delta.slot())) && target.allowsAccess(reason, context.window(), delta)
             );
             if (!addPlan.deltas().isEmpty()) {
@@ -473,7 +476,8 @@ final class ClickPlanner {
         return candidate == null ? InventoryAction.NOTHING : candidate.action();
     }
 
-    // handled 说的是这一格归不归点击语义管, 与算不算得出候选无关, 冻结槽归引擎管却永远没有候选.
+    // handled 说的是这一格归不归点击语义管, 和算不算得出候选无关.
+    // 冻结槽就是个现成例子, 它归引擎管, 但永远算不出候选.
     record PreparedClick(
             boolean handled,
             @NotNull InventoryAction action,

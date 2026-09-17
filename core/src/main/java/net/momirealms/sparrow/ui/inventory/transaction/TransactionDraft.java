@@ -15,11 +15,12 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 
-// Pre 链共享的候选写集. <strong>原参与者顺序固定, 新参与者只能追加</strong>.
+// 一整条 Pre 链共用的同一份候选写集, 前一个处理器改完后一个接着看.
+// <strong>最初那批参与者的顺序不能动, 新拉进来的只能排在末尾</strong>, 事务结果和事件里的顺序都按这个来.
 @ApiStatus.Internal
 public final class TransactionDraft {
     private List<TransactionScope> scopes;
-    // 同一 Inventory 在 Pre 期间只捕获一次规划基准.
+    // 同一个 Inventory 在整条 Pre 链里只抓一次规划基准, 后面谁再写它都复用这一份.
     private final IdentityHashMap<SparrowInventory, PlannedRoot> includedRoots = new IdentityHashMap<>();
 
     public TransactionDraft(@NotNull List<TransactionScope> scopes) {
@@ -30,7 +31,8 @@ public final class TransactionDraft {
         this.scopes = List.of();
     }
 
-    // 交互闸门可从空草稿开始, 第一次写入后再校验写集形状.
+    // 监听器那一路允许从空草稿起步, 毕竟这次点击可能本来就没有写集.
+    // 形状校验推到第一次真写入之后再做, 空草稿本身不算非法.
     @NotNull
     public static TransactionDraft empty() {
         return new TransactionDraft();
@@ -41,7 +43,7 @@ public final class TransactionDraft {
         return this.scopes;
     }
 
-    // 摊成按参与顺序排列的变更列表, 直接交给事务结果用.
+    // 摊平成一份按参与顺序排好的变更列表, 事务结果直接拿它当返回值.
     @NotNull
     List<InventoryChange> rootChanges() {
         List<InventoryChange> changes = new ArrayList<>(this.scopes.size());
@@ -51,30 +53,33 @@ public final class TransactionDraft {
         return List.copyOf(changes);
     }
 
-    // Pre 纳入时不调用 prepareWrite, 避免在 Pre 与 commit 之间派发嵌套的 External 事务.
+    // 这里刻意不调 prepareWrite. 如果在 Pre 和提交之间去刷新 ReferencingInventory, 会当场派发一笔嵌套的 External 事务,
+    // 那笔事务又会带出自己的 Post, 在外层还没提交的时候重入整个事件系统.
     @NotNull
     PlannedRoot rootOf(@NotNull SparrowInventory inventory) {
         return this.includedRoots.computeIfAbsent(inventory, SparrowInventory::openPlan);
     }
 
-    // 给 Pre 事件的纳入动作造一条空写集, 基准与后续提交阶段共用同一份.
+    // Pre 里调 include 拉进新 Inventory 时走这里, 先给它一条空写集占位.
+    // 基准就是这一刻的内容, 提交阶段用的还是这同一份.
     @NotNull
     TransactionScope includeScope(@NotNull SparrowInventory inventory) {
         return new TransactionScope(this.rootOf(inventory), List.of());
     }
 
-    // 交互闸门直接改写候选最终值, 写入不经过槽位放入规则.
+    // 监听器直接改写某一格的最终值. 这类写入不过 AccessRule,
+    // 规则是用来拦外部放入的, 而监听器本身就是决定结果的那一方.
     public void setAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
         int rootIndex = this.indexOf(inventory);
         if (rootIndex < 0) {
-            // 闸门仍在事务外, 此时可以安全同步引用存储.
+            // 这时候还没进提交临界区, 所以刷新 ReferencingInventory 是安全的, 不会造成嵌套事务.
             inventory.prepareWrite();
         }
         PlannedRoot basis = rootIndex < 0 ? this.rootOf(inventory) : this.scopes.get(rootIndex).basis();
         @Nullable ItemStack[] planned = basis.planned();
         Objects.checkIndex(rootSlot, planned.length);
 
-        // 保留最初的 before, 只替换候选最终值.
+        // before 保持最初那份, 只换 after. 事件里的 before 必须一直是真实起点, 否则处理器之间会互相误读.
         List<SlotChange> current = rootIndex < 0 ? List.of() : this.scopes.get(rootIndex).slotChanges();
         List<SlotChange> updated = new ArrayList<>(current.size() + 1);
         boolean replaced = false;
@@ -101,7 +106,7 @@ public final class TransactionDraft {
         this.scopes = validate(rewritten);
     }
 
-    // 找出某个 Inventory 在当前写集中的位置, 尚未参与时返回 -1.
+    // 按实例找某个 Inventory 排在写集第几位, 还没参与就返回 -1.
     private int indexOf(@NotNull SparrowInventory inventory) {
         for (int i = 0; i < this.scopes.size(); i++) {
             if (this.scopes.get(i).inventory() == inventory) {
@@ -111,12 +116,12 @@ public final class TransactionDraft {
         return -1;
     }
 
-    // 接纳通过形状校验的 Pre 修改, 后续处理器继续读取这份结果.
+    // 一个 Pre 处理器正常返回之后, 把它改出来的写集收下, 后面的处理器接着从这份往下读.
     void accept(@NotNull List<TransactionScope> scopes) {
         if (scopes == this.scopes) {
             return;
         }
-        // 原参与者不可移除或换位, 新参与者只出现在末尾.
+        // 原来那批参与者既不能被删掉也不能换位置, 新拉进来的只准出现在末尾.
         if (scopes.size() < this.scopes.size()) {
             throw new IllegalArgumentException("pre-update edit removed a participating inventory");
         }
@@ -129,7 +134,7 @@ public final class TransactionDraft {
             }
             rewritten.add(scope);
         }
-        // 未产生槽位变更的新参与者不进入最终写集.
+        // 被 include 进来却一格都没改的, 不进最终写集, 免得白发一轮 Post.
         for (int i = this.scopes.size(); i < scopes.size(); i++) {
             TransactionScope scope = scopes.get(i);
             if (scope.slotChanges().isEmpty()) {
@@ -137,19 +142,19 @@ public final class TransactionDraft {
             }
             rewritten.add(scope);
         }
-        // 只有整份新结果通过检查后, 才替换当前草稿.
+        // 整份新结果全部通过检查才替换草稿. 中途失败就保持原样, 不留半套改动.
         this.scopes = validate(rewritten);
     }
 
-    // 检查一份写集能不能安全提交, 顺手整理成不可修改列表.
+    // 检查一份写集能不能安全提交, 顺手整理成不可修改的列表.
     @NotNull
     private static List<TransactionScope> validate(@NotNull List<TransactionScope> scopes) {
-        // 一笔事务必须实际修改至少一个 Inventory.
+        // 一笔事务总得真的改到点什么.
         if (scopes.isEmpty()) {
             throw new IllegalArgumentException("transaction requires at least one scope");
         }
         IdentityHashMap<SparrowInventory, Boolean> seenInventories = new IdentityHashMap<>();
-        // 跨 Inventory 写集还要排除物理槽位别名.
+        // 跨 Inventory 的写集还得多查一层, 两个 Inventory 可能映射到同一格真实位置.
         HashSet<SlotKey> seenPhysicalSlots = scopes.size() > 1 ? new HashSet<>() : null;
         for (int i = 0; i < scopes.size(); i++) {
             TransactionScope scope = scopes.get(i);
@@ -157,7 +162,7 @@ public final class TransactionDraft {
             if (slotChanges.isEmpty()) {
                 throw new IllegalArgumentException("transaction scope has no slot changes");
             }
-            // 同一个 Inventory 出现两组修改时, 两组各自基于哪份规划内容无法调和, 因此拒绝整笔事务.
+            // 同一个 Inventory 出现两组修改就直接拒掉. 两组各自基于哪份规划内容没法调和, 硬合会算错.
             SparrowInventory inventory = scope.inventory();
             if (seenInventories.put(inventory, Boolean.TRUE) != null) {
                 throw new IllegalArgumentException("transaction contains the same inventory more than once");
@@ -168,15 +173,15 @@ public final class TransactionDraft {
             for (int j = 0; j < slotChanges.size(); j++) {
                 SlotChange change = slotChanges.get(j);
                 int slot = change.slot();
-                // 槽号必须属于规划时看到的 Inventory 大小.
+                // 槽号得落在规划时看到的那个尺寸里.
                 if (slot < 0 || slot >= size) {
                     throw new IllegalArgumentException("slot " + slot + " is out of bounds for inventory size " + size);
                 }
-                // 同一个 Inventory 槽位出现两次时无法判断该采用哪个最终值.
+                // 同一格写两次, 没法判断该听哪一个.
                 if (!seenSlots.add(slot)) {
                     throw new IllegalArgumentException("transaction contains conflicting slotChanges for slot " + slot);
                 }
-                // 两个 Inventory 映射到同一个真实槽位时, 一笔事务也不能把它写两次.
+                // 两个 Inventory 指向同一格真实位置, 一笔事务里也只能写它一次.
                 if (seenPhysicalSlots != null && !seenPhysicalSlots.add(inventory.physicalKey(slot))) {
                     throw new IllegalArgumentException("transaction contains conflicting slotChanges for the same physical slot");
                 }

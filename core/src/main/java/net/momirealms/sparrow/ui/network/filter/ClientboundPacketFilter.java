@@ -7,7 +7,9 @@ import org.jetbrains.annotations.NotNull;
 public interface ClientboundPacketFilter {
 
     /**
-     * 声明当前 Window 要拦下的客户端包 ID.
+     * 声明当前 Window 要拦下哪些客户端包.
+     * <p>这一层拦的是帧头的包 ID, 到派发这一步能拿到的东西只有它, 所以最便宜的判法就是先在这里筛一遍.
+     * 注册名到 ID 的换算做一次就够, 入参因此直接给当前服务端的 {@link PacketIdRegistry}.
      *
      * @param packetIds 当前服务端的包 ID 注册表
      * @return 要拦下的包 ID
@@ -15,10 +17,10 @@ public interface ClientboundPacketFilter {
     int[] suppressedPacketIds(@NotNull PacketIdRegistry packetIds);
 
     /**
-     * 判断当前 Window 是否要拦下这个 NMS 包对象.
+     * 拿到解码出来的包对象再判一次, 有些包只看 ID 分不出该不该拦.
      *
-     * @param packet 即将发送的原版 NMS 客户端包
-     * @return 要拦下时返回 true, 否则让原版照常发送
+     * @param packet 即将发给客户端的 NMS 包
+     * @return 拦下时返回 true; 默认不额外拦, 只按包 ID 判
      */
     default boolean suppresses(@NotNull Object packet) {
         return false;

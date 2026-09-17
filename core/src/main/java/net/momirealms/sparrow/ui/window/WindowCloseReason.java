@@ -1,19 +1,20 @@
 package net.momirealms.sparrow.ui.window;
 
 /**
- * 描述 Window 结束当前打开状态的来源.
+ * 这次 Window 是被什么结束掉的.
+ * <p>Bukkit 那边的关闭原因由 {@link WindowCloseReasonAdapter} 翻成这套值, 使用方因此不用直接认平台枚举.
  */
 public enum WindowCloseReason {
     /**
-     * 无法确定关闭来源.
+     * 平台没给出能认出来的来源.
      */
     UNKNOWN,
     /**
-     * 玩家传送时关闭了容器.
+     * 玩家传送, 容器跟着关了.
      */
     TELEPORT,
     /**
-     * 玩家已经无法继续使用容器.
+     * 玩家已经用不了这个容器了.
      */
     CANT_USE,
     /**
@@ -21,11 +22,11 @@ public enum WindowCloseReason {
      */
     UNLOADED,
     /**
-     * 新容器替换了当前容器.
+     * 玩家打开了新容器, 当前这个被换掉.
      */
     OPEN_NEW,
     /**
-     * 玩家主动关闭了容器.
+     * 玩家自己关的.
      */
     PLAYER,
     /**
@@ -33,11 +34,11 @@ public enum WindowCloseReason {
      */
     DISCONNECT,
     /**
-     * 玩家死亡时关闭了容器.
+     * 玩家死了, 容器跟着关.
      */
     DEATH,
     /**
-     * 插件主动关闭了容器.
+     * 插件调 close() 关的.
      */
     PLUGIN
 }

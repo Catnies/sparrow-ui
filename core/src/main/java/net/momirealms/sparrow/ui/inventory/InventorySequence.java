@@ -83,7 +83,7 @@ public final class InventorySequence {
      */
     @NotNull
     public List<SparrowInventory> inventories() {
-        // 没有退役成员时保留原列表, 避免发出无效失效通知.
+        // 没有成员退役就把原列表原样留着. 换一个内容相同的新列表会白白推一次失效, 下游跟着重算.
         this.members.update(InventorySequence::withoutRetired);
         return this.members.get();
     }
@@ -100,7 +100,7 @@ public final class InventorySequence {
             synchronized (this) {
                 current = this.signal;
                 if (current == null) {
-                    // 合并名单本身与当前成员的内容失效信号.
+                    // 名单自己变了要通知, 名单里任何一个成员内容变了也要通知, 这里把两种来源合成一路.
                     current = Signals.merging(this.members, SparrowInventory::contentSignal);
                     this.signal = current;
                 }
@@ -109,13 +109,13 @@ public final class InventorySequence {
         return current;
     }
 
-    // 没有退役成员时返回原实例, 让 update 保持静默.
+    // 一个退役的都没有就返回原实例. update 看到同一个引用就不会推失效, 这份静默是刻意的.
     private static List<SparrowInventory> withoutRetired(List<SparrowInventory> members) {
         @Nullable ArrayList<SparrowInventory> kept = null;
         for (int index = 0; index < members.size(); index++) {
             SparrowInventory member = members.get(index);
             if (member.retired()) {
-                // 遇到第一个退役成员时再复制前缀.
+                // 撑到遇见第一个退役成员才开始复制, 前面那些直接搬过来.
                 if (kept == null) {
                     kept = new ArrayList<>(members.subList(0, index));
                 }

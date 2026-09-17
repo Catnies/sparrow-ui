@@ -13,34 +13,34 @@ import java.util.BitSet;
 import java.util.List;
 
 /**
- * 一个 Window 会话对应的协议菜单与客户端已知状态.
- * <p>服务端渲染结果通过此边界打开菜单, 纠正客户端预测并驱动 Bukkit 事件视图.
+ * 一扇 Window 底下的协议菜单和客户端已知状态.
+ * <p>服务端渲染结果从这个边界出去: 开菜单, 纠正客户端预测, 以及给 Bukkit 事件提供视图.
  */
 @ApiStatus.Internal
 public interface MenuHandle extends AutoCloseable {
 
     /**
-     * 本轮同步使用的菜单实际光标和客户端显示光标.
+     * 本轮同步要用的两个光标: 菜单实际持有的那个, 和客户端看到的那份副本.
      *
-     * @param actual 服务端菜单实际持有的光标物品副本
-     * @param visual 只供客户端显示的光标物品副本
+     * @param actual 菜单实际光标的一份副本
+     * @param visual 只发给客户端看的光标副本
      */
     record CursorSnapshot(@NotNull ItemStack actual, @NotNull ItemStack visual) {
     }
 
     /**
-     * 准备接管玩家当前菜单的实际光标.
-     * <p>替换 Window 时从旧代理菜单接管, 其他情况先关闭当前原版菜单.
-     * <strong>打开失败或提前关闭时必须把已接管的光标归还来源菜单.</strong>
+     * 准备把玩家当前菜单的光标接管过来.
+     * <p>替换 Window 的时候从旧代理菜单接管; 别的情况先把当前原版菜单关掉.
+     * <p><strong>打开失败或者提前关闭时, 必须把已经接管的光标还给来源菜单.</strong>
      *
      * @param replacingWindow 是否正在替换同一玩家的 Window
      */
     void prepareOpen(boolean replacingWindow);
 
     /**
-     * 打开菜单并发送初始完整状态.
-     * <p><strong>slots 及其中的物品只在调用期间有效, 实现不得修改或保留.</strong>
-     * 数据包异步发送前还需复制其中的物品.
+     * 打开菜单, 并把完整的初始状态发出去.
+     * <p><strong>slots 和里面的物品只在这次调用期间有效, 实现不许改也不许留着.</strong>
+     * 数据包要异步发的话, 得先把里面的物品复制一份.
      *
      * @param title 初始标题
      * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
@@ -49,9 +49,9 @@ public interface MenuHandle extends AutoCloseable {
     void open(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * 将本轮服务端渲染结果和菜单状态同步给客户端.
-     * <p>增量同步检查 dirty 槽位与客户端预测, {@code forceFull} 则发送完整状态.
-     * <p><strong>slots, dirtySlots 及其中的物品只在调用期间有效, 实现不得修改或保留.</strong>
+     * 把本轮的服务端渲染结果和菜单状态同步给客户端.
+     * <p>增量同步要看 dirty 槽位和客户端预测; {@code forceFull} 为真就发完整状态.
+     * <p><strong>slots, dirtySlots 和里面的物品只在这次调用期间有效, 实现不许改也不许留着.</strong>
      *
      * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
      * @param dirtySlots 这一轮可能变过的槽位
@@ -68,7 +68,7 @@ public interface MenuHandle extends AutoCloseable {
     );
 
     /**
-     * 通过重新打开界面并附带完整状态来更新标题.
+     * 换标题: 重新打开界面, 顺带把完整状态再发一遍.
      *
      * @param title 新标题
      * @param slots 按协议槽位(raw slot)排列的服务端槽位渲染结果
@@ -77,60 +77,58 @@ public interface MenuHandle extends AutoCloseable {
     void reopenWithTitle(@NotNull Component title, ItemStack @NotNull [] slots, @NotNull CursorSnapshot cursor);
 
     /**
-     * 发送用于确认客户端已处理某项 Window 状态的协议 Ping.
+     * 发一个协议 Ping, 用来确认客户端处理过了某项 Window 状态.
      *
-     * @param id Ping 标识
+     * @param id Ping 的标识
      */
     void sendPing(int id);
 
     /**
-     * 按指定原因关闭菜单并释放会话资源.
+     * 按给定原因关掉菜单, 把会话资源放掉.
      *
      * @param reason 关闭原因
      */
     void close(@NotNull WindowCloseReason reason);
 
-    /**
-     * 以"插件主动关闭"的原因关闭菜单.
-     */
+    // 默认按"插件主动关闭"来关
     @Override
     default void close() {
         this.close(WindowCloseReason.PLUGIN);
     }
 
     /**
-     * 在玩家实体调度器注销后释放不依赖玩家状态的资源.
-     * <p><strong>实现不得再读取或修改玩家状态.</strong>
+     * 玩家实体调度器注销之后, 放掉那些不依赖玩家状态的资源.
+     * <p><strong>实现不许再读或者改玩家状态.</strong>
      */
     void retire();
 
     /**
-     * 检查交互是否属于当前会话, 并吸收其中的客户端预测.
+     * 看这条交互是不是属于当前会话, 顺便把里面的客户端预测收下.
      *
      * @param interaction 待检查的交互
-     * @return 交互属于当前容器时返回 {@code true}
+     * @return 属于当前容器时为 {@code true}
      */
     boolean accepts(@NotNull MenuInput.Common.Interaction interaction);
 
     /**
-     * 按接收顺序从缓冲区取出最多 limit 条入站消息.
+     * 按收到的顺序从缓冲区里取最多 limit 条入站消息.
      *
      * @param limit 本次最多取出的输入数量
-     * @return 取出的不可变输入列表
+     * @return 取出来的输入, 不可变列表
      */
     @NotNull
     List<MenuInput> drainInputs(int limit);
 
     /**
-     * 返回入站缓冲区是否曾溢出, Window 会据此关闭无法继续安全同步的会话.
+     * 入站缓冲区溢出过没有; 溢出过 Window 就把这条没法再安全同步的会话关掉.
      *
-     * @return 曾超过容量阈值时返回 {@code true}
+     * @return 超过过容量阈值时为 {@code true}
      */
     boolean hasInputOverflowed();
 
     /**
-     * 返回与服务端渲染结果隔离的 Bukkit 事件 InventoryView.
-     * <p>{@link InventoryView#getItem(int)} 与 {@link InventoryView#getCursor()} 返回独立副本.
+     * 给 Bukkit 事件用的 InventoryView, 跟服务端渲染结果隔着.
+     * <p>{@link InventoryView#getItem(int)} 和 {@link InventoryView#getCursor()} 给的都是独立副本.
      *
      * @return InventoryView
      */
@@ -138,8 +136,8 @@ public interface MenuHandle extends AutoCloseable {
     InventoryView view();
 
     /**
-     * 用当前服务端状态重置下一次 Bukkit 事件读取的副本.
-     * <p>本 tick 已积累的触碰标记继续保留, 供最终同步纠正客户端.
+     * 拿当前服务端状态, 把下一次 Bukkit 事件要读的副本重置一遍.
+     * <p>本 tick 已经攒下的触碰标记留着, 最后同步时还要靠它纠正客户端.
      *
      * @param slots 按协议槽位排列的当前服务端渲染结果
      * @param renderedSlots 本次事件前刚重新渲染的槽位
@@ -148,17 +146,17 @@ public interface MenuHandle extends AutoCloseable {
     void resetBukkitEventView(ItemStack @NotNull [] slots, @NotNull BitSet renderedSlots, @NotNull ItemStack cursor);
 
     /**
-     * 取出最近一次 Bukkit 事件写入的光标并清空该事件记录.
-     * <p>调用必须紧跟事件返回, 下一次 {@link #resetBukkitEventView} 会覆盖事件副本.
+     * 取走最近一次 Bukkit 事件写过的光标, 同时把这条事件记录清掉.
+     * <p>必须紧跟在事件返回之后调; 下一次 {@link #resetBukkitEventView} 会把事件副本盖掉.
      *
-     * @return 最近一次事件写过光标时返回写入值, 没写过时返回 {@code null}
+     * @return 最近一次事件写过光标就给那个值; 没写过给 {@code null}
      */
     @Nullable
     ItemStack takeBukkitEventCursor();
 
     /**
-     * 转移最近一次 Bukkit 事件写入的槽位并清空该事件记录.
-     * <p>写入内容仍从 {@link #view()} 读取, 本 tick 的累积触碰位图保持不变.
+     * 把最近一次 Bukkit 事件写过的槽位搬进目标位图, 同时清掉这条事件记录.
+     * <p>写入的内容仍旧从 {@link #view()} 读; 本 tick 累积的触碰位图不动.
      *
      * @param destination 接收本次事件写入槽位的可变位图
      */
@@ -169,16 +167,16 @@ public interface MenuHandle extends AutoCloseable {
     int stateId();
 
     /**
-     * 返回菜单实际持有的光标物品副本.
+     * 菜单实际光标的一份副本, 调用方随便改.
      *
-     * @return 调用方可以随意修改的菜单实际光标副本
+     * @return 菜单实际光标的副本
      */
     @NotNull
     ItemStack cursor();
 
     /**
-     * 返回菜单光标的 NMS 句柄.
-     * <p><strong>返回值可能借用菜单底层状态, 调用方不得修改.</strong>
+     * 菜单实际光标的 NMS 句柄.
+     * <p><strong>这个句柄可能直接借用了菜单底层的状态, 调用方不得修改.</strong>
      *
      * @return 菜单实际光标的 NMS 句柄
      */
@@ -188,8 +186,8 @@ public interface MenuHandle extends AutoCloseable {
     }
 
     /**
-     * 使用输入副本覆盖菜单实际光标.
-     * <p><strong>调用方负责标脏并调用 synchronize 完成客户端同步.</strong>
+     * 拿这份副本覆盖菜单实际光标.
+     * <p><strong>标脏并调 synchronize 把客户端同步掉, 是调用方的事.</strong>
      *
      * @param cursor 新的菜单实际光标, 空物品表示清空
      */

@@ -2,9 +2,6 @@ package net.momirealms.sparrow.ui.inventory.event;
 
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 
-/**
- * 一笔事务的触发来源.
- */
 public interface UpdateReason {
 
     /**

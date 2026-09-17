@@ -69,9 +69,9 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 重新跟随 Pane 链接解析这条显示路径.
-     * <p>位置没变的层沿用原订阅. 要新建的部分全部成功后才替换旧路径.
-     * 中途任何订阅失败, 新路径只关掉自己刚建的那几层, 沿用的层仍旧归旧路径, 旧路径继续工作.
+     * 跟着 PaneLink 把这显示路径重新解析一遍.
+     * <p>位置没变的层沿用原来的订阅; 要新建的部分全都成了才替换旧路径.
+     * 中途哪一层订不上, 新路径只关掉自己刚建的那几层, 沿用的层仍归旧路径, 旧路径照常干活.
      */
     void resolve() {
         this.beginResolve();
@@ -106,7 +106,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
-    // 结束一次解析, 解析期间收到过通知, 需要标记脏槽位时返回 true.
+    // 收尾一次解析; 解析期间收到过通知, 需要标脏槽位时返回 true.
     private boolean endResolve() {
         while (true) {
             Phase phase = this.phase.get();
@@ -191,8 +191,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 沿旧路径逐层比对, 返回有多少层的订阅可以直接沿用.
-     * <p>这里比较每层订阅的 Pane 与槽位. 订阅盯的是位置,
+     * 逐层比对旧路径, 数一数前多少层的订阅能直接沿用.
+     * <p>这里比的是每层订阅的 Pane 和槽位. 订阅盯的是位置,
      * 位置上换了元素正是它要通知的事, 位置没变就不必重订.
      *
      * @param previous 上一次解析出的路径, 首次解析时为 null
@@ -238,8 +238,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 从指定层开始跟随 PaneLink, 订阅沿途每个 Pane 槽位与它的视觉失效通知, 以及最终 Item.
-     * <p>遇到空槽位或 Item 就停. 遇到重复的 Pane 说明链接成环, 直接失败.
+     * 从指定层起跟着 PaneLink 往下走, 把沿途每层 Pane 的槽位订阅和视觉失效都订上, 终点的 Item 也订上.
+     * <p>碰到空槽位或者 Item 就停; 碰到重复的 Pane 说明链接成环, 直接失败.
      *
      * @param next 正在准备的新路径, 已经沿用了 {@code from} 之前的层
      * @param from 需要重新订阅的第一层
@@ -296,8 +296,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 记录路径终点并为它建立订阅.
-     * <p>终点订阅不会跨解析沿用, 所以它们直接看所属路径的 {@code resourcesClosed}
+     * 把终点记下来, 并给它建订阅.
+     * <p>终点订阅不跨解析沿用, 所以它们直接看所属路径的 {@code resourcesClosed}
      * 判断自己还算不算数, 不必像每一层那样各带一个标志.
      *
      * @param next 正在准备的新路径
@@ -364,8 +364,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 生成当前槽位应显示的 ItemStack.
-     * <p>意图按以下优先级装配.
+     * 算出这一格现在该显示什么.
+     * <p>意图按这个优先级装配:
      * <ol>
      *   <li>本 Window 的槽位视觉映射, 它只属于本查看者, 盖在整条路径的最外层.
      *   <li>沿途每层 Pane 的视觉映射, 自根向叶求值, 命中的层盖住路径终点.
@@ -376,7 +376,7 @@ final class DisplayedSlotPath implements AutoCloseable {
      *   <li>若仍无结果, 返回空物品作为最终兜底.
      * </ol>
      *
-     * @return 当前槽位应显示的 ItemStack, 不会为 {@code null}
+     * @return 这一格该显示的物品, 不会是 {@code null}
      */
     @NotNull ItemStack render() {
         PathState state = this.currentState();
@@ -432,7 +432,7 @@ final class DisplayedSlotPath implements AutoCloseable {
 
     /**
      * 处理一次失效通知.
-     * <p>任意线程都可能调用, 这里只改 {@link Phase} 和脏标记.
+     * <p>哪个线程都可能调到这里, 所以这里只改 {@link Phase} 和脏标记.
      *
      * @param invalidation 本次通知的来路
      */
@@ -474,7 +474,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
     }
 
-    // 渲染替这位玩家这个槽位记下一个东西, 下一次渲染覆盖.
+    // 记下渲染替这位玩家这一格做的决定, 下一次渲染覆盖.
     private void remember(@Nullable Object value) {
         this.remembered = value;
     }
@@ -546,8 +546,8 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 关闭当前路径并取消所有 Pane 和 Item 订阅.
-     * 重复调用安全.
+     * 关掉当前这条路径: 沿途 Pane 和终点 Item 的订阅一起取消.
+     * <p>重复调用安全.
      */
     @Override
     public void close() {
@@ -567,7 +567,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 一次失效通知的来路, 决定要不要重新解析路径, 要不要重新计算显示来源.
+     * 这条失效是从哪儿来的: 它决定要不要重新解析路径, 要不要重算显示来源.
      */
     private enum Invalidation {
         STRUCTURE,  // Pane 槽位变了, 路径结构可能不同, 要重新解析
@@ -589,7 +589,7 @@ final class DisplayedSlotPath implements AutoCloseable {
     }
 
     /**
-     * 一次解析的结果, 包含沿途层级, 终点和冻结状态.
+     * 一次解析出来的一整条路径: 沿途各层, 终点和冻结状态.
      *
      * <p>这里只保存结构和订阅. 订阅回调都绑在 {@link DisplayedSlotPath} 上,
      * 所以沿用到下一次解析的层照样有效.
@@ -634,7 +634,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 检查 Pane 是否已经出现在当前路径中, 用于拒绝循环链接.
+         * 这个 Pane 是不是已经在路径里了, 用来拒绝成环的链接.
          *
          * @param pane 要检查的 Pane
          * @return 已经出现时为 true
@@ -649,7 +649,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 记录一层 Pane, 它的槽位及两条订阅, 必要时扩容数组.
+         * 记下这一层 Pane, 它的槽位和两条订阅; 数组不够就扩容.
          *
          * @param pane 路径中的 Pane
          * @param paneSlot 该层订阅的 Pane 槽位
@@ -675,9 +675,9 @@ final class DisplayedSlotPath implements AutoCloseable {
         }
 
         /**
-         * 关闭本路径独有的订阅, 并清掉 Item 和 Pane 引用.
-         * <p>{@code ownedFrom} 之前的层已经交给新路径, 只断引用不取消订阅.
-         * 某个订阅关闭失败也会继续关其余的, 最后再把收集到的异常抛出来. 重复调用安全.
+         * 关掉只属于这条路径的订阅, 再把 Item 和 Pane 的引用清掉.
+         * <p>{@code ownedFrom} 之前的层已经交给新路径了, 只断引用, 不取消订阅.
+         * 某个订阅关不掉也接着关其余的, 收集到的异常最后一起抛. 重复调用安全.
          */
         @Override
         public void close() {

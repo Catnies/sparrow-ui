@@ -10,17 +10,17 @@ import java.util.function.Supplier;
 public interface ElementSupplier {
 
     /**
-     * 为当前选中槽位创建元素.
+     * 给选中顺序里的第 occurrence 个槽位造一个元素.
      *
      * @param slots 本次要填充的完整槽位选择
-     * @param occurrence 当前槽位在选择中的序号
-     * @return 非 null 槽位元素
+     * @param occurrence 当前槽位在选中顺序里的序号
+     * @return 这个槽位放什么, <strong>不能返回 null</strong>
      */
     @NotNull
     Element get(@NotNull SlotSequence slots, int occurrence);
 
     /**
-     * 让每个选中槽位共用同一个元素.
+     * 每个选中槽位都用同一个元素.
      *
      * @param element 共用元素
      * @return 固定元素生成器
@@ -31,7 +31,7 @@ public interface ElementSupplier {
     }
 
     /**
-     * 为每个选中槽位调用一次 Supplier.
+     * 每个选中槽位现调一次 supplier.
      *
      * @param supplier 元素来源
      * @return 槽位元素生成器
@@ -42,7 +42,7 @@ public interface ElementSupplier {
     }
 
     /**
-     * 为每个选中槽位创建一个 Item 元素.
+     * 每个选中槽位现取一个 Item, 再包成元素.
      *
      * @param supplier Item 来源
      * @return Item 元素生成器
@@ -53,10 +53,11 @@ public interface ElementSupplier {
     }
 
     /**
-     * 把 Inventory 按选中顺序循环铺入, 第 n 个槽位连接 Inventory 槽
-     * {@code n % inventory.size()}. 零尺寸 Inventory 生成空槽位.
+     * 把 Inventory 的内容按选中顺序循环铺进去, 第 n 个槽位接 Inventory 的第 {@code n % size} 格.
      *
-     * @param inventory 要铺入的 Inventory
+     * <p>Inventory 是空的时候, 所有槽位都是空的.
+     *
+     * @param inventory 要铺进去的 Inventory
      * @return 逐槽连接 Inventory 的元素来源
      */
     @NotNull
@@ -69,7 +70,7 @@ public interface ElementSupplier {
     }
 
     /**
-     * 按原有二维形状把选中槽位连接到子 Pane.
+     * 把选中区域按原来的二维形状接到子 Pane 上, 从子 Pane 的左上角开始.
      *
      * @param pane 子 Pane
      * @return Pane 连接生成器
@@ -80,12 +81,13 @@ public interface ElementSupplier {
     }
 
     /**
-     * 按原有二维形状把选中槽位连接到子 Pane 的指定偏移位置.
+     * 把选中区域按原来的二维形状接到子 Pane 的指定偏移处.
      *
      * @param pane 子 Pane
      * @param offsetX 子 Pane 内的横向偏移
      * @param offsetY 子 Pane 内的纵向偏移
-     * @return Pane 连接生成器, 选中区域超出子 Pane 时在生成元素阶段抛出 IndexOutOfBoundsException
+     * @return Pane 连接生成器
+     * @throws IndexOutOfBoundsException 选中区域探出子 Pane 时, 在生成元素那一步抛出
      */
     @NotNull
     static ElementSupplier pane(@NotNull Pane pane, int offsetX, int offsetY) {

@@ -5,12 +5,12 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * 玩家选择附魔台协议按钮时产生的点击上下文.
+ * 玩家点了附魔台按钮时的上下文.
  *
- * @param player 选择按钮的玩家
- * @param window 所属 EnchantmentWindow
- * @param index 选择的按钮索引
- * @param option 收到按钮包时的选项快照
+ * @param player 点按钮的玩家
+ * @param window 按钮所属的那扇窗
+ * @param index 按钮索引
+ * @param option 收到这个包时按钮上的选项快照
  */
 public record EnchantSelectClick(
         @NotNull Player player,

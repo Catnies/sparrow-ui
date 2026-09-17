@@ -16,10 +16,10 @@ import java.util.Objects;
 import java.util.Set;
 
 public interface CartographyWindow extends Window {
-    int MAP_SIZE = 128; // 地图画布的宽度和高度
+    int MAP_SIZE = 128; // 画布宽高, 128x128
 
     /**
-     * 把图片转换为地图色并绘制到指定起点.
+     * 把一张图片转成地图色, 画到画布的指定起点.
      *
      * @param x 左上角 x 坐标
      * @param y 左上角 y 坐标
@@ -39,21 +39,21 @@ public interface CartographyWindow extends Window {
     }
 
     /**
-     * 把一块地图色补丁绘制到虚拟画布.
+     * 把一块已经调好色的补丁画到虚拟画布上.
      *
      * @param patch 地图补丁
      */
     void applyPatch(@NotNull MapPatch patch);
 
     /**
-     * 替换地图图标.
+     * 换掉整组地图图标.
      *
      * @param icons 新图标集合
      */
     void setIcons(@NotNull Set<? extends MapIcon> icons);
 
     /**
-     * 返回最近一次已应用的不可修改图标快照.
+     * 最近一次应用上去的图标, 给一份不可修改的快照.
      *
      * @return 图标快照
      */
@@ -62,19 +62,19 @@ public interface CartographyWindow extends Window {
     Set<MapIcon> getIcons();
 
     /**
-     * 分配新的虚拟地图编号并清除画布与图标.
+     * 换一张新的虚拟地图编号, 画布和图标一起清空.
      */
     void resetMap();
 
     /**
-     * 设置制图台预览模式.
+     * 设置客户端的预览模式.
      *
      * @param view 新预览模式
      */
     void setView(@NotNull View view);
 
     /**
-     * 返回最近一次已应用的地图预览模式.
+     * 最近一次应用上去的预览模式.
      *
      * @return 预览模式
      */
@@ -85,10 +85,10 @@ public interface CartographyWindow extends Window {
      * 地图上的一个图标.
      *
      * @param type 图标类型
-     * @param x 横坐标, 发送时以 {@code (byte) (x - 128)} 编码
-     * @param y 纵坐标, 发送时以 {@code (byte) (y - 128)} 编码
-     * @param rot 0 到 15 的旋转步
-     * @param component 可选的图标文本
+     * @param x 横坐标; 发给客户端时会先减 128 再转成 byte
+     * @param y 纵坐标; 发给客户端时会先减 128 再转成 byte
+     * @param rot 旋转步, 0 到 15
+     * @param component 图标上的文字, 可以不给
      */
     record MapIcon(@NotNull MapCursor.Type type, int x, int y, int rot, @Nullable Component component) {
         public MapIcon {
@@ -99,15 +99,15 @@ public interface CartographyWindow extends Window {
         }
 
         /**
-         * 使用注册表键创建地图图标.
+         * 拿注册表键建一个图标.
          *
          * @param type 图标类型的注册表键
-         * @param x 横坐标, 发送时以 {@code (byte) (x - 128)} 编码
-         * @param y 纵坐标, 发送时以 {@code (byte) (y - 128)} 编码
-         * @param rot 0 到 15 的旋转步
-         * @param component 可选的图标文本
+         * @param x 横坐标; 发给客户端时会先减 128 再转成 byte
+         * @param y 纵坐标; 发给客户端时会先减 128 再转成 byte
+         * @param rot 旋转步, 0 到 15
+         * @param component 图标上的文字, 可以不给
          * @return 地图图标
-         * @throws java.util.NoSuchElementException 如果注册表中不存在该类型
+         * @throws java.util.NoSuchElementException 注册表里没有这个类型时
          */
         @NotNull
         public static MapIcon fromKey(@NotNull NamespacedKey type, int x, int y, int rot, @Nullable Component component) {
@@ -116,13 +116,13 @@ public interface CartographyWindow extends Window {
     }
 
     /**
-     * 画布上的矩形地图色补丁.
+     * 画布上的一块矩形补丁, 颜色已经是地图色.
      *
-     * @param startX 左上角 x 坐标
-     * @param startY 左上角 y 坐标
+     * @param startX 左上角在第几列
+     * @param startY 左上角在第几行
      * @param width 宽度
      * @param height 高度
-     * @param colors 按行排列的地图色, 长度必须等于 {@code width * height}, 构造时复制
+     * @param colors 按行排的地图色, 长度必须等于 {@code width * height}, <strong>构造时复制</strong>
      */
     record MapPatch(int startX, int startY, int width, int height, byte @NotNull [] colors) {
         public MapPatch {
@@ -145,9 +145,9 @@ public interface CartographyWindow extends Window {
         }
 
         /**
-         * 返回地图色副本.
+         * 把地图色复制一份出去.
          *
-         * @return 按行排列的地图色副本
+         * @return 按行排的地图色副本
          */
         @Override
         public byte @NotNull [] colors() {
@@ -172,7 +172,7 @@ public interface CartographyWindow extends Window {
     }
 
     /**
-     * 制图台客户端预览模式.
+     * 客户端上的预览模式.
      */
     enum View {
         NORMAL,     // 普通大小
@@ -189,7 +189,7 @@ public interface CartographyWindow extends Window {
     interface Builder extends Window.Builder<CartographyWindow, Builder> {
 
         /**
-         * 设置映射协议槽位(raw slot)0 和 1 的 1x2 输入 Pane.
+         * 设置输入 Pane, 映射协议槽位(raw slot)0 和 1, 尺寸 1x2.
          *
          * @param inputPane 输入 Pane
          * @return 此 Builder
@@ -198,7 +198,7 @@ public interface CartographyWindow extends Window {
         Builder setInputPane(@NotNull Pane inputPane);
 
         /**
-         * 设置映射协议槽位(raw slot)2 的 1x1 结果 Pane.
+         * 设置结果 Pane, 映射协议槽位(raw slot)2, 尺寸 1x1.
          *
          * @param resultPane 结果 Pane
          * @return 此 Builder
@@ -207,7 +207,7 @@ public interface CartographyWindow extends Window {
         Builder setResultPane(@NotNull Pane resultPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder
@@ -216,7 +216,7 @@ public interface CartographyWindow extends Window {
         Builder setLowerPane(@Nullable Pane lowerPane);
 
         /**
-         * 设置初始图标.
+         * 设置一开始的图标.
          *
          * @param icons 初始图标集合
          * @return 此 Builder
@@ -225,7 +225,7 @@ public interface CartographyWindow extends Window {
         Builder setIcons(@NotNull Set<? extends MapIcon> icons);
 
         /**
-         * 设置完整的 128x128 初始地图色.
+         * 设置一开始那张完整的 128x128 地图色.
          *
          * @param colors 16384 个地图色
          * @return 此 Builder
@@ -235,7 +235,7 @@ public interface CartographyWindow extends Window {
         Builder setMap(byte @NotNull [] colors);
 
         /**
-         * 设置完整的 128x128 初始图片.
+         * 设置一开始那张完整的 128x128 图片.
          *
          * @param image 初始图片
          * @return 此 Builder
@@ -246,7 +246,7 @@ public interface CartographyWindow extends Window {
         Builder setMap(@NotNull BufferedImage image);
 
         /**
-         * 设置初始预览模式.
+         * 设置一开始的预览模式.
          *
          * @param view 初始预览模式
          * @return 此 Builder

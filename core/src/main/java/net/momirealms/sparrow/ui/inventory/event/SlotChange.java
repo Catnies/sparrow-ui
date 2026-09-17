@@ -93,9 +93,11 @@ public final class SlotChange {
         if (this.after == null) {
             return 0;
         }
+        // 换成了另一种物品, 那就是整堆新进来的, 跟原来那堆没有抵扣关系.
         if (!ItemUtils.isSimilar(this.after, this.before)) {
             return this.after.getAmount();
         }
+        // 同一种物品只算净增. 数量反而变少时这里是 0, 那部分由 removedAmount 去报.
         return Math.max(this.after.getAmount() - this.before.getAmount(), 0);
     }
 
@@ -109,6 +111,7 @@ public final class SlotChange {
         if (this.before == null) {
             return 0;
         }
+        // 同样的道理, 换成另一种物品就等于原来那堆整堆出去了.
         if (!ItemUtils.isSimilar(this.before, this.after)) {
             return this.before.getAmount();
         }

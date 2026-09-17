@@ -16,19 +16,20 @@ import net.momirealms.sparrow.ui.SparrowUI;
 
 import java.util.Map;
 
+// 把 Sparrow 解释好的点击包成 Bukkit 的 InventoryClickEvent 与 InventoryDragEvent 发出去, 再把监听器的取消和写入带回来.
 final class BukkitInventoryBridge {
 
     BukkitInventoryBridge() {
     }
 
     /**
-     * 把已映射的协议点击发布为 Bukkit InventoryClickEvent.
-     * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
+     * 把解释好的单击发成 Bukkit 的 InventoryClickEvent.
+     * <p>事件被取消, 或者桥接路上抛了异常, 这次点击都不放行; 异常报给插件日志.
      *
      * @param window 目标 Window
      * @param click 已解释的点击
-     * @param action 基于当前 Window 只读状态估计出的操作
-     * @return 事件未被取消且桥接无异常时为 true
+     * @param action 按当前 Window 只读状态估出来的操作
+     * @return 事件没被取消, 桥接也没出事时为 true
      */
     boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
         int rawSlot = click.rawSlot();
@@ -47,15 +48,15 @@ final class BukkitInventoryBridge {
     }
 
     /**
-     * 把已完成的 QUICK_CRAFT 手势发布为 Bukkit InventoryDragEvent.
-     * Bukkit 事件取消或桥接异常都会拒绝该次 Window 点击.
+     * 把一次已经算完的 QUICK_CRAFT 手势发成 Bukkit 的 InventoryDragEvent.
+     * <p>取消和异常同样不放行. 监听器在事件里改过的光标会记进候选草稿, 后面的复核才知道这一笔.
      *
      * @param window 目标 Window
      * @param clickType 拖拽手势的点击类型
      * @param newCursor 候选提交后的光标物品
      * @param newItems 候选提交后的协议槽位内容
      * @param edits 把事件写入合并进本次候选草稿的句柄
-     * @return 事件未被取消且桥接无异常时为 true
+     * @return 事件没被取消, 桥接也没出事时为 true
      */
     boolean allowDrag(AbstractWindow<?> window, ClickType clickType, ItemStack newCursor, Map<Integer, ItemStack> newItems, InteractionEdits edits) {
         InventoryView view = window.inventoryView();
@@ -64,8 +65,8 @@ final class BukkitInventoryBridge {
         try {
             Bukkit.getPluginManager().callEvent(event);
             if (event.isCancelled()) return false;
-            // setCursor 只写事件字段, 与构造值不同时才算监听器改过光标.
-            // 把未改动的值记入草稿会让候选在复核时失效.
+            // setCursor 只是写事件字段, 跟构造值不一样才算监听器真的改过光标;
+            // 把没动过的值也记进草稿, 候选复核时会白白作废.
             if (!ItemUtils.isContentEqual(newCursor, event.getCursor())) {
                 edits.cursor(event.getCursor());
             }

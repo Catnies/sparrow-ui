@@ -20,10 +20,10 @@ import java.util.function.Function;
  */
 public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
     @Nullable private final Function<SparrowInventory, TransactionScope> includedScopes;
-    @Nullable private final InteractionDraft interaction; // 触发本笔事务的交互副作用草稿, null 表示不是玩家交互
-    private final Thread handlerThread;                 // 创建事件的处理器线程, setAfter 只允许它调用
-    private volatile boolean editable;                  // 编辑窗口是否仍然打开
-    private volatile boolean cancelled;                 // 是否已经有处理器取消整笔事务
+    @Nullable private final InteractionDraft interaction; // 光标、副手和掉落物的草稿, 整条 Pre 链共用一份; null 表示这笔事务不是玩家交互引起的
+    private final Thread handlerThread;                 // 建这个事件的那个线程. setAfter 只认它, 从别的线程改会抛异常
+    private volatile boolean editable;                  // 还能不能改. 处理器正常返回之后就关掉, 逃逸出去的事件引用改不动事务了
+    private volatile boolean cancelled;                 // 前面有没有处理器已经取消了整笔事务
 
     @ApiStatus.Internal
     public InventoryPreUpdateEvent(
@@ -116,11 +116,12 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         this.setRootAfter(Objects.requireNonNull(inventory, "inventory"), rootSlot, after);
     }
 
-    // 在编辑窗口内重写指定 Inventory 槽位的候选最终值, 两个 setAfter 重载共用.
+    // 两个 setAfter 重载共用的实现, 改的都是某个 Inventory 某一格的候选最终值.
     private void setRootAfter(@NotNull SparrowInventory inventory, int rootSlot, @Nullable ItemStack after) {
         this.checkEditable();
 
-        // 找出该 Inventory 在本次事务中的位置, 不允许引入新的 Inventory.
+        // 按实例找它排在本笔事务第几位. 找不到就直说, 这里不会顺手把它拉进来,
+        // 拉进新 Inventory 必须是 include 那个刻意动作, 不能靠一次 setAfter 顺带发生.
         List<TransactionScope> scopes = this.scopes();
         int rootIndex = -1;
         for (int i = 0; i < scopes.size(); i++) {
@@ -133,7 +134,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             throw new IllegalArgumentException("inventory is not participating in this transaction");
         }
 
-        // 保留最初的 before, 只替换候选最终值.
+        // before 保持最初那份, 只换 after. 后面的处理器还要靠 before 判断这一格原本是什么.
         TransactionScope scope = scopes.get(rootIndex);
         @Nullable ItemStack[] planned = scope.planned();
         Objects.checkIndex(rootSlot, planned.length);
@@ -153,7 +154,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             updated.add(new SlotChange(rootSlot, planned[rootSlot], after));
         }
 
-        // 用重写后的写集替换事件快照, 当前 Inventory 的槽位变更跟着一起刷新
+        // 用改过的写集换掉事件里那份快照, slotChanges 这类惰性视图会跟着一起失效重算
         List<TransactionScope> rewritten = new ArrayList<>(scopes);
         rewritten.set(rootIndex, scope.withSlotChanges(updated));
         this.replaceScopes(rewritten);
@@ -171,7 +172,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
      * <p>纳入必须是刻意动作, 因此 {@code setAfter} 对未纳入的 Inventory 仍然直接抛异常, 不会自动纳入.
      * <ul>
      *     <li>它<b>不参与本轮 Pre</b>, 但照常收到 Post, 不会递归展开.</li>
-     *     <li>它的基准状态取纳入那一刻的内容, <b>不会先同步外部容器</b>. 事务中段刷新引用容器会重入事件系统.</li>
+     *     <li>它的基准状态取纳入那一刻的内容, <b>不会先同步外部容器</b>. 事务跑到一半去刷新 ReferencingInventory 会当场派发一笔嵌套事务, 重入整个事件系统.</li>
      *     <li>写进它的内容<b>不经过槽级放入规则过滤</b>. 放入规则是拦外部放入的, 处理器本身就是决定内容的一方.</li>
      * </ul>
      *
@@ -193,7 +194,7 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
             }
         }
 
-        // 规划基准与新变更组绑在同一条写集里一起追加到末尾, 不需要另外维护对应关系.
+        // 基准和变更组本来就绑在同一条写集里, 直接追加到末尾就行, 不用另外维护谁对应谁.
         List<TransactionScope> expanded = new ArrayList<>(scopes);
         expanded.add(includedScopes.apply(inventory));
         this.replaceScopes(expanded);
@@ -213,14 +214,14 @@ public final class InventoryPreUpdateEvent extends InventoryUpdateEvent {
         return this.interaction;
     }
 
-    // 校验编辑窗口仍然打开, 且调用方就是创建事件的处理器线程.
+    // 确认现在还能改, 并且改的人就是当初建这个事件的那个线程.
     private void checkEditable() {
         if (!this.editable || Thread.currentThread() != this.handlerThread) {
             throw new IllegalStateException("pre-update event can only be edited inside its synchronous handler");
         }
     }
 
-    // 处理器退出后关闭编辑窗口, 逃逸的事件引用不能继续修改事务.
+    // 处理器一返回就关掉编辑. 有人把事件对象存起来慢慢改的话, 到这里就改不动了.
     @ApiStatus.Internal
     public void closeEditing() {
         this.editable = false;

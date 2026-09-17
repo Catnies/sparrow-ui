@@ -13,8 +13,8 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public final class CursorVisualImpl extends AbstractVisual implements CursorVisual {
-    private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 合并到下一轮渲染
-    private volatile VisualLayer layer;
+    private final AtomicBoolean pendingDirty = new AtomicBoolean(); // 标脏只置这个位, 由渲染那边取走并清零, 连着标几次合成一轮
+    private volatile VisualLayer layer;                            // 光标视觉那一层配置, 改就整份换
 
     public CursorVisualImpl(@NotNull Bindings bindings, @NotNull VisualLayer layer) {
         super(bindings);
@@ -27,7 +27,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         return this.layer.visualizer();
     }
 
-    // 先换层再置失效位, 两次写都是 volatile 语义, 消费方看到失效位就一定看得到新层.
+    // 先把层换掉再置失效位: 两次都是 volatile 写, 消费方看到失效位时一定看得到新层.
     @Override
     public void setVisualizerProvider(
             @Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider,
@@ -38,6 +38,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         this.dirty();
     }
 
+    // 空光标按 null 交给映射, 与映射文档里"空光标为 null"那条对上
     @Nullable
     public ResolvedVisual visualize(@NotNull ItemStack actual) {
         return this.layer.visualize(actual.isEmpty() ? null : actual);
@@ -48,6 +49,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
         this.pendingDirty.set(true);
     }
 
+    // 取走这个位并清零, 渲染那一轮只处理一次
     public boolean takeDirty() {
         return this.pendingDirty.getAndSet(false);
     }

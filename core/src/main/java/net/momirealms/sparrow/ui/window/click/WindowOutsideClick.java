@@ -7,7 +7,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Window 外部点击处理器接收的可取消事件.
+ * 容器外点击处理器收到的那份可以取消的事件.
  */
 public final class WindowOutsideClick {
     private final Player player;
@@ -18,20 +18,20 @@ public final class WindowOutsideClick {
     private boolean cancelled;
 
     /**
-     * 创建一次容器外点击事件.
+     * 建一次容器外点击事件.
      *
      * @param player 发起点击的玩家
      * @param window 当前 Window
-     * @param clickType Bukkit 点击类型
+     * @param clickType Bukkit 那边的点击类型
      * @param hotbarButton {@link ClickType#NUMBER_KEY} 对应的快捷栏索引, 未关联快捷栏时为 {@code -1}
-     * @param cursor 派发时菜单持有的实际光标快照
+     * @param cursor 派发这一刻菜单实际光标的快照
      */
     public WindowOutsideClick(@NotNull Player player, @NotNull Window window, @NotNull ClickType clickType, @NotNull ItemStack cursor, int hotbarButton) {
         this.player = player;
         this.window = window;
         this.clickType = clickType;
         this.hotbarButton = hotbarButton;
-        this.cursor = cursor.clone();
+        this.cursor = cursor.clone(); // 光标当场复制一份, 事件里这份跟菜单之后怎么变没关系
     }
 
     public @NotNull Player getPlayer() {

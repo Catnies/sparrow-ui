@@ -22,6 +22,7 @@ public final class PaneVisualImpl extends AbstractSlotVisual implements PaneVisu
 
     @Override
     public void background(@Nullable ItemProvider background) {
+        // 同一个实例就不标脏, 免得白走一轮
         if (this.background == background) {
             return;
         }

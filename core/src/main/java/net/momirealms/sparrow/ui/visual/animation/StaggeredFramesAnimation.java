@@ -6,8 +6,8 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-// 逐槽错峰的帧序列, 每槽未轮到时显示 pendingCover, 轮到后按周期走帧, 走完放行.
-// 帧序列为空时轮到就放行(逐格出现), 错峰为零即全槽同步
+// 逐格错峰的帧序列: 还没轮到的显示 pendingCover, 轮到后按周期走帧, 走完放行.
+// frames 为空的那个形态就是逐格出现; staggerTicks 为 0 就是所有格同步.
 record StaggeredFramesAnimation(
         int @NotNull [] slots,
         long periodTicks,
@@ -22,10 +22,12 @@ record StaggeredFramesAnimation(
     @Override
     public ItemProvider frame(int orderIndex, int slot, long elapsedTicks, @Nullable ItemStack actual) {
         long localTick = elapsedTicks - this.staggerTicks * orderIndex;
+        // 还没轮到自己这一格起播
         if (localTick < 0) {
             return this.pendingCover;
         }
         long index = localTick / this.periodTicks;
+        // 帧走完了就放行, 让更早开始的播放或下面的配置层露出来
         return index < this.frames.length ? this.frames[(int) index] : null;
     }
 }

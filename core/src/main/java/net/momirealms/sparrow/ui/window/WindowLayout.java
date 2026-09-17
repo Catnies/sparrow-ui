@@ -9,14 +9,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+// 一扇窗的槽位划分: 上面是容器区, 下面是玩家物品栏区, 后面还可以挂一段不进协议的虚拟区域.
+// 每个 Window 槽位落在那块 Pane 的哪一格, 都在构造时摊平成一张表.
 final class WindowLayout {
     private static final PaneSize LOWER_SIZE = new PaneSize(9, 4);
 
-    private final int upperSize;
-    private final int lowerStart;           // lower 区域在 Window 中的起始槽位
-    private final int protocolSize;         // 不含尾部虚拟区域
-    private final Element.PaneLink[] links; // Window 槽位 -> PaneLink
-    private final List<Pane> panes;         // 根 Pane, 按首次出现顺序去重
+    private final int upperSize;            // 上半区域的槽位数
+    private final int lowerStart;           // lower 区域从哪个 Window 槽位开始
+    private final int protocolSize;         // 协议范围的长度, 不含尾部的虚拟区域
+    private final Element.PaneLink[] links; // 每个 Window 槽位对应的 PaneLink
+    private final List<Pane> panes;         // 用到的根 Pane, 按第一次出现的顺序去重
 
     private WindowLayout(int upperSize, int lowerStart, int protocolSize, Element.PaneLink[] links, List<Pane> panes) {
         this.upperSize = upperSize;
@@ -26,7 +28,7 @@ final class WindowLayout {
         this.panes = panes;
     }
 
-    // 区域声明顺序就是最终槽位顺序, 虚拟区域只能出现在末尾.
+    // 区域的声明顺序就是最终的槽位顺序; 虚拟区域只能排在最后.
     @NotNull
     static WindowLayout of(Region @NotNull ... regions) {
         if (regions.length == 0)
@@ -38,32 +40,32 @@ final class WindowLayout {
         int size = 0;
         int protocolSize = 0;
         boolean virtualSeen = false;
-        // 校验区域顺序, 同时记下协议边界与 lower 起点
+        // 一边查区域顺序, 一边记下协议边界和 lower 的起点
         for (int index = 0; index < regions.length; index++) {
             Region region = regions[index];
             switch (region.role()) {
                 case UPPER -> {
-                    // Window 虚拟区域开始后不允许再出现协议区域
+                    // 虚拟区域一旦开始, 后面就不能再有协议区域了
                     if (virtualSeen)
                         throw new IllegalArgumentException("virtual regions must be a trailing suffix");
                     upperSize = Math.addExact(upperSize, region.size());
                 }
                 case LOWER -> {
-                    // Window 虚拟区域开始后不允许再出现协议区域
+                    // 虚拟区域一旦开始, 后面就不能再有协议区域了
                     if (virtualSeen)
                         throw new IllegalArgumentException("virtual regions must be a trailing suffix");
-                    // 布局必须且只能有一个 lower 区域, 记录其窗口起始槽位
+                    // lower 区域必须恰好一个, 顺手记下它从哪个槽位开始
                     lowerRegions++;
                     if (lowerRegions > 1)
                         throw new IllegalArgumentException("window layout requires exactly one lower region");
                     lowerStart = size;
                 }
-                // 进入 Window 虚拟区域
+                // 从这里开始进虚拟区域
                 default -> virtualSeen = true;
             }
 
             size = Math.addExact(size, region.size());
-            // 协议长度只累计 Window 虚拟区域之前的协议槽位
+            // 协议长度只数虚拟区域之前那些槽位
             if (!virtualSeen) {
                 protocolSize = size;
             }
@@ -74,7 +76,7 @@ final class WindowLayout {
         if (lowerRegions != 1)
             throw new IllegalArgumentException("window layout requires exactly one lower region");
 
-        // 展开槽位映射, 根 Pane 按首次出现顺序去重
+        // 展开槽位映射, 根 Pane 按第一次出现的顺序去重
         Element.PaneLink[] links = new Element.PaneLink[size];
         ArrayList<Pane> panes = new ArrayList<>(regions.length);
         int offset = 0;
@@ -83,7 +85,7 @@ final class WindowLayout {
             if (!panes.contains(region.pane())) {
                 panes.add(region.pane());
             }
-            // 逐槽位生成 Window 槽位到 Pane 槽位的链接
+            // 一槽一槽地把 Window 槽位接到 Pane 的槽位上
             for (int slot = 0; slot < region.size(); slot++) {
                 links[offset + slot] = new Element.PaneLink(region.pane(), region.paneSlot() + slot);
             }
@@ -93,12 +95,11 @@ final class WindowLayout {
     }
 
     /**
-     * 编译分离窗口布局.
-     * 两个 Pane 分别占据容器和 9x4 玩家物品栏区域.
+     * 编出上下分离的布局: 两个 Pane 分别占容器区和 9x4 的玩家物品栏区.
      *
      * @param upperPane 作为容器区域的 Pane
      * @param lowerPane 作为玩家物品栏区域的 9x4 Pane
-     * @return 编译后的不可变布局
+     * @return 编译好的布局
      */
     @NotNull
     static WindowLayout split(@NotNull Pane upperPane, @NotNull Pane lowerPane) {
@@ -106,19 +107,18 @@ final class WindowLayout {
     }
 
     /**
-     * 编译合并窗口布局.
-     * 单个 Pane 的底部 4 行对应客户端玩家物品栏区域, 至少需要 5 行才能正常显示.
+     * 编出合并布局: 一个 Pane 的最后 4 行就是客户端的玩家物品栏区, 所以至少得 5 行才摆得下.
      *
      * @param pane 同时包含容器区与玩家物品栏区的 Pane, 必须超过 45 个槽位
-     * @return 编译后的不可变布局
-     * @throws IllegalArgumentException Pane 不超过 45 个槽位时抛出
+     * @return 编译好的布局
+     * @throws IllegalArgumentException Pane 的槽位数不超过 45 个时
      */
     @NotNull
     static WindowLayout merged(@NotNull Pane pane) {
         if (pane.area() <= 45) {
             throw new IllegalArgumentException("merged Pane must contain more than 45 slots");
         }
-        // 底部 36 个槽位切给 lower 区域, 其余作为 upper 区域
+        // 最后 36 格切给 lower, 剩下的算 upper
         int lowerStart = pane.area() - 36;
         return WindowLayout.of(
                 Region.upper(pane, 0, lowerStart),
@@ -127,10 +127,11 @@ final class WindowLayout {
     }
 
     /**
-     * 返回指定 Window 槽位的根 PaneLink.
+     * 这个 Window 槽位落在哪个根 Pane 的哪一格.
      *
      * @param windowSlot Window 槽位号
-     * @return 该槽位对应的根 PaneLink
+     * @return 对应的根 PaneLink
+     * @throws IndexOutOfBoundsException Window 槽位越界时
      */
     @NotNull
     Element.PaneLink paneAt(int windowSlot) {
@@ -140,19 +141,22 @@ final class WindowLayout {
         return this.links[windowSlot];
     }
 
+    // 上半区域占几格
     int upperSize() {
         return this.upperSize;
     }
 
+    // 协议范围有多长
     int protocolSize() {
         return this.protocolSize;
     }
 
+    // Window 槽位总数, 含尾部虚拟区域
     int size() {
         return this.links.length;
     }
 
-    // lower 前 27 格是背包主区, 快捷栏从偏移 27 开始.
+    // lower 里前 27 格是背包主区, 快捷栏从那之后开始, 所以快捷栏第 n 格就是 lowerStart + 27 + n
     int windowSlotAtHotbar(int hotbarSlot) {
         if (hotbarSlot < 0 || hotbarSlot >= 9)
             throw new IndexOutOfBoundsException("hotbar slot out of bounds: " + hotbarSlot);
@@ -160,23 +164,25 @@ final class WindowLayout {
         return this.lowerStart + 27 + hotbarSlot;
     }
 
+    // lower 区域第一格所在的那个 Pane 就是下部 Pane
     @NotNull
     Pane lowerPane() {
         return this.links[this.lowerStart].pane();
     }
 
+    // 这份布局用到的根 Pane 名单
     @NotNull
     List<Pane> panes() {
         return this.panes;
     }
 
     /**
-     * Window 中一个连续区域的声明.
+     * Window 里的一段连续区域.
      *
-     * @param role 区域在 Window 中承担的结构角色
-     * @param pane 区域所属的根 Pane
-     * @param paneSlot 区域在 Pane 中的起始槽位
-     * @param size 区域包含的槽位数
+     * @param role 这段区域在结构里扮什么角色
+     * @param pane 它落在哪个根 Pane 上
+     * @param paneSlot 它从 Pane 的第几格开始
+     * @param size 它占几格
      */
     record Region(@NotNull Role role, @NotNull Pane pane, int paneSlot, int size) {
 
@@ -221,8 +227,8 @@ final class WindowLayout {
 
         enum Role {
             UPPER,   // 容器区域
-            LOWER,   // 玩家物品栏区域, 布局中必须恰好一个且为 36 槽位
-            VIRTUAL  // Window 虚拟区域, 不进入原版菜单协议, 必须全部位于尾部
+            LOWER,   // 玩家物品栏区域; 布局里必须恰好一个, 而且正好 36 格
+            VIRTUAL  // Window 虚拟区域; 不进原版菜单协议, 而且只能排在尾部
         }
     }
 }

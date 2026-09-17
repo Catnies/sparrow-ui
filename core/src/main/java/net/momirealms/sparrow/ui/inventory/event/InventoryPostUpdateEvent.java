@@ -7,9 +7,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
-/**
- * Inventory 在事务提交后发出的更新事件.
- */
 public final class InventoryPostUpdateEvent extends InventoryUpdateEvent {
     private final long version;
 

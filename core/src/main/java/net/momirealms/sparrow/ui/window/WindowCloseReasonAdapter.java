@@ -7,6 +7,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+// getReason 是比较新的 API, 老服务端上没有这个方法, 那边一律给 UNKNOWN.
 @ApiStatus.Internal
 public final class WindowCloseReasonAdapter {
     private static final boolean BUKKIT_REASON_AVAILABLE = ReflectionUtils.methodExists(InventoryCloseEvent.class, "getReason");
@@ -14,6 +15,7 @@ public final class WindowCloseReasonAdapter {
     private WindowCloseReasonAdapter() {
     }
 
+    // Bukkit -> Sparrow; 认不出的名字给 UNKNOWN, 不往外抛
     @NotNull
     public static WindowCloseReason fromBukkit(@NotNull InventoryCloseEvent event) {
         if (!BUKKIT_REASON_AVAILABLE) {
@@ -33,6 +35,7 @@ public final class WindowCloseReasonAdapter {
         };
     }
 
+    // Sparrow -> Paper; 两边这套名字是对齐的, 按名字取对方的枚举值
     @NotNull
     public static Object toPaper(@NotNull WindowCloseReason reason) {
         return InventoryCloseReasonProxy.INSTANCE.valueOf(reason.name());

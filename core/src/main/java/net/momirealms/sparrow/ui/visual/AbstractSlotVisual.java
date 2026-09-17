@@ -21,10 +21,10 @@ import java.util.function.Function;
 
 @ApiStatus.Internal
 public abstract class AbstractSlotVisual extends AbstractVisual implements SlotVisual {
-    private final Object stateLock = new Object();          // 只保护 State 替换与终结闸门, 标脏一律出了锁再做
-    private final VisualDirtyAttachments dirtyAttachments;  // 按槽位的失效订阅表, 槽位数量建成后固定不变
-    private volatile State state;                           // 两层映射与播放中的动画整体存于不可变 State, 修改即整体替换, 读取无锁
-    private AnimationHandle.FinishReason finishing;         // 通道正在以这个原因整体终结, 非 null 期间新播放不入场; 由 stateLock 保护
+    private final Object stateLock = new Object();          // 护住 State 的替换和终结标记; 标脏一律放到锁外
+    private final VisualDirtyAttachments dirtyAttachments;  // 按槽位分的失效订阅表; 槽位数建好就固定不变
+    private volatile State state;                           // 两层映射加上正在播的动画, 整体放在一个不可变 State 里; 改就整份换, 读不加锁
+    private AnimationHandle.FinishReason finishing;         // 通道正在以这个原因整体终结; 有值期间新播放进不了场, 由 stateLock 保护
 
     protected AbstractSlotVisual(@NotNull Bindings bindings, int size) {
         super(bindings);
@@ -42,7 +42,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     public final void setVisualizerProvider(@Nullable Function<@Nullable ItemStack, @Nullable ItemProvider> visualizerProvider, @Nullable ImmediateItemProvider placeholder) {
         synchronized (this.stateLock) {
             State current = this.state;
-            // 配置身份没变就沿用已有异步结果
+            // 配置身份没变就照旧, 已经算出来的异步结果可以接着用
             if (current.global.isSameVisualizerSamePlaceholder(visualizerProvider, placeholder)) return;
             this.state = new State(new VisualLayer(visualizerProvider, placeholder), current.bySlot, current.animations);
         }
@@ -65,6 +65,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             if (current.bySlot[slot].isSameVisualizerSamePlaceholder(visualizerProvider, placeholder)) {
                 return;
             }
+            // 只换这一格的那一层, 别的槽位和动画那份数组照旧复用
             VisualLayer[] bySlot = current.bySlot.clone();
             bySlot[slot] = new VisualLayer(visualizerProvider, placeholder);
             this.state = new State(current.global, bySlot, current.animations);
@@ -77,13 +78,13 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     public final AnimationHandle play(@NotNull AnimationDefinition animationDefinition) {
         int size = this.state.bySlot.length;
         int[] slots = animationDefinition.slots();
-        // 空槽位或零时长的播放出生即到点, 当场完成
+        // 没有槽位, 或者总时长是 0, 这种播放一出生就到点, 直接给个完成句柄
         if (slots.length == 0 || animationDefinition.totalTicks() == 0) {
             return ActivePlayback.FINISHED;
         }
         long periodTicks = animationDefinition.periodTicks();
         Signal<Long> clock = Signals.everyTicks(periodTicks);
-        // 预排槽位到 orderIndex 的查找表, 帧求值按槽位直接定位
+        // 先把 槽位 -> 动画序号 的查找表排好, 之后求帧按槽位直接定位, 不用每次去数组里翻
         int[] orderBySlot = new int[size];
         Arrays.fill(orderBySlot, -1);
         for (int index = 0; index < slots.length; index++) {
@@ -94,7 +95,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
             }
             orderBySlot[slot] = index;
         }
-        // 对齐共享节拍, 让同周期动画同步换帧
+        // 起播时刻对齐到周期的共享节拍, 同周期的动画于是同一拍换帧
         long startTick = Signals.ticking().get() / periodTicks * periodTicks;
         ActiveSlotAnimation playing = new ActiveSlotAnimation(this, animationDefinition, slots, orderBySlot, startTick);
         AnimationHandle.FinishReason finishing;
@@ -107,28 +108,29 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
                 this.state = new State(current.global, current.bySlot, animations);
             }
         }
-        // 通道正在整体终结时不再放新播放进场, 当场以同一原因结束, 句柄的结束回调照常恰好触发一次
+        // 通道正在整体终结时, 新播放不进通道, 当场以同一个原因结束; 句柄的结束回调照样恰好来一次
         if (finishing != null) {
             playing.finish(finishing);
             return playing;
         }
-        // 入场即盖住参与的槽位
+        // 一进场就把参与的槽位标脏, 它们立刻显示动画的帧
         this.dirtyAnimated(slots);
         try {
             playing.startClock(clock);
         } catch (RuntimeException exception) {
-            // 挂钟失败时撤掉已经入场的动画层
+            // 挂钟失败就把进场这一步撤回来, 别留下一条没有时钟的播放
             this.removeAnimation(playing);
             throw exception;
         }
         return playing;
     }
 
-    // 摘除播放并恢复它盖住的槽位
+    // 摘掉这次播放, 顺手把它盖住的槽位标脏, 恢复成下面的层
     final void removeAnimation(@NotNull ActiveSlotAnimation animation) {
         synchronized (this.stateLock) {
             State current = this.state;
             int index = indexOf(current.animations, animation);
+            // 找不到说明它早就摘过了
             if (index < 0) return;
             ActiveSlotAnimation[] animations;
             if (current.animations.length == 1) {
@@ -143,8 +145,9 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         this.dirtyAnimated(animation.slots);
     }
 
-    // 以给定原因结束全部在播动画. 终结期间入场的播放当场以同一原因结束而不进通道, 否则结束回调里的链式续播会让通道死灰复燃.
-    // 某个结束回调失败也会继续终结其余动画. 已在 beginFinishing 阶段内时, 闸门的开合由外层负责.
+    // 按给定原因结束所有在播动画.
+    // 终结期间入场的播放会当场以同一个原因结束, 不进通道: 否则结束回调里接着播的那一段又会让通道活过来.
+    // 某个结束回调抛了也继续终结其余的. 外层已经在 beginFinishing 阶段里时, 开合的账归外层管.
     @ApiStatus.Internal
     public final void finishAnimations(@NotNull AnimationHandle.FinishReason reason) {
         ActiveSlotAnimation[] animations;
@@ -175,7 +178,8 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         }
     }
 
-    // 进入以给定原因整体终结的阶段, 期间新播放当场以该原因结束. 供宿主把阶段拉长到多次批量终结之外, 必须与 endFinishing 配对.
+    // 进入整体终结阶段, 期间新播放当场以这个原因结束.
+    // 宿主想把这段时间拉长到多次批量终结之外时用它, 必须和 endFinishing 配对.
     @ApiStatus.Internal
     public final void beginFinishing(@NotNull AnimationHandle.FinishReason reason) {
         synchronized (this.stateLock) {
@@ -183,7 +187,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         }
     }
 
-    // 退出整体终结阶段, 新播放恢复入场.
+    // 新播放重新可以进场.
     @ApiStatus.Internal
     public final void endFinishing() {
         synchronized (this.stateLock) {
@@ -191,7 +195,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         }
     }
 
-    // 帧推进与摘层共用的逐槽标脏, 走与配置写入相同的失效路由.
+    // 换帧和摘层都用这一份逐槽标脏, 走的是和改配置同一条失效路径.
     final void dirtyAnimated(int @NotNull [] slots) {
         for (int index = 0; index < slots.length; index++) {
             this.dirtyAttachments.dirty(slots[index]);
@@ -212,7 +216,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
     public final ResolvedVisual visualize(int slot, @Nullable ItemStack actual) {
         State current = this.state;
         Objects.checkIndex(slot, current.bySlot.length);
-        // 后开始的动画优先, 当前帧放行时继续向前找
+        // 后开始的盖住先开始的; 某一层放行就继续往前找, 找完动画才轮到逐槽和全局映射
         ActiveSlotAnimation[] animations = current.animations;
         if (animations.length > 0) {
             long nowTick = Signals.ticking().get();
@@ -227,6 +231,7 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         return bound != null ? bound : current.global.visualize(actual);
     }
 
+    // 订阅表那本账在 dirtyAttachments 上, 这里先把越界槽号挡掉
     @NotNull
     @Override
     public final Subscription attach(int slot, @NotNull Runnable invalidator) {
@@ -239,10 +244,11 @@ public abstract class AbstractSlotVisual extends AbstractVisual implements SlotV
         this.dirtyAttachments.dirtyAll();
     }
 
+    // 一次配置快照: 两层映射和动画通道都在里面, 换任何一样都是整份替换
     private static final class State {
         @NotNull private final VisualLayer global;
         @NotNull private final VisualLayer @NotNull [] bySlot;
-        @NotNull private final ActiveSlotAnimation @NotNull [] animations; // 按开始顺序排列
+        @NotNull private final ActiveSlotAnimation @NotNull [] animations; // 按开始顺序排: 越靠后开始得越晚, 求值从后往前找
 
         private State(@NotNull VisualLayer global, @NotNull VisualLayer @NotNull [] bySlot, @NotNull ActiveSlotAnimation @NotNull [] animations) {
             this.global = global;

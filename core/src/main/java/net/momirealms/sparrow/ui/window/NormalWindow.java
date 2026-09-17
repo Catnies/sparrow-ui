@@ -7,7 +7,7 @@ import org.jetbrains.annotations.Nullable;
 public interface NormalWindow extends Window {
 
     /**
-     * 创建默认使用 9x6 上部 Pane 的 Builder.
+     * 建一个 Builder, 上部 Pane 默认按 9x6 算.
      *
      * @return 普通窗口 Builder
      */
@@ -16,7 +16,7 @@ public interface NormalWindow extends Window {
     }
 
     /**
-     * 创建单个 Pane 同时覆盖容器与玩家物品栏区域的 Builder.
+     * 建一个合并窗口的 Builder: 一个 Pane 同时盖住容器和玩家物品栏.
      *
      * @param pane 宽 9, 高 5 至 10 的合并 Pane
      * @return 普通窗口 Builder
@@ -26,12 +26,12 @@ public interface NormalWindow extends Window {
     }
 
     /**
-     * 普通箱子 Window 的可重复 Builder.
+     * 普通箱子 Window 的 Builder.
      */
     interface Builder extends Window.Builder<NormalWindow, Builder> {
 
         /**
-         * 设置 9 列, 1 至 6 行的上部 Pane.
+         * 设置上部 Pane, 9 列, 1 到 6 行.
          *
          * @param upperPane 上部 Pane
          * @return 此 Builder
@@ -39,7 +39,7 @@ public interface NormalWindow extends Window {
         @NotNull Builder setUpperPane(@NotNull Pane upperPane);
 
         /**
-         * 设置控制玩家物品栏区域的 9x4 Pane, null 表示连接玩家 Bukkit Inventory.
+         * 设置下部那个 9x4 的 Pane, 管玩家物品栏那一片; 给 null 就接玩家的 Bukkit Inventory.
          *
          * @param lowerPane 下部 Pane
          * @return 此 Builder

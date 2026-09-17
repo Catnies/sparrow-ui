@@ -20,13 +20,15 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-// 候选依次经过 Bukkit 与 Sparrow 闸门, 用户代码运行后重新校验, 必要时至多重规划一次.
+// 一次点击算出候选之后, 先把 Bukkit 事件发出去, 再发 Sparrow 自己的点击事件, 最后才提交.
+// 这两轮事件里跑的都是别人写的代码, 它们可以取消, 也可以顺手改掉光标或者槽位内容.
+// 所以每轮跑完都要回头看一眼现场还是不是规划时那个样子; 变了就按新现场重算一次候选, 只给这一次机会.
 final class ClickExecutor {
     private final ClickSemantics.Context context;
     private final ClickSemantics.InteractionGate gate;
     private final InteractionOverlay overlay;
-    private final Supplier<@Nullable ClickCandidate> replan; // 闸门之后按新现场重算一次候选
-    private final Supplier<String> describe;                 // 候选被静默丢弃时给插件作者留线索的交互描述
+    private final Supplier<@Nullable ClickCandidate> replan; // 监听器改过现场之后, 拿新现场再算一遍候选
+    private final Supplier<String> describe;                 // 候选被扔掉时用它拼告警, 插件作者至少知道是哪一次点击没生效
 
     private ClickExecutor(
             ClickSemantics.Context context,
@@ -42,8 +44,9 @@ final class ClickExecutor {
         this.describe = describe;
     }
 
-    // 先形成精确候选, 再依次经过 Bukkit 和 Sparrow 点击事件, 最后提交候选事务.
-    // 引擎接管的槽位一律派发 Bukkit 点击事件, 即使这次点击算不出候选; 只有冻结槽完全不派发.
+    // 单击的主流程. 先算出这一下究竟要改哪些槽位, 然后走两轮事件, 最后提交.
+    // 只要这一格归点击语义管, Bukkit 事件就一定发, 哪怕这次什么都改不动, 有些插件就靠这个事件拦东西.
+    // 唯一的例外是冻结槽, 点它连事件都不发, 只把客户端猜错的画面纠回来.
     static boolean handleClick(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType,
@@ -54,8 +57,8 @@ final class ClickExecutor {
             @NotNull Runnable afterCommit,
             @NotNull ClickSemantics.InteractionGate gate
     ) {
-        // 首次规划与闸门之后的重规划用同一份参数, 提成一个供给器给两处共用.
-        // 覆盖层在首次规划时还是空的, 那时读到的就是 Inventory 自己的规划基准.
+        // 第一次规划和事件之后的重算用的是同一批参数, 所以包成一个供给器给两边共用.
+        // 第一次跑的时候覆盖层还是空的, 读到的就是 Inventory 自己那份规划基准.
         InteractionOverlay overlay = InteractionOverlay.forClick();
         Supplier<ClickPlanner.PreparedClick> plan = () -> ClickPlanner.prepareClick(
                 context,
@@ -80,7 +83,7 @@ final class ClickExecutor {
         if (candidate != null) {
             executor.executeCandidate(candidate, edits -> gate.allowClick(candidate.action(), edits));
         } else if (prepared.handled() && !context.frozenAt(windowSlot) && !executor.inventoryFrozenAt(windowSlot)) {
-            // 没有候选的真实交互仍允许监听器写入自己的结果.
+            // 这一下本身改不动任何东西, 但监听器还是有机会自己往里写点什么, 那些写入照样要落地.
             executor.executeUnplanned(clickType, hotbarButton, windowSlot, prepared.action());
         }
         if (prepared.handled() && windowSlot != InventoryView.OUTSIDE) {
@@ -89,14 +92,14 @@ final class ClickExecutor {
         return prepared.handled();
     }
 
-    // 拖拽同样先形成实际分配候选, Bukkit 事件看到的 newItems 与随后提交的候选完全一致.
+    // 拖拽也是先算好每一格分到多少, 再发事件. 这样 Bukkit 事件里的 newItems 和随后提交的东西是同一份.
     static void handleDrag(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType,
             @NotNull List<Integer> windowSlots,
             @NotNull ClickSemantics.InteractionGate gate
     ) {
-        // 拖拽的分配在派发之前就算好, 事件写的光标是最终值.
+        // 分配在发事件之前就定下来了, 所以监听器往光标上写的是最终值, 不像单击那样还要当输入再读一遍.
         InteractionOverlay overlay = InteractionOverlay.forDrag();
         DragPlanner.PreparedDrag prepared = DragPlanner.prepare(context, clickType, windowSlots, overlay);
         if (prepared != null) {
@@ -105,7 +108,8 @@ final class ClickExecutor {
                     gate,
                     overlay,
                     () -> {
-                        // 重规划后的分配结果可能与 Bukkit 事件看到的 newItems 不同, 事件按一次派发计.
+                        // 重算之后每格分到多少可能和 Bukkit 事件里那份 newItems 不一样了.
+                        // 这里不补发第二次事件, 一趟拖拽只算一次派发.
                         DragPlanner.PreparedDrag replanned = DragPlanner.prepare(context, clickType, windowSlots, overlay);
                         return replanned == null ? null : replanned.candidate();
                     },
@@ -116,7 +120,8 @@ final class ClickExecutor {
         markAllDirty(context, windowSlots);
     }
 
-    // 原版只对左右边框点击定义了丢物语义, 其余类型(如创造模式窗外中键的 CLONE)一律无操作.
+    // 点在窗口外面. 原版只给左右边框定义了丢东西的语义, 别的类型什么都不做,
+    // 比如创造模式在窗外按中键会送来一个 CLONE, 那个就直接忽略.
     static void handleOutsideClick(
             @NotNull ClickSemantics.Context context,
             @NotNull ClickType clickType
@@ -135,7 +140,7 @@ final class ClickExecutor {
         }
     }
 
-    // Bukkit 闸门结束后校验候选, 现场变化时重规划一次再进入 Sparrow 闸门.
+    // Bukkit 监听器跑完之后复核一遍候选. 现场被改过就重算一次, 拿新候选继续往 Sparrow 事件那一步走.
     private void executeCandidate(ClickCandidate candidate, Predicate<InteractionEdits> bukkitStage) {
         if (candidate.staleReason(this.context) != null) {
             return;
@@ -145,7 +150,7 @@ final class ClickExecutor {
         if (!this.passGate(() -> !fireBukkitInventoryEvent || bukkitStage.test(edits))) {
             return;
         }
-        // Bukkit 闸门是覆盖层的唯一写入者, 之后每一道闸门写进来的都是提交后的最终值.
+        // 只有 Bukkit 监听器的写入会攒进覆盖层当输入. 这之后无论谁再写, 写的都是提交后的最终值, 所以这里就把覆盖层收了.
         edits.closeOverlay();
         @Nullable ClickCandidate.StaleReason stale = this.recheck(candidate, fireBukkitInventoryEvent && this.gate.firesBukkitEvents(), edits);
         if (stale == null && this.overlay.isEmpty()) {
@@ -154,7 +159,7 @@ final class ClickExecutor {
         }
         @Nullable ClickCandidate replanned = this.replan.get();
         if (replanned == null) {
-            // 新现场没有候选, 监听器写入作为独立事务继续处理.
+            // 新现场下这一点已经算不出候选了. 监听器自己写进来的那部分不能跟着一起丢, 单独当一笔事务提交.
             InteractionEdits settled = this.settled(null);
             ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
             if (eventTarget != null
@@ -170,7 +175,7 @@ final class ClickExecutor {
         this.finishCandidate(replanned, this.settled(replanned));
     }
 
-    // Sparrow 点击事件与提交. 重规划之后从这里继续, 因此这一段不含任何 Bukkit 事件.
+    // 发 Sparrow 自己的点击事件, 然后提交. 重算之后也是从这里接着跑, 所以这一段里一个 Bukkit 事件都没有.
     private void finishCandidate(ClickCandidate candidate, InteractionEdits edits) {
         ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
         if (eventTarget != null) {
@@ -205,7 +210,7 @@ final class ClickExecutor {
         );
     }
 
-    // 没有候选时按需创建草稿, 只提交监听器实际写入的内容.
+    // 这一下算不出候选, 但事件还是得发. 草稿等监听器真写了东西再建, 最后也只提交它们写的那些.
     private void executeUnplanned(ClickType clickType, int hotbarButton, int windowSlot, InventoryAction action) {
         InteractionEdits edits = new InteractionEdits(this.context, null, null, this.overlay);
         ItemStack plannedCursor = this.context.cursor();
@@ -214,16 +219,16 @@ final class ClickExecutor {
             return;
         }
         edits.closeOverlay();
-        // Bukkit 闸门改变现场后仍有一次形成候选的机会.
+        // 刚才算不出候选, 是因为现场不合适. 监听器动过现场之后条件可能凑齐了, 这里再给一次机会.
         if (!this.overlay.isEmpty() || !ItemUtils.isHandleContentEqual(this.context.unsafeCursor(), plannedCursor)) {
             @Nullable ClickCandidate replanned = this.replan.get();
             if (replanned != null && replanned.staleReason(this.context) == null) {
-                // 重算出的候选自带事件目标, Sparrow 点击事件跟着它派发.
+                // 重算出来的候选自带事件目标, Sparrow 点击事件就照它发.
                 this.finishCandidate(replanned, this.settled(replanned));
                 return;
             }
         }
-        // 结算要赶在 Sparrow 事件之前, 事件读到的是 Bukkit 监听器留下的结果, 写下的又交给随后的提交.
+        // 结算必须排在 Sparrow 事件前面. 这样事件读到的是 Bukkit 监听器留下的结果, 它自己写的又能接着进提交.
         InteractionEdits settled = this.settled(null);
         @Nullable ClickSemantics.LinkedSlot link = this.context.linkAt(windowSlot);
         if (link != null && !this.passGate(() -> this.gate.allowInventoryClick(link, action, settled))) {
@@ -235,7 +240,7 @@ final class ClickExecutor {
         );
     }
 
-    // 无候选写入只复核监听器写入时看到的光标和当前 Window 状态.
+    // 提交纯粹来自监听器的那些写入. 没有候选可以对照, 能复核的只有监听器当时看到的光标和 Window 还开着没有.
     private void commitEdits(UpdateReason reason, InteractionEdits edits) {
         @Nullable InteractionDraft interaction = edits.interaction();
         @Nullable TransactionDraft draft = edits.transaction();
@@ -257,7 +262,8 @@ final class ClickExecutor {
         );
     }
 
-    // 用户代码运行后同步外部存储, 纯放行路径只比较已有基准.
+    // 中间真跑过别人的代码, 就得重新同步一次外部容器再比对, 期间它可能被直接改掉了.
+    // 一路放行没人插手的话, 拿手上这份基准比一比就够, 不值得再读一遍容器.
     @Nullable
     private ClickCandidate.StaleReason recheck(ClickCandidate candidate, boolean userCodeRan, InteractionEdits edits) {
         return stale(userCodeRan ? candidate.revalidate(this.context) : candidate.staleReason(this.context), edits);
@@ -268,7 +274,7 @@ final class ClickExecutor {
         return reason != null ? reason : edits.staleCursor();
     }
 
-    // 非空写集在用户代码运行前完成形状校验.
+    // 写集不空就先建草稿, 形状校验在这一刻完成, 别等别人的代码跑起来才发现写集本身就是坏的.
     @NotNull
     private InteractionEdits editsFor(ClickCandidate candidate, @Nullable InteractionOverlay overlay) {
         @Nullable TransactionDraft planned = candidate.scopes().isEmpty()
@@ -277,7 +283,7 @@ final class ClickExecutor {
         return new InteractionEdits(this.context, planned, candidate.draft(), overlay);
     }
 
-    // 作废候选的副作用草稿不可带入重规划结果.
+    // 把覆盖层里攒的东西结算成最终值. 旧候选已经作废, 它那份光标和掉落物草稿不能跟着带进重算出来的新候选.
     @NotNull
     private InteractionEdits settled(@Nullable ClickCandidate replanned) {
         InteractionEdits target = replanned == null
@@ -287,12 +293,13 @@ final class ClickExecutor {
         return target;
     }
 
-    // 事件派发前后各复核一次 Window 状态, 处理器自己可能关掉或重开 Window.
+    // 发事件前后各看一次 Window 还是不是原来那扇. 处理器里关窗口、开新窗口都是常见写法.
     private boolean passGate(BooleanSupplier stage) {
         return this.gate.stillValid() && stage.getAsBoolean() && this.gate.stillValid();
     }
 
-    // 根据本次参与交互的 Inventory 集合, 判断是否应在交互时触发 Bukkit 的相关事件
+    // 这一笔牵扯到的 Inventory 里只要有一个愿意派发 Bukkit 事件, 这次就发.
+    // 宁可多发也不少发, 漏发会让靠 Bukkit 事件做限制的插件失效.
     private static boolean requestsBukkitInventoryEvent(@Nullable ClickSemantics.LinkedSlot directTarget, @NotNull List<TransactionScope> scopes) {
         if (directTarget != null && directTarget.inventory().fireBukkitInventoryEvents()) {
             return true;
@@ -305,7 +312,8 @@ final class ClickExecutor {
         return false;
     }
 
-    // 光标被直接改写会使候选覆盖较新的值, 因此丢弃并给出可操作的告警.
+    // 候选还算不算数. 不算数就整笔扔掉, 光标那种情况额外喊一声.
+    // 手上这份候选是按改动之前那份光标算的, 提交下去等于把人家刚写的值盖掉, 与其静静地盖不如报出来.
     private boolean survived(@Nullable ClickCandidate.StaleReason reason) {
         if (reason == null) {
             return true;
@@ -318,7 +326,7 @@ final class ClickExecutor {
         return false;
     }
 
-    // 玩家侧只读的 Inventory 与冻结槽同待遇, 点它展示槽连空操作事件都不派发, 只纠正客户端预测.
+    // 玩家侧只读的 Inventory 按冻结槽那套待遇走, 点它连一个空操作事件都不发, 只把客户端猜错的画面纠回来.
     private boolean inventoryFrozenAt(int windowSlot) {
         ClickSemantics.LinkedSlot link = this.context.linkAt(windowSlot);
         return link != null && link.inventory().frozen();

@@ -61,36 +61,36 @@ import java.util.function.UnaryOperator;
  */
 public abstract class SparrowInventory {
     public static final int DEFAULT_MAX_STACK_SIZE = 99; // 槽位默认的堆叠上限
-    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 无变更操作共享的成功结果, 变更列表为空, 也不派发事件
-    private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号发号器, 每创建一个 Inventory 发一个号
+    private static final TransactionResult.Committed EMPTY_COMMITTED = new TransactionResult.Committed(List.of()); // 什么都没改的操作共用这个成功结果, 变更列表是空的, 也不会派发任何事件
+    private static final AtomicLong LOCK_ORDER_SOURCE = new AtomicLong(); // 锁序号的发号器, 每建一个 Inventory 发一个, 只增不减
 
-    // 事务身份与固定协作组件
-    private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号决定加锁先后
-    private final ReentrantLock writeLock = new ReentrantLock();        // 串行化写操作, 临界区内全是纯内存操作; 引用库存不用它
-    private final SlotOrder naturalOrder;                               // 遍历顺序的缺省回退, 构造时按槽位数建一次
+    // 事务里的身份, 以及一建好就不再换的那几个协作对象
+    private final long lockOrder = LOCK_ORDER_SOURCE.getAndIncrement(); // 跨 Inventory 事务按这个序号从小到大加锁, 全局唯一的顺序就是不死锁的依据
+    private final ReentrantLock writeLock = new ReentrantLock();        // 串行化写操作. 临界区里全是纯内存活儿, 不碰 IO 也不跑用户代码; ReferencingInventory 用不到它
+    private final SlotOrder naturalOrder;                               // 没配自定义顺序时回退到这个自然顺序, 构造时按槽位数建一次就一直用
     private final Bindings bindings = new Bindings();                   // 本 Inventory 持有的 Signal 绑定
-    private final InventoryVisualImpl visual;                           // 视觉配置, Signal 绑定与逐槽显示路径失效订阅
-    // 内容状态与放入规则
-    @Nullable private volatile ItemStack @NotNull [] state; // 当前内部状态版本, 数组和物品均归 Inventory 内部所有
-    @Nullable private volatile AccessRule accessRule; // 全局请求准入规则, null 表示放行
-    @Nullable private volatile AccessRule @NotNull [] accessRulesBySlot; // 槽级请求准入规则, 与全局规则取交集
-    // 玩家操作配置
+    private final InventoryVisualImpl visual;                           // 视觉那一层的全部配置, 包括 Signal 绑定和逐槽的显示失效订阅
+    // 真正的内容, 以及谁能动它
+    @Nullable private volatile ItemStack @NotNull [] state; // 当前这一版内容. 数组和里面的物品都归 Inventory 独占, 发布出去之后谁都不许改
+    @Nullable private volatile AccessRule accessRule; // 全局准入规则, null 就是谁都放行
+    @Nullable private volatile AccessRule @NotNull [] accessRulesBySlot; // 逐槽的准入规则, 和全局规则取交集, 两边都点头才算通过
+    // 玩家那边的行为怎么配
     private volatile int addOperationPriority;
     private volatile int collectOperationPriority;
     private volatile int otherOperationPriority;
-    private volatile boolean includeObscuredSlots; // 未被 Pane 展示的槽位是否参与快速转移与双击收集, 属于弱一致的配置
-    private volatile boolean frozen; // 玩家侧只读, 玩家经窗口的点击与拖拽一律不成立, 程序写入与外部同步不受影响, 属于弱一致的配置
-    private volatile boolean fireBukkitInventoryEvents = true; // 本 Inventory 参与的交互是否派发 Bukkit 事件
+    private volatile boolean includeObscuredSlots; // 没被 Pane 展示出来的槽位要不要参与快速转移和双击收集. 这类配置是弱一致的, 改完不保证立刻对所有线程生效
+    private volatile boolean frozen; // 玩家侧只读. 玩家经窗口的点击和拖拽一律不成立, 程序写入和外部同步照旧. 同样是弱一致的配置
+    private volatile boolean fireBukkitInventoryEvents = true; // 牵扯到本 Inventory 的交互要不要派发 Bukkit 事件
     // 交互事件
     private final ObservableDispatcher<SparrowInventoryClickEvent> clickEvents = new ObservableDispatcher<>();
     private final ObservableDispatcher<InventoryBundleSelectEvent> bundleSelectEvents = new ObservableDispatcher<>();
-    // 懒加载的订阅通道与外部视图
-    @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调用 contentSignal() 时创建, 只由本 Inventory 的 post 订阅和退役递增
-    @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次订阅事务更新或开启串行 Post 时创建
-    @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // 懒加载的 Bukkit 包装实例, 同一 Inventory 恒为同一个实例.
+    // 这几样都等到真有人用才建
+    @Nullable private volatile MutableSignal<Long> contentSignal;      // 第一次调 contentSignal() 才建. 只有本 Inventory 的 Post 和退役会让它加一
+    @Nullable private volatile InventoryUpdateChannel updateChannel;   // 第一次有人订阅事务更新、或者开了串行 Post 才建
+    @Nullable private volatile org.bukkit.inventory.Inventory bukkitView; // Bukkit 包装实例. 同一个 Inventory 永远只有这一个, 外面可以安全地拿它做身份比较
 
     SparrowInventory(@Nullable ItemStack @NotNull [] initial) {
-        // 初始内容复制后归 Inventory 独占, 空物品折为 null.
+        // 初始内容复制一份归自己独占, 之后调用方改他手上那份不影响这里. 空物品一律折成 null.
         @Nullable ItemStack[] slots = new ItemStack[initial.length];
         for (int i = 0; i < initial.length; i++) {
             slots[i] = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(initial[i]));
@@ -113,7 +113,7 @@ public abstract class SparrowInventory {
      * @return 按槽号排列的物品副本数组, 空槽位置为 {@code null}
      */
     public @Nullable ItemStack @NotNull [] snapshot() {
-        // 先把 volatile 引用抓到局部变量, 整个复制过程读的都是同一份状态数组.
+        // 先把 volatile 引用抓进局部变量. 复制过程中状态可能被换掉, 抓一次能保证整份副本来自同一个版本, 不会前后撕裂.
         @Nullable ItemStack[] snapshot = this.state;
         @Nullable ItemStack[] copy = new ItemStack[snapshot.length];
         for (int i = 0; i < snapshot.length; i++) {
@@ -190,7 +190,7 @@ public abstract class SparrowInventory {
         return this.accessRulesBySlot[slot];
     }
 
-    // 普通槽位变更从前后内容计算流动; 没有规则时不创建上下文.
+    // 普通槽位变更, 流入流出从 before 和 after 自己算. 一条规则都没配就直接放行, 连上下文对象都不建.
     @ApiStatus.Internal
     public boolean allowsAccess(@NotNull UpdateReason reason, @Nullable Window window, @NotNull SlotChange change) {
         if (this.accessRule == null && this.accessRulesBySlot[change.slot()] == null) {
@@ -203,7 +203,8 @@ public abstract class SparrowInventory {
                 removed == 0 ? null : ItemUtils.copyWithAmount(change.unsafeBefore(), removed));
     }
 
-    // 收纳袋的实际流动由点击语义提供, 全局和槽级规则检查同一个候选.
+    // 收纳袋这一类, 真正进出的是袋子里的东西, 光看 before 和 after 算不出来, 所以由点击语义把实际流动传进来.
+    // 全局规则和槽级规则看的是同一个候选, 各自表态, 都通过才算通过.
     @ApiStatus.Internal
     public boolean allowsAccess(@NotNull UpdateReason reason, @Nullable Window window, @NotNull SlotChange change, @Nullable ItemStack addedItem, @Nullable ItemStack removedItem) {
         @Nullable AccessRule global = this.accessRule;
@@ -557,7 +558,7 @@ public abstract class SparrowInventory {
      * @param slot 槽位序号, 从 0 开始
      * @param item 要写入的物品, 会复制; null 表示清空
      * @throws IndexOutOfBoundsException 当槽号越界时
-     * @throws IllegalStateException 当引用库存已退役时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役时
      */
     public void setItem(@NotNull UpdateReason reason, int slot, @Nullable ItemStack item) {
         Objects.checkIndex(slot, this.size());
@@ -585,7 +586,7 @@ public abstract class SparrowInventory {
      * @param item 要放入的物品, 会复制
      * @return 实际放不下的数量
      * @throws IndexOutOfBoundsException 当槽号越界时
-     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役且需要规划写入时
      */
     public int putItem(@NotNull UpdateReason reason, int slot, @NotNull ItemStack item) {
         Objects.checkIndex(slot, this.size());
@@ -619,7 +620,7 @@ public abstract class SparrowInventory {
      * @param slot 槽位序号, 从 0 开始
      * @param modifier 计算新物品的函数
      * @throws IndexOutOfBoundsException 当槽号越界时
-     * @throws IllegalStateException 当引用库存已退役, 或 modifier 在回调中发起了库存写入时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役, 或 modifier 在回调中发起了库存写入时
      */
     public void modifyItem(@NotNull UpdateReason reason, int slot, @NotNull UnaryOperator<@Nullable ItemStack> modifier) {
         Objects.checkIndex(slot, this.size());
@@ -649,7 +650,7 @@ public abstract class SparrowInventory {
      * @param change 数量变化, 正数为增加, 负数为减少
      * @return 实际数量变化, 正数为增加, 负数为减少
      * @throws IndexOutOfBoundsException 当槽号越界时
-     * @throws IllegalStateException 当引用库存已退役时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役时
      */
     public int changeAmount(@NotNull UpdateReason reason, int slot, int change) {
         Objects.checkIndex(slot, this.size());
@@ -678,7 +679,7 @@ public abstract class SparrowInventory {
      * @param reason 仅记录修改来源, 不改变执行模式
      * @param item 要放入的物品, 会复制
      * @return 实际放不下的数量
-     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役且需要规划写入时
      */
     public int add(@NotNull UpdateReason reason, @NotNull ItemStack item) {
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
@@ -709,7 +710,7 @@ public abstract class SparrowInventory {
      * @param template 物品样板, 只用于相似判断
      * @param upTo 最多收集的数量
      * @return 实际收集数量
-     * @throws IllegalStateException 当引用库存已退役且需要规划写入时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役且需要规划写入时
      */
     public int collect(@NotNull UpdateReason reason, @NotNull ItemStack template, int upTo) {
         @Nullable ItemStack sample = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(template));
@@ -742,7 +743,7 @@ public abstract class SparrowInventory {
      * @param matcher 判断物品是否应被移除的函数
      * @param upTo 最多移除的数量
      * @return 实际移除数量
-     * @throws IllegalStateException 当引用库存已退役且需要规划写入, 或 matcher 在回调中发起了库存写入时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役且需要规划写入, 或 matcher 在回调中发起了库存写入时
      */
     public int remove(@NotNull UpdateReason reason, @NotNull Predicate<@NotNull ItemStack> matcher, int upTo) {
         if (upTo <= 0) {
@@ -770,7 +771,7 @@ public abstract class SparrowInventory {
      * <p>只为非空槽生成变更, 已为空时不派发 Post.
      *
      * @param reason 仅记录修改来源, 不改变执行模式
-     * @throws IllegalStateException 当引用库存已退役时
+     * @throws IllegalStateException 当 ReferencingInventory 已退役时
      */
     public void clear(@NotNull UpdateReason reason) {
         InventoryTransactions.mutate(reason, this, basis -> {
@@ -807,7 +808,7 @@ public abstract class SparrowInventory {
         return delta == null ? null : ItemUtils.copyWithAmount(delta.unsafeBefore(), delta.removedAmount());
     }
 
-    // 把规划好的变更作为只涉及本 Inventory 的一笔请求提交.
+    // 把算好的变更当成只涉及本 Inventory 的一笔请求提交. 先过一遍准入规则, 任何一格被拒就整笔取消.
     private TransactionResult commitScoped(UpdateReason reason, PlannedRoot basis, List<SlotChange> deltas) {
         for (int i = 0; i < deltas.size(); i++) {
             if (!this.allowsAccess(reason, null, deltas.get(i))) {
@@ -906,7 +907,7 @@ public abstract class SparrowInventory {
         Objects.checkIndex(slot, this.size());
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable ItemStack[] planned = basis.planned();
-        // modifier 在锁外运行, 输入与返回值都会复制.
+        // modifier 在锁外跑, 传进去和拿回来的都复制一份, 它爱怎么改都不会碰到内部状态.
         @Nullable ItemStack modified = modifier.apply(ItemUtils.copyOrNull(planned[slot]));
         return this.commitScoped(reason, basis, List.of(new SlotChange(slot, planned[slot], modified)));
     }
@@ -971,13 +972,13 @@ public abstract class SparrowInventory {
      */
     @NotNull
     public AddResult tryAdd(@NotNull UpdateReason reason, @NotNull ItemStack item) {
-        // 先复制物品再判断是否为空, 保证后续读取的对象不受调用方修改影响
+        // 先复制再判空. 顺序反过来的话, 调用方在这之间改了数量, 后面读到的就是另一个东西了
         @Nullable ItemStack input = ItemUtils.nullIfEmpty(ItemUtils.copyOrNull(item));
         if (input == null) {
             return new AddResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算, 先合并相似的未满堆, 再占空槽
+        // 在规划内容上算, 先往相似的未满堆里合, 合不完再占空槽
         InventoryPlanner.AddPlan plan = InventoryPlanner.planAdd(
                 basis.planned(),
                 input,
@@ -988,7 +989,7 @@ public abstract class SparrowInventory {
         if (plan.deltas().isEmpty()) {
             return new AddResult(EMPTY_COMMITTED, plan.remaining());
         }
-        // 整组槽位变更一次提交, 没提交成功视为一个都没放进去
+        // 这组变更一次性提交. 没提交成功就当一个都没放进去, remaining 报完整输入
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new AddResult(result, result instanceof TransactionResult.Committed ? plan.remaining() : input.getAmount());
     }
@@ -1022,7 +1023,7 @@ public abstract class SparrowInventory {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算, 先收未满堆, 不够再收满堆
+        // 先收零头, 凑不够再动满堆, 这样满堆能尽量保持完整
         InventoryPlanner.TakePlan plan = InventoryPlanner.planCollect(
                 basis.planned(),
                 sample,
@@ -1034,7 +1035,7 @@ public abstract class SparrowInventory {
         if (plan.deltas().isEmpty()) {
             return new CollectResult(EMPTY_COMMITTED, 0);
         }
-        // 整组槽位变更一次提交, 没提交成功视为一个都没收到
+        // 一次性提交. 没成功就当一个都没收到
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new CollectResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
@@ -1068,12 +1069,12 @@ public abstract class SparrowInventory {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
         PlannedRoot basis = this.openPlanForWrite();
-        // 在规划内容上计算要动哪些槽, matcher 由规划器在锁外逐个调用
+        // 先算要动哪些槽. matcher 是调用方的代码, 由规划器在锁外逐个调, 它拿到的是内部物品的只读引用
         InventoryPlanner.TakePlan plan = InventoryPlanner.planRemove(basis.planned(), matcher, upTo, this.iterationOrder(OperationCategory.OTHER), delta -> this.allowsAccess(reason, null, delta));
         if (plan.deltas().isEmpty()) {
             return new RemoveResult(EMPTY_COMMITTED, 0);
         }
-        // 整组槽位变更一次提交, 没提交成功视为一个都没移除
+        // 一次性提交. 没成功就当一个都没移除
         TransactionResult result = InventoryTransactions.commit(reason, List.of(new TransactionScope(basis, plan.deltas())), false);
         return new RemoveResult(result, result instanceof TransactionResult.Committed ? plan.taken() : 0);
     }
@@ -1102,7 +1103,7 @@ public abstract class SparrowInventory {
     public TransactionResult tryClear(@NotNull UpdateReason reason) {
         PlannedRoot basis = this.openPlanForWrite();
         @Nullable ItemStack[] planned = basis.planned();
-        // 只给非空槽位生成变更
+        // 只给非空槽位生成变更, 本来就空的那些不必写一遍
         List<SlotChange> deltas = new ArrayList<>(planned.length);
         for (int slot = 0; slot < planned.length; slot++) {
             if (planned[slot] != null) {
@@ -1189,7 +1190,7 @@ public abstract class SparrowInventory {
             if (plan.taken() != required) {
                 return false;
             }
-            // 把这一件取走的结果写回规划内容, 同一堆物品不会被后面的物品重复认领.
+            // 把这一件取走之后的结果写回规划内容. 下一件物品再来推演时看到的就是扣过的数量, 同一堆不会被认领两次.
             List<SlotChange> deltas = plan.deltas();
             for (int j = 0; j < deltas.size(); j++) {
                 SlotChange delta = deltas.get(j);
@@ -1235,7 +1236,8 @@ public abstract class SparrowInventory {
         return this.simulateAdd(items, null);
     }
 
-    // 同一快照连续推演, 有来源时按请求规则筛选候选.
+    // 在同一份快照上连着推演好几件物品, 前一件占掉的空间后一件看得见.
+    // 传了 reason 就顺带过一遍准入规则, 那是给请求路径预估用的; 传 null 就只看容量.
     private int[] simulateAdd(List<? extends ItemStack> items, @Nullable UpdateReason reason) {
         @Nullable ItemStack[] working = this.openPlan().planned().clone();
         int[] remaining = new int[items.size()];
@@ -1388,7 +1390,7 @@ public abstract class SparrowInventory {
     public void refresh() {
     }
 
-    // 写规划钩子, ReferencingInventory 在这里同步外部内容.
+    // 规划写入之前的钩子. VirtualInventory 什么都不用做, ReferencingInventory 在这里把外部内容同步进来.
     @ApiStatus.Internal
     public void prepareWrite() {
     }
@@ -1497,7 +1499,7 @@ public abstract class SparrowInventory {
                 signal = this.contentSignal;
                 if (signal == null) {
                     MutableSignal<Long> created = Signal.of(0L);
-                    // 订阅凭证本 Inventory 的事务订阅器持有, 与本 Inventory 同生命周期.
+                    // 这个订阅的凭证没人拿着, 它跟着本 Inventory 一起活到被回收, 不需要也没法提前关掉.
                     this.subscribePostUpdate(ignoredEvent -> created.update(revision -> revision + 1L));
                     this.contentSignal = created;
                     signal = created;
@@ -1507,7 +1509,7 @@ public abstract class SparrowInventory {
         return signal;
     }
 
-    // 退役等无槽位事务的状态变化也需要使内容 Signal 失效.
+    // 有些状态变化根本没有槽位变更, 比如退役, 但下游该重算还是得重算, 所以这里手动推一下.
     final void updateContentSignal() {
         MutableSignal<Long> signal = this.contentSignal;
         if (signal != null) {
@@ -1531,7 +1533,7 @@ public abstract class SparrowInventory {
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
-    // 更新通道在首次订阅或配置串行 Post 时创建.
+    // 更新通道等到第一次有人订阅、或者有人配串行 Post 才建.
     @NotNull
     InventoryUpdateChannel updateChannel() {
         InventoryUpdateChannel channel = this.updateChannel;
@@ -1547,28 +1549,29 @@ public abstract class SparrowInventory {
         return channel;
     }
 
-    // 事务引擎凭它找出本笔事务要通知谁, 从未订阅过的 Inventory 不值得为它建一个空通道, 所以只看不建.
+    // 事务引擎靠它找出这笔事务要通知谁. 从来没人订阅过的 Inventory 不值得为它建个空通道, 所以这里只看不建.
     @Nullable
     @ApiStatus.Internal
     public InventoryUpdateChannel updateChannelIfPresent() {
         return this.updateChannel;
     }
 
-    // 请求提交和权威命令共用同一把写锁; 引用存储由所属线程串行访问, 返回 null.
+    // 请求和权威命令抢的是同一把写锁, 这样两条路径互相看得见彼此的写入.
+    // ReferencingInventory 覆盖它返回 null, 那边的串行靠调用方守住所属线程.
     @Nullable
     @ApiStatus.Internal
     public PlannedRoot.StateLock stateLock() {
         return new PlannedRoot.StateLock(this.writeLock, this.lockOrder);
     }
 
-    // 纯读用途的规划基准, 给 simulate 这类零副作用的路径使用.
+    // 给 simulate 这类不写任何东西的路径用, 不走写前准备.
     @NotNull
     @ApiStatus.Internal
     public PlannedRoot openPlan() {
         return new Stm(this, this.state);
     }
 
-    // 写路径的规划基准, 读内容之前先走一遍写前准备.
+    // 写路径用的规划基准. 读内容之前先走一遍写前准备, 否则 ReferencingInventory 可能拿着过期内容去规划.
     @NotNull
     @ApiStatus.Internal
     public PlannedRoot openPlanForWrite() {
@@ -1576,7 +1579,8 @@ public abstract class SparrowInventory {
         return this.openPlan();
     }
 
-    // 内部状态数组同时充当规划快照与乐观校验凭据.
+    // VirtualInventory 的规划基准. 内部状态数组同时当快照和校验凭据用,
+    // 只要它还是当前那个数组实例, 就说明中间没人提交过, 连版本号都不用另存.
     private static final class Stm extends PlannedRoot {
 
         private Stm(@NotNull SparrowInventory inventory, @Nullable ItemStack @NotNull [] planned) {
@@ -1601,7 +1605,7 @@ public abstract class SparrowInventory {
             @Nullable ItemStack[] next = this.planned().clone();
             for (int i = 0; i < deltas.size(); i++) {
                 SlotChange delta = deltas.get(i);
-                // 等值写入保留原元素, 物品实例只随内容变化而更换.
+                // 内容一样就留着原来那个实例. 物品实例只在内容真变了的时候才换, 外面拿身份做缓存键才靠得住.
                 @Nullable ItemStack after = delta.unsafeAfter();
                 @Nullable ItemStack current = next[delta.slot()];
                 next[delta.slot()] = ItemUtils.isContentEqual(current, after) ? current : after;

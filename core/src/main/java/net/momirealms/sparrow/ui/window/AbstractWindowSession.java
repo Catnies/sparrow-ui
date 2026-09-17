@@ -19,10 +19,10 @@ abstract class AbstractWindowSession implements WindowSession {
     final WindowManager manager;
     private final Player viewer;
     private final HandlerList<Consumer<WindowCloseReason>> sessionEndHandlers;
-    private final Bindings bindings = new Bindings(); // 本会话持有的 Signal 绑定
+    private final Bindings bindings = new Bindings(); // 这个会话持有的 Signal 绑定, 结束时统一摘
 
-    private volatile List<Window> chainSnapshot = List.of(); // 最近一次已应用的当前路径快照
-    private final AtomicBoolean active = new AtomicBoolean(true); // 会话是否尚未结束
+    private volatile List<Window> chainSnapshot = List.of(); // 最近一次发布出去的路径快照, chain() 和 current() 都读它
+    private final AtomicBoolean active = new AtomicBoolean(true); // 会话还没结束; 只能从 true 翻到 false
 
     AbstractWindowSession(@NotNull WindowManager manager, @NotNull Player viewer, @NotNull List<Consumer<WindowCloseReason>> sessionEndHandlers) {
         this.manager = manager;
@@ -30,7 +30,7 @@ abstract class AbstractWindowSession implements WindowSession {
         this.sessionEndHandlers = new HandlerList<>(sessionEndHandlers);
     }
 
-    // 按根窗声明创建会话, 并把根窗收为第一个成员. 只在玩家实体线程调用.
+    // 按根窗声明的类型建会话, 顺手把根窗收成第一个成员; 只在玩家实体线程调用.
     @NotNull
     static AbstractWindowSession create(@NotNull WindowManager manager, @NotNull AbstractWindow<?> root) {
         AbstractWindowSession session = switch (root.rootSessionKind()) {
@@ -42,7 +42,7 @@ abstract class AbstractWindowSession implements WindowSession {
         return session;
     }
 
-    // open handler 触发前先落位, 回调读到的 current 已经是新 Window.
+    // 在派发 open handler 之前先落位, 回调里读到的 current 于是已经是新的那一扇.
     void commitOpen(@NotNull AbstractWindow<?> opened, boolean back) {
         if (back) {
             this.stepBack();
@@ -54,21 +54,21 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 在玩家实体线程打开下一扇 Window 并推进当前位置.
+     * 在玩家实体线程打开下一扇, 并把当前位置推进过去.
      *
      * @param next 要打开的 Window
-     * @return 打开并推进完成时返回 true
+     * @return 打开且推进完成时为 true
      */
     final boolean navigateNow(@NotNull AbstractWindow<?> next) {
         if (!this.active.get()) return false;
-        // 推进当前位置由 openNow 在 open handler 之前完成, 打开失败时当前位置原样不动
+        // 位置的推进由 openInSession 在派发 open handler 之前做掉; 打开失败的话位置一步都不动
         return this.manager.openInSession(next, this, false);
     }
 
     /**
-     * 在玩家实体线程回到上一扇, 上一扇以原实例重新打开.
+     * 在玩家实体线程退回上一扇, 上一扇是拿原实例重新打开的.
      *
-     * @return 发生了返回时返回 true
+     * @return 真的发生返回时为 true
      */
     final boolean backNow() {
         if (!this.active.get()) return false;
@@ -79,6 +79,7 @@ abstract class AbstractWindowSession implements WindowSession {
     @NotNull
     @Override
     public CompletableFuture<EndResult> end() {
+        // 结束动作提交到玩家实体线程去执行, 结果按提交那一刻的状态回报
         boolean wasActive = this.active.get();
         return this.manager.submit(
                 this.viewer,
@@ -89,7 +90,7 @@ abstract class AbstractWindowSession implements WindowSession {
 
     /**
      * 在玩家实体线程结束会话.
-     * 先迁移状态再关闭当前窗, 当前窗关闭不会重新进入本会话的决策. 结束处理器最后触发.
+     * <p>先把状态迁移掉再关当前窗, 所以关窗不会再绕回本会话的决策里; 结束处理器放在最后跑.
      *
      * @param reason 结束原因
      * @param closeCurrent 是否需要由本次结束关闭当前窗
@@ -115,7 +116,7 @@ abstract class AbstractWindowSession implements WindowSession {
         return EndResult.ENDED;
     }
 
-    // 玩家主动关闭且允许返回时回到上一扇, 其余情况结束整段会话.
+    // 玩家主动关的, 而且这条路径允许返回, 就退回上一扇; 别的情况一律结束整段会话.
     void onChainTopClosed(@NotNull AbstractWindow<?> window, @NotNull WindowCloseReason reason) {
         if (reason == WindowCloseReason.PLAYER && window.backOnPlayerClose() && this.backNow()) {
             return;
@@ -123,7 +124,7 @@ abstract class AbstractWindowSession implements WindowSession {
         this.endNow(reason, false);
     }
 
-    // 调度器退役后没有可用的玩家实体线程, 只回收状态, 不运行用户结束处理器.
+    // 调度器退役之后没有可用的玩家实体线程了, 只回收状态, 用户结束处理器不跑.
     void retire() {
         if (this.deactivate()) {
             this.releaseMembers();
@@ -132,7 +133,7 @@ abstract class AbstractWindowSession implements WindowSession {
         }
     }
 
-    // 会话不会再激活, 终态迁移后把绑定的订阅当场摘掉, 不等会话被回收.
+    // 会话已经不会再激活, 绑定当场摘掉, 不等它被回收.
     private void detachBindings() {
         try {
             this.bindings.suspendAll();
@@ -141,13 +142,13 @@ abstract class AbstractWindowSession implements WindowSession {
         }
     }
 
-    // 把会话迁移到已结束状态, 之后所有导航都不再接管. 本次调用完成迁移时返回 true.
-    // 结束可能同时来自会话自身, 关闭去向决策与 shutdown, 迁移必须原子, 释放成员与结束处理器才恰好跑一次.
+    // 把会话推进到已结束状态, 之后所有导航都不再接管; 这次真的完成迁移时返回 true.
+    // 结束可能同时来自会话自己, 关窗去向决策和 shutdown, 迁移必须原子, 释放成员和结束处理器才只跑一次.
     private boolean deactivate() {
         return this.active.compareAndSet(true, false);
     }
 
-    // 运行结束处理器.
+    // 把结束处理器挨个跑一遍, 一个抛了不影响后面的
     private void fireSessionEndHandlers(@NotNull WindowCloseReason reason) {
         this.sessionEndHandlers.forEachIsolated(
                 handler -> handler.accept(reason),
@@ -157,14 +158,14 @@ abstract class AbstractWindowSession implements WindowSession {
     }
 
     /**
-     * 把刚打开的 Window 推进为当前位置.
+     * 把刚打开的 Window 摆成当前位置.
      *
      * @param next 已经打开的 Window
      */
     abstract void stepInto(@NotNull AbstractWindow<?> next);
 
     /**
-     * 从当前位置返回上一扇.
+     * 从当前位置退回上一扇.
      */
     abstract void stepBack();
 
@@ -178,11 +179,11 @@ abstract class AbstractWindowSession implements WindowSession {
     abstract List<Window> currentPath();
 
     /**
-     * 释放全部成员, 逐个解除 Window 的会话归属并清空成员结构.
+     * 放掉全部成员: 挨个解除 Window 的会话归属, 再清空成员结构.
      */
     abstract void releaseMembers();
 
-    // 重新发布当前路径快照.
+    // 重新发布路径快照, 读的人下一眼看到的就是新路径
     final void publishSnapshot() {
         this.chainSnapshot = List.copyOf(this.currentPath());
     }
@@ -190,6 +191,7 @@ abstract class AbstractWindowSession implements WindowSession {
     @NotNull
     @Override
     public Subscription bind(@NotNull Signal<?> signal, @NotNull Consumer<? super WindowSession> callback) {
+        // 绑定挂在会话上, 会话结束就一起摘掉
         return this.bindings.bind(() -> signal.onDirty(() -> callback.accept(this)));
     }
 
@@ -224,6 +226,7 @@ abstract class AbstractWindowSession implements WindowSession {
     @Nullable
     @Override
     public Window current() {
+        // 快照的最后一格就是当前窗
         List<Window> snapshot = this.chainSnapshot;
         return snapshot.isEmpty() ? null : snapshot.get(snapshot.size() - 1);
     }
@@ -232,11 +235,13 @@ abstract class AbstractWindowSession implements WindowSession {
     @Override
     @Unmodifiable
     public List<Window> chain() {
+        // 快照本身不可变, 直接给出去
         return this.chainSnapshot;
     }
 
     @Override
     public boolean hasBack() {
+        // 路径里不止一扇才有上一扇
         return this.chainSnapshot.size() > 1;
     }
 
