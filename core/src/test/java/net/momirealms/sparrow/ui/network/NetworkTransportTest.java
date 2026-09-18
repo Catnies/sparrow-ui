@@ -265,6 +265,187 @@ class NetworkTransportTest {
         assertNull(this.channel.readInbound());
     }
 
+    @Test
+    void silentEndpointsSkipListenersAndRestoreOrdinaryDispatch() {
+        this.user.sendPacketSilently(this.packet(OUTBOUND, 1));
+        this.user.sendByteBufSilently(this.frame(OUTBOUND, 2));
+        this.user.sendPacketSilently(OUTBOUND, buffer -> buffer.writeVarInt(3));
+        this.user.receivePacketSilently(this.packet(INBOUND, 1));
+        this.user.receiveByteBufSilently(this.frame(INBOUND, 2));
+        this.user.receivePacketSilently(INBOUND, buffer -> buffer.writeVarInt(3));
+        for (int value = 1; value <= 3; value++) {
+            this.assertOutbound(value);
+            this.assertInbound(value);
+        }
+        assertEquals(0, this.outboundNms.get());
+        assertEquals(0, this.outboundBytes.get());
+        assertEquals(0, this.inboundNms.get());
+        assertEquals(0, this.inboundBytes.get());
+
+        this.user.sendPacket(this.packet(OUTBOUND, 4));
+        this.user.receiveByteBuf(this.frame(INBOUND, 4));
+        this.assertOutbound(4);
+        this.assertInbound(4);
+        assertEquals(1, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+        assertEquals(1, this.inboundNms.get());
+        assertEquals(1, this.inboundBytes.get());
+    }
+
+    @Test
+    void silentPacketsStillVisitThirdPartyHandlers() {
+        AtomicInteger objects = new AtomicInteger();
+        AtomicInteger bytes = new AtomicInteger();
+        this.channel.pipeline().addAfter(this.manager.packetBridgeName, "third_party_object", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) {
+                assertInstanceOf(WirePacket.class, message);
+                objects.incrementAndGet();
+                context.write(message, promise);
+            }
+        });
+        this.channel.pipeline().addBefore(this.manager.encoderName, "third_party_bytes", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) {
+                assertInstanceOf(ByteBuf.class, message);
+                bytes.incrementAndGet();
+                context.write(message, promise);
+            }
+        });
+        this.channel.pipeline().addAfter(this.manager.decoderName, "third_party_inbound_bytes", new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext context, Object message) {
+                assertInstanceOf(ByteBuf.class, message);
+                bytes.incrementAndGet();
+                context.fireChannelRead(message);
+            }
+        });
+        this.channel.pipeline().addBefore(this.manager.packetBridgeName, "third_party_inbound_object", new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext context, Object message) {
+                assertInstanceOf(WirePacket.class, message);
+                objects.incrementAndGet();
+                context.fireChannelRead(message);
+            }
+        });
+        this.user.sendPacketSilently(this.packet(OUTBOUND, 1));
+        this.user.receiveByteBufSilently(this.frame(INBOUND, 2));
+        this.assertOutbound(1);
+        this.assertInbound(2);
+        assertEquals(2, objects.get());
+        assertEquals(2, bytes.get());
+        assertEquals(0, this.outboundNms.get());
+        assertEquals(0, this.outboundBytes.get());
+        assertEquals(0, this.inboundNms.get());
+        assertEquals(0, this.inboundBytes.get());
+    }
+
+    @Test
+    void nestedApiCallsRestoreOuterOutboundMode() {
+        this.channel.pipeline().addAfter("encoder", "nested", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) {
+                int value = ((WirePacket) message).value;
+                if (value == 1) {
+                    NetworkTransportTest.this.user.sendPacket(NetworkTransportTest.this.packet(OUTBOUND, 2));
+                } else if (value == 2) {
+                    NetworkTransportTest.this.user.sendPacketSilently(NetworkTransportTest.this.packet(OUTBOUND, 3));
+                }
+                context.write(message, promise);
+            }
+        });
+        this.user.sendPacketSilently(this.packet(OUTBOUND, 1));
+        this.assertOutbound(3);
+        this.assertOutbound(2);
+        this.assertOutbound(1);
+        assertEquals(1, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+        this.user.sendPacket(this.packet(OUTBOUND, 4));
+        this.assertOutbound(4);
+        assertEquals(2, this.outboundNms.get());
+        assertEquals(2, this.outboundBytes.get());
+    }
+
+    @Test
+    void nestedReceiveRestoresInboundModeAndKeepsResponsesOrdinary() {
+        this.channel.pipeline().addAfter("decoder", "respond", new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelRead(ChannelHandlerContext context, Object message) {
+                if (((WirePacket) message).value == 1) {
+                    NetworkTransportTest.this.user.receivePacket(NetworkTransportTest.this.packet(INBOUND, 2));
+                    context.channel().writeAndFlush(NetworkTransportTest.this.packet(OUTBOUND, 9));
+                }
+                context.fireChannelRead(message);
+            }
+        });
+        this.user.receiveByteBufSilently(this.frame(INBOUND, 1));
+        this.assertInbound(2);
+        this.assertInbound(1);
+        this.assertOutbound(9);
+        assertEquals(1, this.inboundNms.get());
+        assertEquals(0, this.inboundBytes.get());
+        assertEquals(1, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+        this.user.receiveByteBuf(this.frame(INBOUND, 3));
+        this.assertInbound(3);
+        assertEquals(2, this.inboundNms.get());
+        assertEquals(1, this.inboundBytes.get());
+    }
+
+    @Test
+    void callerCreatedBundleCanBeSentSilently() {
+        this.user.sendPacketSilently(new ClientboundBundlePacket(List.of(this.packet(OUTBOUND, 1), this.packet(OUTBOUND, 2))));
+        this.assertOutbound(1);
+        this.assertOutbound(2);
+        assertEquals(0, this.outboundNms.get());
+        assertEquals(0, this.outboundBytes.get());
+        this.user.sendPacket(this.packet(OUTBOUND, 3));
+        this.assertOutbound(3);
+        assertEquals(1, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+    }
+
+    @Test
+    void encodingFailureRestoresOutboundModeAndReleasesMessage() {
+        WirePacket failing = this.packet(OUTBOUND, 99);
+        this.user.sendPacketSilently(failing);
+        assertEquals(0, failing.refCnt());
+        assertNull(this.channel.readOutbound());
+        this.user.sendPacket(this.packet(OUTBOUND, 1));
+        this.assertOutbound(1);
+        assertEquals(1, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+    }
+
+    @Test
+    void decodingFailureRestoresInboundModeAndReleasesFrame() {
+        ByteBuf frame = Unpooled.buffer();
+        new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(INBOUND));
+        assertThrows(RuntimeException.class, () -> {
+            this.user.receiveByteBufSilently(frame);
+            this.channel.checkException();
+        });
+        assertEquals(0, frame.refCnt());
+        this.user.receiveByteBuf(this.frame(INBOUND, 1));
+        this.assertInbound(1);
+        assertEquals(1, this.inboundNms.get());
+        assertEquals(1, this.inboundBytes.get());
+    }
+
+    @Test
+    void delayedContinuationUsesTheRestoredMode() {
+        DelayedWrites delayed = new DelayedWrites();
+        this.channel.pipeline().addAfter("encoder", "delay", delayed);
+        this.user.sendPacketSilently(this.packet(OUTBOUND, 1));
+        assertNull(this.channel.readOutbound());
+        // 同步发送已返回, 后续任务里的原始 context 转发按当前普通模式执行.
+        this.channel.eventLoop().execute(() -> delayed.forward(0));
+        this.channel.runPendingTasks();
+        this.assertOutbound(1);
+        assertEquals(0, this.outboundNms.get());
+        assertEquals(1, this.outboundBytes.get());
+    }
+
     static class Encoder extends MessageToByteEncoder<WirePacket> {
         @Override
         protected void encode(ChannelHandlerContext context, WirePacket packet, ByteBuf output) {

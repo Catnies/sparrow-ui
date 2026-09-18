@@ -379,6 +379,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 每帧捕获一次快照, 命中后创建事件并按注册顺序执行整条链.
     private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, boolean serverbound) throws Exception {
         if (!buffer.isReadable()) return false;
+        // 静默帧在读取包 ID 和创建事件之前放行.
+        if (serverbound ? user.silentInbound() : user.silentOutbound()) return true;
         RegistrySnapshot snapshot = this.registry;
         ConnectionState state = serverbound ? user.decoderState() : user.encoderState();
         PacketFlow flow = serverbound ? PacketFlow.SERVERBOUND : PacketFlow.CLIENTBOUND;
@@ -510,33 +512,33 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
     // 发送与模拟接收
 
-    void sendByteBuf(NetworkUser user, ByteBuf frame) {
+    void sendByteBuf(NetworkUser user, ByteBuf frame, boolean silent) {
         this.requireOpen();
-        this.transfer(user, frame, true, true);
+        this.transfer(user, frame, true, true, silent);
     }
 
-    void sendPacket(NetworkUser user, Object packet) {
-        this.requireOpen();
-        if (!PacketProxy.CLASS.isInstance(packet)) {
-            throw new IllegalArgumentException("Expected an NMS packet");
-        }
-        this.transfer(user, packet, true, false);
-    }
-
-    void receiveByteBuf(NetworkUser user, ByteBuf frame) {
-        this.requireOpen();
-        this.transfer(user, frame, false, true);
-    }
-
-    void receivePacket(NetworkUser user, Object packet) {
+    void sendPacket(NetworkUser user, Object packet, boolean silent) {
         this.requireOpen();
         if (!PacketProxy.CLASS.isInstance(packet)) {
             throw new IllegalArgumentException("Expected an NMS packet");
         }
-        this.transfer(user, packet, false, false);
+        this.transfer(user, packet, true, false, silent);
     }
 
-    void writePacket(NetworkUser user, PacketType type, Consumer<PacketBuf> writer, boolean outbound) {
+    void receiveByteBuf(NetworkUser user, ByteBuf frame, boolean silent) {
+        this.requireOpen();
+        this.transfer(user, frame, false, true, silent);
+    }
+
+    void receivePacket(NetworkUser user, Object packet, boolean silent) {
+        this.requireOpen();
+        if (!PacketProxy.CLASS.isInstance(packet)) {
+            throw new IllegalArgumentException("Expected an NMS packet");
+        }
+        this.transfer(user, packet, false, false, silent);
+    }
+
+    void writePacket(NetworkUser user, PacketType type, Consumer<PacketBuf> writer, boolean outbound, boolean silent) {
         this.requireOpen();
         PacketFlow flow = outbound ? PacketFlow.CLIENTBOUND : PacketFlow.SERVERBOUND;
         if (type.flow() != flow) {
@@ -555,17 +557,17 @@ public final class NetworkManager implements Listener, AutoCloseable {
             frame.release();
             throw failure;
         }
-        this.transfer(user, frame, outbound, true);
+        this.transfer(user, frame, outbound, true, silent);
     }
 
     // 消息在入队成功后由框架持有, 跨线程调用交给连接的 event loop 执行.
-    private void transfer(NetworkUser user, Object message, boolean outbound, boolean bytes) {
+    private void transfer(NetworkUser user, Object message, boolean outbound, boolean bytes, boolean silent) {
         Channel channel = user.channel();
         if (channel.eventLoop().inEventLoop()) {
-            this.transferOnEventLoop(user, message, outbound, bytes);
+            this.transferOnEventLoop(user, message, outbound, bytes, silent);
         } else {
             try {
-                channel.eventLoop().execute(() -> this.transferOnEventLoop(user, message, outbound, bytes));
+                channel.eventLoop().execute(() -> this.transferOnEventLoop(user, message, outbound, bytes, silent));
             } catch (RuntimeException failure) {
                 ReferenceCountUtil.release(message);
                 throw failure;
@@ -573,7 +575,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
     }
 
-    private void transferOnEventLoop(NetworkUser user, Object message, boolean outbound, boolean bytes) {
+    private void transferOnEventLoop(NetworkUser user, Object message, boolean outbound, boolean bytes, boolean silent) {
         // 空帧在注入前消费, 不交给原版 codec.
         if (bytes && !((ByteBuf) message).isReadable()) {
             ReferenceCountUtil.release(message);
@@ -609,20 +611,34 @@ public final class NetworkManager implements Listener, AutoCloseable {
         }
 
         if (outbound) {
-            // 从 pipeline 尾部进入, 由各监听层处理它能识别的消息.
-            channel.writeAndFlush(message);
+            // 普通调用也设置本次模式, 嵌套 API 调用结束后恢复外层状态.
+            boolean previous = user.silentOutbound();
+            user.silentOutbound(silent);
+            try {
+                // 从 pipeline 尾部进入, 第三方处理器继续按原顺序处理消息.
+                channel.writeAndFlush(message);
+            } finally {
+                user.silentOutbound(previous);
+            }
             return;
         }
 
-        if (bytes) {
-            // 从 Sparrow 字节监听层注入包 ID + payload, 后面继续走原版解码.
-            ((ByteBufDecoder) context.handler()).channelRead(context, message);
-        } else {
-            // 从 Sparrow NMS 监听层注入对象包, 后面继续走服务器连接处理.
-            ((NMSPacketBridge) context.handler()).channelRead(context, message);
+        // 入站单独保存模式, 同步产生的出站响应使用自身的出站模式.
+        boolean previous = user.silentInbound();
+        user.silentInbound(silent);
+        try {
+            if (bytes) {
+                // 从 Sparrow 字节监听层注入包 ID + payload, 后面继续走原版解码.
+                ((ByteBufDecoder) context.handler()).channelRead(context, message);
+            } else {
+                // 从 Sparrow NMS 监听层注入对象包, 后面继续走服务器连接处理.
+                ((NMSPacketBridge) context.handler()).channelRead(context, message);
+            }
+            // 为本次模拟读取补发完成事件, 让后续 handler 完成这一轮读取的收尾工作.
+            context.fireChannelReadComplete();
+        } finally {
+            user.silentInbound(previous);
         }
-        // 为本次模拟读取补发完成事件, 让后续 handler 完成这一轮读取的收尾工作.
-        context.fireChannelReadComplete();
     }
 
     // 已经在 event loop 里就当场跑, 省一次排队, 也省得调用方以为任务还没执行.
@@ -753,8 +769,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         public void channelRead(ChannelHandlerContext context, Object packet) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
             IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.SERVERBOUND.ordinal()];
-            if (routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
-                // 方向表为空时无需读取 type(), 非 NMS 消息也沿原 pipeline 透传.
+            if (this.user.silentInbound() || routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
+                // 静默、空路由和非 NMS 消息直接沿原 pipeline 透传.
                 context.fireChannelRead(packet);
                 return;
             }
@@ -787,8 +803,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
             IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.CLIENTBOUND.ordinal()];
-            if (routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
-                // 出站方向为空时, bundle 也按原对象直接转交.
+            if (this.user.silentOutbound() || routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
+                // 静默或出站方向为空时, bundle 也按原对象直接转交.
                 context.write(packet, promise);
                 return;
             }

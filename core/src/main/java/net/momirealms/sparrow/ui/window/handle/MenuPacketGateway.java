@@ -66,7 +66,8 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
         Object packet = packets.size() == 1
                 ? packets.getFirst()
                 : ClientboundBundlePacketProxy.INSTANCE.newInstance(new ArrayList<>(packets));
-        user.sendPacket(packet);
+        // 菜单替代配方绕过本会话的出站过滤器.
+        user.sendPacketSilently(packet);
     }
 
     @Override

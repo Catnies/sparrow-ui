@@ -116,6 +116,11 @@ class NetworkMenuGatewayTest {
             ByteBuf frame = this.frame(type, b -> b.writeByte(0));
             assertFalse(this.channel.writeOutbound(frame));
             assertEquals(0, frame.refCnt());
+            // 菜单主动发送的替代包使用静默入口, 同一会话的过滤器应放行.
+            ByteBuf replacement = this.frame(type, b -> b.writeByte(1));
+            this.user.sendByteBufSilently(replacement);
+            assertSame(replacement, this.channel.readOutbound());
+            replacement.release();
         }
         this.gateway.close();
         ByteBuf frame = this.frame(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, b -> b.writeByte(0));

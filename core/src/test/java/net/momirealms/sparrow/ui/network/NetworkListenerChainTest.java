@@ -322,6 +322,16 @@ class NetworkListenerChainTest {
     }
 
     @Test
+    void silentByteBufSkipsStateListenersTogetherWithUserListeners() {
+        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, (u, event) -> fail("silent state packet reached listener"));
+        this.user.sendByteBufSilently(this.frame(PacketTypes.Play.Clientbound.START_CONFIGURATION, 0));
+        assertEquals(ConnectionState.PLAY, this.user.encoderState());
+        ByteBuf sent = this.channel.readOutbound();
+        assertNotNull(sent);
+        sent.release();
+    }
+
+    @Test
     void statePacketsCanBeRewrittenAndObservedByLaterCallbacks() {
         PacketType type = PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
         this.manager.listenByteBuf(type, (u, e) -> {

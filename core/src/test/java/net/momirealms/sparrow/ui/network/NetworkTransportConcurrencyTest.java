@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class NetworkTransportConcurrencyTest {
     @Test
     @SuppressWarnings("deprecation")
-    void concurrentCallersDispatchAllPacketsOnTheEventLoop() throws Exception {
+    void concurrentOrdinaryAndSilentCallersAreIsolatedOnTheEventLoop() throws Exception {
         MockBukkit.mock();
         NetworkManager manager = NetworkManagerTestSupport.openManager();
         DefaultEventLoopGroup loops = new DefaultEventLoopGroup(2);
@@ -108,10 +108,16 @@ class NetworkTransportConcurrencyTest {
             int id = manager.packetIds().id(outbound);
             List<Callable<Void>> calls = new ArrayList<>();
             for (int index = 0; index < sends; index++) {
+                boolean silent = index % 2 == 0;
                 calls.add(() -> {
                     NetworkTransportTest.WirePacket packet = new NetworkTransportTest.WirePacket(nativeType, id, 7);
-                    user.sendPacket(packet);
-                    user.receivePacket(inbound, buffer -> buffer.writeVarInt(7));
+                    if (silent) {
+                        user.sendPacketSilently(packet);
+                        user.receivePacketSilently(inbound, buffer -> buffer.writeVarInt(7));
+                    } else {
+                        user.sendPacket(packet);
+                        user.receivePacket(inbound, buffer -> buffer.writeVarInt(7));
+                    }
                     return null;
                 });
             }
@@ -122,10 +128,10 @@ class NetworkTransportConcurrencyTest {
             }
             assertTrue(received.await(5, TimeUnit.SECONDS), () -> "outstanding=" + received.getCount() + " nms=" + outboundNms + " bytes=" + outboundBytes + " errors=" + errors);
             assertTrue(injected.await(5, TimeUnit.SECONDS), () -> "outstanding=" + injected.getCount() + " nms=" + inboundNms + " bytes=" + inboundBytes + " errors=" + errors);
-            assertEquals(sends, outboundNms.get());
-            assertEquals(sends, outboundBytes.get());
-            assertEquals(sends, inboundNms.get());
-            assertEquals(sends, inboundBytes.get());
+            assertEquals(sends / 2, outboundNms.get());
+            assertEquals(sends / 2, outboundBytes.get());
+            assertEquals(sends / 2, inboundNms.get());
+            assertEquals(sends / 2, inboundBytes.get());
             assertEquals(0, wrongThread.get());
         } finally {
             if (connection != null) connection.close().syncUninterruptibly();
