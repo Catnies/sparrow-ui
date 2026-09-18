@@ -8,7 +8,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-@ApiStatus.Experimental
 public final class NetworkUser {
     private final NetworkManager networkManager;
     private final Channel channel;
@@ -16,7 +15,7 @@ public final class NetworkUser {
     private volatile ConnectionState decoderState = ConnectionState.HANDSHAKING;
     private volatile ConnectionState encoderState = ConnectionState.HANDSHAKING;
     private volatile @Nullable Player player;   // 连接建起来的时候还没有玩家对象, 要等进世界才绑得上
-    private int bypassDepth;                    // 库自己发包期间加一, 这段时间里派发会整帧放过
+    private int bypassDepth;                    // 库自己发包期间加一, 这段时间跳过整条监听链
 
     NetworkUser(@NotNull NetworkManager networkManager, @NotNull Channel channel) {
         this.networkManager = networkManager;

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.network.filter;
+package net.momirealms.sparrow.ui.window.filter;
 
 import net.momirealms.sparrow.ui.network.PacketIdRegistry;
 import org.jetbrains.annotations.NotNull;

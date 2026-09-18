@@ -3,12 +3,18 @@ package net.momirealms.sparrow.ui.network;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
+import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.network.listener.configuration.FinishConfigurationListener;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class NetworkProtocolStateTest {
 
@@ -136,5 +142,47 @@ class NetworkProtocolStateTest {
         this.outbound("minecraft:login", ConnectionState.PLAY);
 
         assertEquals(ConnectionState.PLAY, this.user.decoderState());
+    }
+
+    @Test
+    void stateListenerUsesRegistrationOrderCancellationAndSubscriptionRemoval() {
+        this.user.setConnectionState(ConnectionState.CONFIGURATION);
+        PacketType type = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        Subscription cancellation = this.manager.listenByteBuf(type, (user, event) -> event.cancel());
+        Subscription stateListener = this.manager.listenByteBuf(type, FinishConfigurationListener.INSTANCE);
+        this.inbound(type.name(), type.state());
+        assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
+
+        cancellation.close();
+        this.inbound(type.name(), type.state());
+        assertEquals(ConnectionState.PLAY, this.user.encoderState());
+
+        this.user.encoderState(ConnectionState.CONFIGURATION);
+        stateListener.close();
+        this.inbound(type.name(), type.state());
+        assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
+        assertTrue(this.channel.isOpen());
+    }
+
+    @Test
+    void malformedHandshakeIsConsumedByItsListenerAndStopsLaterCallbacks() {
+        this.manager.listenByteBuf(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event) -> fail("invalid handshake continued"));
+        ByteBuf frame = Unpooled.buffer();
+        new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(PacketTypes.Handshaking.Serverbound.INTENTION));
+        frame.writeByte(0x80);
+        assertFalse(this.channel.writeInbound(frame));
+        assertNull(this.channel.readInbound());
+        assertEquals(0, frame.refCnt());
+        assertFalse(this.channel.isOpen());
+        assertEquals(ConnectionState.HANDSHAKING, this.user.decoderState());
+    }
+
+    @Test
+    void unknownHandshakeIntentionClosesWithoutAdvancingState() {
+        this.manager.listenByteBuf(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event) -> fail("invalid handshake continued"));
+        this.intention(4);
+        assertFalse(this.channel.isOpen());
+        assertEquals(ConnectionState.HANDSHAKING, this.user.decoderState());
+        assertEquals(ConnectionState.HANDSHAKING, this.user.encoderState());
     }
 }

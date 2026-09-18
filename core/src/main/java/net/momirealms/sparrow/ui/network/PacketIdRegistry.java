@@ -10,21 +10,23 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.handshake.Hand
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.login.LoginProtocolsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.status.StatusProtocolsProxy;
 import net.momirealms.sparrow.ui.util.VersionHelper;
-import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-@ApiStatus.Experimental
 public final class PacketIdRegistry {
-    private final Map<String, Integer>[][] packetIds;
     private final int[][] packetCounts;
+    private final Map<String, Integer>[][] packetIds;
+    private final Map<String, Object>[][] nativeTypes;
+    private final Map<Object, Integer> stateMasks = new IdentityHashMap<>();
 
     /**
      * 把五个协议阶段的包表读一遍, 建立只读索引.
@@ -33,16 +35,24 @@ public final class PacketIdRegistry {
     @SuppressWarnings("unchecked")
     public PacketIdRegistry() {
         this.packetIds = (Map<String, Integer>[][]) new Map[ConnectionState.values().length][PacketFlow.values().length];
+        this.nativeTypes = (Map<String, Object>[][]) new Map[ConnectionState.values().length][PacketFlow.values().length];
         this.packetCounts = new int[ConnectionState.values().length][PacketFlow.values().length];
         for (ConnectionState state : ConnectionState.values()) {
             for (PacketFlow flow : PacketFlow.values()) {
                 this.packetIds[state.ordinal()][flow.ordinal()] = Map.of();
+                this.nativeTypes[state.ordinal()][flow.ordinal()] = Map.of();
             }
         }
         for (ProtocolTemplate template : protocolTemplates()) {
             PacketTable table = readPacketTable(template.template());
-            this.packetIds[template.state().ordinal()][template.flow().ordinal()] = table.ids();
+            this.packetIds[template.state().ordinal()][template.flow().ordinal()] = table.packetIds();
+            this.nativeTypes[template.state().ordinal()][template.flow().ordinal()] = table.nativeTypes();
             this.packetCounts[template.state().ordinal()][template.flow().ordinal()] = table.count();
+            int stateMask = 1 << template.state().ordinal();
+            // 同一个原生类型可出现在多个阶段, 在初始化时汇总它的全部来源.
+            for (Object nativeType : table.nativeTypes().values()) {
+                this.stateMasks.merge(nativeType, stateMask, (previous, added) -> previous | added);
+            }
         }
     }
 
@@ -56,6 +66,26 @@ public final class PacketIdRegistry {
      */
     public int byName(@NotNull String name, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
         return this.packetIds[state.ordinal()][flow.ordinal()].getOrDefault(name, -1);
+    }
+
+    /**
+     * 按逻辑包类型查询当前服务端的数字 ID.
+     *
+     * @param type 包的注册名, 阶段和方向
+     * @return 当前数字 ID; 当前版本不存在该类型时为 -1
+     */
+    public int id(@NotNull PacketType type) {
+        return this.byName(type.name(), type.state(), type.flow());
+    }
+
+    @Nullable
+    Object nativeType(@NotNull PacketType type) {
+        return this.nativeTypes[type.state().ordinal()][type.flow().ordinal()].get(type.name());
+    }
+
+    // 每一位对应一个 ConnectionState.ordinal(), 未登记的原生实例返回 0.
+    int stateMask(@NotNull Object nativeType) {
+        return this.stateMasks.getOrDefault(nativeType, 0);
     }
 
     /**
@@ -98,7 +128,8 @@ public final class PacketIdRegistry {
     }
 
     private static PacketTable readPacketTable(Object template) {
-        HashMap<String, Integer> ids = new HashMap<>();
+        HashMap<String, Integer> packetIds = new HashMap<>();
+        HashMap<String, Object> nativeTypes = new HashMap<>();
         int[] largestId = {-1};
         // 1.21.5 起包表挂在 ProtocolInfo 的 details 上, 之前的版本直接把 unbound 模板交出去
         Class<?> visitorClass = VersionHelper.isOrAbove1_21_5
@@ -113,7 +144,8 @@ public final class PacketIdRegistry {
                 Object packetType = arguments[0];
                 int packetId = (int) arguments[1];
                 String name = PacketTypeProxy.INSTANCE.id(packetType).toString();
-                ids.put(name, packetId);
+                packetIds.put(name, packetId);
+                nativeTypes.put(name, packetType);
                 largestId[0] = Math.max(largestId[0], packetId);
                 return null;
             }
@@ -131,12 +163,12 @@ public final class PacketIdRegistry {
         } else {
             ProtocolInfoUnboundProxy.INSTANCE.listPackets(template, visitor);
         }
-        return new PacketTable(Map.copyOf(ids), largestId[0] + 1);
+        return new PacketTable(Map.copyOf(packetIds), Map.copyOf(nativeTypes), largestId[0] + 1);
     }
 
     private record ProtocolTemplate(ConnectionState state, PacketFlow flow, Object template) {
     }
 
-    private record PacketTable(Map<String, Integer> ids, int count) {
+    private record PacketTable(Map<String, Integer> packetIds, Map<String, Object> nativeTypes, int count) {
     }
 }

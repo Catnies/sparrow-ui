@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.window.handle;
 
 import net.kyori.adventure.text.Component;
-import net.momirealms.sparrow.ui.network.filter.ClientboundPacketFilter;
-import net.momirealms.sparrow.ui.network.filter.ClientboundStateProjection;
+import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
+import net.momirealms.sparrow.ui.window.filter.ClientboundStateProjection;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.event.CraftEventFactoryProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;

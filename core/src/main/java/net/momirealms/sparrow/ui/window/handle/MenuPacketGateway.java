@@ -1,18 +1,14 @@
 package net.momirealms.sparrow.ui.window.handle;
 
-import net.momirealms.sparrow.ui.network.filter.ClientboundPacketFilter;
-import net.momirealms.sparrow.ui.network.filter.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
-import net.momirealms.sparrow.ui.network.ByteBufPacketListener;
-import net.momirealms.sparrow.ui.network.ConnectionState;
-import net.momirealms.sparrow.ui.network.NMSPacketEvent;
-import net.momirealms.sparrow.ui.network.NMSPacketListener;
+import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.network.NetworkUser;
 import net.momirealms.sparrow.ui.network.PacketBuf;
-import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.PacketTypes;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
 import net.momirealms.sparrow.ui.util.VersionHelper;
+import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
+import net.momirealms.sparrow.ui.window.filter.ClientboundStateProjection;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -25,6 +21,7 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,6 +33,7 @@ import java.util.function.Consumer;
 // 把菜单协议包转换为稳定的 MenuInput, Session 交接仍由玩家实体线程决定.
 final class MenuPacketGateway implements Listener, AutoCloseable {
     private final NetworkManager network;
+    private final List<Subscription> subscriptions = new ArrayList<>();
     private final Map<UUID, AtomicReference<Session>> sessions = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -71,6 +69,9 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
             return;
         }
         HandlerList.unregisterAll(this);
+        // 先标记 gateway 关闭, 再注销全局监听; 网络派发已经捕获的旧快照仍可能完成当前回调.
+        this.subscriptions.forEach(Subscription::close);
+        this.subscriptions.clear();
         for (AtomicReference<Session> active : this.sessions.values()) {
             active.set(null);
         }
@@ -86,122 +87,90 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
     }
 
     private void registerListeners() {
+        // 菜单所需的包必须在当前版本存在, 凭证随 gateway 关闭时一起注销.
         // 选择收纳袋里的物品. 布局: VarInt slotId, VarInt selectedItemIndex.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                PacketBuf buffer = event.getBuffer();
-                session.accept(new MenuInput.Common.BundleSelection(session.containerId, buffer.readVarInt(), buffer.readVarInt()));
-            }
-        }, "minecraft:bundle_item_selected", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.BUNDLE_ITEM_SELECTED, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            PacketBuf buffer = event.buffer();
+            session.accept(new MenuInput.Common.BundleSelection(session.containerId, buffer.readVarInt(), buffer.readVarInt()));
+        }));
         // 关闭容器. 布局: VarInt containerId.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                session.accept(new MenuInput.Common.Close(event.getBuffer().readVarInt()));
-            }
-        }, "minecraft:container_close", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.CONTAINER_CLOSE, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            session.accept(new MenuInput.Common.Close(event.buffer().readVarInt()));
+        }));
         // Ping - Pong. 布局: 定长 4 字节 id, 与其余包的 VarInt 不同.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session != null) {
-                    session.accept(new MenuInput.Common.Pong(event.getBuffer().readInt()));
-                }
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.PONG, (user, event) -> {
+            Session session = this.active(user);
+            if (session != null) {
+                session.accept(new MenuInput.Common.Pong(event.buffer().readInt()));
             }
-        }, "minecraft:pong", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        }));
         // 重命名. 布局: Utf name.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                session.accept(new MenuInput.WindowSpecific.Rename(event.getBuffer().readUtf()));
-            }
-        }, "minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.RENAME_ITEM, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            session.accept(new MenuInput.WindowSpecific.Rename(event.buffer().readUtf()));
+        }));
         // 切换合成器输入槽. 布局: VarInt slotId, VarInt containerId, Bool newState —— 槽位在容器编号之前.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                PacketBuf buffer = event.getBuffer();
-                int slotId = buffer.readVarInt();
-                int containerId = buffer.readVarInt();
-                session.accept(new MenuInput.WindowSpecific.CrafterSlotState(containerId, slotId, buffer.readBoolean()));
-            }
-        }, "minecraft:container_slot_state_changed", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.CONTAINER_SLOT_STATE_CHANGED, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            PacketBuf buffer = event.buffer();
+            int slotId = buffer.readVarInt();
+            int containerId = buffer.readVarInt();
+            session.accept(new MenuInput.WindowSpecific.CrafterSlotState(containerId, slotId, buffer.readBoolean()));
+        }));
         // 选择原版按钮. 布局: VarInt containerId, VarInt buttonId.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                PacketBuf buffer = event.getBuffer();
-                session.accept(new MenuInput.WindowSpecific.ButtonClick(buffer.readVarInt(), buffer.readVarInt()));
-            }
-        }, "minecraft:container_button_click", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.CONTAINER_BUTTON_CLICK, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            PacketBuf buffer = event.buffer();
+            session.accept(new MenuInput.WindowSpecific.ButtonClick(buffer.readVarInt(), buffer.readVarInt()));
+        }));
         // 从配方书选择配方. 布局: VarInt containerId, VarInt recipeDisplayId, Bool useMaxItems.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                PacketBuf buffer = event.getBuffer();
-                session.accept(new MenuInput.WindowSpecific.RecipePlace(buffer.readVarInt(), buffer.readVarInt(), buffer.readBoolean()));
-            }
-        }, "minecraft:place_recipe", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.PLACE_RECIPE, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            PacketBuf buffer = event.buffer();
+            session.accept(new MenuInput.WindowSpecific.RecipePlace(buffer.readVarInt(), buffer.readVarInt(), buffer.readBoolean()));
+        }));
         // 选择村民交易栏位. 布局: VarInt index, 包内不带容器编号.
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                session.accept(new MenuInput.WindowSpecific.TradeSelect(session.containerId, event.getBuffer().readVarInt()));
-            }
-        }, "minecraft:select_trade", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Serverbound.SELECT_TRADE, (user, event) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            session.accept(new MenuInput.WindowSpecific.TradeSelect(session.containerId, event.buffer().readVarInt()));
+        }));
         // 屏蔽商人配方包流出
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketSend(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session != null && session.suppresses(event.packetId())) {
-                    event.cancelled(true);
-                }
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, (user, event) -> {
+            Session session = this.active(user);
+            if (session != null && session.suppresses(event.packetId())) {
+                event.cancel();
             }
-        }, "minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        }));
         // 屏蔽切石机配方包流出
-        this.network.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketSend(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session != null && session.suppresses(event.packetId())) {
-                    event.cancelled(true);
-                }
+        this.subscriptions.add(this.network.listenByteBuf(PacketTypes.Play.Clientbound.UPDATE_RECIPES, (user, event) -> {
+            Session session = this.active(user);
+            if (session != null && session.suppresses(event.packetId())) {
+                event.cancel();
             }
-        }, "minecraft:update_recipes", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        }));
 
-        this.network.registerNMSPacketListener(new NMSPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull NMSPacketEvent event, @NotNull Object packet) {
-                Session session = MenuPacketGateway.this.active(user);
-                if (session == null) return;
-                event.cancelled(true);
-                session.accept(Session.interaction(packet));
-            }
-        }, ServerboundContainerClickPacketProxy.CLASS, PacketFlow.SERVERBOUND);
+        this.subscriptions.add(this.network.listenNMS(PacketTypes.Play.Serverbound.CONTAINER_CLICK, (user, event, packet) -> {
+            Session session = this.active(user);
+            if (session == null) return;
+            event.cancel();
+            session.accept(Session.interaction(packet));
+        }));
     }
 
     @Nullable

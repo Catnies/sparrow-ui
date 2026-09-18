@@ -51,8 +51,8 @@ class NetworkDispatchTest {
         return buffer.source();
     }
 
-    private void listen(ByteBufPacketListener listener) {
-        this.manager.registerByteBufPacketListener(listener, LISTENED, ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+    private void listen(ByteBufPacketHandler listener) {
+        this.manager.listenByteBuf(PacketTypes.Play.Serverbound.CONTAINER_CLOSE, listener);
     }
 
     @Test
@@ -71,11 +71,8 @@ class NetworkDispatchTest {
     @Test
     void restoresPointersAfterAReadOnlyListener() {
         AtomicInteger seen = new AtomicInteger(-1);
-        this.listen(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                seen.set(event.getBuffer().readVarInt());
-            }
+        this.listen((user, event) -> {
+                seen.set(event.buffer().readVarInt());
         });
         this.channel.writeInbound(frame(this.listenedId, 42));
 
@@ -92,11 +89,8 @@ class NetworkDispatchTest {
 
     @Test
     void dropsCancelledFrame() {
-        this.listen(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                event.cancelled(true);
-            }
+        this.listen((user, event) -> {
+                event.cancel();
         });
         this.channel.writeInbound(frame(this.listenedId, 42));
 
@@ -105,15 +99,10 @@ class NetworkDispatchTest {
 
     @Test
     void forwardsRewrittenFrame() {
-        this.listen(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                PacketBuf buffer = event.getBuffer();
-                event.changed(true);
+        this.listen((user, event) -> {
+                PacketBuf buffer = event.buffer();
                 buffer.clear();
-                buffer.writeVarInt(event.packetId());
                 buffer.writeVarInt(99);
-            }
         });
         this.channel.writeInbound(frame(this.listenedId, 42));
         ByteBuf received = this.channel.readInbound();
@@ -128,12 +117,9 @@ class NetworkDispatchTest {
 
     @Test
     void isolatesListenerFailureAndKeepsTheOriginalFrame() {
-        this.listen(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                event.getBuffer().readVarInt();
+        this.listen((user, event) -> {
+                event.buffer().readVarInt();
                 throw new IllegalStateException("boom");
-            }
         });
         this.channel.writeInbound(frame(this.listenedId, 42));
         ByteBuf received = this.channel.readInbound();
@@ -148,40 +134,24 @@ class NetworkDispatchTest {
 
     @Test
     void dropsHalfRewrittenFrameWhenTheListenerFails() {
-        this.listen(new ByteBufPacketListener() {
-            @Override
-            public void onPacketReceive(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                PacketBuf buffer = event.getBuffer();
-                event.changed(true);
+        this.listen((user, event) -> {
+                PacketBuf buffer = event.buffer();
                 buffer.clear();
-                buffer.writeVarInt(event.packetId());
                 throw new IllegalStateException("boom");
-            }
         });
-        this.channel.writeInbound(frame(this.listenedId, 42));
+        org.junit.jupiter.api.Assertions.assertThrows(Exception.class, () -> this.channel.writeInbound(frame(this.listenedId, 42)));
 
         assertNull(this.channel.readInbound());
-    }
-
-    @Test
-    void refusesASecondListenerOnTheSameRoute() {
-        this.listen(new ByteBufPacketListener() {
-        });
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> this.listen(new ByteBufPacketListener() {
-        }));
     }
 
     @Test
     void dispatchesOutboundFramesByTheEncoderState() {
         AtomicReference<Integer> seen = new AtomicReference<>();
         int packetId = this.manager.packetIds().byName("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        this.manager.registerByteBufPacketListener(new ByteBufPacketListener() {
-            @Override
-            public void onPacketSend(@NotNull NetworkUser user, @NotNull ByteBufPacketEvent event) {
-                seen.set(event.getBuffer().readVarInt());
-                event.cancelled(true);
-            }
-        }, "minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, (user, event) -> {
+                seen.set(event.buffer().readVarInt());
+                event.cancel();
+        });
         this.channel.writeOutbound(frame(packetId, 5));
 
         assertEquals(5, seen.get());
