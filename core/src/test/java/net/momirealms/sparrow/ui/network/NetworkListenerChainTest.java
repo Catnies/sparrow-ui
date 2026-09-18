@@ -310,10 +310,12 @@ class NetworkListenerChainTest {
     }
 
     @Test
-    void bypassSkipsStateListenersTogetherWithTheRestOfTheChain() {
-        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, (u, e) -> fail());
-        this.manager.sendByteBuf(this.user, this.frame(PacketTypes.Play.Clientbound.START_CONFIGURATION, 0));
-        assertEquals(ConnectionState.PLAY, this.user.encoderState());
+    void sendByteBufRunsStateListenersAndUserListeners() {
+        AtomicInteger calls = new AtomicInteger();
+        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, (u, e) -> calls.incrementAndGet());
+        this.user.sendByteBuf(this.frame(PacketTypes.Play.Clientbound.START_CONFIGURATION, 0));
+        assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
+        assertEquals(1, calls.get());
         ByteBuf sent = this.channel.readOutbound();
         assertNotNull(sent);
         sent.release();

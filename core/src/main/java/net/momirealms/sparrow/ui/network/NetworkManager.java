@@ -50,7 +50,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
+import java.nio.channels.ClosedChannelException;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -379,7 +379,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 每帧捕获一次快照, 命中后创建事件并按注册顺序执行整条链.
     private boolean handleByteBuf(NetworkUser user, ByteBuf buffer, boolean serverbound) throws Exception {
         if (!buffer.isReadable()) return false;
-        if (user.bypassing()) return true;
         RegistrySnapshot snapshot = this.registry;
         ConnectionState state = serverbound ? user.decoderState() : user.encoderState();
         PacketFlow flow = serverbound ? PacketFlow.SERVERBOUND : PacketFlow.CLIENTBOUND;
@@ -509,69 +508,121 @@ public final class NetworkManager implements Listener, AutoCloseable {
         this.packetIds.dump(output);
     }
 
-    // 发送
+    // 发送与模拟接收
 
-    /**
-     * 给连接发一个 NMS 客户端包, 写入落在连接自己的 event loop 上.
-     * <p>发送期间跳过所有监听器, 包括内置状态监听器.
-     *
-     * @param user 接收数据包的连接
-     * @param packet NMS 客户端包
-     * @throws IllegalStateException 管理器已关闭时
-     */
-    public void send(@NotNull NetworkUser user, @NotNull Object packet) {
+    void sendByteBuf(NetworkUser user, ByteBuf frame) {
         this.requireOpen();
-        this.writeBypassed(user, packet);
+        this.transfer(user, frame, true, true);
     }
 
-    /**
-     * 给连接发一批 NMS 客户端包, 多个包合成一个原版 bundle 一起走.
-     * <p>绕过监听器的规则与单包发送一致.
-     *
-     * @param user 接收数据包的连接
-     * @param packets NMS 客户端包列表
-     * @throws IllegalStateException 管理器已关闭时
-     */
-    public void send(@NotNull NetworkUser user, @NotNull List<?> packets) {
+    void sendPacket(NetworkUser user, Object packet) {
         this.requireOpen();
-        if (packets.isEmpty()) {
+        if (!PacketProxy.CLASS.isInstance(packet)) {
+            throw new IllegalArgumentException("Expected an NMS packet");
+        }
+        this.transfer(user, packet, true, false);
+    }
+
+    void receiveByteBuf(NetworkUser user, ByteBuf frame) {
+        this.requireOpen();
+        this.transfer(user, frame, false, true);
+    }
+
+    void receivePacket(NetworkUser user, Object packet) {
+        this.requireOpen();
+        if (!PacketProxy.CLASS.isInstance(packet)) {
+            throw new IllegalArgumentException("Expected an NMS packet");
+        }
+        this.transfer(user, packet, false, false);
+    }
+
+    void writePacket(NetworkUser user, PacketType type, Consumer<PacketBuf> writer, boolean outbound) {
+        this.requireOpen();
+        PacketFlow flow = outbound ? PacketFlow.CLIENTBOUND : PacketFlow.SERVERBOUND;
+        if (type.flow() != flow) {
+            throw new IllegalArgumentException("Expected " + flow + " packet, got " + type);
+        }
+        int id = this.packetIds.id(type);
+        if (id < 0) {
+            throw new IllegalArgumentException("Unavailable packet " + type + " on Minecraft " + VersionHelper.MINECRAFT_VERSION);
+        }
+        ByteBuf frame = user.channel().alloc().buffer();
+        try {
+            PacketBuf payload = new PacketBuf(frame);
+            payload.writeVarInt(id);
+            writer.accept(payload);
+        } catch (RuntimeException | Error failure) {
+            frame.release();
+            throw failure;
+        }
+        this.transfer(user, frame, outbound, true);
+    }
+
+    // 消息在入队成功后由框架持有, 跨线程调用交给连接的 event loop 执行.
+    private void transfer(NetworkUser user, Object message, boolean outbound, boolean bytes) {
+        Channel channel = user.channel();
+        if (channel.eventLoop().inEventLoop()) {
+            this.transferOnEventLoop(user, message, outbound, bytes);
+        } else {
+            try {
+                channel.eventLoop().execute(() -> this.transferOnEventLoop(user, message, outbound, bytes));
+            } catch (RuntimeException failure) {
+                ReferenceCountUtil.release(message);
+                throw failure;
+            }
+        }
+    }
+
+    private void transferOnEventLoop(NetworkUser user, Object message, boolean outbound, boolean bytes) {
+        // 空帧在注入前消费, 不交给原版 codec.
+        if (bytes && !((ByteBuf) message).isReadable()) {
+            ReferenceCountUtil.release(message);
             return;
         }
-        Object packet;
-        if (packets.size() == 1) {
-            packet = packets.getFirst();
-        } else {
-            ArrayList<Object> bundled = new ArrayList<>(packets.size());
-            bundled.addAll(packets);
-            packet = ClientboundBundlePacketProxy.INSTANCE.newInstance(bundled);
-        }
-        this.writeBypassed(user, packet);
-    }
-
-    /**
-     * 发一条已经带好包 ID 的预序列化帧, buffer 的所有权随之交给 Netty pipeline.
-     * <p>发送期间跳过所有监听器, 包括内置状态监听器.
-     *
-     * @param user 接收数据包的连接
-     * @param buffer 预序列化帧
-     * @throws IllegalStateException 管理器已关闭时
-     */
-    public void sendByteBuf(@NotNull NetworkUser user, @NotNull ByteBuf buffer) {
-        this.requireOpen();
-        this.writeBypassed(user, buffer);
-    }
-
-    // 写入前后成对开关 bypass, 让这次发送不被自己的监听器再处理一遍.
-    private void writeBypassed(NetworkUser user, Object message) {
-        Runnable write = () -> {
-            user.beginBypass();
-            try {
-                user.channel().writeAndFlush(message);
-            } finally {
-                user.endBypass();
+        Channel channel = user.channel();
+        ChannelPipeline pipeline = channel.pipeline();
+        ChannelHandlerContext context;
+        try {
+            // 排队期间或 writer 回调中可能关闭管理器, 实际移交消息时再确认状态.
+            this.requireOpen();
+            if (!channel.isOpen()) {
+                throw new ClosedChannelException();
             }
-        };
-        this.execute(user.channel(), write);
+            // 出站以字节监听节点为定位点; 入站按原始字节或已解码 NMS 包选择入口.
+            String name;
+            if (outbound) {
+                name = this.encoderName;
+            } else if (bytes) {
+                name = this.decoderName;
+            } else {
+                name = this.packetBridgeName;
+            }
+            context = pipeline.context(name);
+            if (context == null) {
+                throw new IllegalStateException("Sparrow handler is not installed: " + name);
+            }
+        } catch (Exception failure) {
+            // 状态检查和入口解析都在消息移交前完成, 失败时由此处释放消息并报告.
+            ReferenceCountUtil.release(message);
+            pipeline.fireExceptionCaught(failure);
+            return;
+        }
+
+        if (outbound) {
+            // 从 pipeline 尾部进入, 由各监听层处理它能识别的消息.
+            channel.writeAndFlush(message);
+            return;
+        }
+
+        if (bytes) {
+            // 从 Sparrow 字节监听层注入包 ID + payload, 后面继续走原版解码.
+            ((ByteBufDecoder) context.handler()).channelRead(context, message);
+        } else {
+            // 从 Sparrow NMS 监听层注入对象包, 后面继续走服务器连接处理.
+            ((NMSPacketBridge) context.handler()).channelRead(context, message);
+        }
+        // 为本次模拟读取补发完成事件, 让后续 handler 完成这一轮读取的收尾工作.
+        context.fireChannelReadComplete();
     }
 
     // 已经在 event loop 里就当场跑, 省一次排队, 也省得调用方以为任务还没执行.
@@ -702,7 +753,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
         public void channelRead(ChannelHandlerContext context, Object packet) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
             IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.SERVERBOUND.ordinal()];
-            if (routes.isEmpty() || this.user.bypassing() || !PacketProxy.CLASS.isInstance(packet)) {
+            if (routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
                 // 方向表为空时无需读取 type(), 非 NMS 消息也沿原 pipeline 透传.
                 context.fireChannelRead(packet);
                 return;
@@ -736,8 +787,8 @@ public final class NetworkManager implements Listener, AutoCloseable {
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
             IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.CLIENTBOUND.ordinal()];
-            if (routes.isEmpty() || this.user.bypassing() || !PacketProxy.CLASS.isInstance(packet)) {
-                // 出站方向为空或本次发送 bypass 时, bundle 也按原对象直接转交.
+            if (routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
+                // 出站方向为空时, bundle 也按原对象直接转交.
                 context.write(packet, promise);
                 return;
             }

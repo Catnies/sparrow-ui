@@ -5,6 +5,7 @@ import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.network.NetworkUser;
 import net.momirealms.sparrow.ui.network.PacketBuf;
 import net.momirealms.sparrow.ui.network.PacketTypes;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
@@ -60,7 +61,12 @@ final class MenuPacketGateway implements Listener, AutoCloseable {
         if (this.closed.get()) throw new IllegalStateException("menu packet gateway is closed");
         NetworkUser user = this.network.user(player);
         if (user == null) throw new IllegalStateException("player channel is not registered in NetworkManager: " + player.getName());
-        this.network.send(user, packets);
+        if (packets.isEmpty()) return;
+        // 菜单的一组更新由业务层显式组成 bundle, 同批更新使用原版 bundle 语义.
+        Object packet = packets.size() == 1
+                ? packets.getFirst()
+                : ClientboundBundlePacketProxy.INSTANCE.newInstance(new ArrayList<>(packets));
+        user.sendPacket(packet);
     }
 
     @Override

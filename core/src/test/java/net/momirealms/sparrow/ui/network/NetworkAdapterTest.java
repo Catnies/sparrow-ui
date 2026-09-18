@@ -151,7 +151,7 @@ class NetworkAdapterTest {
     }
 
     @Test
-    void nestedBypassRestoresItsDepth() {
+    void nestedByteBufSendsBothVisitListeners() {
         this.channel.pipeline().addLast("nested", new ChannelOutboundHandlerAdapter() {
             private boolean sending;
 
@@ -159,15 +159,16 @@ class NetworkAdapterTest {
             public void write(ChannelHandlerContext context, Object message, ChannelPromise promise) {
                 if (!this.sending) {
                     this.sending = true;
-                    NetworkAdapterTest.this.manager.sendByteBuf(NetworkAdapterTest.this.user, NetworkAdapterTest.this.frame());
+                    NetworkAdapterTest.this.user.sendByteBuf(NetworkAdapterTest.this.frame());
                     this.sending = false;
                 }
                 context.write(message, promise);
             }
         });
-        this.manager.listenByteBuf(TYPE, (u, e) -> fail());
-        this.manager.sendByteBuf(this.user, this.frame());
-        assertFalse(this.user.bypassing());
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+        this.manager.listenByteBuf(TYPE, (u, e) -> calls.incrementAndGet());
+        this.user.sendByteBuf(this.frame());
+        assertEquals(2, calls.get());
         ((ByteBuf) this.channel.readOutbound()).release();
         ((ByteBuf) this.channel.readOutbound()).release();
     }

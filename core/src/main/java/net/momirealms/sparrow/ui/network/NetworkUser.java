@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.network;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
@@ -7,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class NetworkUser {
     private final NetworkManager networkManager;
@@ -15,7 +17,6 @@ public final class NetworkUser {
     private volatile ConnectionState decoderState = ConnectionState.HANDSHAKING;
     private volatile ConnectionState encoderState = ConnectionState.HANDSHAKING;
     private volatile @Nullable Player player;   // 连接建起来的时候还没有玩家对象, 要等进世界才绑得上
-    private int bypassDepth;                    // 库自己发包期间加一, 这段时间跳过整条监听链
 
     NetworkUser(@NotNull NetworkManager networkManager, @NotNull Channel channel) {
         this.networkManager = networkManager;
@@ -80,15 +81,60 @@ public final class NetworkUser {
         this.encoderState = state;
     }
 
-    boolean bypassing() {
-        return this.bypassDepth != 0;
+    /**
+     * 向客户端发送 NMS 包, 经过对应的 Sparrow 监听器.
+     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
+     * @param packet NMS 客户端包
+     */
+    public void sendPacket(@NotNull Object packet) {
+        this.networkManager.sendPacket(this, packet);
     }
 
-    void beginBypass() {
-        this.bypassDepth++;
+    /**
+     * 向客户端发送字节帧, 经过对应的 Sparrow 监听器.
+     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
+     * @param frame 当前服务端协议的包 ID + payload, 不带长度、压缩或加密头
+     */
+    public void sendByteBuf(@NotNull ByteBuf frame) {
+        this.networkManager.sendByteBuf(this, frame);
     }
 
-    void endBypass() {
-        this.bypassDepth--;
+    /**
+     * 向客户端发送指定类型的字节帧, 自动写入当前版本的包 ID, 经过对应的 Sparrow 监听器.
+     * <p>writer 在调用线程同步执行, 只向缓冲末尾追加 payload; 缓冲不能保存到回调之外.
+     * @param type 当前方向的逻辑包类型
+     * @param writer payload 写入回调
+     */
+    public void sendPacket(@NotNull PacketType type, @NotNull Consumer<PacketBuf> writer) {
+        this.networkManager.writePacket(this, type, writer, true);
     }
+
+    /**
+     * 模拟客户端向服务器发送 NMS 包, 经过对应的 Sparrow 监听器.
+     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
+     * @param packet NMS 服务端包
+     */
+    public void receivePacket(@NotNull Object packet) {
+        this.networkManager.receivePacket(this, packet);
+    }
+
+    /**
+     * 模拟客户端向服务器发送字节帧, 经过对应的 Sparrow 监听器.
+     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
+     * @param frame 当前服务端协议的包 ID + payload, 不带长度、压缩或加密头
+     */
+    public void receiveByteBuf(@NotNull ByteBuf frame) {
+        this.networkManager.receiveByteBuf(this, frame);
+    }
+
+    /**
+     * 模拟客户端向服务器发送指定类型的字节帧, 自动写入当前版本的包 ID, 经过对应的 Sparrow 监听器.
+     * <p>writer 在调用线程同步执行, 只向缓冲末尾追加 payload; 缓冲不能保存到回调之外.
+     * @param type 当前方向的逻辑包类型
+     * @param writer payload 写入回调
+     */
+    public void receivePacket(@NotNull PacketType type, @NotNull Consumer<PacketBuf> writer) {
+        this.networkManager.writePacket(this, type, writer, false);
+    }
+
 }
