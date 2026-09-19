@@ -16,7 +16,7 @@ import net.momirealms.sparrow.ui.window.handle.MerchantMenuHandle;
 import net.momirealms.sparrow.ui.window.handle.RecipeBookMenuHandle;
 import net.momirealms.sparrow.ui.window.handle.StonecutterMenuHandle;
 import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.scheduler.executor.FoliaEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.FoliaExecutor;
 import net.momirealms.sparrow.ui.visual.VisualLayer;
 import net.momirealms.sparrow.ui.window.click.EnchantSelectClick;
 import org.bukkit.entity.Player;
@@ -698,7 +698,7 @@ class WindowManagerThreadingTest {
 
     private static WindowManager manager(ControlledEntityExecutor entityExecutor, MenuFactory menuFactory) {
         SparrowUiTestRuntime.installOwnership(() -> entityExecutor.owned);
-        return new WindowManager(SparrowUiTestRuntime.plugin(), menuFactory, new FoliaEntityExecutor(SparrowUiTestRuntime.plugin()));
+        return new WindowManager(SparrowUiTestRuntime.plugin(), menuFactory, new FoliaExecutor(SparrowUiTestRuntime.plugin()));
     }
 
     @SuppressWarnings("unchecked")

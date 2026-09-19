@@ -39,7 +39,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.scheduler.executor.FoliaEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.FoliaExecutor;
 import net.momirealms.sparrow.ui.state.GcSupport;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
@@ -139,7 +139,7 @@ class AbstractWindowLifecycleTest {
         Pane pane = Pane.filled(9, 1, item);
         TrackingMenuFactory menus = new TrackingMenuFactory();
         OwnedDispatcher dispatcher = new OwnedDispatcher(this.plugin);
-        WindowManager manager = new WindowManager(this.plugin, menus, new FoliaEntityExecutor(this.plugin));
+        WindowManager manager = new WindowManager(this.plugin, menus, new FoliaExecutor(this.plugin));
         AtomicInteger opened = new AtomicInteger();
         AtomicInteger closed = new AtomicInteger();
         for (int cycle = 0; cycle < 100; cycle++) {
@@ -187,7 +187,7 @@ class AbstractWindowLifecycleTest {
             Player player = connectedPlayer(PlayerStub.addTo(this.server));
             Pane pane = Pane.empty(9, 1);
             new OwnedDispatcher(this.plugin);
-            WindowManager manager = new WindowManager(this.plugin, new TrackingMenuFactory(), new FoliaEntityExecutor(this.plugin));
+            WindowManager manager = new WindowManager(this.plugin, new TrackingMenuFactory(), new FoliaExecutor(this.plugin));
             AbstractWindow<?> window = new NormalWindowImpl(
                     manager,
                     player,
@@ -4329,7 +4329,7 @@ class AbstractWindowLifecycleTest {
     }
 
     private static WindowManager manager(OwnedDispatcher dispatcher, TrackingMenuFactory menus) {
-        WindowManager manager = new WindowManager(dispatcher.plugin, menus, new FoliaEntityExecutor(dispatcher.plugin));
+        WindowManager manager = new WindowManager(dispatcher.plugin, menus, new FoliaExecutor(dispatcher.plugin));
         SparrowUiTestRuntime.install(manager);
         return manager;
     }

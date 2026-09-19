@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui;
 import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.SparrowUiTestRuntime;
-import org.bukkit.World;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,9 +40,9 @@ class SparrowUITest {
         List<Runnable> previous = handlers.snapshot();
         Field schedulerField = SparrowUI.class.getDeclaredField("scheduler");
         schedulerField.setAccessible(true);
-        SchedulerAdapter<World> previousScheduler = (SchedulerAdapter<World>) schedulerField.get(ui);
+        SchedulerAdapter previousScheduler = (SchedulerAdapter) schedulerField.get(ui);
         List<String> calls = new ArrayList<>();
-        SchedulerAdapter<World> scheduler = (SchedulerAdapter<World>) Proxy.newProxyInstance(
+        SchedulerAdapter scheduler = (SchedulerAdapter) Proxy.newProxyInstance(
                 SparrowUITest.class.getClassLoader(),
                 new Class<?>[]{SchedulerAdapter.class},
                 (proxy, method, arguments) -> switch (method.getName()) {

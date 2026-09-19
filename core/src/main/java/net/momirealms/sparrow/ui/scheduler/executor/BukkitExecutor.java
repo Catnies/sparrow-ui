@@ -1,76 +1,157 @@
 package net.momirealms.sparrow.ui.scheduler.executor;
 
+import net.momirealms.sparrow.ui.scheduler.task.BukkitTask;
+import org.bukkit.plugin.Plugin;
 import net.momirealms.sparrow.ui.scheduler.task.DummyTask;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
-import net.momirealms.sparrow.ui.scheduler.task.platform.BukkitTask;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.NotNull;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * 使用经典 BukkitScheduler 实现同步和异步 tick 调度.
- */
-public final class BukkitExecutor implements RegionExecutor<World> {
+import org.jetbrains.annotations.NotNull;
+
+public final class BukkitExecutor extends AbstractBukkitExecutor {
     private final Plugin plugin;
 
-    /**
-     * 创建由指定插件拥有的 Bukkit 执行器.
-     *
-     * @param plugin 任务所属插件
-     */
-    public BukkitExecutor(@NotNull Plugin plugin) {
+    public BukkitExecutor(Plugin plugin) {
         this.plugin = plugin;
     }
 
     @Override
-    public void run(@NotNull Runnable runnable, @Nullable World world, int x, int z) {
-        this.execute(runnable);
+    public boolean isOwnedByCurrentRegion(@NotNull Entity entity) {
+        return Bukkit.isPrimaryThread() && available(entity);
     }
 
     @Override
-    public void runDelayed(@NotNull Runnable runnable, @Nullable World world, int x, int z) {
-        Bukkit.getScheduler().runTask(this.plugin, runnable);
-    }
-
-    @Override
-    @NotNull
-    public SchedulerTask runAsyncRepeating(@NotNull Runnable runnable, long delay, long period) {
-        return new BukkitTask(Bukkit.getScheduler().runTaskTimerAsynchronously(this.plugin, runnable, delay, period));
-    }
-
-    @Override
-    @NotNull
-    public SchedulerTask runAsyncLater(@NotNull Runnable runnable, long delay) {
-        return new BukkitTask(Bukkit.getScheduler().runTaskLaterAsynchronously(this.plugin, runnable, delay));
-    }
-
-    @Override
-    @NotNull
-    public SchedulerTask runLater(@NotNull Runnable runnable, long delay, @Nullable World world, int x, int z) {
-        if (delay <= 0) {
-            if (Bukkit.isPrimaryThread()) {
-                runnable.run();
-                return new DummyTask();
-            }
-            return new BukkitTask(Bukkit.getScheduler().runTask(this.plugin, runnable));
-        }
-        return new BukkitTask(Bukkit.getScheduler().runTaskLater(this.plugin, runnable, delay));
-    }
-
-    @Override
-    @NotNull
-    public SchedulerTask runRepeating(@NotNull Runnable runnable, long delay, long period, @Nullable World world, int x, int z) {
-        return new BukkitTask(Bukkit.getScheduler().runTaskTimer(this.plugin, runnable, delay, period));
-    }
-
-    @Override
-    public void execute(@NotNull Runnable runnable) {
+    public void execute(@NotNull Runnable r) {
         if (Bukkit.isPrimaryThread()) {
-            runnable.run();
+            r.run();
             return;
         }
-        Bukkit.getScheduler().runTask(this.plugin, runnable);
+        Bukkit.getScheduler().runTask(this.plugin, r);
+    }
+
+    @Override
+    public void run(Runnable r, Location location) {
+        execute(r);
+    }
+
+    @Override
+    public void run(Runnable r, World world, int x, int z) {
+        execute(r);
+    }
+
+    @Override
+    public void run(Runnable r, Runnable retired, Entity entity) {
+        this.execute(() -> {
+            if (available(entity)) {
+                r.run();
+            } else {
+                retired.run();
+            }
+        });
+    }
+
+    @Override
+    public void runDelayed(Runnable r, World world, int x, int z) {
+        Bukkit.getScheduler().runTask(this.plugin, r);
+    }
+
+    @Override
+    public void runDelayed(Runnable r, Location location) {
+        Bukkit.getScheduler().runTask(this.plugin, r);
+    }
+
+    @Override
+    public void runDelayed(Runnable r, Runnable retired, Entity entity) {
+        if (this.runLater(r, retired, 0, entity) == null) {
+            retired.run();
+        }
+    }
+
+    @Override
+    public SchedulerTask runLater(Runnable r, long delay, World world, int x, int z) {
+        return runLater0(r, delay);
+    }
+
+    @Override
+    @Nullable
+    public SchedulerTask runLater(Runnable r, Runnable retired, long delay, Entity entity) {
+        if (Bukkit.isPrimaryThread() && !available(entity)) {
+            return null;
+        }
+        return new BukkitTask(Bukkit.getScheduler().runTaskLater(this.plugin, () -> {
+            if (available(entity)) {
+                r.run();
+            } else {
+                retired.run();
+            }
+        }, Math.max(0, delay)));
+    }
+
+    @Override
+    public SchedulerTask runLater(Runnable r, long delay, Location location) {
+        return runLater0(r, delay);
+    }
+
+    @NotNull
+    private SchedulerTask runLater0(Runnable r, long delay) {
+        if (delay <= 0) {
+            if (Bukkit.isPrimaryThread()) {
+                r.run();
+                return new DummyTask();
+            } else {
+                return new BukkitTask(Bukkit.getScheduler().runTask(this.plugin, r));
+            }
+        }
+        return new BukkitTask(Bukkit.getScheduler().runTaskLater(this.plugin, r, delay));
+    }
+
+    @Override
+    public SchedulerTask runRepeating(Runnable r, long delay, long period, World world, int x, int z) {
+        return new BukkitTask(Bukkit.getScheduler().runTaskTimer(this.plugin, r, delay, period));
+    }
+
+    @Override
+    @Nullable
+    public SchedulerTask runRepeating(Runnable r, Runnable retired, long delay, long period, Entity entity) {
+        if (Bukkit.isPrimaryThread() && !available(entity)) {
+            return null;
+        }
+        BukkitRunnable repeating = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (available(entity)) {
+                    r.run();
+                } else {
+                    this.cancel();
+                    retired.run();
+                }
+            }
+        };
+        return new BukkitTask(repeating.runTaskTimer(this.plugin, delay, period));
+    }
+
+    private static boolean available(Entity entity) {
+        return entity instanceof Player player ? player.isOnline() : entity.isValid();
+    }
+
+    @Override
+    public SchedulerTask runRepeating(Runnable r, long delay, long period, Location location) {
+        return new BukkitTask(Bukkit.getScheduler().runTaskTimer(this.plugin, r, delay, period));
+    }
+
+    @Override
+    public SchedulerTask runAsyncLater(Runnable r, long delayTicks) {
+        return new BukkitTask(Bukkit.getScheduler().runTaskLaterAsynchronously(this.plugin, r, delayTicks));
+    }
+
+    @Override
+    public SchedulerTask runAsyncRepeating(Runnable r, long delayTicks, long periodTicks) {
+        return new BukkitTask(Bukkit.getScheduler().runTaskTimerAsynchronously(this.plugin, r, delayTicks, periodTicks));
     }
 }

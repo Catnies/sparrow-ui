@@ -8,7 +8,6 @@ import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
-import org.bukkit.World;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
@@ -27,7 +26,7 @@ public class SparrowUI implements Listener {
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
-    private SchedulerAdapter<World> scheduler;
+    private SchedulerAdapter scheduler;
     private NetworkManager networkManager;
     private WindowManager windowManager;
     private volatile boolean fireBukkitInventoryEvents = true;
@@ -58,12 +57,12 @@ public class SparrowUI implements Listener {
 
         BukkitProxyInstaller.setUp();
         MapColorPalette.initialize();
-        BukkitSchedulerAdapter scheduler = new BukkitSchedulerAdapter(plugin);
+        SchedulerAdapter scheduler = new BukkitSchedulerAdapter(plugin);
         this.plugin = plugin;
         this.scheduler = scheduler;
         Bukkit.getPluginManager().registerEvents(this, plugin);
         this.networkManager = new NetworkManager();
-        this.windowManager = WindowManager.create(plugin, scheduler.entity());
+        this.windowManager = WindowManager.create(plugin, scheduler.platform());
         this.addDisableHandler(this.windowManager::shutdown);
         this.addDisableHandler(this.networkManager::close);
     }
@@ -225,7 +224,7 @@ public class SparrowUI implements Listener {
      * @return 平台调度器
      */
     @NotNull
-    public SchedulerAdapter<World> scheduler() {
+    public SchedulerAdapter scheduler() {
         if (this.scheduler == null) {
             this.getPlugin();
         }

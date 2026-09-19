@@ -8,7 +8,7 @@ import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
-import net.momirealms.sparrow.ui.scheduler.executor.FoliaEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.FoliaExecutor;
 import net.momirealms.sparrow.ui.window.click.EnchantSelectClick;
 import net.momirealms.sparrow.ui.window.click.MerchantTradeSelectClick;
 import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
@@ -273,7 +273,7 @@ class WindowContractTest {
 
     @Test
     void reusableBuilderCreatesViewerSpecificDefaultLowerPane() {
-        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaEntityExecutor(SparrowUiTestRuntime.plugin())));
+        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
         HopperWindow.Builder builder = HopperWindow.builder();
         Player firstViewer = player();
         HopperWindow first = builder.build(firstViewer);
@@ -298,7 +298,7 @@ class WindowContractTest {
 
     @Test
     void stonecutterBuilderKeepsItsFixedWidthButtonsPaneAsALogicalRoot() {
-        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaEntityExecutor(SparrowUiTestRuntime.plugin())));
+        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
         Player player = player();
         Pane buttons = Pane.empty(4, 1);
         StonecutterWindow defaults = StonecutterWindow.builder().build(player);
@@ -323,7 +323,7 @@ class WindowContractTest {
 
     @Test
     void enchantmentBuilderKeepsIndependentOptionAndHandlerSnapshots() {
-        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaEntityExecutor(SparrowUiTestRuntime.plugin())));
+        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
         Player player = player();
         EnchantmentWindow.EnchantOption first = new EnchantmentWindow.EnchantOption(1, null, 1);
         EnchantmentWindow.EnchantOption second = new EnchantmentWindow.EnchantOption(3, null, 7);
@@ -389,7 +389,7 @@ class WindowContractTest {
 
     @Test
     void merchantBuilderAndMutableContractValidateBeforeDispatch() {
-        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaEntityExecutor(SparrowUiTestRuntime.plugin())));
+        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
         Player player = player();
         MerchantWindow.Trade trade = MerchantWindow.Trade.builder().build();
         Consumer<MerchantTradeSelectClick> handler = ignoredSelection -> {};

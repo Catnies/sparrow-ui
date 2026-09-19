@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.scheduler.executor.BukkitEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.BukkitExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
@@ -50,7 +50,7 @@ class SpigotPlayerCommandLaneTest {
     void mainThreadSubmissionAfterQuitUsesTheRetiredAction() {
         AtomicInteger actions = new AtomicInteger();
         AtomicReference<PlayerCommandLane> retiredLane = new AtomicReference<>();
-        PlayerCommandLane lane = new PlayerCommandLane(this.player, new BukkitEntityExecutor(this.plugin), retiredLane::set);
+        PlayerCommandLane lane = new PlayerCommandLane(this.player, new BukkitExecutor(this.plugin), retiredLane::set);
         String result = lane.submit(
                 () -> {
                     actions.incrementAndGet();
@@ -69,7 +69,7 @@ class SpigotPlayerCommandLaneTest {
         this.playerValid = false;
         this.playerOnline = true;
         AtomicReference<PlayerCommandLane> retiredLane = new AtomicReference<>();
-        PlayerCommandLane lane = new PlayerCommandLane(this.player, new BukkitEntityExecutor(this.plugin), retiredLane::set);
+        PlayerCommandLane lane = new PlayerCommandLane(this.player, new BukkitExecutor(this.plugin), retiredLane::set);
         String result = lane.submit(() -> "active", () -> "retired").toCompletableFuture().join();
 
         assertEquals("active", result);

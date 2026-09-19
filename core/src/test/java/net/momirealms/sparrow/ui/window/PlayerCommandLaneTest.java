@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import io.papermc.paper.threadedregions.scheduler.EntityScheduler;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
-import net.momirealms.sparrow.ui.scheduler.executor.FoliaEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.FoliaExecutor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.jspecify.annotations.NonNull;
@@ -160,7 +160,7 @@ class PlayerCommandLaneTest {
         SparrowUiTestRuntime.installOwnership(entityExecutor::isOwnedByCurrentRegion);
         return new PlayerCommandLane(
                 entityExecutor.player,
-                new FoliaEntityExecutor(SparrowUiTestRuntime.plugin()),
+                new FoliaExecutor(SparrowUiTestRuntime.plugin()),
                 retiredHandler
         );
     }

@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui.window;
 
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
-import net.momirealms.sparrow.ui.scheduler.executor.EntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.PlatformExecutor;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import net.momirealms.sparrow.ui.window.handle.MenuFactory;
 import net.momirealms.sparrow.ui.window.handle.MenuFactoryImpl;
@@ -34,20 +34,20 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class WindowManager implements Listener {
     private final MenuFactory menuFactory;      // 建菜单用的工厂
-    private final EntityExecutor entityScheduler; // 玩家实体线程的调度入口
+    private final PlatformExecutor scheduler; // 玩家实体线程的调度入口
     private final BukkitInventoryBridge bukkitBridge; // 把点击桥给 Bukkit 事件
     private final Map<UUID, AbstractWindow<?>> active = new ConcurrentHashMap<>(); // 玩家 -> 现在开着的那扇窗
     private final Map<UUID, PlayerCommandLane> lanes = new ConcurrentHashMap<>();  // 玩家 -> 命令通道, 命令靠它串行
     private final AtomicLong generations = new AtomicLong();                   // 打开的代数, 每开一次加一, 用来把迟到的输入挡掉
     private final AtomicBoolean shutdown = new AtomicBoolean();                // 是否已经在关服收尾
 
-    WindowManager(Plugin plugin, EntityExecutor entityScheduler) {
-        this(plugin, new MenuFactoryImpl(plugin), entityScheduler);
+    WindowManager(Plugin plugin, PlatformExecutor scheduler) {
+        this(plugin, new MenuFactoryImpl(plugin), scheduler);
     }
 
-    WindowManager(Plugin plugin, MenuFactory menuFactory, EntityExecutor entityScheduler) {
+    WindowManager(Plugin plugin, MenuFactory menuFactory, PlatformExecutor scheduler) {
         this.menuFactory = menuFactory;
-        this.entityScheduler = entityScheduler;
+        this.scheduler = scheduler;
         this.bukkitBridge = new BukkitInventoryBridge();
     }
 
@@ -58,8 +58,8 @@ public final class WindowManager implements Listener {
 
     @NotNull
     @ApiStatus.Internal
-    public static WindowManager create(@NotNull Plugin plugin, @NotNull EntityExecutor entityScheduler) {
-        WindowManager manager = new WindowManager(plugin, entityScheduler);
+    public static WindowManager create(@NotNull Plugin plugin, @NotNull PlatformExecutor scheduler) {
+        WindowManager manager = new WindowManager(plugin, scheduler);
         Bukkit.getPluginManager().registerEvents(manager, plugin);
         return manager;
     }
@@ -198,7 +198,7 @@ public final class WindowManager implements Listener {
         PlayerCommandLane lane = this.lane(window.viewer());
         SchedulerTask task;
         try {
-            task = this.entityScheduler.runAtFixedRate(window.viewer(), window::tick, lane::retire, 1, 1);
+            task = this.scheduler.runRepeating(window::tick, lane::retire, 1, 1, window.viewer());
         } catch (RuntimeException | Error throwable) {
             lane.fail(throwable);
             throw throwable;
@@ -312,7 +312,7 @@ public final class WindowManager implements Listener {
 
             PlayerCommandLane candidate = new PlayerCommandLane(
                     player,
-                    this.entityScheduler,
+                    this.scheduler,
                     retiredLane -> this.retire(playerId, player, retiredLane)
             );
             if (this.lanes.putIfAbsent(playerId, candidate) == null) {

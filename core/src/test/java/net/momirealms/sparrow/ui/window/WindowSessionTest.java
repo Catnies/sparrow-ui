@@ -16,7 +16,7 @@ import net.momirealms.sparrow.ui.window.handle.MerchantMenuHandle;
 import net.momirealms.sparrow.ui.window.handle.RecipeBookMenuHandle;
 import net.momirealms.sparrow.ui.window.handle.StonecutterMenuHandle;
 import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.scheduler.executor.FoliaEntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.FoliaExecutor;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.TickingTestSupport;
@@ -1004,7 +1004,7 @@ class WindowSessionTest {
 
     private static WindowManager manager() {
         SparrowUiTestRuntime.installOwnership(() -> true);
-        WindowManager manager = new WindowManager(SparrowUiTestRuntime.plugin(), new SessionMenuFactory(), new FoliaEntityExecutor(SparrowUiTestRuntime.plugin()));
+        WindowManager manager = new WindowManager(SparrowUiTestRuntime.plugin(), new SessionMenuFactory(), new FoliaExecutor(SparrowUiTestRuntime.plugin()));
         SparrowUiTestRuntime.install(manager);
         return manager;
     }

@@ -1,6 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
-import net.momirealms.sparrow.ui.scheduler.executor.EntityExecutor;
+import net.momirealms.sparrow.ui.scheduler.executor.PlatformExecutor;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -15,7 +15,7 @@ import java.util.function.Consumer;
 
 final class PlayerCommandLane {
     private final Player player;
-    private final EntityExecutor scheduler;
+    private final PlatformExecutor scheduler;
     private final Consumer<PlayerCommandLane> retiredHandler;           // 通道注销后的收尾操作
     private final ArrayDeque<Command<?>> commands = new ArrayDeque<>(); // 待执行命令队列, 仅在锁内访问
 
@@ -24,7 +24,7 @@ final class PlayerCommandLane {
     private boolean retired;   // 通道是否已注销, 注销后新命令直接走注销路径
     private @Nullable Runnable terminal; // 关停时交给正在 drain 的线程执行的收尾命令, 仅在锁内访问
 
-    PlayerCommandLane(Player player, EntityExecutor scheduler, Consumer<PlayerCommandLane> retiredHandler) {
+    PlayerCommandLane(Player player, PlatformExecutor scheduler, Consumer<PlayerCommandLane> retiredHandler) {
         this.player = player;
         this.scheduler = scheduler;
         this.retiredHandler = retiredHandler;
@@ -88,7 +88,7 @@ final class PlayerCommandLane {
         } else if (schedule) {
             try {
                 // 实体已经退役时调度器返回 null, 提交方负责把通道转成注销状态
-                if (this.scheduler.run(this.player, this::runScheduled, this::retire) == null) {
+                if (this.scheduler.runLater(this::runScheduled, this::retire, 0, this.player) == null) {
                     this.retire();
                 }
             } catch (Throwable throwable) {
