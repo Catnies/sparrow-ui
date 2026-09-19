@@ -17,6 +17,12 @@ dependencies {
 }
 
 val bukkitProxyJar = project(":bukkit-proxy").tasks.named<Jar>("shadowJar")
+val bukkitProxyArchive = tasks.register<Zip>("bukkitProxyArchive") {
+    archiveFileName = "sparrow-ui-proxy.jarinjar"
+    from(bukkitProxyJar.flatMap { it.archiveFile }.map { zipTree(it.asFile) }) {
+        exclude("META-INF/MANIFEST.MF")
+    }
+}
 val generateMapColorProfile = tasks.register<JavaExec>("generateMapColorProfile") {
     group = "build setup"
     description = "Generates the compact map color profile resource"
@@ -30,9 +36,7 @@ val generateMapColorProfile = tasks.register<JavaExec>("generateMapColorProfile"
 tasks {
     jar {
         dependsOn(bukkitProxyJar)
-        from(bukkitProxyJar.flatMap { it.archiveFile }.map { zipTree(it.asFile) }) {
-            exclude("META-INF/MANIFEST.MF")
-        }
+        from(bukkitProxyArchive.flatMap { it.archiveFile })
     }
 
     processResources {

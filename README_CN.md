@@ -59,6 +59,11 @@ Sparrow UI 使用同一个构件支持 Paper 与 Folia `1.21.4` ~ `26.3`，无�
 
 Sparrow UI 作为库，需要随你的插件一起打入最终构件，服务端不用另外安装一份。
 
+> [!IMPORTANT]
+> **必须将 `net.momirealms.sparrow.ui` 整体 Relocate 到你的插件独有的包名下。** 代理类会加载到服务端类加载器中，保留原包名会导致多个插件携带的 Sparrow UI 副本发生类名冲突。
+
+使用 Shadow 打包时，添加以下依赖和重定位配置，将 `com.example.myplugin.libraries.sparrow.ui` 替换为你自己的目标包名：
+
 ```kotlin
 repositories {
     maven("https://repo.momirealms.net/snapshots")
@@ -66,6 +71,10 @@ repositories {
 
 dependencies {
     implementation("net.momirealms:sparrow-ui:beta.31")
+}
+
+tasks.shadowJar {
+    relocate("net.momirealms.sparrow.ui", "com.example.myplugin.libraries.sparrow.ui")
 }
 ```
 

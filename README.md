@@ -59,6 +59,11 @@ Sparrow UI uses one artifact for Paper and Folia from `1.21.4` through `26.3`; n
 
 Sparrow UI is a library and must be bundled into your final plugin artifact. It does not need to be installed separately on the server.
 
+> [!IMPORTANT]
+> **You must relocate the entire `net.momirealms.sparrow.ui` package to a namespace unique to your plugin.** Proxy classes are loaded into the server class loader, so keeping the original package causes class name conflicts between Sparrow UI copies bundled by different plugins.
+
+When packaging with Shadow, add the following dependency and relocation configuration. Replace `com.example.myplugin.libraries.sparrow.ui` with your own target package:
+
 ```kotlin
 repositories {
     maven("https://repo.momirealms.net/snapshots")
@@ -66,6 +71,10 @@ repositories {
 
 dependencies {
     implementation("net.momirealms:sparrow-ui:beta.31")
+}
+
+tasks.shadowJar {
+    relocate("net.momirealms.sparrow.ui", "com.example.myplugin.libraries.sparrow.ui")
 }
 ```
 

@@ -1,7 +1,5 @@
 package net.momirealms.sparrow.ui;
 
-import net.momirealms.sparrow.ui.proxy.BukkitProxy;
-import net.momirealms.sparrow.ui.util.ReflectionUtils;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.Bukkit;
 import org.jetbrains.annotations.ApiStatus;
@@ -23,6 +21,7 @@ import java.net.URLStreamHandler;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -30,23 +29,24 @@ import java.util.zip.ZipInputStream;
 @ApiStatus.Internal
 public final class BukkitProxyInstaller {
     private static final String PROXY_ARCHIVE = "sparrow-ui-proxy.jarinjar";
-    private static final String PROXY_BOOTSTRAP = "net.momirealms.sparrow.ui.proxy.BukkitProxy";
 
     private BukkitProxyInstaller() {
     }
 
     // 安装并初始化当前库的反射代理运行时.
     public static void setUp() {
-        BukkitProxy.init(VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
+        setUpForJarInJar();
     }
 
     private static void setUpForJarInJar() {
         try {
+            String runtimePackage = BukkitProxyInstaller.class.getPackageName();
             ClassLoader minecraftClassLoader = Bukkit.class.getClassLoader();
-            byte[] archive = BukkitProxyInstaller.readProxyArchive();
-            BukkitProxyInstaller.appendToMinecraftClassPath(minecraftClassLoader, archive);
-            Class<?> bootstrapClass = ReflectionUtils.getClazz(PROXY_BOOTSTRAP);
-            ReflectionUtils.getStaticMethod(bootstrapClass, 0).invoke(null, VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
+            byte[] archive = ProxyRelocator.relocate(BukkitProxyInstaller.readProxyArchive(), runtimePackage);
+            appendToMinecraftClassPath(minecraftClassLoader, archive, runtimePackage);
+            // 版本条件和映射必须在 Proxy 接口的静态 INSTANCE 初始化前配置完成.
+            Class<?> bootstrapClass = Class.forName(runtimePackage + ".proxy.BukkitProxy", true, minecraftClassLoader);
+            bootstrapClass.getMethod("init", String.class, List.class).invoke(null, VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
         } catch (Throwable e) {
             throw new IllegalStateException("Failed to initialize the SparrowUI reflection proxy", e);
         }
@@ -71,10 +71,12 @@ public final class BukkitProxyInstaller {
     }
 
     // 把代理 Jar 追加到 Minecraft 类路径. URLClassLoader 使用内存 URL, 其他加载器使用转换路径接口.
-    private static void appendToMinecraftClassPath(ClassLoader minecraftClassLoader, byte[] archive) {
+    private static void appendToMinecraftClassPath(ClassLoader minecraftClassLoader, byte[] archive, String runtimePackage) {
         try {
             if (minecraftClassLoader instanceof URLClassLoader urlClassLoader) {
-                URL archiveUrl = new URL(null, "sparrow-memory:/", new ArchiveUrlStreamHandler(BukkitProxyInstaller.readArchiveEntries(archive)));
+                // 每个根包拥有独立 URL, URLClassLoader 按 URL 判断归档是否已经追加.
+                String rootPath = "/" + runtimePackage.replace('.', '/') + "/";
+                URL archiveUrl = new URL(null, "sparrow-memory:" + rootPath, new ArchiveUrlStreamHandler(rootPath, BukkitProxyInstaller.readArchiveEntries(archive)));
                 ClassPathAccess.ADD_URL.invoke(urlClassLoader, archiveUrl);
                 return;
             }
@@ -117,15 +119,17 @@ public final class BukkitProxyInstaller {
 
     // 将内层 Jar 条目作为只读 URL 资源暴露给 URLClassLoader.
     private static final class ArchiveUrlStreamHandler extends URLStreamHandler {
+        private final String rootPath;
         private final Map<String, byte[]> entries; // 条目名到条目字节
 
-        private ArchiveUrlStreamHandler(Map<String, byte[]> entries) {
+        private ArchiveUrlStreamHandler(String rootPath, Map<String, byte[]> entries) {
+            this.rootPath = rootPath;
             this.entries = entries;
         }
 
         @Override
         protected URLConnection openConnection(URL url) {
-            return new ArchiveUrlConnection(url, this.entries);
+            return new ArchiveUrlConnection(url, this.rootPath, this.entries);
         }
     }
 
@@ -133,11 +137,11 @@ public final class BukkitProxyInstaller {
     private static final class ArchiveUrlConnection extends URLConnection {
         private final byte[] content; // 条目字节, 条目不存在时为 null
 
-        // 创建指向单个条目的连接. URL 路径去掉前导斜杠即为条目名.
-        private ArchiveUrlConnection(URL url, Map<String, byte[]> entries) {
+        // 根路径标识库副本, 剩余路径对应归档中的条目名.
+        private ArchiveUrlConnection(URL url, String rootPath, Map<String, byte[]> entries) {
             super(url);
             String path = url.getPath();
-            String entryName = path.startsWith("/") ? path.substring(1) : path;
+            String entryName = path.substring(rootPath.length());
             this.content = entries.get(entryName);
         }
 
