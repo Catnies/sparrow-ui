@@ -10,11 +10,12 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCounted;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import net.minecraft.network.ProtocolSwapHandler;
 import net.minecraft.network.UnconfiguredPipelineHandler;
 import net.minecraft.network.protocol.Packet;
-import net.momirealms.sparrow.ui.network.packet.ConnectionState;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,14 +56,14 @@ class NetworkTerminalInjectionTest {
     }
 
     private TerminalPacket packet() {
-        return new TerminalPacket(this.manager.packetIds().nativeType(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED));
+        return new TerminalPacket(this.manager.packetIds().nativeType(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND)));
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void objectInjectionPreparesThenInstallsTheNextDecoder(boolean silent) {
         AtomicInteger calls = new AtomicInteger();
-        this.manager.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, (u, e, p) -> {
+        this.manager.listenNMS(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND), (u, e, p) -> {
             this.assertWaitingForProtocol();
             calls.incrementAndGet();
         });
@@ -118,7 +119,7 @@ class NetworkTerminalInjectionTest {
 
     @Test
     void cancelledTerminalKeepsVanillaWaitingStateAndReleasesPacket() {
-        this.manager.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, (u, e, p) -> e.cancel());
+        this.manager.listenNMS(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND), (u, e, p) -> e.cancel());
         TerminalPacket packet = this.packet();
         this.user.receivePacket(packet);
         this.assertWaitingForProtocol();
@@ -141,7 +142,7 @@ class NetworkTerminalInjectionTest {
     void ordinaryObjectLeavesDecoderAndAutoReadUnchanged() {
         ChannelHandler decoder = this.channel.pipeline().get("decoder");
         this.channel.config().setAutoRead(false);
-        NetworkNmsChainTest.TestPacket packet = new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(PacketTypes.Login.Serverbound.HELLO));
+        NetworkNmsChainTest.TestPacket packet = new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(new PacketType("minecraft:hello", ConnectionState.LOGIN, PacketFlow.SERVERBOUND)));
         this.user.receivePacket(packet);
         assertSame(packet, this.channel.readInbound());
         assertSame(decoder, this.channel.pipeline().get("decoder"));
@@ -156,12 +157,12 @@ class NetworkTerminalInjectionTest {
         this.channel.pipeline().replace("decoder", "decoder", new MessageToMessageDecoder<ByteBuf>() {
             @Override
             protected void decode(ChannelHandlerContext context, ByteBuf frame, List<Object> output) {
-                assertEquals(NetworkTerminalInjectionTest.this.manager.packetIds().id(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED), PacketBuf.readVarInt(frame));
+                assertEquals(NetworkTerminalInjectionTest.this.manager.packetIds().id(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND)), PacketBuf.readVarInt(frame));
                 output.add(packet);
                 ProtocolSwapHandler.handleInboundTerminalPacket(context, packet);
             }
         });
-        this.user.receivePacket(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, buffer -> {});
+        this.user.receivePacket(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND), buffer -> {});
         assertSame(packet, this.channel.readInbound());
         this.assertWaitingForProtocol();
         assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());

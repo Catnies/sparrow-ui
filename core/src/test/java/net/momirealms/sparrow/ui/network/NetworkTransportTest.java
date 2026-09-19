@@ -12,12 +12,11 @@ import io.netty.handler.codec.MessageToByteEncoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCounted;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.momirealms.sparrow.ui.network.packet.ConnectionState;
 import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,8 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NetworkTransportTest {
-    private static final PacketType OUTBOUND = PacketTypes.Play.Clientbound.MERCHANT_OFFERS;
-    private static final PacketType INBOUND = PacketTypes.Play.Serverbound.RENAME_ITEM;
+    private static final PacketType OUTBOUND = new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+    private static final PacketType INBOUND = new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
 
     private NetworkManager manager;
     private EmbeddedChannel channel;

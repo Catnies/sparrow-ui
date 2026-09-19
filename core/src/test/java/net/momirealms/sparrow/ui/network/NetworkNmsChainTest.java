@@ -8,12 +8,12 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCounted;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.network.packet.ConnectionState;
-import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NetworkNmsChainTest {
-    private static final PacketType TYPE = PacketTypes.Play.Clientbound.MERCHANT_OFFERS;
+    private static final PacketType TYPE = new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
 
     private NetworkManager manager;
     private EmbeddedChannel channel;
@@ -106,9 +106,9 @@ class NetworkNmsChainTest {
     void sharedNativeTypeUsesCapturedStageAndDirection() {
         AtomicInteger play = new AtomicInteger();
         AtomicInteger configuration = new AtomicInteger();
-        this.manager.listenNMS(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> play.incrementAndGet());
-        this.manager.listenNMS(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> configuration.incrementAndGet());
-        TestPacket packet = this.packet(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD);
+        this.manager.listenNMS(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND), (u, e, p) -> play.incrementAndGet());
+        this.manager.listenNMS(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND), (u, e, p) -> configuration.incrementAndGet());
+        TestPacket packet = this.packet(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND));
         this.channel.writeInbound(packet);
         assertSame(packet, this.channel.readInbound());
         this.user.decoderState(ConnectionState.CONFIGURATION);
@@ -125,7 +125,7 @@ class NetworkNmsChainTest {
     void transitionSelectsNmsChainBeforeAdvancingTheUser() {
         this.user.setConnectionState(ConnectionState.LOGIN);
         AtomicInteger calls = new AtomicInteger();
-        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
         this.manager.listenNMS(type, (u, e, p) -> {
             assertEquals(ConnectionState.CONFIGURATION, u.decoderState());
             calls.incrementAndGet();
@@ -153,9 +153,9 @@ class NetworkNmsChainTest {
     @Test
     void directInjectionDoesNotInferSourceFromUniqueNativeType() {
         this.user.decoderState(ConnectionState.CONFIGURATION);
-        this.manager.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, (u, e, p) -> fail());
-        this.manager.listenNMS(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> fail());
-        TestPacket packet = this.packet(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED);
+        this.manager.listenNMS(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND), (u, e, p) -> fail());
+        this.manager.listenNMS(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND), (u, e, p) -> fail());
+        TestPacket packet = this.packet(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND));
         this.user.receivePacket(packet);
         assertSame(packet, this.channel.readInbound());
         assertEquals(1, packet.queries);
@@ -164,8 +164,8 @@ class NetworkNmsChainTest {
 
     @Test
     void nestedObjectAndByteInjectionDoNotChangeSelectedNmsChain() {
-        PacketType play = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
-        PacketType configuration = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        PacketType play = new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        PacketType configuration = new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
         List<ConnectionState> stages = new ArrayList<>();
         this.manager.listenNMS(play, (u, e, p) -> stages.add(ConnectionState.PLAY));
         this.manager.listenNMS(configuration, (u, e, p) -> stages.add(ConnectionState.CONFIGURATION));
@@ -192,8 +192,8 @@ class NetworkNmsChainTest {
 
     @Test
     void cancelledAndFailedFramesLeaveSubsequentNmsRoutingUsable() {
-        PacketType play = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
-        PacketType configuration = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        PacketType play = new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        PacketType configuration = new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
         Subscription cancellation = this.manager.listenByteBuf(play, (u, e) -> {
             u.decoderState(ConnectionState.CONFIGURATION);
             e.cancel();
@@ -222,7 +222,7 @@ class NetworkNmsChainTest {
 
     @Test
     void equalNativeTypeWithDifferentIdentityDoesNotMatch() {
-        PacketType type = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
+        PacketType type = new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
         Object equalButDifferent = new net.minecraft.network.protocol.PacketType<>("minecraft:custom_payload");
         assertEquals(this.manager.packetIds().nativeType(type), equalButDifferent);
         assertNotSame(this.manager.packetIds().nativeType(type), equalButDifferent);
@@ -237,16 +237,16 @@ class NetworkNmsChainTest {
     @Test
     void removingSharedTypeInOneStageLeavesOtherStageRegistered() {
         AtomicInteger calls = new AtomicInteger();
-        Subscription play = this.manager.listenNMS(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> fail());
-        Subscription configuration = this.manager.listenNMS(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> calls.incrementAndGet());
+        Subscription play = this.manager.listenNMS(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND), (u, e, p) -> fail());
+        Subscription configuration = this.manager.listenNMS(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND), (u, e, p) -> calls.incrementAndGet());
         play.close();
-        TestPacket noLookup = this.packet(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD);
+        TestPacket noLookup = this.packet(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND));
         this.channel.writeInbound(noLookup);
         assertSame(noLookup, this.channel.readInbound());
         assertEquals(1, noLookup.queries);
         noLookup.release();
         this.user.decoderState(ConnectionState.CONFIGURATION);
-        TestPacket packet = this.packet(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD);
+        TestPacket packet = this.packet(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND));
         this.channel.writeInbound(packet);
         assertSame(packet, this.channel.readInbound());
         assertEquals(1, calls.get());
@@ -350,8 +350,8 @@ class NetworkNmsChainTest {
 
     @Test
     void sharedOutboundTypeKeepsRootStageAcrossNestedDispatch() {
-        PacketType playType = PacketTypes.Play.Clientbound.CUSTOM_PAYLOAD;
-        PacketType configurationType = PacketTypes.Configuration.Clientbound.CUSTOM_PAYLOAD;
+        PacketType playType = new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        PacketType configurationType = new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.CLIENTBOUND);
         AtomicInteger playCalls = new AtomicInteger();
         AtomicInteger configurationCalls = new AtomicInteger();
         AtomicReference<NMSPacketEvent> outer = new AtomicReference<>();
@@ -385,7 +385,7 @@ class NetworkNmsChainTest {
     @Test
     void statePacketCancellationConsumesInboundRootAndKeepsConnectionOpen() {
         this.user.decoderState(ConnectionState.LOGIN);
-        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
         this.manager.listenNMS(type, (u, e, p) -> e.cancel());
         TestPacket packet = this.packet(type);
         this.channel.writeInbound(packet);
@@ -396,7 +396,7 @@ class NetworkNmsChainTest {
 
     @Test
     void statePacketReplacementTransfersOwnershipAndStopsLaterCallbacks() {
-        PacketType type = PacketTypes.Play.Clientbound.START_CONFIGURATION;
+        PacketType type = new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         TestPacket replacement = this.packet(type);
         this.manager.listenNMS(type, (u, e, p) -> e.replaceRootAndStop(replacement));
         this.manager.listenNMS(type, (u, e, p) -> fail("replaced chain continued"));
@@ -413,7 +413,7 @@ class NetworkNmsChainTest {
 
     @Test
     void statePacketFailureConsumesRootAndFailsPromiseWithoutClosingConnection() {
-        PacketType type = PacketTypes.Play.Clientbound.START_CONFIGURATION;
+        PacketType type = new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
         IllegalStateException failure = new IllegalStateException("NMS listener failure");
         this.manager.listenNMS(type, (u, e, p) -> { throw failure; });
         this.manager.listenNMS(type, (u, e, p) -> fail("failed chain continued"));

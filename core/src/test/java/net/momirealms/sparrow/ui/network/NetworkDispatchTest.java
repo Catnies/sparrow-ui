@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.ui.network;
 
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
-import net.momirealms.sparrow.ui.network.packet.ConnectionState;
-import net.momirealms.sparrow.ui.network.packet.PacketFlow;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NetworkDispatchTest {
 
@@ -54,7 +55,7 @@ class NetworkDispatchTest {
     }
 
     private void listen(ByteBufPacketHandler listener) {
-        this.manager.listenByteBuf(PacketTypes.Play.Serverbound.CONTAINER_CLOSE, listener);
+        this.manager.listenByteBuf(new PacketType("minecraft:container_close", ConnectionState.PLAY, PacketFlow.SERVERBOUND), listener);
     }
 
     @Test
@@ -147,10 +148,26 @@ class NetworkDispatchTest {
     }
 
     @Test
+    void discoversAndListensToAPacketFromTheRuntimeTable() {
+        this.user.setConnectionState(ConnectionState.STATUS);
+        PacketType type = this.manager.packetIds().find("test:runtime_packet", ConnectionState.STATUS, PacketFlow.SERVERBOUND);
+        assertNotNull(type);
+        assertTrue(this.manager.packetIds().types(ConnectionState.STATUS, PacketFlow.SERVERBOUND).contains(type));
+        AtomicInteger seen = new AtomicInteger();
+        this.manager.listenByteBuf(type, (user, event) -> {
+            seen.set(event.buffer().readVarInt());
+            event.cancel();
+        });
+        this.channel.writeInbound(frame(this.manager.packetIds().id(type), 73));
+        assertEquals(73, seen.get());
+        assertNull(this.channel.readInbound());
+    }
+
+    @Test
     void dispatchesOutboundFramesByTheEncoderState() {
         AtomicReference<Integer> seen = new AtomicReference<>();
         int packetId = this.manager.packetIds().byName("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
-        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, (user, event) -> {
+        this.manager.listenByteBuf(new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), (user, event) -> {
                 seen.set(event.buffer().readVarInt());
                 event.cancel();
         });

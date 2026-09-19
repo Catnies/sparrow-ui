@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.ui.network;
 
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
@@ -14,9 +17,6 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
-import net.momirealms.sparrow.ui.network.packet.ConnectionState;
-import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 
@@ -52,8 +52,8 @@ class NetworkTransportConcurrencyTest {
         AtomicInteger wrongThread = new AtomicInteger();
         ConcurrentLinkedQueue<Throwable> errors = new ConcurrentLinkedQueue<>();
         CompletableFuture<NetworkUser> ready = new CompletableFuture<>();
-        PacketType outbound = PacketTypes.Play.Clientbound.MERCHANT_OFFERS;
-        PacketType inbound = PacketTypes.Play.Serverbound.RENAME_ITEM;
+        PacketType outbound = new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND);
+        PacketType inbound = new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
         manager.listenNMS(outbound, (user, event, packet) -> {
             if (!user.channel().eventLoop().inEventLoop()) wrongThread.incrementAndGet();
             outboundNms.incrementAndGet();

@@ -8,7 +8,8 @@ public final class StatusProtocols {
 
     public static final ProtocolInfo.DetailsProvider SERVERBOUND_TEMPLATE = FakeProtocolTemplate.of(PacketFlow.SERVERBOUND,
             "minecraft:status_request",
-            "minecraft:ping_request"
+            "minecraft:ping_request",
+            "test:runtime_packet"
     );
     public static final ProtocolInfo.DetailsProvider CLIENTBOUND_TEMPLATE = FakeProtocolTemplate.of(PacketFlow.CLIENTBOUND,
             "minecraft:status_response",

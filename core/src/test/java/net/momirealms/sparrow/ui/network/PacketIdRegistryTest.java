@@ -5,13 +5,13 @@ import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import java.util.ArrayList;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PacketIdRegistryTest {
 
@@ -65,14 +65,51 @@ class PacketIdRegistryTest {
     @Test
     void resolvesEquivalentDescriptorsToTheSameRuntimeTypeAndId() {
         PacketType descriptor = new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
-        assertEquals(9, registry.id(PacketTypes.Play.Serverbound.RENAME_ITEM));
+        PacketType discovered = registry.find(descriptor.name(), descriptor.state(), descriptor.flow());
+        assertEquals(descriptor, discovered);
+        assertEquals(9, registry.id(discovered));
         assertEquals(9, registry.id(descriptor));
-        assertSame(registry.nativeType(PacketTypes.Play.Serverbound.RENAME_ITEM), registry.nativeType(descriptor));
+        assertSame(registry.nativeType(discovered), registry.nativeType(descriptor));
+    }
+
+    @Test
+    void listsRuntimeTypesInIdOrderAndReusesThemForLookups() {
+        for (ConnectionState state : ConnectionState.values()) {
+            for (PacketFlow flow : PacketFlow.values()) {
+                List<PacketType> types = registry.types(state, flow);
+                assertEquals(registry.count(state, flow), types.size());
+                int previousId = -1;
+                for (int index = 0; index < types.size(); index++) {
+                    PacketType type = types.get(index);
+                    int id = registry.id(type);
+                    assertEquals(state, type.state());
+                    assertEquals(flow, type.flow());
+                    assertTrue(id > previousId);
+                    assertSame(type, registry.find(type.name(), state, flow));
+                    assertSame(type, registry.type(id, state, flow));
+                    previousId = id;
+                }
+                assertSame(types, registry.types(state, flow));
+                assertThrows(UnsupportedOperationException.class, () -> types.add(new PacketType("test:packet", state, flow)));
+            }
+        }
+    }
+
+    @Test
+    void reportsAbsentNamesAndIdsWithoutInventingTypes() {
+        assertNull(registry.find("minecraft:unknown", ConnectionState.PLAY, PacketFlow.SERVERBOUND));
+        assertNull(registry.find("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.CLIENTBOUND));
+        assertNull(registry.find("minecraft:rename_item", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND));
+        assertNull(registry.type(-1, ConnectionState.PLAY, PacketFlow.SERVERBOUND));
+        assertNull(registry.type(registry.count(ConnectionState.PLAY, PacketFlow.SERVERBOUND), ConnectionState.PLAY, PacketFlow.SERVERBOUND));
+        assertNull(registry.type(Integer.MAX_VALUE, ConnectionState.PLAY, PacketFlow.SERVERBOUND));
+        assertNull(registry.type(0, ConnectionState.HANDSHAKING, PacketFlow.CLIENTBOUND));
+        assertTrue(registry.types(ConnectionState.HANDSHAKING, PacketFlow.CLIENTBOUND).isEmpty());
     }
 
     @Test
     void resolvesTheWireBundleDelimiterRatherThanTheObjectContainer() {
-        assertEquals(0, registry.id(PacketTypes.Play.Clientbound.BUNDLE_DELIMITER));
+        assertEquals(0, registry.id(new PacketType("minecraft:bundle_delimiter", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)));
         assertEquals(-1, registry.byName("minecraft:bundle", ConnectionState.PLAY, PacketFlow.CLIENTBOUND));
     }
 
@@ -89,30 +126,30 @@ class PacketIdRegistryTest {
 
     @Test
     void sharesNativeTypesAcrossStagesButKeepsEachNetworkId() {
-        Object play = registry.nativeType(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD);
-        Object configuration = registry.nativeType(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD);
-        assertEquals(11, registry.id(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD));
-        assertEquals(3, registry.id(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD));
+        Object play = registry.nativeType(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND));
+        Object configuration = registry.nativeType(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND));
+        assertEquals(11, registry.id(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND)));
+        assertEquals(3, registry.id(new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND)));
         assertSame(play, configuration);
     }
 
     @Test
     void keepsOppositeDirectionNativeTypesSeparate() {
-        Object serverbound = registry.nativeType(PacketTypes.Login.Serverbound.HELLO);
-        Object clientbound = registry.nativeType(PacketTypes.Login.Clientbound.HELLO);
+        Object serverbound = registry.nativeType(new PacketType("minecraft:hello", ConnectionState.LOGIN, PacketFlow.SERVERBOUND));
+        Object clientbound = registry.nativeType(new PacketType("minecraft:hello", ConnectionState.LOGIN, PacketFlow.CLIENTBOUND));
         assertNotSame(serverbound, clientbound);
     }
 
     @Test
     void resolvesTheSameDescriptorInSeparateRegistries() {
         PacketIdRegistry other = new PacketIdRegistry();
-        assertEquals(registry.id(PacketTypes.Play.Serverbound.RENAME_ITEM), other.id(PacketTypes.Play.Serverbound.RENAME_ITEM));
-        assertSame(registry.nativeType(PacketTypes.Play.Serverbound.RENAME_ITEM), other.nativeType(PacketTypes.Play.Serverbound.RENAME_ITEM));
+        assertEquals(registry.id(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND)), other.id(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND)));
+        assertSame(registry.nativeType(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND)), other.nativeType(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND)));
     }
 
     @Test
     void readsNativeTypeThroughTheCommonPacketProxy() {
-        net.minecraft.network.protocol.PacketType<?> nativeType = (net.minecraft.network.protocol.PacketType<?>) registry.nativeType(PacketTypes.Play.Serverbound.RENAME_ITEM);
+        net.minecraft.network.protocol.PacketType<?> nativeType = (net.minecraft.network.protocol.PacketType<?>) registry.nativeType(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND));
         NativePacket packet = new NativePacket(nativeType);
         assertSame(nativeType, PacketProxy.INSTANCE.type(packet));
     }

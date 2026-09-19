@@ -7,14 +7,13 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.ReferenceCountUtil;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import net.minecraft.network.protocol.handshake.ClientIntent;
 import net.minecraft.network.protocol.handshake.ClientIntentionPacket;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.network.listener.configuration.FinishConfigurationListener;
-import net.momirealms.sparrow.ui.network.packet.ConnectionState;
-import net.momirealms.sparrow.ui.network.packet.PacketFlow;
-import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,15 +50,15 @@ class NetworkProtocolStateTest {
                 PacketBuf buffer = new PacketBuf(frame);
                 int id = buffer.readVarInt();
                 PacketType type = switch (NetworkProtocolStateTest.this.user.decoderState()) {
-                    case HANDSHAKING -> PacketTypes.Handshaking.Serverbound.INTENTION;
-                    case LOGIN -> PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
-                    case CONFIGURATION -> PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION;
-                    case PLAY -> PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
+                    case HANDSHAKING -> new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND);
+                    case LOGIN -> new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
+                    case CONFIGURATION -> new PacketType("minecraft:finish_configuration", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
+                    case PLAY -> new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
                     default -> throw new AssertionError("Unexpected decoder state");
                 };
                 assertEquals(NetworkProtocolStateTest.this.manager.packetIds().id(type), id);
                 Object nativeType = NetworkProtocolStateTest.this.manager.packetIds().nativeType(type);
-                if (type == PacketTypes.Handshaking.Serverbound.INTENTION) {
+                if (type.state() == ConnectionState.HANDSHAKING) {
                     buffer.readVarInt();
                     buffer.readUtf();
                     buffer.readUnsignedShort();
@@ -187,7 +186,7 @@ class NetworkProtocolStateTest {
     @Test
     void stateListenerUsesRegistrationOrderCancellationAndSubscriptionRemoval() {
         this.user.setConnectionState(ConnectionState.CONFIGURATION);
-        PacketType type = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        PacketType type = new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
         Subscription cancellation = this.manager.listenNMS(type, (user, event, packet) -> event.cancel());
         Subscription stateListener = this.manager.listenNMS(type, FinishConfigurationListener.INSTANCE);
         this.user.receivePacket(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
@@ -209,10 +208,10 @@ class NetworkProtocolStateTest {
     @Test
     void byteCancellationPreventsAllFourInboundTransitions() {
         PacketType[] types = {
-                PacketTypes.Handshaking.Serverbound.INTENTION,
-                PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED,
-                PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION,
-                PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED
+                new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND),
+                new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND),
+                new PacketType("minecraft:finish_configuration", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND),
+                new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND)
         };
         for (int index = 0; index < types.length; index++) {
             PacketType type = types[index];
@@ -228,7 +227,7 @@ class NetworkProtocolStateTest {
 
     @Test
     void objectAndByteReceivesRespectSilentStateListenerMode() {
-        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
         this.manager.listenNMS(type, (u, e, p) -> assertEquals(ConnectionState.CONFIGURATION, u.decoderState()));
         this.user.setConnectionState(ConnectionState.LOGIN);
         this.user.receivePacketSilently(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
@@ -249,7 +248,7 @@ class NetworkProtocolStateTest {
 
     @Test
     void nmsCancellationAndFailureKeepAlreadyAppliedState() {
-        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
         this.user.setConnectionState(ConnectionState.LOGIN);
         Subscription cancellation = this.manager.listenNMS(type, (u, e, p) -> e.cancel());
         this.user.receivePacket(type, buffer -> {});
@@ -268,9 +267,9 @@ class NetworkProtocolStateTest {
 
     @Test
     void malformedHandshakeFailsInDecoderBeforeNmsStateListener() {
-        this.manager.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event, packet) -> fail("invalid handshake continued"));
+        this.manager.listenNMS(new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND), (user, event, packet) -> fail("invalid handshake continued"));
         ByteBuf frame = Unpooled.buffer();
-        new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(PacketTypes.Handshaking.Serverbound.INTENTION));
+        new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND)));
         frame.writeByte(0x80);
         assertThrows(DecoderException.class, () -> this.channel.writeInbound(frame));
         assertNull(this.channel.readInbound());
@@ -280,7 +279,7 @@ class NetworkProtocolStateTest {
 
     @Test
     void unknownHandshakeIntentionFailsInDecoderWithoutAdvancingState() {
-        this.manager.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event, packet) -> fail("invalid handshake continued"));
+        this.manager.listenNMS(new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND), (user, event, packet) -> fail("invalid handshake continued"));
         assertThrows(DecoderException.class, () -> this.intention(4));
         assertEquals(ConnectionState.HANDSHAKING, this.user.decoderState());
         assertEquals(ConnectionState.HANDSHAKING, this.user.encoderState());

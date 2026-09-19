@@ -14,36 +14,89 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class PacketIdRegistry {
-    private final int[][] packetCounts;
+    private final PacketType[][][] packetTypes;
+    private final List<PacketType>[][] availableTypes;
     private final Map<String, Integer>[][] packetIds;
     private final Map<String, Object>[][] nativeTypes;
 
     /**
      * 把五个协议阶段的包表读一遍, 建立只读索引.
-     * <p>某个组合在当前版本没有包表时保持空表, 查它一律得到 -1.
+     * <p>某个阶段和方向在当前版本没有包表时保持空表.
      */
     @SuppressWarnings("unchecked")
     public PacketIdRegistry() {
         this.packetIds = (Map<String, Integer>[][]) new Map[ConnectionState.values().length][PacketFlow.values().length];
         this.nativeTypes = (Map<String, Object>[][]) new Map[ConnectionState.values().length][PacketFlow.values().length];
-        this.packetCounts = new int[ConnectionState.values().length][PacketFlow.values().length];
+        this.packetTypes = new PacketType[ConnectionState.values().length][PacketFlow.values().length][];
+        this.availableTypes = (List<PacketType>[][]) new List[ConnectionState.values().length][PacketFlow.values().length];
         for (ConnectionState state : ConnectionState.values()) {
             for (PacketFlow flow : PacketFlow.values()) {
                 this.packetIds[state.ordinal()][flow.ordinal()] = Map.of();
                 this.nativeTypes[state.ordinal()][flow.ordinal()] = Map.of();
+                this.packetTypes[state.ordinal()][flow.ordinal()] = new PacketType[0];
+                this.availableTypes[state.ordinal()][flow.ordinal()] = List.of();
             }
         }
         for (ProtocolTemplate template : protocolTemplates()) {
             PacketTable table = readPacketTable(template.template());
             this.packetIds[template.state().ordinal()][template.flow().ordinal()] = table.packetIds();
             this.nativeTypes[template.state().ordinal()][template.flow().ordinal()] = table.nativeTypes();
-            this.packetCounts[template.state().ordinal()][template.flow().ordinal()] = table.count();
+            PacketType[] types = new PacketType[table.count()];
+            table.packetIds().forEach((name, id) -> types[id] = new PacketType(name, template.state(), template.flow()));
+            List<PacketType> available = new ArrayList<>(table.packetIds().size());
+            for (int id = 0; id < types.length; id++) {
+                if (types[id] != null) {
+                    available.add(types[id]);
+                }
+            }
+            this.packetTypes[template.state().ordinal()][template.flow().ordinal()] = types;
+            this.availableTypes[template.state().ordinal()][template.flow().ordinal()] = List.copyOf(available);
         }
+    }
+
+    /**
+     * 按完整注册名查询当前服务端的包类型.
+     *
+     * @param name 完整注册名, 例如 {@code minecraft:container_click}
+     * @param state 包所属协议阶段
+     * @param flow 包的传输方向
+     * @return 当前包表中的描述符; 不存在时为 null
+     */
+    @Nullable
+    public PacketType find(@NotNull String name, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
+        return this.type(this.byName(name, state, flow), state, flow);
+    }
+
+    /**
+     * 按当前服务端的数字 ID 反查包类型.
+     *
+     * @param id 包 ID
+     * @param state 包所属协议阶段
+     * @param flow 包的传输方向
+     * @return 当前包表中的描述符; ID 为负数、越界或对应位置没有包时为 null
+     */
+    @Nullable
+    public PacketType type(int id, @NotNull ConnectionState state, @NotNull PacketFlow flow) {
+        PacketType[] types = this.packetTypes[state.ordinal()][flow.ordinal()];
+        return id >= 0 && id < types.length ? types[id] : null;
+    }
+
+    /**
+     * 列出当前服务端指定阶段和方向的线协议包类型, 按数字 ID 升序排列.
+     *
+     * @param state 包所属协议阶段
+     * @param flow 包的传输方向
+     * @return 初始化时创建的只读列表; 没有包时为空列表
+     */
+    @NotNull
+    public List<PacketType> types(@NotNull ConnectionState state, @NotNull PacketFlow flow) {
+        return this.availableTypes[state.ordinal()][flow.ordinal()];
     }
 
     /**
@@ -86,7 +139,7 @@ public final class PacketIdRegistry {
      * @return 可以用来开定长路由数组的长度, 数组下标就是包 ID
      */
     public int count(@NotNull ConnectionState state, @NotNull PacketFlow flow) {
-        return this.packetCounts[state.ordinal()][flow.ordinal()];
+        return this.packetTypes[state.ordinal()][flow.ordinal()].length;
     }
 
     private static List<ProtocolTemplate> protocolTemplates() {

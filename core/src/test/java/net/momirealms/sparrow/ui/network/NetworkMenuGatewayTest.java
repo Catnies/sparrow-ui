@@ -3,10 +3,10 @@ package net.momirealms.sparrow.ui.network;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.window.handle.MenuInput;
 import org.bukkit.entity.Player;
@@ -77,20 +77,20 @@ class NetworkMenuGatewayTest {
 
     @Test
     void translatesAllEightInboundRoutesAndPreservesPongForwarding() throws Exception {
-        ByteBuf inactive = this.frame(PacketTypes.Play.Serverbound.RENAME_ITEM, b -> b.writeUtf("inactive"));
+        ByteBuf inactive = this.frame(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeUtf("inactive"));
         this.channel.writeInbound(inactive);
         assertSame(inactive, this.channel.readInbound());
         inactive.release();
         assertTrue(this.inputs.isEmpty());
         try (AutoCloseable session = this.open(null)) {
-            this.consumed(PacketTypes.Play.Serverbound.BUNDLE_ITEM_SELECTED, b -> b.writeVarInt(2).writeVarInt(3));
-            this.consumed(PacketTypes.Play.Serverbound.CONTAINER_CLOSE, b -> b.writeVarInt(7));
-            this.consumed(PacketTypes.Play.Serverbound.RENAME_ITEM, b -> b.writeUtf("rename"));
-            this.consumed(PacketTypes.Play.Serverbound.CONTAINER_SLOT_STATE_CHANGED, b -> b.writeVarInt(2).writeVarInt(7).writeBoolean(true));
-            this.consumed(PacketTypes.Play.Serverbound.CONTAINER_BUTTON_CLICK, b -> b.writeVarInt(7).writeVarInt(3));
-            this.consumed(PacketTypes.Play.Serverbound.PLACE_RECIPE, b -> b.writeVarInt(7).writeVarInt(42).writeBoolean(true));
-            this.consumed(PacketTypes.Play.Serverbound.SELECT_TRADE, b -> b.writeVarInt(4));
-            ByteBuf pong = this.frame(PacketTypes.Play.Serverbound.PONG, b -> b.writeInt(123456));
+            this.consumed(new PacketType("minecraft:bundle_item_selected", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(2).writeVarInt(3));
+            this.consumed(new PacketType("minecraft:container_close", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(7));
+            this.consumed(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeUtf("rename"));
+            this.consumed(new PacketType("minecraft:container_slot_state_changed", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(2).writeVarInt(7).writeBoolean(true));
+            this.consumed(new PacketType("minecraft:container_button_click", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(7).writeVarInt(3));
+            this.consumed(new PacketType("minecraft:place_recipe", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(7).writeVarInt(42).writeBoolean(true));
+            this.consumed(new PacketType("minecraft:select_trade", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeVarInt(4));
+            ByteBuf pong = this.frame(new PacketType("minecraft:pong", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeInt(123456));
             this.channel.writeInbound(pong);
             assertSame(pong, this.channel.readInbound());
             pong.release();
@@ -105,7 +105,7 @@ class NetworkMenuGatewayTest {
                     new MenuInput.Common.Pong(123456)
             ), this.inputs);
         }
-        ByteBuf ended = this.frame(PacketTypes.Play.Serverbound.RENAME_ITEM, b -> b.writeUtf("ended"));
+        ByteBuf ended = this.frame(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeUtf("ended"));
         this.channel.writeInbound(ended);
         assertSame(ended, this.channel.readInbound());
         ended.release();
@@ -114,8 +114,8 @@ class NetworkMenuGatewayTest {
 
     @Test
     void filtersBothOutboundRoutesAndClosesSubscriptions() throws Exception {
-        this.open(ids -> new int[]{ids.id(PacketTypes.Play.Clientbound.MERCHANT_OFFERS), ids.id(PacketTypes.Play.Clientbound.UPDATE_RECIPES)});
-        for (PacketType type : List.of(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, PacketTypes.Play.Clientbound.UPDATE_RECIPES)) {
+        this.open(ids -> new int[]{ids.id(new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)), ids.id(new PacketType("minecraft:update_recipes", ConnectionState.PLAY, PacketFlow.CLIENTBOUND))});
+        for (PacketType type : List.of(new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), new PacketType("minecraft:update_recipes", ConnectionState.PLAY, PacketFlow.CLIENTBOUND))) {
             ByteBuf frame = this.frame(type, b -> b.writeByte(0));
             assertFalse(this.channel.writeOutbound(frame));
             assertEquals(0, frame.refCnt());
@@ -126,11 +126,11 @@ class NetworkMenuGatewayTest {
             replacement.release();
         }
         this.gateway.close();
-        ByteBuf frame = this.frame(PacketTypes.Play.Clientbound.MERCHANT_OFFERS, b -> b.writeByte(0));
+        ByteBuf frame = this.frame(new PacketType("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), b -> b.writeByte(0));
         this.channel.writeOutbound(frame);
         assertSame(frame, this.channel.readOutbound());
         frame.release();
-        ByteBuf inbound = this.frame(PacketTypes.Play.Serverbound.RENAME_ITEM, b -> b.writeUtf("closed"));
+        ByteBuf inbound = this.frame(new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND), b -> b.writeUtf("closed"));
         this.channel.writeInbound(inbound);
         assertSame(inbound, this.channel.readInbound());
         inbound.release();

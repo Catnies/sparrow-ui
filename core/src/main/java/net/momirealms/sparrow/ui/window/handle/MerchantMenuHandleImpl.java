@@ -3,9 +3,10 @@ package net.momirealms.sparrow.ui.window.handle;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import net.momirealms.sparrow.ui.network.packet.PacketIdRegistry;
+import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.window.RenderCell;
@@ -46,7 +47,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     private static final ClientboundPacketFilter MERCHANT_OFFERS_FILTER = new ClientboundPacketFilter() {
         @Override
         public int[] suppressedPacketIds(@NotNull PacketIdRegistry packetIds) {
-            return new int[]{packetIds.id(PacketTypes.Play.Clientbound.MERCHANT_OFFERS)};
+            return new int[]{packetIds.byName("minecraft:merchant_offers", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)};
         }
 
         @Override

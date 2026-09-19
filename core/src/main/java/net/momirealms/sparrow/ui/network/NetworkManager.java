@@ -106,13 +106,13 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 内置状态监听器在接管连接前注册, 后续监听器按同一条链的注册顺序追加.
     private void registerProtocolStateListeners() {
         // 入站在对象层推进状态, 字节层和对象层都能先按切换前的阶段选定各自的监听链.
-        this.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, IntentionListener.INSTANCE);
-        this.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, LoginAcknowledgedListener.INSTANCE);
-        this.listenNMS(PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION, FinishConfigurationListener.INSTANCE);
-        this.listenNMS(PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED, ConfigurationAcknowledgedListener.INSTANCE);
+        this.listenNMS(new PacketType("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.SERVERBOUND), IntentionListener.INSTANCE);
+        this.listenNMS(new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND), LoginAcknowledgedListener.INSTANCE);
+        this.listenNMS(new PacketType("minecraft:finish_configuration", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND), FinishConfigurationListener.INSTANCE);
+        this.listenNMS(new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND), ConfigurationAcknowledgedListener.INSTANCE);
         // 出站先经过对象层再编码成字节, 状态在字节层推进.
-        this.listenByteBuf(PacketTypes.Play.Clientbound.LOGIN, LoginListener.INSTANCE);
-        this.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, StartConfigurationListener.INSTANCE);
+        this.listenByteBuf(new PacketType("minecraft:login", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), LoginListener.INSTANCE);
+        this.listenByteBuf(new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), StartConfigurationListener.INSTANCE);
     }
 
     // 接管 acceptor: 已有的当场补注入, 之后新增的靠 ListSignal 的元素钩子接住.

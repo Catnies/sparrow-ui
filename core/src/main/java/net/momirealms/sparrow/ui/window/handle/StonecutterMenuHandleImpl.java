@@ -1,9 +1,10 @@
 package net.momirealms.sparrow.ui.window.handle;
 
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketIdRegistry;
 import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.window.filter.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
-import net.momirealms.sparrow.ui.network.packet.PacketIdRegistry;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;
@@ -41,7 +42,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     private static final ClientboundStateProjection RECIPE_CATALOG_PROJECTION = new ClientboundStateProjection() {
         @Override
         public int[] suppressedPacketIds(@NotNull PacketIdRegistry packetIds) {
-            return new int[]{packetIds.id(PacketTypes.Play.Clientbound.UPDATE_RECIPES)};
+            return new int[]{packetIds.byName("minecraft:update_recipes", ConnectionState.PLAY, PacketFlow.CLIENTBOUND)};
         }
 
         @Override

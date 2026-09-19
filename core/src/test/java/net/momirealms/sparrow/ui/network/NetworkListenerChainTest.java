@@ -3,11 +3,10 @@ package net.momirealms.sparrow.ui.network;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.embedded.EmbeddedChannel;
-import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.network.packet.ConnectionState;
 import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import net.momirealms.sparrow.ui.network.packet.PacketType;
-import net.momirealms.sparrow.ui.network.packet.PacketTypes;
+import net.momirealms.sparrow.ui.Subscription;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NetworkListenerChainTest {
-    private static final PacketType TYPE = PacketTypes.Play.Serverbound.RENAME_ITEM;
+    private static final PacketType TYPE = new PacketType("minecraft:rename_item", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
 
     private NetworkManager manager;
     private EmbeddedChannel channel;
@@ -281,8 +280,8 @@ class NetworkListenerChainTest {
     void routesAreIsolatedAcrossStatesAndDirections() {
         AtomicInteger play = new AtomicInteger();
         AtomicInteger configuration = new AtomicInteger();
-        PacketType playType = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
-        PacketType configurationType = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        PacketType playType = new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
+        PacketType configurationType = new PacketType("minecraft:custom_payload", ConnectionState.CONFIGURATION, PacketFlow.SERVERBOUND);
         this.manager.listenByteBuf(playType, (u, e) -> play.incrementAndGet());
         this.manager.listenByteBuf(configurationType, (u, e) -> configuration.incrementAndGet());
         this.channel.writeInbound(this.frame(playType, 42));
@@ -290,7 +289,7 @@ class NetworkListenerChainTest {
         this.user.decoderState(ConnectionState.CONFIGURATION);
         this.channel.writeInbound(this.frame(configurationType, 42));
         ((ByteBuf) this.channel.readInbound()).release();
-        this.channel.writeOutbound(this.frame(PacketTypes.Play.Clientbound.CUSTOM_PAYLOAD, 42));
+        this.channel.writeOutbound(this.frame(new PacketType("minecraft:custom_payload", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), 42));
         ((ByteBuf) this.channel.readOutbound()).release();
         assertEquals(1, play.get());
         assertEquals(1, configuration.get());
@@ -299,7 +298,7 @@ class NetworkListenerChainTest {
     @Test
     void byteCancellationPreventsInboundStateTransition() {
         this.user.setConnectionState(ConnectionState.LOGIN);
-        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:login_acknowledged", ConnectionState.LOGIN, PacketFlow.SERVERBOUND);
         this.manager.listenByteBuf(type, (u, e) -> {
             assertEquals(ConnectionState.LOGIN, e.state);
             assertEquals(ConnectionState.LOGIN, u.decoderState());
@@ -316,8 +315,8 @@ class NetworkListenerChainTest {
     @Test
     void sendByteBufRunsStateListenersAndUserListeners() {
         AtomicInteger calls = new AtomicInteger();
-        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, (u, e) -> calls.incrementAndGet());
-        this.user.sendByteBuf(this.frame(PacketTypes.Play.Clientbound.START_CONFIGURATION, 0));
+        this.manager.listenByteBuf(new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), (u, e) -> calls.incrementAndGet());
+        this.user.sendByteBuf(this.frame(new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), 0));
         assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
         assertEquals(1, calls.get());
         ByteBuf sent = this.channel.readOutbound();
@@ -327,8 +326,8 @@ class NetworkListenerChainTest {
 
     @Test
     void silentByteBufSkipsStateListenersTogetherWithUserListeners() {
-        this.manager.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, (u, event) -> fail("silent state packet reached listener"));
-        this.user.sendByteBufSilently(this.frame(PacketTypes.Play.Clientbound.START_CONFIGURATION, 0));
+        this.manager.listenByteBuf(new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), (u, event) -> fail("silent state packet reached listener"));
+        this.user.sendByteBufSilently(this.frame(new PacketType("minecraft:start_configuration", ConnectionState.PLAY, PacketFlow.CLIENTBOUND), 0));
         assertEquals(ConnectionState.PLAY, this.user.encoderState());
         ByteBuf sent = this.channel.readOutbound();
         assertNotNull(sent);
@@ -337,7 +336,7 @@ class NetworkListenerChainTest {
 
     @Test
     void statePacketsCanBeRewrittenAndObservedByLaterCallbacks() {
-        PacketType type = PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
         this.manager.listenByteBuf(type, (u, e) -> {
             assertEquals(ConnectionState.PLAY, u.decoderState());
             assertFalse(e.buffer().isReadOnly());
@@ -356,7 +355,7 @@ class NetworkListenerChainTest {
 
     @Test
     void readOnlyFailureOnStatePacketsContinuesTheChain() {
-        PacketType type = PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
         this.manager.listenByteBuf(type, (u, e) -> {
             e.buffer().readVarInt();
             throw new IllegalStateException("read failure");
@@ -371,7 +370,7 @@ class NetworkListenerChainTest {
 
     @Test
     void writeFailureOnStatePacketsDropsTheFrameWithoutClosingTheConnection() {
-        PacketType type = PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
+        PacketType type = new PacketType("minecraft:configuration_acknowledged", ConnectionState.PLAY, PacketFlow.SERVERBOUND);
         this.manager.listenByteBuf(type, (u, e) -> {
             e.buffer().setByte(0, 99);
             throw new IllegalStateException("write failure");
