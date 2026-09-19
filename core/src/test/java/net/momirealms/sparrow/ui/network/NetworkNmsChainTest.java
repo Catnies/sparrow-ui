@@ -1,7 +1,11 @@
 package net.momirealms.sparrow.ui.network;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.util.AbstractReferenceCounted;
 import io.netty.util.ReferenceCounted;
 import net.minecraft.network.protocol.Packet;
@@ -118,15 +122,136 @@ class NetworkNmsChainTest {
     }
 
     @Test
-    void transitionMatchesItsSourceAfterByteBufAdvancedTheUser() {
-        this.user.setConnectionState(ConnectionState.CONFIGURATION);
+    void transitionSelectsNmsChainBeforeAdvancingTheUser() {
+        this.user.setConnectionState(ConnectionState.LOGIN);
         AtomicInteger calls = new AtomicInteger();
-        this.manager.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, (u, e, p) -> calls.incrementAndGet());
+        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        this.manager.listenNMS(type, (u, e, p) -> {
+            assertEquals(ConnectionState.CONFIGURATION, u.decoderState());
+            calls.incrementAndGet();
+        });
+        this.manager.listenByteBuf(type, (u, e) -> assertEquals(ConnectionState.LOGIN, u.decoderState()));
+        TestPacket packet = this.packet(type);
+        this.channel.pipeline().replace("decoder", "decoder", new MessageToMessageDecoder<ByteBuf>() {
+            @Override
+            protected void decode(ChannelHandlerContext context, ByteBuf frame, List<Object> out) {
+                assertEquals(ConnectionState.LOGIN, NetworkNmsChainTest.this.user.decoderState());
+                assertEquals(NetworkNmsChainTest.this.manager.packetIds().id(type), PacketBuf.readVarInt(frame));
+                out.add(packet);
+            }
+        });
+        ByteBuf frame = Unpooled.buffer();
+        new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(type));
+        this.channel.writeInbound(frame);
+        assertSame(packet, this.channel.readInbound());
+        assertEquals(1, calls.get());
+        assertEquals(0, frame.refCnt());
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        packet.release();
+    }
+
+    @Test
+    void directInjectionDoesNotInferSourceFromUniqueNativeType() {
+        this.user.decoderState(ConnectionState.CONFIGURATION);
+        this.manager.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, (u, e, p) -> fail());
+        this.manager.listenNMS(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> fail());
         TestPacket packet = this.packet(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED);
+        this.user.receivePacket(packet);
+        assertSame(packet, this.channel.readInbound());
+        assertEquals(1, packet.queries);
+        packet.release();
+    }
+
+    @Test
+    void nestedObjectAndByteInjectionDoNotChangeSelectedNmsChain() {
+        PacketType play = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
+        PacketType configuration = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        List<ConnectionState> stages = new ArrayList<>();
+        this.manager.listenNMS(play, (u, e, p) -> stages.add(ConnectionState.PLAY));
+        this.manager.listenNMS(configuration, (u, e, p) -> stages.add(ConnectionState.CONFIGURATION));
+        this.channel.pipeline().replace("decoder", "decoder", new MessageToMessageDecoder<ByteBuf>() {
+            @Override
+            protected void decode(ChannelHandlerContext context, ByteBuf frame, List<Object> out) {
+                out.add(NetworkNmsChainTest.this.packet(play));
+            }
+        });
+        this.manager.listenNMS(play, (u, e, p) -> {
+            u.decoderState(ConnectionState.CONFIGURATION);
+            u.receivePacket(this.packet(configuration));
+            u.receivePacket(configuration, buffer -> {});
+        });
+        this.manager.listenNMS(play, (u, e, p) -> stages.add(ConnectionState.PLAY));
+        this.user.receivePacket(play, buffer -> {});
+        assertEquals(List.of(ConnectionState.PLAY, ConnectionState.CONFIGURATION, ConnectionState.CONFIGURATION, ConnectionState.PLAY), stages);
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        for (int index = 0; index < 3; index++) {
+            TestPacket packet = this.channel.readInbound();
+            packet.release();
+        }
+    }
+
+    @Test
+    void cancelledAndFailedFramesLeaveSubsequentNmsRoutingUsable() {
+        PacketType play = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
+        PacketType configuration = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
+        Subscription cancellation = this.manager.listenByteBuf(play, (u, e) -> {
+            u.decoderState(ConnectionState.CONFIGURATION);
+            e.cancel();
+        });
+        this.user.receivePacket(play, buffer -> {});
+        assertNull(this.channel.readInbound());
+        cancellation.close();
+        this.user.decoderState(ConnectionState.PLAY);
+        IllegalStateException failure = new IllegalStateException("failed frame");
+        this.manager.listenByteBuf(play, (u, e) -> {
+            u.decoderState(ConnectionState.CONFIGURATION);
+            e.cancel();
+            throw failure;
+        });
+        this.user.receivePacket(play, buffer -> {});
+        assertSame(failure, assertThrows(IllegalStateException.class, this.channel::checkException));
+        AtomicInteger calls = new AtomicInteger();
+        this.manager.listenNMS(play, (u, e, p) -> fail());
+        this.manager.listenNMS(configuration, (u, e, p) -> calls.incrementAndGet());
+        TestPacket packet = this.packet(configuration);
+        this.user.receivePacket(packet);
+        assertSame(packet, this.channel.readInbound());
+        assertEquals(1, calls.get());
+        packet.release();
+    }
+
+    @Test
+    void equalNativeTypeWithDifferentIdentityDoesNotMatch() {
+        PacketType type = PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD;
+        Object equalButDifferent = new net.minecraft.network.protocol.PacketType<>("minecraft:custom_payload");
+        assertEquals(this.manager.packetIds().nativeType(type), equalButDifferent);
+        assertNotSame(this.manager.packetIds().nativeType(type), equalButDifferent);
+        this.manager.listenNMS(type, (u, e, p) -> fail());
+        TestPacket packet = new TestPacket(equalButDifferent);
+        this.channel.writeInbound(packet);
+        assertSame(packet, this.channel.readInbound());
+        assertEquals(1, packet.queries);
+        packet.release();
+    }
+
+    @Test
+    void removingSharedTypeInOneStageLeavesOtherStageRegistered() {
+        AtomicInteger calls = new AtomicInteger();
+        Subscription play = this.manager.listenNMS(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> fail());
+        Subscription configuration = this.manager.listenNMS(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD, (u, e, p) -> calls.incrementAndGet());
+        play.close();
+        TestPacket noLookup = this.packet(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD);
+        this.channel.writeInbound(noLookup);
+        assertSame(noLookup, this.channel.readInbound());
+        assertEquals(1, noLookup.queries);
+        noLookup.release();
+        this.user.decoderState(ConnectionState.CONFIGURATION);
+        TestPacket packet = this.packet(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD);
         this.channel.writeInbound(packet);
         assertSame(packet, this.channel.readInbound());
         assertEquals(1, calls.get());
         packet.release();
+        configuration.close();
     }
 
     @Test
@@ -259,6 +384,7 @@ class NetworkNmsChainTest {
 
     @Test
     void statePacketCancellationConsumesInboundRootAndKeepsConnectionOpen() {
+        this.user.decoderState(ConnectionState.LOGIN);
         PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
         this.manager.listenNMS(type, (u, e, p) -> e.cancel());
         TestPacket packet = this.packet(type);

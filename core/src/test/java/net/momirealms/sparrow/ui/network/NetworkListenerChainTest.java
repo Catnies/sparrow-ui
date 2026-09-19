@@ -297,12 +297,12 @@ class NetworkListenerChainTest {
     }
 
     @Test
-    void stateCallbacksObserveCapturedStageAndCancellationKeepsConnectionOpen() {
+    void byteCancellationPreventsInboundStateTransition() {
         this.user.setConnectionState(ConnectionState.LOGIN);
         PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
         this.manager.listenByteBuf(type, (u, e) -> {
             assertEquals(ConnectionState.LOGIN, e.state);
-            assertEquals(ConnectionState.CONFIGURATION, u.decoderState());
+            assertEquals(ConnectionState.LOGIN, u.decoderState());
             e.cancel();
         });
         this.manager.listenByteBuf(type, (u, e) -> fail("cancelled chain continued"));
@@ -310,7 +310,7 @@ class NetworkListenerChainTest {
         assertFalse(this.channel.writeInbound(frame));
         assertTrue(this.channel.isOpen());
         assertEquals(0, frame.refCnt());
-        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        assertEquals(ConnectionState.LOGIN, this.user.decoderState());
     }
 
     @Test
@@ -339,7 +339,7 @@ class NetworkListenerChainTest {
     void statePacketsCanBeRewrittenAndObservedByLaterCallbacks() {
         PacketType type = PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
         this.manager.listenByteBuf(type, (u, e) -> {
-            assertEquals(ConnectionState.CONFIGURATION, u.decoderState());
+            assertEquals(ConnectionState.PLAY, u.decoderState());
             assertFalse(e.buffer().isReadOnly());
             e.buffer().clear();
             e.buffer().writeVarInt(99);

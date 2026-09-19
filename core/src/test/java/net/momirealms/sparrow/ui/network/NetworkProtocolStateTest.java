@@ -2,7 +2,13 @@ package net.momirealms.sparrow.ui.network;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
+import io.netty.handler.codec.DecoderException;
+import io.netty.handler.codec.MessageToMessageDecoder;
+import io.netty.util.ReferenceCountUtil;
+import net.minecraft.network.protocol.handshake.ClientIntent;
+import net.minecraft.network.protocol.handshake.ClientIntentionPacket;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.network.listener.configuration.FinishConfigurationListener;
 import net.momirealms.sparrow.ui.network.packet.ConnectionState;
@@ -13,12 +19,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
 class NetworkProtocolStateTest {
 
@@ -34,6 +43,33 @@ class NetworkProtocolStateTest {
         this.user = this.manager.injectConnectionChannel(this.channel);
 
         assertNotNull(this.user);
+        // 为这些协议测试补上字节到对象的边界; 其他网络测试仍可使用透传 decoder.
+        this.channel.pipeline().replace("decoder", "decoder", new MessageToMessageDecoder<ByteBuf>() {
+            @Override
+            @SuppressWarnings("unchecked")
+            protected void decode(ChannelHandlerContext context, ByteBuf frame, List<Object> output) {
+                PacketBuf buffer = new PacketBuf(frame);
+                int id = buffer.readVarInt();
+                PacketType type = switch (NetworkProtocolStateTest.this.user.decoderState()) {
+                    case HANDSHAKING -> PacketTypes.Handshaking.Serverbound.INTENTION;
+                    case LOGIN -> PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+                    case CONFIGURATION -> PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION;
+                    case PLAY -> PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED;
+                    default -> throw new AssertionError("Unexpected decoder state");
+                };
+                assertEquals(NetworkProtocolStateTest.this.manager.packetIds().id(type), id);
+                Object nativeType = NetworkProtocolStateTest.this.manager.packetIds().nativeType(type);
+                if (type == PacketTypes.Handshaking.Serverbound.INTENTION) {
+                    buffer.readVarInt();
+                    buffer.readUtf();
+                    buffer.readUnsignedShort();
+                    output.add(new ClientIntentionPacket(ClientIntent.byId(buffer.readVarInt()), (net.minecraft.network.protocol.PacketType) nativeType));
+                } else {
+                    output.add(new NetworkNmsChainTest.TestPacket(nativeType));
+                }
+                assertFalse(buffer.isReadable());
+            }
+        });
     }
 
     @AfterEach
@@ -73,9 +109,9 @@ class NetworkProtocolStateTest {
     }
 
     private void drainInbound() {
-        ByteBuf frame;
-        while ((frame = this.channel.readInbound()) != null) {
-            frame.release();
+        Object packet;
+        while ((packet = this.channel.readInbound()) != null) {
+            ReferenceCountUtil.release(packet);
         }
     }
 
@@ -152,40 +188,100 @@ class NetworkProtocolStateTest {
     void stateListenerUsesRegistrationOrderCancellationAndSubscriptionRemoval() {
         this.user.setConnectionState(ConnectionState.CONFIGURATION);
         PacketType type = PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD;
-        Subscription cancellation = this.manager.listenByteBuf(type, (user, event) -> event.cancel());
-        Subscription stateListener = this.manager.listenByteBuf(type, FinishConfigurationListener.INSTANCE);
-        this.inbound(type.name(), type.state());
+        Subscription cancellation = this.manager.listenNMS(type, (user, event, packet) -> event.cancel());
+        Subscription stateListener = this.manager.listenNMS(type, FinishConfigurationListener.INSTANCE);
+        this.user.receivePacket(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
         assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
 
         cancellation.close();
-        this.inbound(type.name(), type.state());
+        this.user.receivePacket(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
+        this.drainInbound();
         assertEquals(ConnectionState.PLAY, this.user.encoderState());
 
         this.user.encoderState(ConnectionState.CONFIGURATION);
         stateListener.close();
-        this.inbound(type.name(), type.state());
+        this.user.receivePacket(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
+        this.drainInbound();
         assertEquals(ConnectionState.CONFIGURATION, this.user.encoderState());
         assertTrue(this.channel.isOpen());
     }
 
     @Test
-    void malformedHandshakeIsConsumedByItsListenerAndStopsLaterCallbacks() {
-        this.manager.listenByteBuf(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event) -> fail("invalid handshake continued"));
+    void byteCancellationPreventsAllFourInboundTransitions() {
+        PacketType[] types = {
+                PacketTypes.Handshaking.Serverbound.INTENTION,
+                PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED,
+                PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION,
+                PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED
+        };
+        for (int index = 0; index < types.length; index++) {
+            PacketType type = types[index];
+            this.user.setConnectionState(type.state());
+            Subscription cancellation = this.manager.listenByteBuf(type, (u, e) -> e.cancel());
+            this.user.receivePacket(type, buffer -> {});
+            assertEquals(type.state(), this.user.decoderState());
+            assertEquals(type.state(), this.user.encoderState());
+            assertNull(this.channel.readInbound());
+            cancellation.close();
+        }
+    }
+
+    @Test
+    void objectAndByteReceivesRespectSilentStateListenerMode() {
+        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        this.manager.listenNMS(type, (u, e, p) -> assertEquals(ConnectionState.CONFIGURATION, u.decoderState()));
+        this.user.setConnectionState(ConnectionState.LOGIN);
+        this.user.receivePacketSilently(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
+        assertEquals(ConnectionState.LOGIN, this.user.decoderState());
+        this.drainInbound();
+        this.user.receivePacket(new NetworkNmsChainTest.TestPacket(this.manager.packetIds().nativeType(type)));
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        this.drainInbound();
+
+        this.user.setConnectionState(ConnectionState.LOGIN);
+        this.user.receivePacketSilently(type, buffer -> {});
+        assertEquals(ConnectionState.LOGIN, this.user.decoderState());
+        this.drainInbound();
+        this.user.receivePacket(type, buffer -> {});
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        this.drainInbound();
+    }
+
+    @Test
+    void nmsCancellationAndFailureKeepAlreadyAppliedState() {
+        PacketType type = PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED;
+        this.user.setConnectionState(ConnectionState.LOGIN);
+        Subscription cancellation = this.manager.listenNMS(type, (u, e, p) -> e.cancel());
+        this.user.receivePacket(type, buffer -> {});
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        assertNull(this.channel.readInbound());
+        cancellation.close();
+
+        this.user.setConnectionState(ConnectionState.LOGIN);
+        IllegalStateException failure = new IllegalStateException("state listener failed");
+        this.manager.listenNMS(type, (u, e, p) -> { throw failure; });
+        this.user.receivePacket(type, buffer -> {});
+        assertSame(failure, assertThrows(IllegalStateException.class, this.channel::checkException));
+        assertEquals(ConnectionState.CONFIGURATION, this.user.decoderState());
+        assertNull(this.channel.readInbound());
+    }
+
+    @Test
+    void malformedHandshakeFailsInDecoderBeforeNmsStateListener() {
+        this.manager.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event, packet) -> fail("invalid handshake continued"));
         ByteBuf frame = Unpooled.buffer();
         new PacketBuf(frame).writeVarInt(this.manager.packetIds().id(PacketTypes.Handshaking.Serverbound.INTENTION));
         frame.writeByte(0x80);
-        assertFalse(this.channel.writeInbound(frame));
+        assertThrows(DecoderException.class, () -> this.channel.writeInbound(frame));
         assertNull(this.channel.readInbound());
         assertEquals(0, frame.refCnt());
-        assertFalse(this.channel.isOpen());
         assertEquals(ConnectionState.HANDSHAKING, this.user.decoderState());
     }
 
     @Test
-    void unknownHandshakeIntentionClosesWithoutAdvancingState() {
-        this.manager.listenByteBuf(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event) -> fail("invalid handshake continued"));
-        this.intention(4);
-        assertFalse(this.channel.isOpen());
+    void unknownHandshakeIntentionFailsInDecoderWithoutAdvancingState() {
+        this.manager.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, (user, event, packet) -> fail("invalid handshake continued"));
+        assertThrows(DecoderException.class, () -> this.intention(4));
         assertEquals(ConnectionState.HANDSHAKING, this.user.decoderState());
         assertEquals(ConnectionState.HANDSHAKING, this.user.encoderState());
     }

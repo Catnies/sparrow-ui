@@ -17,9 +17,6 @@ import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.network.RegistrySnapshot.ByteBufRoute;
-import net.momirealms.sparrow.ui.network.RegistrySnapshot.NmsRoute;
-import net.momirealms.sparrow.ui.network.RegistrySnapshot.NmsTypeRoutes;
 import net.momirealms.sparrow.ui.network.listener.configuration.FinishConfigurationListener;
 import net.momirealms.sparrow.ui.network.listener.game.ConfigurationAcknowledgedListener;
 import net.momirealms.sparrow.ui.network.listener.game.LoginListener;
@@ -107,12 +104,14 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
     // 内置状态监听器在接管连接前注册, 后续监听器按同一条链的注册顺序追加.
     private void registerProtocolStateListeners() {
-        this.listenByteBuf(PacketTypes.Handshaking.Serverbound.INTENTION, IntentionListener.INSTANCE);
-        this.listenByteBuf(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, LoginAcknowledgedListener.INSTANCE);
-        this.listenByteBuf(PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION, FinishConfigurationListener.INSTANCE);
+        // 入站在对象层推进状态, 字节层和对象层都能先按切换前的阶段选定各自的监听链.
+        this.listenNMS(PacketTypes.Handshaking.Serverbound.INTENTION, IntentionListener.INSTANCE);
+        this.listenNMS(PacketTypes.Login.Serverbound.LOGIN_ACKNOWLEDGED, LoginAcknowledgedListener.INSTANCE);
+        this.listenNMS(PacketTypes.Configuration.Serverbound.FINISH_CONFIGURATION, FinishConfigurationListener.INSTANCE);
+        this.listenNMS(PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED, ConfigurationAcknowledgedListener.INSTANCE);
+        // 出站先经过对象层再编码成字节, 状态在字节层推进.
         this.listenByteBuf(PacketTypes.Play.Clientbound.LOGIN, LoginListener.INSTANCE);
         this.listenByteBuf(PacketTypes.Play.Clientbound.START_CONFIGURATION, StartConfigurationListener.INSTANCE);
-        this.listenByteBuf(PacketTypes.Play.Serverbound.CONFIGURATION_ACKNOWLEDGED, ConfigurationAcknowledgedListener.INSTANCE);
     }
 
     // 接管 acceptor: 已有的当场补注入, 之后新增的靠 ListSignal 的元素钩子接住.
@@ -323,26 +322,26 @@ public final class NetworkManager implements Listener, AutoCloseable {
         if (id < 0) {
             throw new IllegalArgumentException("Unavailable packet " + type + " on Minecraft " + VersionHelper.MINECRAFT_VERSION);
         }
-        ByteBufRoute[] row = this.registry.byteBuf()[type.flow().ordinal()][type.state().ordinal()];
-        ByteBufRoute route = row == null ? null : row[id];
+        PacketEntry<ByteBufPacketHandler>[][] row = this.registry.byteBuf()[type.flow().ordinal()][type.state().ordinal()];
+        PacketEntry<ByteBufPacketHandler>[] previous = row == null ? null : row[id];
         // 注册锁确定并发注册的先后. 所有新条目追加到末尾.
         long sequence = this.sequence++;
-        PacketEntry<ByteBufPacketHandler>[] entries = PacketEntry.append(route == null ? RegistrySnapshot.EMPTY_BYTE_BUF : route.entries(), new PacketEntry<>(sequence, handler));
+        PacketEntry<ByteBufPacketHandler>[] entries = PacketEntry.append(previous == null ? RegistrySnapshot.EMPTY_BYTE_BUF : previous, new PacketEntry<>(sequence, handler));
         // 新数组全部准备完成后再发布, 正在派发的帧继续读取手中的旧数组.
-        this.registry = this.registry.withByteBuf(type, id, this.packetIds.count(type.state(), type.flow()), new ByteBufRoute(type, entries));
+        this.registry = this.registry.withByteBuf(type, id, this.packetIds.count(type.state(), type.flow()), entries);
         return new PacketSubscription(type, id, sequence);
     }
 
     private void unregisterByteBuf(PacketType type, int id, long sequence) {
         // 由凭证在 manager 锁内调用. 最后一个条目移除后释放该路由槽位.
-        ByteBufRoute route = this.registry.byteBuf()[type.flow().ordinal()][type.state().ordinal()][id];
-        PacketEntry<ByteBufPacketHandler>[] entries = PacketEntry.remove(route.entries(), sequence);
-        ByteBufRoute updated = entries.length == 0 ? null : new ByteBufRoute(type, entries);
-        this.registry = this.registry.withByteBuf(type, id, this.packetIds.count(type.state(), type.flow()), updated);
+        PacketEntry<ByteBufPacketHandler>[] previous = this.registry.byteBuf()[type.flow().ordinal()][type.state().ordinal()][id];
+        PacketEntry<ByteBufPacketHandler>[] entries = PacketEntry.remove(previous, sequence);
+        this.registry = this.registry.withByteBuf(type, id, this.packetIds.count(type.state(), type.flow()), entries.length == 0 ? null : entries);
     }
 
     /**
      * 按注册顺序监听逻辑类型对应的 NMS 包, 回调在 Netty 线程同步执行.
+     * <p>按 NMS 入口的连接阶段选定监听链; 当前链执行中的状态切换只影响后续派发, bundle 共用根包阶段.
      * @param type 逻辑包类型
      * @param handler 对象回调, 第三个参数为当前匹配的叶子包
      * @return 独立注销凭证, 在途快照可继续执行
@@ -357,20 +356,19 @@ public final class NetworkManager implements Listener, AutoCloseable {
         if (nativeType == null) {
             throw new IllegalArgumentException("Unavailable packet " + type + " on Minecraft " + VersionHelper.MINECRAFT_VERSION);
         }
-        NmsTypeRoutes routes = this.registry.nms()[type.flow().ordinal()].get(nativeType);
-        NmsRoute route = routes == null ? null : routes.routes()[type.state().ordinal()];
+        PacketEntry<NMSPacketHandler>[] previous = this.registry.nms()[type.flow().ordinal()][type.state().ordinal()].get(nativeType);
         long sequence = this.sequence++;
-        PacketEntry<NMSPacketHandler>[] entries = PacketEntry.append(route == null ? RegistrySnapshot.EMPTY_NMS : route.entries(), new PacketEntry<>(sequence, handler));
-        this.registry = this.registry.withNms(type, nativeType, this.packetIds.stateMask(nativeType), new NmsRoute(type, entries));
+        PacketEntry<NMSPacketHandler>[] entries = PacketEntry.append(previous == null ? RegistrySnapshot.EMPTY_NMS : previous, new PacketEntry<>(sequence, handler));
+        this.registry = this.registry.withNms(type, nativeType, entries);
         return new PacketSubscription(type, -1, sequence);
     }
 
     private void unregisterNms(PacketType type, long sequence) {
         // 身份表、阶段数组和条目数组都通过新快照替换, bundle 已捕获的快照可执行到结束.
         Object nativeType = this.packetIds.nativeType(type);
-        NmsRoute route = this.registry.nms()[type.flow().ordinal()].get(nativeType).routes()[type.state().ordinal()];
-        PacketEntry<NMSPacketHandler>[] entries = PacketEntry.remove(route.entries(), sequence);
-        this.registry = this.registry.withNms(type, nativeType, this.packetIds.stateMask(nativeType), entries.length == 0 ? null : new NmsRoute(type, entries));
+        PacketEntry<NMSPacketHandler>[] previous = this.registry.nms()[type.flow().ordinal()][type.state().ordinal()].get(nativeType);
+        PacketEntry<NMSPacketHandler>[] entries = PacketEntry.remove(previous, sequence);
+        this.registry = this.registry.withNms(type, nativeType, entries.length == 0 ? null : entries);
     }
 
     // 每帧捕获一次快照, 命中后创建事件并按注册顺序执行整条链.
@@ -381,21 +379,20 @@ public final class NetworkManager implements Listener, AutoCloseable {
         RegistrySnapshot snapshot = this.registry;
         ConnectionState state = serverbound ? user.decoderState() : user.encoderState();
         PacketFlow flow = serverbound ? PacketFlow.SERVERBOUND : PacketFlow.CLIENTBOUND;
-        ByteBufRoute[] routes = snapshot.byteBuf()[flow.ordinal()][state.ordinal()];
+        PacketEntry<ByteBufPacketHandler>[][] routes = snapshot.byteBuf()[flow.ordinal()][state.ordinal()];
         // 当前阶段完全没有工作时, 原帧连 ID 都不读取.
         if (routes == null) return true;
         int frameStart = buffer.readerIndex();
         int frameEnd = buffer.writerIndex();
         int packetId = PacketBuf.readVarInt(buffer);
-        ByteBufRoute route = packetId < 0 || packetId >= routes.length ? null : routes[packetId];
-        if (route == null) {
+        PacketEntry<ByteBufPacketHandler>[] entries = packetId < 0 || packetId >= routes.length ? null : routes[packetId];
+        if (entries == null) {
             // 试读 ID 已推进 readerIndex, 未命中时恢复帧起点再交给原版解码器.
             buffer.readerIndex(frameStart);
             return true;
         }
         int payloadStart = buffer.readerIndex();
         ByteBufPacketEvent event = new ByteBufPacketEvent(packetId, state, flow, buffer, payloadStart);
-        PacketEntry<ByteBufPacketHandler>[] entries = route.entries();
         for (int index = 0; index < entries.length; index++) {
             PacketEntry<ByteBufPacketHandler> entry = entries[index];
             // 每个节点从已提交 payload 的开头读取, 写操作标记只记录当前节点.
@@ -404,7 +401,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             try {
                 entry.handler().handle(user, event);
             } catch (Exception failure) {
-                SparrowUI.getInstance().handleException("Failed to handle " + route.type() + " id=" + packetId + " handler=" + entry.handler().getClass().getName() + " sequence=" + entry.sequence(), failure);
+                SparrowUI.getInstance().handleException("Failed to handle " + flow + " " + state + " id=" + packetId + " handler=" + entry.handler().getClass().getName() + " sequence=" + entry.sequence(), failure);
                 if (event.writing() || event.cancelled()) throw failure;
                 // 当前节点只读失败时, 保留前面节点的已提交内容, 由下一轮或出口恢复指针.
                 continue;
@@ -424,7 +421,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
 
     // 根包捕获的阶段和身份索引沿 bundle 递归传递, 事件在首个命中叶子时创建.
     @Nullable
-    private NMSPacketEvent handleNms(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event, IdentityHashMap<Object, NmsTypeRoutes> routes, int state, boolean outbound) {
+    private NMSPacketEvent handleNms(NetworkUser user, Object root, Object packet, @Nullable NMSPacketEvent event, IdentityHashMap<Object, PacketEntry<NMSPacketHandler>[]> routes, ConnectionState state, boolean outbound) {
         if (outbound && ClientboundBundlePacketProxy.CLASS.isInstance(packet)) {
             // 所有叶子共用根事件与入口阶段. 任意叶子停止后, 其余叶子也不再展开.
             for (Object child : BundlePacketProxy.INSTANCE.subPackets(packet)) {
@@ -433,16 +430,14 @@ public final class NetworkManager implements Listener, AutoCloseable {
             }
             return event;
         }
-        // 每个普通包只查询一次原生类型. 多阶段共用类型才需要入口阶段参与选择.
-        NmsTypeRoutes typeRoutes = routes.get(PacketProxy.INSTANCE.type(packet));
-        if (typeRoutes == null) return event;
-        NmsRoute route = typeRoutes.routes()[typeRoutes.fixedState() < 0 ? state : typeRoutes.fixedState()];
-        if (route == null) return event;
+        // 阶段表已在根包入口选定, 普通包只需按原生类型身份查询一次监听数组.
+        Object nativeType = PacketProxy.INSTANCE.type(packet);
+        PacketEntry<NMSPacketHandler>[] entries = routes.get(nativeType);
+        if (entries == null) return event;
         if (event == null) {
             // bundle 在首个命中叶子时才创建事件, 嵌套发送会创建自己的独立事件.
             event = new NMSPacketEvent(root);
         }
-        PacketEntry<NMSPacketHandler>[] entries = route.entries();
         for (int index = 0; index < entries.length; index++) {
             PacketEntry<NMSPacketHandler> entry = entries[index];
             try {
@@ -450,7 +445,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             } catch (Exception failure) {
                 event.failure(failure);
                 // NMS 回调可能已经原地修改对象, 失败时整根丢弃, 由桥完成资源与 promise 处理.
-                SparrowUI.getInstance().handleException("Failed to handle NMS " + route.type() + " handler=" + entry.handler().getClass().getName() + " sequence=" + entry.sequence(), failure);
+                SparrowUI.getInstance().handleException("Failed to handle NMS " + (outbound ? PacketFlow.CLIENTBOUND : PacketFlow.SERVERBOUND) + " " + state + " type=" + nativeType + " handler=" + entry.handler().getClass().getName() + " sequence=" + entry.sequence(), failure);
             } catch (Error failure) {
                 event.failure(failure);
             }
@@ -619,7 +614,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
                 // 从 Sparrow 字节监听层注入包 ID + payload, 后面继续走原版解码.
                 ((ByteBufDecoder) context.handler()).channelRead(context, message);
             } else {
-                // 从 Sparrow NMS 监听层注入对象包, 后面继续走服务器连接处理.
+                // 从 NMS 监听层注入对象包, 按实际执行时的连接阶段派发.
                 ((NMSPacketBridge) context.handler()).channelRead(context, message);
             }
             // 为本次模拟读取补发完成事件, 让后续 handler 完成这一轮读取的收尾工作.
@@ -740,7 +735,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
             if (forward) {
                 context.fireChannelRead(buffer);
             } else {
-                // 空帧和主动取消均由当前层消费, 放行分支把原有引用直接交给下游.
                 buffer.release();
             }
         }
@@ -756,7 +750,9 @@ public final class NetworkManager implements Listener, AutoCloseable {
         @Override
         public void channelRead(ChannelHandlerContext context, Object packet) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
-            IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.SERVERBOUND.ordinal()];
+            ConnectionState state = this.user.decoderState();
+            // 先选定本次监听链, 内置监听器随后推进状态; 同一包的剩余回调继续使用已选定的表.
+            IdentityHashMap<Object, PacketEntry<NMSPacketHandler>[]> routes = snapshot.nms()[PacketFlow.SERVERBOUND.ordinal()][state.ordinal()];
             if (this.user.silentInbound() || routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
                 // 静默、空路由和非 NMS 消息直接沿原 pipeline 透传.
                 context.fireChannelRead(packet);
@@ -764,7 +760,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
             }
             NMSPacketEvent event;
             try {
-                event = NetworkManager.this.handleNms(this.user, packet, packet, null, routes, this.user.decoderState().ordinal(), false);
+                event = NetworkManager.this.handleNms(this.user, packet, packet, null, routes, state, false);
             } catch (Exception | Error failure) {
                 ReferenceCountUtil.release(packet);
                 context.fireExceptionCaught(failure);
@@ -790,15 +786,16 @@ public final class NetworkManager implements Listener, AutoCloseable {
         @Override
         public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) {
             RegistrySnapshot snapshot = NetworkManager.this.registry;
-            IdentityHashMap<Object, NmsTypeRoutes> routes = snapshot.nms()[PacketFlow.CLIENTBOUND.ordinal()];
+            ConnectionState state = this.user.encoderState();
+            IdentityHashMap<Object, PacketEntry<NMSPacketHandler>[]> routes = snapshot.nms()[PacketFlow.CLIENTBOUND.ordinal()][state.ordinal()];
             if (this.user.silentOutbound() || routes.isEmpty() || !PacketProxy.CLASS.isInstance(packet)) {
-                // 静默或出站方向为空时, bundle 也按原对象直接转交.
+                // 静默或当前出站阶段为空时, bundle 也按原对象直接转交.
                 context.write(packet, promise);
                 return;
             }
             NMSPacketEvent event;
             try {
-                event = NetworkManager.this.handleNms(this.user, packet, packet, null, routes, this.user.encoderState().ordinal(), true);
+                event = NetworkManager.this.handleNms(this.user, packet, packet, null, routes, state, true);
             } catch (Exception | Error failure) {
                 ReferenceCountUtil.release(packet);
                 promise.tryFailure(failure);

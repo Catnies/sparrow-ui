@@ -15,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,7 +22,6 @@ public final class PacketIdRegistry {
     private final int[][] packetCounts;
     private final Map<String, Integer>[][] packetIds;
     private final Map<String, Object>[][] nativeTypes;
-    private final Map<Object, Integer> stateMasks = new IdentityHashMap<>();
 
     /**
      * 把五个协议阶段的包表读一遍, 建立只读索引.
@@ -45,11 +43,6 @@ public final class PacketIdRegistry {
             this.packetIds[template.state().ordinal()][template.flow().ordinal()] = table.packetIds();
             this.nativeTypes[template.state().ordinal()][template.flow().ordinal()] = table.nativeTypes();
             this.packetCounts[template.state().ordinal()][template.flow().ordinal()] = table.count();
-            int stateMask = 1 << template.state().ordinal();
-            // 同一个原生类型可出现在多个阶段, 在初始化时汇总它的全部来源.
-            for (Object nativeType : table.nativeTypes().values()) {
-                this.stateMasks.merge(nativeType, stateMask, (previous, added) -> previous | added);
-            }
         }
     }
 
@@ -83,11 +76,6 @@ public final class PacketIdRegistry {
     @Nullable
     public Object nativeType(@NotNull PacketType type) {
         return this.nativeTypes[type.state().ordinal()][type.flow().ordinal()].get(type.name());
-    }
-
-    // 每一位对应一个 ConnectionState.ordinal(), 未登记的原生实例返回 0.
-    public int stateMask(@NotNull Object nativeType) {
-        return this.stateMasks.getOrDefault(nativeType, 0);
     }
 
     /**

@@ -68,7 +68,6 @@ class PacketIdRegistryTest {
         assertEquals(9, registry.id(PacketTypes.Play.Serverbound.RENAME_ITEM));
         assertEquals(9, registry.id(descriptor));
         assertSame(registry.nativeType(PacketTypes.Play.Serverbound.RENAME_ITEM), registry.nativeType(descriptor));
-        assertEquals(1 << ConnectionState.PLAY.ordinal(), registry.stateMask(registry.nativeType(descriptor)));
     }
 
     @Test
@@ -95,15 +94,6 @@ class PacketIdRegistryTest {
         assertEquals(11, registry.id(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD));
         assertEquals(3, registry.id(PacketTypes.Configuration.Serverbound.CUSTOM_PAYLOAD));
         assertSame(play, configuration);
-        assertEquals((1 << ConnectionState.PLAY.ordinal()) | (1 << ConnectionState.CONFIGURATION.ordinal()), registry.stateMask(play));
-    }
-
-    @Test
-    void distinguishesNativeTypeIdentityFromValueEquality() {
-        Object registered = registry.nativeType(PacketTypes.Play.Serverbound.CUSTOM_PAYLOAD);
-        Object equalButDifferent = new net.minecraft.network.protocol.PacketType<>("minecraft:custom_payload");
-        assertEquals(registered, equalButDifferent);
-        assertEquals(0, registry.stateMask(equalButDifferent));
     }
 
     @Test
