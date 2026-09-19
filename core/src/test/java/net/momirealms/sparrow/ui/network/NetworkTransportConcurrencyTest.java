@@ -14,6 +14,9 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.local.LocalAddress;
 import io.netty.channel.local.LocalChannel;
 import io.netty.channel.local.LocalServerChannel;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
+import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 

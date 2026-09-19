@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.ui.network;
 
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.IdentityHashMap;

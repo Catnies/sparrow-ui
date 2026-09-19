@@ -2,8 +2,8 @@ package net.momirealms.sparrow.ui.window.handle;
 
 import net.momirealms.sparrow.ui.window.filter.ClientboundPacketFilter;
 import net.momirealms.sparrow.ui.window.filter.ClientboundStateProjection;
-import net.momirealms.sparrow.ui.network.PacketTypes;
-import net.momirealms.sparrow.ui.network.PacketIdRegistry;
+import net.momirealms.sparrow.ui.network.packet.PacketTypes;
+import net.momirealms.sparrow.ui.network.packet.PacketIdRegistry;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.RegistryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.core.registries.BuiltInRegistriesProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundContainerSetDataPacketProxy;

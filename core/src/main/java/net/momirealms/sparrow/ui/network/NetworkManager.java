@@ -26,6 +26,7 @@ import net.momirealms.sparrow.ui.network.listener.game.LoginListener;
 import net.momirealms.sparrow.ui.network.listener.game.StartConfigurationListener;
 import net.momirealms.sparrow.ui.network.listener.handshake.IntentionListener;
 import net.momirealms.sparrow.ui.network.listener.login.LoginAcknowledgedListener;
+import net.momirealms.sparrow.ui.network.packet.*;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
@@ -62,10 +63,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-/**
- * 按注册顺序监听连接中的 ByteBuf 帧与 NMS 包对象, 支持改写和取消.
- * <p>全服共用 {@link SparrowUI#networkManager()} 返回的实例; 回调在连接的 Netty 线程同步执行.
- */
 public final class NetworkManager implements Listener, AutoCloseable {
     private static final String MINECRAFT_SPLITTER = "splitter";
 
@@ -499,15 +496,6 @@ public final class NetworkManager implements Listener, AutoCloseable {
     @NotNull
     public PacketIdRegistry packetIds() {
         return this.packetIds;
-    }
-
-    /**
-     * 按协议阶段和方向输出当前服务端的运行期包 ID 表.
-     *
-     * @param output 每行表项的接收者
-     */
-    public void dumpPacketIds(@NotNull Consumer<String> output) {
-        this.packetIds.dump(output);
     }
 
     // 发送与模拟接收

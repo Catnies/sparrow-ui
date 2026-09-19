@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.ui.network;
 
 import io.netty.buffer.Unpooled;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
 import io.netty.buffer.ByteBuf;

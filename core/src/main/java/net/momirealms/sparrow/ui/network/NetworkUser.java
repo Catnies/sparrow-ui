@@ -2,6 +2,8 @@ package net.momirealms.sparrow.ui.network;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketType;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;

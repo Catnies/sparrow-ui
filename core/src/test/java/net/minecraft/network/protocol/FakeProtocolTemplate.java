@@ -1,7 +1,7 @@
 package net.minecraft.network.protocol;
 
 import net.minecraft.network.ProtocolInfo;
-import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 
 import java.util.HashMap;
 import java.util.Map;

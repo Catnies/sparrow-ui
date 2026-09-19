@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.network;
+package net.momirealms.sparrow.ui.network.packet;
 
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolInfoDetailsProviderProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolInfoDetailsProxy;
@@ -14,13 +14,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Proxy;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 
 public final class PacketIdRegistry {
     private final int[][] packetCounts;
@@ -78,13 +75,18 @@ public final class PacketIdRegistry {
         return this.byName(type.name(), type.state(), type.flow());
     }
 
+    /**
+     * 根据 PacketType 获取 NMS 的 PacketType.
+     * @param type
+     * @return
+     */
     @Nullable
-    Object nativeType(@NotNull PacketType type) {
+    public Object nativeType(@NotNull PacketType type) {
         return this.nativeTypes[type.state().ordinal()][type.flow().ordinal()].get(type.name());
     }
 
     // 每一位对应一个 ConnectionState.ordinal(), 未登记的原生实例返回 0.
-    int stateMask(@NotNull Object nativeType) {
+    public int stateMask(@NotNull Object nativeType) {
         return this.stateMasks.getOrDefault(nativeType, 0);
     }
 
@@ -97,20 +99,6 @@ public final class PacketIdRegistry {
      */
     public int count(@NotNull ConnectionState state, @NotNull PacketFlow flow) {
         return this.packetCounts[state.ordinal()][flow.ordinal()];
-    }
-
-    // 按 ID 排序打印, 出问题时拿来和 NMS 的实际包表对账
-    void dump(@NotNull Consumer<String> output) {
-        for (ConnectionState state : ConnectionState.values()) {
-            for (PacketFlow flow : PacketFlow.values()) {
-                ArrayList<Map.Entry<String, Integer>> entries = new ArrayList<>(this.packetIds[state.ordinal()][flow.ordinal()].entrySet());
-                entries.sort(Comparator.comparingInt(Map.Entry::getValue));
-                for (int index = 0; index < entries.size(); index++) {
-                    Map.Entry<String, Integer> entry = entries.get(index);
-                    output.accept(state + "/" + flow + " " + entry.getValue() + " " + entry.getKey());
-                }
-            }
-        }
     }
 
     private static List<ProtocolTemplate> protocolTemplates() {

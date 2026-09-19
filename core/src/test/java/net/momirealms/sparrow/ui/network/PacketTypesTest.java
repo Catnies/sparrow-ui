@@ -1,5 +1,7 @@
 package net.momirealms.sparrow.ui.network;
 
+import net.momirealms.sparrow.ui.network.packet.PacketType;
+import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import org.junit.jupiter.api.Test;
 
 import java.net.URL;

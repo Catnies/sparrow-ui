@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.network.NetworkUser;
 import net.momirealms.sparrow.ui.network.PacketBuf;
-import net.momirealms.sparrow.ui.network.PacketTypes;
+import net.momirealms.sparrow.ui.network.packet.PacketTypes;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ServerboundContainerClickPacketProxy;
 import net.momirealms.sparrow.ui.util.VersionHelper;

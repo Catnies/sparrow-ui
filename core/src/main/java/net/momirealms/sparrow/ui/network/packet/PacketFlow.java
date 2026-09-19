@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.network;
+package net.momirealms.sparrow.ui.network.packet;
 
 import org.jetbrains.annotations.NotNull;
 

@@ -1,6 +1,8 @@
 package net.momirealms.sparrow.ui.network;
 
 import io.netty.buffer.ByteBuf;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

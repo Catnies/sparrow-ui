@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.network;
 
+import net.momirealms.sparrow.ui.network.packet.*;
 import net.momirealms.sparrow.ui.proxy.BukkitProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import org.junit.jupiter.api.BeforeAll;
@@ -59,20 +60,6 @@ class PacketIdRegistryTest {
     void leavesHandshakeClientboundEmpty() {
         assertEquals(0, registry.count(ConnectionState.HANDSHAKING, PacketFlow.CLIENTBOUND));
         assertEquals(-1, registry.byName("minecraft:intention", ConnectionState.HANDSHAKING, PacketFlow.CLIENTBOUND));
-    }
-
-    @Test
-    void dumpsEveryEntrySortedById() {
-        ArrayList<String> lines = new ArrayList<>();
-        registry.dump(lines::add);
-
-        assertTrue(lines.contains("PLAY/SERVERBOUND 3 minecraft:container_click"));
-        assertTrue(lines.contains("HANDSHAKING/SERVERBOUND 0 minecraft:intention"));
-        List<String> playServerbound = lines.stream().filter(line -> line.startsWith("PLAY/SERVERBOUND ")).toList();
-
-        assertEquals(12, playServerbound.size());
-        assertEquals("PLAY/SERVERBOUND 0 minecraft:accept_teleportation", playServerbound.getFirst());
-        assertEquals("PLAY/SERVERBOUND 11 minecraft:custom_payload", playServerbound.getLast());
     }
 
     @Test

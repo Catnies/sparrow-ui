@@ -2,7 +2,7 @@ package net.minecraft.network.protocol.handshake;
 
 import net.minecraft.network.ProtocolInfo;
 import net.minecraft.network.protocol.FakeProtocolTemplate;
-import net.momirealms.sparrow.ui.network.PacketFlow;
+import net.momirealms.sparrow.ui.network.packet.PacketFlow;
 
 public final class HandshakeProtocols {
 

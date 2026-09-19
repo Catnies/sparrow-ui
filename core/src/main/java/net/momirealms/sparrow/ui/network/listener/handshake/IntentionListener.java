@@ -4,7 +4,7 @@ import io.netty.channel.Channel;
 import io.netty.handler.codec.DecoderException;
 import net.momirealms.sparrow.ui.network.ByteBufPacketEvent;
 import net.momirealms.sparrow.ui.network.ByteBufPacketHandler;
-import net.momirealms.sparrow.ui.network.ConnectionState;
+import net.momirealms.sparrow.ui.network.packet.ConnectionState;
 import net.momirealms.sparrow.ui.network.NetworkPipelineOrder;
 import net.momirealms.sparrow.ui.network.NetworkUser;
 import net.momirealms.sparrow.ui.network.PacketBuf;
