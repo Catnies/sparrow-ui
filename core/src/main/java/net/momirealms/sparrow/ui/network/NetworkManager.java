@@ -26,6 +26,7 @@ import net.momirealms.sparrow.ui.network.listener.login.LoginAcknowledgedListene
 import net.momirealms.sparrow.ui.network.packet.*;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolSwapHandlerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
@@ -586,8 +587,18 @@ public final class NetworkManager implements Listener, AutoCloseable {
             if (context == null) {
                 throw new IllegalStateException("Sparrow handler is not installed: " + name);
             }
-        } catch (Exception failure) {
-            // 状态检查和入口解析都在消息移交前完成, 失败时由此处释放消息并报告.
+            if (!outbound && !bytes && PacketProxy.INSTANCE.isTerminal(message)) {
+                ChannelHandlerContext decoder = pipeline.context("decoder");
+                if (decoder != null) {
+                    // 原版在终止包到达对象监听前停读并将 decoder 换成 inbound_config, 后续配置任务依赖这个节点.
+                    ProtocolSwapHandlerProxy.INSTANCE.handleInboundTerminalPacket(decoder, message);
+                } else if (pipeline.context("inbound_config") == null) {
+                    throw new IllegalStateException("Minecraft inbound protocol handler is not installed");
+                }
+                // 已解码的终止包可能经取消后再次注入, 此时沿用现有 inbound_config 等待原版安装新协议.
+            }
+        } catch (Exception | Error failure) {
+            // 状态检查和协议准备都在消息移交前完成, 失败时由此处释放消息并报告.
             ReferenceCountUtil.release(message);
             pipeline.fireExceptionCaught(failure);
             return;

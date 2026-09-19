@@ -104,7 +104,6 @@ public final class NetworkUser {
 
     /**
      * 向客户端发送 NMS 包, 经过对应的 Sparrow 监听器.
-     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
      * @param packet NMS 客户端包
      */
     public void sendPacket(@NotNull Object packet) {
@@ -113,7 +112,6 @@ public final class NetworkUser {
 
     /**
      * 向客户端发送字节帧, 经过对应的 Sparrow 监听器.
-     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
      * @param frame 当前服务端协议的包 ID + payload, 不带长度、压缩或加密头
      */
     public void sendByteBuf(@NotNull ByteBuf frame) {
@@ -122,7 +120,6 @@ public final class NetworkUser {
 
     /**
      * 向客户端发送指定类型的字节帧, 自动写入当前版本的包 ID, 经过对应的 Sparrow 监听器.
-     * <p>writer 在调用线程同步执行, 只向缓冲末尾追加 payload; 缓冲不能保存到回调之外.
      * @param type 当前方向的逻辑包类型
      * @param writer payload 写入回调
      */
@@ -131,10 +128,7 @@ public final class NetworkUser {
     }
 
     /**
-     * 向客户端发送 NMS 包, 在同步转发期间跳过 Sparrow 出站监听器, 包括内置状态监听器.
-     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端已处理完成.
-     * <p><strong>静默范围仅覆盖同一 event loop 上的同步传播.</strong> 中间 handler 延迟转发或切换执行器后不保留静默模式.
-     * 同步重入的原始 channel.write 会沿用当前出站模式; 需要普通发送时使用本类普通入口, 或由调用方排入 event loop 后续任务.
+     * 向客户端发送 NMS 包, 在同步转发期间跳过 Sparrow 出站监听器.
      * @param packet NMS 客户端包, bundle 由调用者自行构造
      */
     public void sendPacketSilently(@NotNull Object packet) {
@@ -160,7 +154,7 @@ public final class NetworkUser {
 
     /**
      * 模拟客户端向服务器发送 NMS 包, 经过对应的 Sparrow 监听器.
-     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示对端或服务器已处理完成.
+     * <p>协议终止包会先执行原版的停读和 decoder 切换准备; 监听器取消后也保留该状态, 与自然收包一致.
      * @param packet NMS 服务端包
      */
     public void receivePacket(@NotNull Object packet) {
@@ -188,9 +182,8 @@ public final class NetworkUser {
 
     /**
      * 模拟客户端发送 NMS 包, 在同步转发期间跳过 Sparrow 入站监听器, 包括内置状态监听器.
-     * <p>在连接 event loop 执行; 接受后消息所有权交给框架, 返回不表示服务器已处理完成.
      * <p><strong>静默范围仅覆盖同一 event loop 上的同步传播.</strong> 中间 handler 延迟转发或切换执行器后不保留静默模式.
-     * 入站模式独立于出站模式; 通过本类普通接收入口重入时使用普通模式.
+     * 原版协议终止包的停读和 decoder 切换准备仍会执行.
      * @param packet NMS 服务端包
      */
     public void receivePacketSilently(@NotNull Object packet) {

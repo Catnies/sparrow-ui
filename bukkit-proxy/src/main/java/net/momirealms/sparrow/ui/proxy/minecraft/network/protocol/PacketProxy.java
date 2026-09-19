@@ -12,4 +12,7 @@ public interface PacketProxy {
 
     @MethodInvoker(name = "type", activeIf = "min_version=1.20.5")
     Object type(Object target);
+
+    @MethodInvoker(name = "isTerminal", activeIf = "min_version=1.20.5")
+    boolean isTerminal(Object target);
 }
