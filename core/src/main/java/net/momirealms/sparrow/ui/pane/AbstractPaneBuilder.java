@@ -100,14 +100,20 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B addIngredient(char identifier, @NotNull ItemBuilder itemBuilder) {
+        return this.bindIngredient(String.valueOf(identifier), (ignoredSize, ignoredOccurrence) -> new Element.Item(itemBuilder.build()));
+    }
+
+    @Override
+    @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemProvider provider) {
         return this.addIngredient(identifier, Item.simple(provider));
     }
 
     @Override
     @NotNull
-    public final B addIngredient(char identifier, @NotNull ItemStack itemStack) {
-        return this.addIngredient(String.valueOf(identifier), Item.simple(ItemProvider.constant(itemStack)));
+    public final B addIngredient(char identifier, @NotNull ItemProvider provider) {
+        return this.addIngredient(String.valueOf(identifier), Item.simple(provider));
     }
 
     @Override
@@ -118,14 +124,32 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B addIngredient(char identifier, @NotNull ItemStack itemStack) {
+        return this.addIngredient(String.valueOf(identifier), Item.simple(ItemProvider.constant(itemStack)));
+    }
+
+    @Override
+    @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier) {
         return this.bindIngredient(identifier, ElementSupplier.items(itemSupplier));
     }
 
     @Override
     @NotNull
+    public final B addIngredient(char identifier, @NotNull Supplier<? extends Item> itemSupplier) {
+        return this.bindIngredient(String.valueOf(identifier), ElementSupplier.items(itemSupplier));
+    }
+
+    @Override
+    @NotNull
     public final B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends Element> elementSupplier) {
         return this.bindIngredient(identifier, ElementSupplier.fromSupplier(elementSupplier));
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredientElementSupplier(char identifier, @NotNull Supplier<? extends Element> elementSupplier) {
+        return this.bindIngredient(String.valueOf(identifier), ElementSupplier.fromSupplier(elementSupplier));
     }
 
     @Override
@@ -333,8 +357,20 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B addIngredient(char identifier, @NotNull Pane pane) {
+        return this.addIngredient(String.valueOf(identifier), pane, 0, 0);
+    }
+
+    @Override
+    @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY) {
         return this.bindIngredient(identifier, ElementSupplier.pane(pane, offsetX, offsetY));
+    }
+
+    @Override
+    @NotNull
+    public final B addIngredient(char identifier, @NotNull Pane pane, int offsetX, int offsetY) {
+        return this.bindIngredient(String.valueOf(identifier), ElementSupplier.pane(pane, offsetX, offsetY));
     }
 
     @Override

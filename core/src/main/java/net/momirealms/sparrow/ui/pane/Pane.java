@@ -994,6 +994,16 @@ public sealed interface Pane permits AbstractPane {
         B addIngredient(@NotNull String identifier, @NotNull ItemBuilder itemBuilder);
 
         /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param itemBuilder Item Builder
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull ItemBuilder itemBuilder);
+
+        /**
          * 这个标志符的槽位共用这一个 ItemProvider.
          *
          * @param identifier 标志符
@@ -1002,6 +1012,16 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredient(@NotNull String identifier, @NotNull ItemProvider provider);
+
+        /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param provider Item 内容来源
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull ItemProvider provider);
 
         /**
          * 这个标志符的槽位全显示这个 ItemStack.
@@ -1034,6 +1054,16 @@ public sealed interface Pane permits AbstractPane {
         B addIngredient(@NotNull String identifier, @NotNull Supplier<? extends Item> itemSupplier);
 
         /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param itemSupplier Item 来源
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Supplier<? extends Item> itemSupplier);
+
+        /**
          * 这个标志符每格各取一次 elementSupplier.
          *
          * @param identifier 标志符
@@ -1042,6 +1072,16 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredientElementSupplier(@NotNull String identifier, @NotNull Supplier<? extends Element> elementSupplier);
+
+        /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param elementSupplier 槽位元素来源
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredientElementSupplier(char identifier, @NotNull Supplier<? extends Element> elementSupplier);
 
         /**
          * 把这个标志符的槽位按出现顺序循环接到 Inventory 上.
@@ -1348,6 +1388,16 @@ public sealed interface Pane permits AbstractPane {
         B addIngredient(@NotNull String identifier, @NotNull Pane pane);
 
         /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param pane 子 Pane
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Pane pane);
+
+        /**
          * 同 {@link #addIngredient(String, Pane)}, 但挪到子 Pane 里的指定偏移处.
          *
          * @param identifier 标志符
@@ -1358,6 +1408,18 @@ public sealed interface Pane permits AbstractPane {
          */
         @NotNull
         B addIngredient(@NotNull String identifier, @NotNull Pane pane, int offsetX, int offsetY);
+
+        /**
+         * 标志符写单个字符的简写入口.
+         *
+         * @param identifier 标志符, 只写一个字符
+         * @param pane 子 Pane
+         * @param offsetX 子 Pane 横向偏移
+         * @param offsetY 子 Pane 纵向偏移
+         * @return 当前 Builder
+         */
+        @NotNull
+        B addIngredient(char identifier, @NotNull Pane pane, int offsetX, int offsetY);
 
         /**
          * 换掉空槽位的背景.
