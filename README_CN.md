@@ -1,21 +1,21 @@
-<h1 align="center">Sparrow UI</h1>
+<h1 align="center">
+  <img src="./assets/readme/logo.png" alt="Sparrow Sync logo" width="100" height="100">
+  <br>
+  Sparrow Sync
+</h1>
+
+<p align="center">面向 Paper 与 Folia 的基于数据包的响应式 UI 库.</p>
 
 <p align="center">
-  面向 Paper 与 Folia 的响应式 UI 框架
+  <strong>English</strong> · <a href="./README_CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Catnies/sparrow-ui/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/Catnies/sparrow-ui?color=ffb02e"></a>
-  <a href="https://github.com/Catnies/sparrow-ui/issues"><img alt="GitHub Issues" src="https://img.shields.io/github/issues/Catnies/sparrow-ui"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-beta.21-7c5cff">
-  <img alt="Java" src="https://img.shields.io/badge/Java-21-ef6c00">
-  <img alt="Platform" src="https://img.shields.io/badge/Paper%20%7C%20Folia-supported-2f80ed">
-  <img alt="Minecraft 1.21.4 - 26.3" src="https://img.shields.io/badge/Minecraft-1.21.4--26.3-3c8527">
+  <img src="https://img.shields.io/github/languages/code-size/Catnies/sparrow-ui" alt="Code Size">
+  <a href="https://catnies.github.io/sparrow-ui-wiki"><img src="https://img.shields.io/badge/📙-User%20Manual-D2691E" alt="User Manual"></a>
 </p>
 
-<p align="center">
-  <a href="./README.md">English</a> · <strong>简体中文</strong>
-</p>
+## 📌 Overview
 
 Sparrow UI 是面向 Paper 与 Folia 的响应式库存 UI 库。它将菜单状态、库存交互、渲染与会话管理放进一套可复用的组件模型，让同一组 Item、Pane 和 Inventory 能够安全地服务多名玩家。
 
