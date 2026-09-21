@@ -1,12 +1,10 @@
 package net.momirealms.sparrow.ui.scheduler;
 
 import java.util.logging.Level;
-
 import net.momirealms.sparrow.ui.scheduler.task.AsyncTask;
 import net.momirealms.sparrow.ui.scheduler.task.LazyAsyncTask;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.bukkit.plugin.Plugin;
-
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Arrays;
 import java.util.concurrent.*;

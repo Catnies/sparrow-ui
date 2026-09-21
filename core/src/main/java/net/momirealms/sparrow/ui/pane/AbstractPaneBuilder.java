@@ -106,6 +106,12 @@ abstract class AbstractPaneBuilder<G extends AbstractPane, B extends AbstractPan
 
     @Override
     @NotNull
+    public final B addIngredient(char identifier, @NotNull ItemStack itemStack) {
+        return this.addIngredient(String.valueOf(identifier), Item.simple(ItemProvider.constant(itemStack)));
+    }
+
+    @Override
+    @NotNull
     public final B addIngredient(@NotNull String identifier, @NotNull ItemStack itemStack) {
         return this.addIngredient(identifier, Item.simple(ItemProvider.constant(itemStack)));
     }

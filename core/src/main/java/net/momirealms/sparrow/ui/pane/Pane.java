@@ -1011,6 +1011,16 @@ public sealed interface Pane permits AbstractPane {
          * @return 当前 Builder
          */
         @NotNull
+        B addIngredient(char identifier, @NotNull ItemStack itemStack);
+
+        /**
+         * 这个标志符的槽位全显示这个 ItemStack.
+         *
+         * @param identifier 标志符
+         * @param itemStack Bukkit ItemStack
+         * @return 当前 Builder
+         */
+        @NotNull
         B addIngredient(@NotNull String identifier, @NotNull ItemStack itemStack);
 
         /**
