@@ -1,7 +1,7 @@
 <h1 align="center">
   <img src="./assets/readme/logo.png" alt="Sparrow Sync logo" width="100" height="100">
   <br>
-  Sparrow Sync
+  Sparrow UI
 </h1>
 
 <p align="center">A reactive UI framework for Paper and Folia.</p>
