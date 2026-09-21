@@ -272,6 +272,20 @@ class WindowContractTest {
     }
 
     @Test
+    void mergedBuilderAcceptsSingleRowContainer() {
+        SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
+        Pane pane = Pane.empty(9, 5);
+        Window window = Window.mergedBuilder(pane).build(player());
+
+        assertSame(pane, window.lowerPane());
+        assertEquals(List.of(pane), window.panes());
+        assertEquals(36, window.windowSlotAtHotbar(0));
+        assertEquals(44, window.windowSlotAtHotbar(8));
+        assertSame(pane, window.paneAt(44).pane());
+        assertEquals(44, window.paneAt(44).slot());
+    }
+
+    @Test
     void reusableBuilderCreatesViewerSpecificDefaultLowerPane() {
         SparrowUiTestRuntime.install(new WindowManager(SparrowUiTestRuntime.plugin(), null, new FoliaExecutor(SparrowUiTestRuntime.plugin())));
         HopperWindow.Builder builder = HopperWindow.builder();

@@ -109,14 +109,14 @@ final class WindowLayout {
     /**
      * 编出合并布局: 一个 Pane 的最后 4 行就是客户端的玩家物品栏区, 所以至少得 5 行才摆得下.
      *
-     * @param pane 同时包含容器区与玩家物品栏区的 Pane, 必须超过 45 个槽位
+     * @param pane 同时包含容器区与玩家物品栏区的 Pane, 必须超过 36 个槽位
      * @return 编译好的布局
-     * @throws IllegalArgumentException Pane 的槽位数不超过 45 个时
+     * @throws IllegalArgumentException Pane 的槽位数不超过 36 个时
      */
     @NotNull
     static WindowLayout merged(@NotNull Pane pane) {
-        if (pane.area() <= 45) {
-            throw new IllegalArgumentException("merged Pane must contain more than 45 slots");
+        if (pane.area() <= LOWER_SIZE.area()) {
+            throw new IllegalArgumentException("merged Pane must contain more than 36 slots");
         }
         // 最后 36 格切给 lower, 剩下的算 upper
         int lowerStart = pane.area() - 36;

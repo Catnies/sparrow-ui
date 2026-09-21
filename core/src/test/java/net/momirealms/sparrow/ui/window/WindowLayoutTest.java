@@ -41,6 +41,24 @@ class WindowLayoutTest {
     }
 
     @Test
+    void mergedSupportsOneContainerRowAndFourPlayerInventoryRows() {
+        Pane mergedPane = Pane.empty(9, 5);
+        WindowLayout layout = WindowLayout.merged(mergedPane);
+
+        assertEquals(9, layout.upperSize());
+        assertEquals(45, layout.size());
+        assertEquals(45, layout.protocolSize());
+        assertEquals(36, layout.windowSlotAtHotbar(0));
+        assertEquals(44, layout.windowSlotAtHotbar(8));
+        assertSame(mergedPane, layout.lowerPane());
+        assertEquals(List.of(mergedPane), layout.panes());
+        for (int slot = 0; slot < 45; slot++) {
+            assertSame(mergedPane, layout.paneAt(slot).pane());
+            assertEquals(slot, layout.paneAt(slot).slot());
+        }
+    }
+
+    @Test
     void layoutOnlyRejectsStructurallyInvalidLowerAndMergedRegions() {
         WindowLayout anvilSized = WindowLayout.split(Pane.empty(3, 1), Pane.empty(9, 4));
 
