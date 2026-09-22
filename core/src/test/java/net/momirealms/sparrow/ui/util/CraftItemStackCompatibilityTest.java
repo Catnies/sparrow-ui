@@ -87,6 +87,37 @@ class CraftItemStackCompatibilityTest {
     }
 
     @Test
+    void spigotMutationCopyConvertsOrdinaryItemsOnceAndKeepsTheSourceIndependent() throws Throwable {
+        assertMutationCopy(List.of("spigot"), 1);
+    }
+
+    @Test
+    void paperMutationCopyKeepsTheClonePath() throws Throwable {
+        assertMutationCopy(List.of("paper"), 0);
+    }
+
+    @Test
+    void foliaMutationCopyKeepsTheClonePath() throws Throwable {
+        assertMutationCopy(List.of("paper", "folia"), 0);
+    }
+
+    private static void assertMutationCopy(List<String> patches, int conversions) throws Throwable {
+        withPlatform(patches, items -> {
+            ItemStack source = new ItemStack(Material.DIAMOND, 32);
+            ItemMeta meta = source.getItemMeta();
+            meta.setDisplayName("mutation-source");
+            source.setItemMeta(meta);
+            ItemStack copy = (ItemStack) items.getMethod("copyForNmsMutation", ItemStack.class).invoke(null, source);
+            assertNotSame(source, copy);
+            assertEquals(source, copy);
+            copy.setAmount(7);
+            assertEquals(32, source.getAmount());
+            assertEquals("mutation-source", copy.getItemMeta().getDisplayName());
+            assertEquals(conversions, CraftItemStack.copyCalls);
+        });
+    }
+
+    @Test
     void spigotEmptyChecksBorrowCraftHandlesAndNeverCopyOrdinaryItems() throws Throwable {
         withPlatform(List.of("spigot"), items -> {
             net.minecraft.world.item.ItemStack handle = net.minecraft.world.item.ItemStack.wrap(new ItemStack(Material.DIAMOND, 3));

@@ -78,6 +78,21 @@ public final class ItemUtils {
     }
 
     /**
+     * 复制物品, 副本持有可修改的 NMS 句柄, 句柄上的修改会反映到返回物品.
+     * <p>Spigot 普通 Bukkit 物品通过一次 NMS 转换创建副本; Paper 与 CraftItemStack 沿用 clone.
+     *
+     * @param source 原物品
+     * @return 由调用方独立持有的物品副本
+     */
+    @NotNull
+    public static ItemStack copyForNmsMutation(@NotNull ItemStack source) {
+        if (VersionHelper.hasPaperPatch || CraftItemStackProxy.CLASS.isInstance(source)) {
+            return source.clone();
+        }
+        return CraftItemStackProxy.INSTANCE.asCraftMirror(CraftItemStackProxy.INSTANCE.asNMSCopy(source));
+    }
+
+    /**
      * 返回 Bukkit ItemStack 对应的 NMS 句柄, 空物品返回底层共享空实例.
      * <p>Paper 和 CraftItemStack 复用原有句柄; Spigot 的普通 Bukkit 物品需要转换为新的 NMS 物品.
      * <p><strong>返回值可能与输入共享数据, 调用方不得修改.</strong>

@@ -35,15 +35,15 @@ public final class ClickBundleRules {
             ItemStack current,
             ItemStack cursor
     ) {
-        ItemStack slotAfter = current.clone();
-        ItemStack bundleAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        ItemStack slotAfter = ItemUtils.copyForNmsMutation(current);
+        ItemStack bundleAfter = ItemUtils.copyForNmsMutation(cursor);
+        Object bundleHandle = CraftItemStackProxy.INSTANCE.unwrap(bundleAfter);
         Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
         if (contents == null) {
             return null;
         }
         Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(slotAfter));
+        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, CraftItemStackProxy.INSTANCE.unwrap(slotAfter));
         if (inserted == 0) {
             return null;
         }
@@ -61,8 +61,8 @@ public final class ClickBundleRules {
             ItemStack cursor,
             int slotLimit
     ) {
-        ItemStack bundleAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        ItemStack bundleAfter = ItemUtils.copyForNmsMutation(cursor);
+        Object bundleHandle = CraftItemStackProxy.INSTANCE.unwrap(bundleAfter);
         Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
         if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
             return null;
@@ -104,15 +104,15 @@ public final class ClickBundleRules {
             ItemStack current,
             ItemStack cursor
     ) {
-        ItemStack bundleAfter = current.clone();
-        ItemStack cursorAfter = cursor.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        ItemStack bundleAfter = ItemUtils.copyForNmsMutation(current);
+        ItemStack cursorAfter = ItemUtils.copyForNmsMutation(cursor);
+        Object bundleHandle = CraftItemStackProxy.INSTANCE.unwrap(bundleAfter);
         Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
         if (contents == null) {
             return null;
         }
         Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
-        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, ItemUtils.getItemStackHandle(cursorAfter));
+        int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, CraftItemStackProxy.INSTANCE.unwrap(cursorAfter));
         if (inserted == 0) {
             return null;
         }
@@ -131,8 +131,8 @@ public final class ClickBundleRules {
             @Nullable ItemStack observedBundle,
             int selectedIndex
     ) {
-        ItemStack bundleAfter = current.clone();
-        Object bundleHandle = ItemUtils.getItemStackHandle(bundleAfter);
+        ItemStack bundleAfter = ItemUtils.copyForNmsMutation(current);
+        Object bundleHandle = CraftItemStackProxy.INSTANCE.unwrap(bundleAfter);
         Object contents = DataComponentHolderProxy.INSTANCE.component(bundleHandle, DataComponentsProxy.BUNDLE_CONTENTS);
         if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
             return null;

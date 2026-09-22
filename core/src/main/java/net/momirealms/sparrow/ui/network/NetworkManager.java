@@ -24,18 +24,16 @@ import net.momirealms.sparrow.ui.network.listener.game.StartConfigurationListene
 import net.momirealms.sparrow.ui.network.listener.handshake.IntentionListener;
 import net.momirealms.sparrow.ui.network.listener.login.LoginAcknowledgedListener;
 import net.momirealms.sparrow.ui.network.packet.*;
-import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ProtocolSwapHandlerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.BundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.PacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.ClientboundBundlePacketProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
-import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerConnectionListenerProxy;
 import net.momirealms.sparrow.ui.state.ListSignal;
 import net.momirealms.sparrow.ui.util.VersionHelper;
+import net.momirealms.sparrow.ui.util.PlayerUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -299,10 +297,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     // 从 Bukkit 玩家一路摸到 NMS Connection 上的 channel; 假人没有真连接, 这里会给出 null 或者 FakeChannel.
     @Nullable
     private Channel channel(Player player) {
-        Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
-        Object packetListener = ServerPlayerProxy.INSTANCE.connection(serverPlayer);
-        Object connection = ServerCommonPacketListenerImplProxy.INSTANCE.connection(packetListener);
-        return (Channel) ConnectionProxy.INSTANCE.channel(connection);
+        return PlayerUtils.getChannel(player);
     }
 
     // 监听器注册与派发

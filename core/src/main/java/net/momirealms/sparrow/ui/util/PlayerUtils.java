@@ -1,12 +1,16 @@
 package net.momirealms.sparrow.ui.util;
 
+import io.netty.channel.Channel;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public final class PlayerUtils {
     private PlayerUtils() {
@@ -20,6 +24,20 @@ public final class PlayerUtils {
      */
     public static boolean isConnected(@NotNull Player player) {
         return !ServerPlayerProxy.INSTANCE.hasDisconnected(CraftEntityProxy.INSTANCE.entity(player));
+    }
+
+    /**
+     * 返回玩家当前的网络连接, channel 可能在 Bukkit 退出事件之前关闭.
+     *
+     * @param player Bukkit 玩家
+     * @return 玩家连接的 Netty channel; 没有网络连接的假人可能返回 null
+     */
+    @Nullable
+    public static Channel getChannel(@NotNull Player player) {
+        Object serverPlayer = CraftEntityProxy.INSTANCE.entity(player);
+        Object packetListener = ServerPlayerProxy.INSTANCE.connection(serverPlayer);
+        Object connection = ServerCommonPacketListenerImplProxy.INSTANCE.connection(packetListener);
+        return (Channel) ConnectionProxy.INSTANCE.channel(connection);
     }
 
     /**
