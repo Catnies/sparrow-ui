@@ -178,7 +178,7 @@ public sealed interface KeyedSignal<K, T> permits MutableKeyedSignal, PlayerKeye
     }
 
     /**
-     * 创建按分区独立启停的毫秒轮询数据源, 时钟挂在 Paper 异步调度器上.
+     * 创建按分区独立启停的毫秒轮询数据源, 时钟挂在异步工作执行器上.
      *
      * @param <K> 分区 key 类型
      * @param <T> 值类型

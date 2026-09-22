@@ -829,7 +829,7 @@ public sealed interface Pane permits AbstractPane {
 
     /**
      * 让选中的槽位一直跟着一个序列走, 序列第 n 项落到第 n 个槽位.
-     * <p>建的时候先当场算一轮, 之后每次序列失效都在 Paper 全局异步调度器上重算, 所以序列的派生函数和
+     * <p>建的时候先当场算一轮, 之后每次序列失效都在异步工作执行器上重算, 所以序列的派生函数和
      * {@code toElement} 都只能读异步域里访问安全的数据.
      *
      * @param <T> 序列元素类型
@@ -1107,7 +1107,7 @@ public sealed interface Pane permits AbstractPane {
 
         /**
          * 让这个标志符的槽位一直跟着序列走, 序列第 n 项落到该标志符第 n 次出现的槽位.
-         * <p>build 的时候在调用线程先算一轮, 之后每次失效在 Paper 全局异步调度器上重算.
+         * <p>build 的时候在调用线程先算一轮, 之后每次失效在异步工作执行器上重算.
          * 序列本身已经是 Element 时改用 {@code addModifier(pane -> pane.projectElements(pane.slots(identifier), ...))}.
          *
          * @param <T> 序列元素类型

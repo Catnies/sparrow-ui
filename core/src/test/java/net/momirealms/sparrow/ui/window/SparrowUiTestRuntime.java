@@ -1,8 +1,7 @@
 package net.momirealms.sparrow.ui.window;
 
-import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.ui.PlayerConnectionTestSupport;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
@@ -12,10 +11,9 @@ import org.jetbrains.annotations.NotNull;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public final class SparrowUiTestRuntime {
@@ -37,36 +35,23 @@ public final class SparrowUiTestRuntime {
     private static Plugin previousPlugin;
     private static boolean pluginInstalled;
     private static final AtomicInteger ASYNC_RUNS = new AtomicInteger();
-    private static final AsyncScheduler ASYNC_SCHEDULER = new AsyncScheduler() {
-        @Override
-        public ScheduledTask runNow(@NotNull Plugin plugin, @NotNull Consumer<ScheduledTask> task) {
-            ASYNC_RUNS.incrementAndGet();
-            task.accept(null);
-            return null;
-        }
-        @Override
-        public ScheduledTask runDelayed(
-                @NotNull Plugin plugin,
-                @NotNull Consumer<ScheduledTask> task,
-                long delay,
-                @NotNull TimeUnit timeUnit
-        ) {
-            throw new UnsupportedOperationException();
-        }
-        @Override
-        public ScheduledTask runAtFixedRate(
-                @NotNull Plugin plugin,
-                @NotNull Consumer<ScheduledTask> task,
-                long initialDelay,
-                long period,
-                @NotNull TimeUnit timeUnit
-        ) {
-            throw new UnsupportedOperationException();
-        }
-        @Override
-        public void cancelTasks(@NotNull Plugin plugin) {
-        }
+    private static SchedulerAdapter previousScheduler;
+    private static final Executor ASYNC = command -> {
+        ASYNC_RUNS.incrementAndGet();
+        command.run();
     };
+    private static final SchedulerAdapter SCHEDULER = (SchedulerAdapter) Proxy.newProxyInstance(
+            SparrowUiTestRuntime.class.getClassLoader(),
+            new Class<?>[]{SchedulerAdapter.class},
+            (proxy, method, arguments) -> {
+                if (method.getName().equals("async")) return ASYNC;
+                if (method.getName().equals("executeAsync")) {
+                    ASYNC.execute((Runnable) arguments[0]);
+                    return null;
+                }
+                throw new UnsupportedOperationException(method.getName());
+            }
+    );
     private SparrowUiTestRuntime() {
     }
 
@@ -87,6 +72,10 @@ public final class SparrowUiTestRuntime {
             pluginField.setAccessible(true);
             previousPlugin = (Plugin) pluginField.get(SparrowUI.getInstance());
             pluginField.set(SparrowUI.getInstance(), PLUGIN);
+            Field schedulerField = SparrowUI.class.getDeclaredField("scheduler");
+            schedulerField.setAccessible(true);
+            previousScheduler = (SchedulerAdapter) schedulerField.get(SparrowUI.getInstance());
+            schedulerField.set(SparrowUI.getInstance(), SCHEDULER);
             pluginInstalled = true;
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError("Unable to install the SparrowUI test plugin", exception);
@@ -101,6 +90,10 @@ public final class SparrowUiTestRuntime {
             Field pluginField = SparrowUI.class.getDeclaredField("plugin");
             pluginField.setAccessible(true);
             pluginField.set(SparrowUI.getInstance(), previousPlugin);
+            Field schedulerField = SparrowUI.class.getDeclaredField("scheduler");
+            schedulerField.setAccessible(true);
+            schedulerField.set(SparrowUI.getInstance(), previousScheduler);
+            previousScheduler = null;
             previousPlugin = null;
             pluginInstalled = false;
         } catch (ReflectiveOperationException exception) {
@@ -137,9 +130,6 @@ public final class SparrowUiTestRuntime {
                             && arguments.length == 1
                             && handledTarget.test(arguments[0])) {
                         return ownership.test(arguments[0]);
-                    }
-                    if (method.getName().equals("getAsyncScheduler")) {
-                        return ASYNC_SCHEDULER;
                     }
                     if (delegate == null) {
                         throw new UnsupportedOperationException(method.getName());

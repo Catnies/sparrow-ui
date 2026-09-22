@@ -1,9 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.SparrowUI;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
+import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
@@ -15,22 +13,20 @@ interface Delayer {
     @NotNull
     Handle schedule(@NotNull Runnable task, long delay);
 
-    // tick 时基, 任务运行在 Paper 全局区域调度线程
+    // tick 时基, Bukkit 主线程或 Folia 全局区域线程执行.
     @NotNull
-    static Delayer paperTicks() {
+    static Delayer ticks() {
         return (task, delayTicks) -> {
-            Plugin plugin = SparrowUI.getInstance().getPlugin();
-            ScheduledTask scheduled = Bukkit.getGlobalRegionScheduler().runDelayed(plugin, ignoredTask -> task.run(), delayTicks);
+            SchedulerTask scheduled = SparrowUI.getInstance().scheduler().platform().runLater(task, delayTicks);
             return scheduled::cancel;
         };
     }
 
-    // 毫秒时基, 任务运行在 Paper 异步调度线程
+    // 毫秒时基, 任务运行在库的异步工作执行器上.
     @NotNull
-    static Delayer paperMillis() {
+    static Delayer millis() {
         return (task, delayMillis) -> {
-            Plugin plugin = SparrowUI.getInstance().getPlugin();
-            ScheduledTask scheduled = Bukkit.getAsyncScheduler().runDelayed(plugin, ignoredTask -> task.run(), delayMillis, TimeUnit.MILLISECONDS);
+            SchedulerTask scheduled = SparrowUI.getInstance().scheduler().asyncLater(task, delayMillis, TimeUnit.MILLISECONDS);
             return scheduled::cancel;
         };
     }

@@ -25,8 +25,8 @@ public final class DelayTestSupport {
         if (!installed) {
             return;
         }
-        setDelayer("tickDelayer", Delayer.paperTicks());
-        setDelayer("millisDelayer", Delayer.paperMillis());
+        setDelayer("tickDelayer", Delayer.ticks());
+        setDelayer("millisDelayer", Delayer.millis());
         ticks = null;
         millis = null;
         installed = false;

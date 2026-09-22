@@ -74,7 +74,7 @@ class ItemProviderTest {
     }
 
     @Test
-    void asynchronousAdapterRunsTheRendererThroughPaperScheduler() {
+    void asynchronousAdapterRunsTheRendererThroughTheSharedExecutor() {
         AtomicReference<RenderContext> received = new AtomicReference<>();
         ItemStack rendered = new ItemStack(Material.GOLD_INGOT);
         ItemProvider provider = ItemProvider.async(renderContext -> {

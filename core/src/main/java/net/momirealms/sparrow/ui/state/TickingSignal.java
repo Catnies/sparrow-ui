@@ -1,9 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.SparrowUI;
-import org.bukkit.Bukkit;
-import org.bukkit.plugin.Plugin;
+import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
@@ -64,31 +62,47 @@ final class TickingSignal extends AbstractSignal<Long> {
         return this.periodic.size();
     }
 
-    // 全局区域调度器无法在 Folia 上调用 Bukkit.getCurrentTick(), 因此直接累计回调次数
+    // Bukkit 主线程或 Folia 全局区域线程按 tick 推进计数.
     @NotNull
-    static TickingSignal.Ticker paperTicker() {
+    static TickingSignal.Ticker platformTicker() {
         return onTick -> {
-            Plugin plugin = SparrowUI.getInstance().getPlugin();
             // 单个调度任务内只有一个写者
             long[] elapsed = new long[1];
-            ScheduledTask task = Bukkit.getGlobalRegionScheduler()
-                    .runAtFixedRate(plugin, ignoredTask -> onTick.accept(++elapsed[0]), 1L, 1L);
+            SchedulerTask task = SparrowUI.getInstance().scheduler().platform()
+                    .runRepeating(() -> onTick.accept(++elapsed[0]), 1L, 1L);
             return task::cancel;
         };
     }
 
-    // 毫秒时钟挂在 Paper 异步调度器上, 相邻回调可能使用不同池线程
+    // 同一毫秒时钟的计数和通知串行执行, 取消后排队的回调直接结束.
     @NotNull
-    static TickingSignal.Ticker paperMillisTicker(long periodMillis) {
+    static TickingSignal.Ticker millisTicker(long periodMillis) {
         return onTick -> {
-            Plugin plugin = SparrowUI.getInstance().getPlugin();
-            // 调度器串行安排同一任务的各拍, 计数始终只有一个写者
-            long[] elapsed = new long[1];
-            ScheduledTask task = Bukkit.getAsyncScheduler().runAtFixedRate(
-                    plugin, ignoredTask -> onTick.accept(++elapsed[0]), periodMillis, periodMillis, TimeUnit.MILLISECONDS
+            SerialTick tick = new SerialTick(onTick);
+            SchedulerTask task = SparrowUI.getInstance().scheduler().asyncRepeating(
+                    tick, periodMillis, periodMillis, TimeUnit.MILLISECONDS
             );
-            return task::cancel;
+            return () -> {
+                tick.cancelled = true;
+                task.cancel();
+            };
         };
+    }
+
+    private static final class SerialTick implements Runnable {
+        private final LongConsumer onTick;
+        private long elapsed;
+        private volatile boolean cancelled;
+
+        private SerialTick(LongConsumer onTick) {
+            this.onTick = onTick;
+        }
+
+        @Override
+        public synchronized void run() {
+            if (this.cancelled) return;
+            this.onTick.accept(++this.elapsed);
+        }
     }
 
     // 测试可替换的周期调度入口

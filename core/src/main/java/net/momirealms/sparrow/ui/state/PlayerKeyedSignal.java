@@ -150,7 +150,7 @@ public sealed interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> permit
     }
 
     /**
-     * 创建按毫秒轮询的玩家分区数据源, 时钟挂在 Paper 异步调度器上.
+     * 创建按毫秒轮询的玩家分区数据源, 时钟挂在异步工作执行器上.
      *
      * @param <T> 值类型
      * @param placeholder 每个分区首载完成前的占位值, 允许为 {@code null}

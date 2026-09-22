@@ -132,7 +132,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     Signal<T> debounce(long ticks);
 
     /**
-     * 按毫秒防抖, 任务挂在 Paper 异步调度器上, 其余值语义见 {@link #debounce(long)}.
+     * 按毫秒防抖, 任务挂在异步工作执行器上, 其余值语义见 {@link #debounce(long)}.
      * <p>通知在异步线程上发出, 与 {@link AsyncSignal} 装载完成的线程同级, <strong>订阅者回调必须线程安全</strong>.
      *
      * @param millis 静默多少毫秒之后通知, 必须为正
@@ -156,7 +156,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     Signal<T> throttle(long ticks);
 
     /**
-     * 按毫秒节流, 补发挂在 Paper 异步调度器上, 其余值语义见 {@link #throttle(long)}.
+     * 按毫秒节流, 补发挂在异步工作执行器上, 其余值语义见 {@link #throttle(long)}.
      * <p>补发在异步线程上发出, 与 {@link AsyncSignal} 装载完成的线程同级, <strong>订阅者回调必须线程安全</strong>.
      *
      * @param millis 两次通知之间至少隔多少毫秒, 必须为正
@@ -245,7 +245,7 @@ public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSi
     }
 
     /**
-     * 创建按毫秒轮询的异步数据源, 时钟挂在 Paper 异步调度器上.
+     * 创建按毫秒轮询的异步数据源, 时钟挂在异步工作执行器上.
      * <p>装载照旧在 {@code executor} 上跑, 失效通知照旧从装载完成的线程发出, 订阅者看不出时钟挂在哪里.
      *
      * @param <T> 值类型

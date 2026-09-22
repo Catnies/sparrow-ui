@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.state.GcSupport;
 import net.momirealms.sparrow.ui.state.ManualExecutor;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.window.SparrowUiTestRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,29 @@ class SlotProjectionTest {
         assertEquals(this.link(0), pane.element(0));
         assertEquals(this.link(1), pane.element(1));
         assertEquals(this.link(2), pane.element(2));
+    }
+
+    @Test
+    void defaultProjectionUsesTheSharedExecutorOnlyAfterTheInitialEvaluation() {
+        SparrowUiTestRuntime.installPlugin();
+        try {
+            NormalPane pane = Pane.empty(3, 1);
+            MutableSignal<List<Integer>> source = Signal.of(List.of(0));
+            int before = SparrowUiTestRuntime.asyncRuns();
+            SlotProjection projection = pane.project(SlotSequence.all(pane.size()), source, this::link);
+            assertEquals(this.link(0), pane.element(0));
+            assertEquals(before, SparrowUiTestRuntime.asyncRuns());
+
+            source.set(List.of(1));
+            assertEquals(this.link(1), pane.element(0));
+            assertEquals(before + 1, SparrowUiTestRuntime.asyncRuns());
+            projection.close();
+            source.set(List.of(2));
+            assertEquals(this.link(1), pane.element(0));
+            assertEquals(before + 1, SparrowUiTestRuntime.asyncRuns());
+        } finally {
+            SparrowUiTestRuntime.restorePlugin();
+        }
     }
 
     @Test

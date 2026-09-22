@@ -14,8 +14,8 @@ public final class Signals {
     private static final WeakPeriodCache<TickingSignal> millisClocks = new WeakPeriodCache<>();  // 周期 -> 毫秒时钟
 
     private static volatile TickingSignal ticking; // 懒初始化的全局唯一实例
-    private static volatile Delayer tickDelayer = Delayer.paperTicks();       // 防抖与节流 tick 基入口用的调度器
-    private static volatile Delayer millisDelayer = Delayer.paperMillis();    // 毫秒基入口用的调度器
+    private static volatile Delayer tickDelayer = Delayer.ticks();       // 防抖与节流 tick 基入口用的调度器
+    private static volatile Delayer millisDelayer = Delayer.millis();    // 毫秒基入口用的调度器
 
     private Signals() {
     }
@@ -32,7 +32,7 @@ public final class Signals {
 
     /**
      * 服务器 tick 源, 每 tick 失效一次, 值是<strong>本 signal 有订阅者以来经过的 tick 数</strong>.
-     * <p>第一个订阅者到来时启动, 最后一个离开时停表. 回调由 Paper 全局区域调度线程发出.
+     * <p>第一个订阅者到来时启动, 最后一个离开时停表. 回调由 Bukkit 主线程或 Folia 全局区域线程发出.
      *
      * @return tick 源
      */
@@ -44,7 +44,7 @@ public final class Signals {
         }
         synchronized (Signals.class) {
             if (ticking == null) {
-                ticking = new TickingSignal(TickingSignal.paperTicker());
+                ticking = new TickingSignal(TickingSignal.platformTicker());
             }
             return ticking;
         }
@@ -52,7 +52,7 @@ public final class Signals {
 
     /**
      * 按周期降频的 tick 源, 每 {@code periodTicks} 个 tick 失效一次, 值为已经过去的周期数.
-     * <p>相同周期共享同一个派生节点, 所有使用该周期的绑定会在同一 tick 失效. 回调由 Paper 全局区域调度线程发出.
+     * <p>相同周期共享同一个派生节点, 所有使用该周期的绑定会在同一 tick 失效. 回调由 Bukkit 主线程或 Folia 全局区域线程发出.
      *
      * @param periodTicks 正数 tick 周期
      * @return 降频后的 tick 源
@@ -71,7 +71,7 @@ public final class Signals {
 
     /**
      * 毫秒时钟, 每 {@code periodMillis} 毫秒失效一次, 值是<strong>有订阅者以来经过的周期数</strong>, 跨停表续走不回退.
-     * <p>任务挂在 Paper 异步调度器上, <strong>失效通知在异步线程上发出</strong>, 订阅者回调必须线程安全.
+     * <p>任务挂在异步工作执行器上, <strong>失效通知在异步线程上发出</strong>, 订阅者回调必须线程安全.
      * 同周期共享一个实例, 没人持有的周期随 GC 消失. 第一个订阅者到来时启动, 最后一个离开时取消.
      *
      * @param periodMillis 周期毫秒数, 不小于 50
@@ -83,7 +83,7 @@ public final class Signals {
         if (periodMillis < MIN_MILLIS_PERIOD) {
             throw new IllegalArgumentException("periodMillis must be at least " + MIN_MILLIS_PERIOD + ": " + periodMillis);
         }
-        return millisClocks.get(periodMillis, period -> new TickingSignal(TickingSignal.paperMillisTicker(period)));
+        return millisClocks.get(periodMillis, period -> new TickingSignal(TickingSignal.millisTicker(period)));
     }
 
     /**

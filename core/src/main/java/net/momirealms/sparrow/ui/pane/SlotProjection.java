@@ -3,7 +3,6 @@ package net.momirealms.sparrow.ui.pane;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.Signal;
-import org.bukkit.Bukkit;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Iterator;
@@ -18,11 +17,8 @@ import java.util.function.Function;
  * <p>创建入口返回之前第一轮就已经跑完了, 所以建出来当场就能看到内容; 这个对象自己只是给使用方提前停投影用的句柄.
  */
 public final class SlotProjection implements AutoCloseable {
-    // 默认执行器: 把重算丢到 Paper 的全局异步调度器上, 序列的派生函数因此只能读异步域里安全的数据
-    private static final Executor ASYNC = command -> Bukkit.getAsyncScheduler().runNow(
-            SparrowUI.getInstance().getPlugin(),
-            ignoredTask -> command.run()
-    );
+    // 后续重算使用库的异步工作执行器, 序列派生函数只能读取异步访问安全的数据.
+    private static final Executor ASYNC = command -> SparrowUI.getInstance().scheduler().executeAsync(command);
 
     private final Pane pane;
     private final SlotSequence slots;
@@ -36,7 +32,7 @@ public final class SlotProjection implements AutoCloseable {
     private volatile boolean closed;
 
     /**
-     * 把序列投影到选中槽位, 之后每次失效都在 Paper 全局异步调度器上重算.
+     * 把序列投影到选中槽位, 之后每次失效都在异步工作执行器上重算.
      *
      * @param pane 接收写入的 Pane
      * @param slots 这次投影负责的槽位, <strong>必须属于这个 Pane</strong>
