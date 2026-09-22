@@ -19,6 +19,9 @@ public interface ServerPlayerProxy extends PlayerProxy {
     @FieldGetter(name = "connection", activeIf = "min_version=1.20.1")
     Object connection(Object target);
 
+    @MethodInvoker(name = "hasDisconnected", activeIf = "min_version=1.20.1")
+    boolean hasDisconnected(Object target);
+
     @FieldGetter(name = "containerSynchronizer", activeIf = "min_version=1.20.1")
     Object containerSynchronizer(Object target);
 

@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.exception.ViewerUnavailableException;
 import net.momirealms.sparrow.ui.scheduler.executor.PlatformExecutor;
 import net.momirealms.sparrow.ui.scheduler.task.SchedulerTask;
+import net.momirealms.sparrow.ui.util.PlayerUtils;
 import net.momirealms.sparrow.ui.window.handle.MenuFactory;
 import net.momirealms.sparrow.ui.window.handle.MenuFactoryImpl;
 import org.bukkit.Bukkit;
@@ -91,7 +92,7 @@ public final class WindowManager implements Listener {
             return Window.OpenResult.ALREADY_OPEN;
         }
         Player viewer = window.viewer();
-        if (!viewer.isValid() || !viewer.isConnected() || viewer.isSleeping()) {
+        if (!viewer.isValid() || !PlayerUtils.isConnected(viewer) || viewer.isSleeping()) {
             return Window.OpenResult.VIEWER_UNAVAILABLE;
         }
 

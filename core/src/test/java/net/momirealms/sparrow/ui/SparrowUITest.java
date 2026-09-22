@@ -4,11 +4,15 @@ import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.window.SparrowUiTestRuntime;
 import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -16,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SparrowUITest {
 
@@ -27,6 +33,33 @@ class SparrowUITest {
     @AfterEach
     void tearDown() {
         MockBukkit.unmock();
+    }
+
+    @Test
+    void missingPluginOnSpigotFailsBeforeResolvingThePaperClassLoader() throws Exception {
+        WithoutPaperLoader loader = new WithoutPaperLoader();
+        Class<?> type = loader.loadClass(SparrowUI.class.getName());
+        Object ui = type.getMethod("getInstance").invoke(null);
+
+        InvocationTargetException failure = assertThrows(InvocationTargetException.class, () -> type.getMethod("getPlugin").invoke(ui));
+
+        assertInstanceOf(IllegalStateException.class, failure.getCause());
+        assertEquals("Plugin is not set. Set it using SparrowUI.getInstance().setUp(plugin);", failure.getCause().getMessage());
+        assertEquals(0, loader.paperClassRequests);
+    }
+
+    @Test
+    void configuredPluginOnSpigotSkipsAutomaticDiscovery() throws Exception {
+        WithoutPaperLoader loader = new WithoutPaperLoader();
+        Class<?> type = loader.loadClass(SparrowUI.class.getName());
+        Object ui = type.getMethod("getInstance").invoke(null);
+        Plugin plugin = MockBukkit.createMockPlugin();
+        Field pluginField = type.getDeclaredField("plugin");
+        pluginField.setAccessible(true);
+        pluginField.set(ui, plugin);
+
+        assertSame(plugin, type.getMethod("getPlugin").invoke(ui));
+        assertEquals(0, loader.paperClassRequests);
     }
 
     @Test
@@ -79,6 +112,36 @@ class SparrowUITest {
             schedulerField.set(ui, previousScheduler);
             ui.setExceptionHandler((ignoredMessage, ignoredThrowable) -> {});
             SparrowUiTestRuntime.restorePlugin();
+        }
+    }
+
+    private static final class WithoutPaperLoader extends ClassLoader {
+        private int paperClassRequests;
+
+        private WithoutPaperLoader() {
+            super(SparrowUI.class.getClassLoader());
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            if (name.equals("io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader")) {
+                this.paperClassRequests++;
+                throw new ClassNotFoundException(name);
+            }
+            if (!name.equals(SparrowUI.class.getName())) return super.loadClass(name, resolve);
+            Class<?> loaded = this.findLoadedClass(name);
+            if (loaded == null) {
+                try (InputStream input = this.getParent().getResourceAsStream(name.replace('.', '/') + ".class")) {
+                    byte[] bytes = input.readAllBytes();
+                    loaded = this.defineClass(name, bytes, 0, bytes.length);
+                } catch (IOException exception) {
+                    throw new ClassNotFoundException(name, exception);
+                }
+            }
+            if (resolve) {
+                this.resolveClass(loaded);
+            }
+            return loaded;
         }
     }
 }

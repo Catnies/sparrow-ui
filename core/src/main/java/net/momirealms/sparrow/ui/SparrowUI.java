@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -69,8 +70,7 @@ public class SparrowUI implements Listener {
 
     /**
      * 获取UI运行时所属的插件实例.
-     * 如果可能, 插件实例将从类加载器中推断得出.
-     * 如果无法推断, 则必须事先使用 {@link #setUp(Plugin)} 手动设置插件实例.
+     * Paper 环境下可从类加载器推断插件实例; 其他环境必须事先使用 {@link #setUp(Plugin)} 设置.
      *
      * @return 插件实例
      * @throws IllegalStateException 如果插件实例未设置且无法推断
@@ -88,7 +88,10 @@ public class SparrowUI implements Listener {
 
     @SuppressWarnings("UnstableApiUsage")
     private Optional<Plugin> tryFindPlugin() {
-        ClassLoader classLoader = getClass().getClassLoader();
+        if (!VersionHelper.hasPaperPatch) {
+            throw new IllegalStateException("Plugin is not set. Set it using SparrowUI.getInstance().setUp(plugin);");
+        }
+        ClassLoader classLoader = this.getClass().getClassLoader();
         if (classLoader instanceof ConfiguredPluginClassLoader pluginClassLoader) {
             return Optional.ofNullable(pluginClassLoader.getPlugin());
         }

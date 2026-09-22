@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.ContainerProxy;
+import net.momirealms.sparrow.ui.util.PlayerUtils;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
@@ -37,7 +38,7 @@ final class PlayerContainerStorage extends ContainerStorage {
     @Override
     public boolean alive() {
         HumanEntity owner = this.owner.get();
-        return owner != null && (!(owner instanceof Player player) || player.isConnected());
+        return owner != null && (!(owner instanceof Player player) || PlayerUtils.isConnected(player));
     }
 
     // getInventory 读的是玩家实体上那个字段, 重生换过背包之后它给出的就是新的那一个.

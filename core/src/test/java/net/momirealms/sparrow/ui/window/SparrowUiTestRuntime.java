@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.window;
 import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.PlayerConnectionTestSupport;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.entity.Entity;
@@ -119,6 +120,7 @@ public final class SparrowUiTestRuntime {
             Predicate<Object> ownership,
             Predicate<Object> handledTarget
     ) {
+        PlayerConnectionTestSupport.install();
         if (ownershipInstalled) {
             restoreOwnership();
         }

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
+import net.momirealms.sparrow.ui.util.PlayerUtils;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -73,6 +74,6 @@ public final class BukkitStorage implements ExternalStorage {
 
     @Override
     public boolean alive() {
-        return !(this.owner instanceof Player player) || player.isConnected();
+        return !(this.owner instanceof Player player) || PlayerUtils.isConnected(player);
     }
 }

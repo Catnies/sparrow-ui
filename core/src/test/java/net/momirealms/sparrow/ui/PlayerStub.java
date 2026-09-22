@@ -20,6 +20,7 @@ public final class PlayerStub extends PlayerMock {
     }
 
     public static PlayerStub addTo(ServerMock server, @Nullable PlayerInventory inventory) {
+        PlayerConnectionTestSupport.install();
         PlayerStub player = new PlayerStub(server, "Player" + COUNTER.incrementAndGet(), inventory);
         server.addPlayer(player);
         return player;

@@ -60,6 +60,7 @@ class WindowManagerThreadingTest {
     @BeforeEach
     void setUp() {
         MockBukkit.mock();
+        SparrowUI.getInstance().setExceptionHandler((ignoredMessage, ignoredThrowable) -> {});
     }
 
     @AfterEach

@@ -266,7 +266,6 @@ final class ProtocolInventoryView implements InventoryView {
         return this.lowerSlot(rawSlot) >= 27 ? InventoryType.SlotType.QUICKBAR : InventoryType.SlotType.CONTAINER;
     }
 
-    @Override
     public void open() {
     }
 
