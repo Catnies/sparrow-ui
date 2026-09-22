@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window.handle;
 
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.Subscription;
@@ -296,19 +297,10 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         int discount = binding.trade().getDiscount();
         int specialPriceDiff = OfferMath.specialPriceDiff(discount);
         boolean available = binding.trade().isAvailable();
-        return MerchantOfferProxy.INSTANCE.newInstance(
-                firstCost,
-                secondCost,
-                markedResult.stack(),
-                available ? 0 : 1,
-                1,
-                false,
-                specialPriceDiff,
-                0,
-                0.0F,
-                0,
-                false
-        );
+        if (!VersionHelper.hasPaperPatch) {
+            return MerchantOfferProxy.INSTANCE.newInstance$0(firstCost, secondCost, markedResult.stack(), available ? 0 : 1, 1, false, specialPriceDiff, 0, 0.0F, 0);
+        }
+        return MerchantOfferProxy.INSTANCE.newInstance(firstCost, secondCost, markedResult.stack(), available ? 0 : 1, 1, false, specialPriceDiff, 0, 0.0F, 0, false);
     }
 
     // 随机组件参与精确匹配, 玩家背包物品不会自动填入展示交易.
@@ -333,7 +325,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             if (!required) {
                 throw new IllegalArgumentException("optional Merchant item must not be marked while empty");
             }
-            display = ItemStackProxy.INSTANCE.getBukkitStack(ItemUtils.invisibleBarrier());
+            display = CraftItemStackProxy.INSTANCE.asCraftMirror(ItemUtils.invisibleBarrier());
         } else {
             display = source.clone();
         }

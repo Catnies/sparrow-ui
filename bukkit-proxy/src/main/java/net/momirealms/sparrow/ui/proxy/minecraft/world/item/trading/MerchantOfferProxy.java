@@ -11,7 +11,7 @@ import java.util.Optional;
 public interface MerchantOfferProxy {
     MerchantOfferProxy INSTANCE = ASMProxyFactory.create(MerchantOfferProxy.class);
 
-    @ConstructorInvoker(activeIf = "min_version=1.20.5")
+    @ConstructorInvoker(activeIf = "min_version=1.20.5 && has_patch=paper")
     Object newInstance(
             @Type(name = "net.minecraft.world.item.trading.ItemCost") Object baseCostA,
             Optional<?> costB,
@@ -24,5 +24,19 @@ public interface MerchantOfferProxy {
             float priceMultiplier,
             int xp,
             boolean ignoreDiscounts
+    );
+
+    @ConstructorInvoker(activeIf = "min_version=26.2 && !has_patch=paper")
+    Object newInstance$0(
+            @Type(name = "net.minecraft.world.item.trading.ItemCost") Object baseCostA,
+            Optional<?> costB,
+            @Type(name = "net.minecraft.world.item.ItemStack") Object result,
+            int uses,
+            int maxUses,
+            boolean rewardExp,
+            int specialPriceDiff,
+            int demand,
+            float priceMultiplier,
+            int xp
     );
 }

@@ -11,6 +11,8 @@ import net.momirealms.sparrow.ui.inventory.transaction.InventoryTransactions;
 import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
 import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.VersionHelper;
+import org.bukkit.entity.AbstractHorse;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -95,6 +97,25 @@ public final class ReferencingInventory extends SparrowInventory {
     @NotNull
     public static ReferencingInventory fromContents(@NotNull Inventory inventory) {
         return create(inventory, Inventory::getContents, UnaryOperator.identity(), false);
+    }
+
+    /**
+     * 引用坐骑的完整背包, 0 为鞍位, 1 为身体装备位, 从 2 开始为储物格.
+     * <p>Spigot 的装备独立于 Bukkit 内容数组, 本入口将两部分组合为与 Paper 相同的槽位布局.
+     *
+     * @param mount 被引用的坐骑
+     * @return 包含装备和储物格的引用背包
+     */
+    @NotNull
+    public static ReferencingInventory fromMountContents(@NotNull AbstractHorse mount) {
+        Inventory inventory = mount.getInventory();
+        if (VersionHelper.hasPaperPatch) {
+            return fromContents(inventory);
+        }
+        ExternalStorage storage = BukkitStorage.ofMount(mount, inventory);
+        ItemStack[] contents = storage.readAll();
+        SlotOrder slots = SlotOrder.of(identitySlots(contents.length));
+        return new ReferencingInventory(storage, inventory, readLogicalContents(contents, slots), slots, null);
     }
 
     /**

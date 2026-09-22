@@ -1,6 +1,9 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.util.PlayerUtils;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorseProxy;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
+import org.bukkit.entity.AbstractHorse;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -38,6 +41,13 @@ public final class BukkitStorage implements ExternalStorage {
         int size = contentsGetter.apply(inventory).length;
         ExternalStorage storage = BukkitInventoryLayout.storageOf(inventory, size);
         return storage != null ? storage : new BukkitStorage(inventory, contentsGetter);
+    }
+
+    @NotNull
+    public static ExternalStorage ofMount(@NotNull AbstractHorse mount, @NotNull Inventory inventory) {
+        Object equipment = CraftInventoryAbstractHorseProxy.INSTANCE.equipment(inventory);
+        Object main = CraftInventoryProxy.INSTANCE.getInventory(inventory);
+        return new SplicedStorage(new MountEquipmentStorage(equipment, mount), new MountContainerStorage(main, mount.getUniqueId(), 2));
     }
 
     @Override

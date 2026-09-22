@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryCraftingProxy;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorseProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventorySaddledMountProxy;
@@ -25,6 +26,16 @@ enum BukkitInventoryLayout {
         @Override
         ExternalStorage build(@NotNull Inventory inventory, int size) {
             return ContainerStorage.of(CraftInventoryProxy.INSTANCE.getInventory(inventory));
+        }
+    },
+    // Spigot 的 Bukkit 内容只包含主仓, 槽位身份仍使用完整坐骑布局的偏移.
+    MOUNT_STORAGE {
+        @Override
+        @Nullable
+        ExternalStorage build(@NotNull Inventory inventory, int size) {
+            Object main = CraftInventoryProxy.INSTANCE.getInventory(inventory);
+            UUID mount = mountOf(main);
+            return mount == null ? null : new MountContainerStorage(main, mount, MAIN_FIRST_SLOT);
         }
     },
     // 槽号相同, 槽位身份跟随玩家
@@ -107,6 +118,9 @@ enum BukkitInventoryLayout {
         }
         // ResultInventory 只暴露结果格, 但它的内容区槽号和 getInventory() 那边仍然是对齐的.
         if (owner == CraftInventoryProxy.CLASS || owner == CraftResultInventoryProxy.CLASS) {
+            if (!VersionHelper.hasPaperPatch && CraftInventoryAbstractHorseProxy.CLASS.isAssignableFrom(type)) {
+                return MOUNT_STORAGE;
+            }
             return ALIGNED;
         }
         if (owner == CraftInventoryCraftingProxy.CLASS) {

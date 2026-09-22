@@ -248,7 +248,7 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     private static Object toDecoration(CartographyWindow.MapIcon icon) {
         Optional<Object> name = Optional.ofNullable(icon.component()).map(AdventureUtils::asVanilla);
         return MapDecorationProxy.INSTANCE.newInstance(
-                VersionHelper.isOrAbove1_21_7
+                VersionHelper.hasPaperPatch && VersionHelper.isOrAbove1_21_7
                         ? CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder(icon.type())
                         : CraftRegistryProxy.INSTANCE.bukkitToMinecraftHolder$0(icon.type(), RegistriesProxy.MAP_DECORATION_TYPE),
                 (byte) (icon.x() - 128),

@@ -9,12 +9,17 @@ public class CraftInventory extends InventoryMock {
 
     private final Container container;
     public CraftInventory(Container container) {
-        super(null, container.getContainerSize(), InventoryType.CHEST);
+        super(null, Math.max(1, container.getContainerSize()), InventoryType.CHEST);
         this.container = container;
     }
 
     public Container getInventory() {
         return this.container;
+    }
+
+    @Override
+    public int getSize() {
+        return this.container.getContainerSize();
     }
 
     protected static ItemStack asBukkit(net.minecraft.world.item.ItemStack item) {
