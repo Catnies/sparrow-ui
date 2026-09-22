@@ -8,6 +8,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.util.UnitProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemsProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.component.TooltipDisplayProxy;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -17,9 +18,27 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashSet;
 
 public final class ItemUtils {
-    public static final ItemStack EMPTY = ItemStack.empty();
+    public static final ItemStack EMPTY = empty();
 
     private ItemUtils() {
+    }
+
+    /**
+     * 创建数量为零的空气物品, 返回值由调用方持有并可独立修改.
+     *
+     * @return 新的空物品
+     */
+    @NotNull
+    public static ItemStack empty() {
+        return new ItemStack(Material.AIR, 0);
+    }
+
+    public static boolean isEmpty(@NotNull ItemStack itemStack) {
+        if (VersionHelper.hasPaperPatch || CraftItemStackProxy.CLASS.isInstance(itemStack)) {
+            return ItemStackProxy.INSTANCE.isEmpty(CraftItemStackProxy.INSTANCE.unwrap(itemStack));
+        }
+        // Spigot 普通 Bukkit 物品没有 NMS 句柄, 判空只读取其数量和材质.
+        return itemStack.getAmount() <= 0 || itemStack.getType().isAir();
     }
 
     /**
@@ -30,7 +49,7 @@ public final class ItemUtils {
      */
     @NotNull
     public static ItemStack copyOrEmpty(@Nullable ItemStack itemStack) {
-        return isNullOrEmpty(itemStack) ? ItemStack.empty() : itemStack.clone();
+        return isNullOrEmpty(itemStack) ? empty() : itemStack.clone();
     }
 
     /**
@@ -60,6 +79,7 @@ public final class ItemUtils {
 
     /**
      * 返回 Bukkit ItemStack 对应的 NMS 句柄, 空物品返回底层共享空实例.
+     * <p>Paper 和 CraftItemStack 复用原有句柄; Spigot 的普通 Bukkit 物品需要转换为新的 NMS 物品.
      * <p><strong>返回值可能与输入共享数据, 调用方不得修改.</strong>
      *
      * @param itemStack Bukkit 物品
@@ -67,10 +87,11 @@ public final class ItemUtils {
      */
     @NotNull
     public static Object getItemStackHandle(@NotNull ItemStack itemStack) {
-        if (itemStack.isEmpty()) {
+        if (!VersionHelper.hasPaperPatch && !CraftItemStackProxy.CLASS.isInstance(itemStack) && isEmpty(itemStack)) {
             return ItemStackProxy.EMPTY;
         }
-        return CraftItemStackProxy.INSTANCE.unwrap(itemStack);
+        Object handle = CraftItemStackProxy.INSTANCE.unwrap(itemStack);
+        return ItemStackProxy.INSTANCE.isEmpty(handle) ? ItemStackProxy.EMPTY : handle;
     }
 
     /**
@@ -113,7 +134,7 @@ public final class ItemUtils {
      * @return 为空时返回 {@code true}
      */
     public static boolean isNullOrEmpty(@Nullable ItemStack itemStack) {
-        return itemStack == null || itemStack.isEmpty();
+        return itemStack == null || isEmpty(itemStack);
     }
 
     /**

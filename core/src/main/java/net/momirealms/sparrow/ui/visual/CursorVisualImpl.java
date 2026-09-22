@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.visual;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
@@ -41,7 +42,7 @@ public final class CursorVisualImpl extends AbstractVisual implements CursorVisu
     // 空光标按 null 交给映射, 与映射文档里"空光标为 null"那条对上
     @Nullable
     public ResolvedVisual visualize(@NotNull ItemStack actual) {
-        return this.layer.visualize(actual.isEmpty() ? null : actual);
+        return this.layer.visualize(ItemUtils.isEmpty(actual) ? null : actual);
     }
 
     @Override

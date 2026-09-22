@@ -52,7 +52,7 @@ public final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickOutcome(slotAfter.isEmpty() ? null : slotAfter, bundleAfter, null, ItemUtils.copyWithAmount(current, inserted));
+        return new ClickOutcome(ItemUtils.isEmpty(slotAfter) ? null : slotAfter, bundleAfter, null, ItemUtils.copyWithAmount(current, inserted));
     }
 
     // 从光标 Bundle 取出选中整组, 槽位放不下的余量重新插回 Bundle.
@@ -121,7 +121,7 @@ public final class ClickBundleRules {
                 DataComponentsProxy.BUNDLE_CONTENTS,
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
-        return new ClickOutcome(bundleAfter, cursorAfter.isEmpty() ? ItemUtils.EMPTY : cursorAfter, ItemUtils.copyWithAmount(cursor, inserted), null);
+        return new ClickOutcome(bundleAfter, ItemUtils.isEmpty(cursorAfter) ? ItemUtils.EMPTY : cursorAfter, ItemUtils.copyWithAmount(cursor, inserted), null);
     }
 
     // 空手右键槽位 Bundle, 取出选中(或第一件)整组物品上光标.
@@ -160,7 +160,7 @@ public final class ClickBundleRules {
                 BundleContentsMutableProxy.INSTANCE.toImmutable(mutableContents)
         );
         ItemStack taken = CraftItemStackProxy.INSTANCE.asCraftMirror(takenHandle).clone();
-        if (taken.isEmpty()) {
+        if (ItemUtils.isEmpty(taken)) {
             return null;
         }
         return new ClickOutcome(bundleAfter, taken, null, taken);

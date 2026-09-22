@@ -108,11 +108,10 @@ public final class CraftInventoryFactory {
     }
 
     public static Object toNms(ItemStack item) {
-        return item == null || item.isEmpty() ? ItemStackProxy.EMPTY : CraftItemStackProxy.INSTANCE.unwrap(item);
+        return item == null || item.getAmount() <= 0 || item.getType().isAir() ? ItemStackProxy.EMPTY : CraftItemStackProxy.INSTANCE.unwrap(item);
     }
 
     public static ItemStack toBukkit(Object item) {
-        ItemStack converted = CraftItemStackProxy.INSTANCE.asCraftMirror(item);
-        return converted.isEmpty() ? null : converted;
+        return item == null || ItemStackProxy.INSTANCE.isEmpty(item) ? null : CraftItemStackProxy.INSTANCE.asCraftMirror(item);
     }
 }

@@ -34,7 +34,7 @@ final class DragPlanner {
         ItemStack actualCursor = context.cursor();
         ItemStack cursor = overlay.cursorOr(actualCursor);
         boolean creative = clickType == ClickType.MIDDLE;
-        if (cursor.isEmpty() || (creative && context.viewer().getGameMode() != GameMode.CREATIVE)) {
+        if (ItemUtils.isEmpty(cursor) || (creative && context.viewer().getGameMode() != GameMode.CREATIVE)) {
             return null;
         }
 

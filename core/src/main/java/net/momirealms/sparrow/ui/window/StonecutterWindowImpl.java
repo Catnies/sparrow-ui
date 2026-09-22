@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.PaneSize;
 import net.momirealms.sparrow.ui.window.handle.MenuFactory;
@@ -71,7 +72,7 @@ final class StonecutterWindowImpl extends AbstractWindow<StonecutterMenuHandle> 
         // 统计实际显示的长度
         int recipeCount = 0;
         for (int windowSlot = logicalSlots.length - 1; windowSlot >= BUTTONS_START; windowSlot--) {
-            if (!logicalSlots[windowSlot].isEmpty()) {
+            if (!ItemUtils.isEmpty(logicalSlots[windowSlot])) {
                 recipeCount = windowSlot - BUTTONS_START + 1;
                 break;
             }

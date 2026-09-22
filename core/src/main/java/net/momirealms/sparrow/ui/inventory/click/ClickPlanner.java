@@ -248,7 +248,7 @@ final class ClickPlanner {
             InteractionOverlay overlay
     ) {
         ItemStack actualCursor = context.cursor();
-        if (!overlay.cursorOr(actualCursor).isEmpty()) {
+        if (!ItemUtils.isEmpty(overlay.cursorOr(actualCursor))) {
             return null;
         }
         ClickType clickType = fullStack ? ClickType.CONTROL_DROP : ClickType.DROP;
@@ -282,7 +282,7 @@ final class ClickPlanner {
             InteractionOverlay overlay
     ) {
         ItemStack actualCursor = context.cursor();
-        if (context.viewer().getGameMode() != GameMode.CREATIVE || !overlay.cursorOr(actualCursor).isEmpty()) {
+        if (context.viewer().getGameMode() != GameMode.CREATIVE || !ItemUtils.isEmpty(overlay.cursorOr(actualCursor))) {
             return null;
         }
         PlannedRoot plan = openPlan(link.inventory(), write);
@@ -313,7 +313,7 @@ final class ClickPlanner {
             boolean write,
             InteractionOverlay overlay
     ) {
-        if (overlay.cursorOr(context.cursor()).isEmpty() || !context.displayedEmptyAt(windowSlot)) {
+        if (ItemUtils.isEmpty(overlay.cursorOr(context.cursor())) || !context.displayedEmptyAt(windowSlot)) {
             return null;
         }
         IdentityHashMap<SparrowInventory, PlannedRoot> plans = new IdentityHashMap<>();

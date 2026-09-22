@@ -103,10 +103,10 @@ final class AnvilMenuHandleImpl extends ContainerMenuHandle implements AnvilMenu
 
     @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
-        if (item.isEmpty() && rawSlot == 0 && this.textFieldAlwaysEnabled) {
+        if (ItemUtils.isEmpty(item) && rawSlot == 0 && this.textFieldAlwaysEnabled) {
             return this.inputPlaceholder.item();
         }
-        if (item.isEmpty() && rawSlot == 2 && this.resultAlwaysValid) {
+        if (ItemUtils.isEmpty(item) && rawSlot == 2 && this.resultAlwaysValid) {
             return PLACEHOLDER;
         }
         return super.toClientItem(rawSlot, item);

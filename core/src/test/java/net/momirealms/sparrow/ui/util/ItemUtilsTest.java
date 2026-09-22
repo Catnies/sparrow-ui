@@ -33,6 +33,40 @@ class ItemUtilsTest {
     }
 
     @Test
+    void emptyStacksAreIndependentAndHaveZeroAmount() {
+        ItemStack first = ItemUtils.empty();
+        ItemStack second = ItemUtils.copyOrEmpty(null);
+
+        assertEquals(0, first.getAmount());
+        assertEquals(Material.AIR, first.getType());
+        assertNotSame(first, second);
+        assertNotSame(ItemUtils.EMPTY, second);
+        first.setType(Material.DIAMOND);
+        first.setAmount(2);
+        assertTrue(ItemUtils.isEmpty(second));
+        assertTrue(ItemUtils.isEmpty(ItemUtils.EMPTY));
+    }
+
+    @Test
+    void emptyChecksUseBukkitTypeAndAmountWithoutThePaperMethod() {
+        ItemStack stack = new ItemStack(Material.DIAMOND, 3) {
+            @Override
+            public boolean isEmpty() {
+                throw new AssertionError("Paper isEmpty must not be called");
+            }
+        };
+
+        assertFalse(ItemUtils.isEmpty(stack));
+        stack.setAmount(0);
+        assertTrue(ItemUtils.isEmpty(stack));
+        stack.setAmount(-1);
+        assertTrue(ItemUtils.isEmpty(stack));
+        stack.setType(Material.AIR);
+        stack.setAmount(1);
+        assertTrue(ItemUtils.isEmpty(stack));
+    }
+
+    @Test
     void returnsAnIndependentCopyOfNonEmptyItems() {
         ItemStack source = new ItemStack(Material.DIAMOND, 3);
         ItemStack copy = ItemUtils.copyOrEmpty(source);

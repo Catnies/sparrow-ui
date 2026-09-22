@@ -16,7 +16,7 @@ public final class ClickActions {
 
     @NotNull
     public static InventoryAction leftAction(@Nullable ItemStack current, ItemStack cursor, ClickOutcome outcome) {
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             return InventoryAction.PICKUP_ALL;
         }
         // Bundle 的操作名取决于袋子位于光标还是槽位.
@@ -26,12 +26,12 @@ public final class ClickActions {
                     : InventoryAction.PICKUP_SOME_INTO_BUNDLE;
         }
         if (ClickBundleRules.isBundle(current)) {
-            return outcome.cursorAfter().isEmpty()
+            return ItemUtils.isEmpty(outcome.cursorAfter())
                     ? InventoryAction.PLACE_ALL_INTO_BUNDLE
                     : InventoryAction.PLACE_SOME_INTO_BUNDLE;
         }
         if (current == null) {
-            return outcome.cursorAfter().isEmpty() ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
+            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
         }
         // 同种物品是合并, 只挤进去一个时原版单独报 PLACE_ONE, 其余按光标是否清空区分全放和部分放.
         if (ItemUtils.isSimilar(current, cursor)) {
@@ -39,7 +39,7 @@ public final class ClickActions {
             if (placed == 1) {
                 return InventoryAction.PLACE_ONE;
             }
-            return outcome.cursorAfter().isEmpty() ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
+            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
         }
         return InventoryAction.SWAP_WITH_CURSOR;
     }
@@ -51,9 +51,9 @@ public final class ClickActions {
             return InventoryAction.PLACE_FROM_BUNDLE;
         }
         if (ClickBundleRules.isBundle(current)) {
-            return cursor.isEmpty() ? InventoryAction.PICKUP_FROM_BUNDLE : InventoryAction.SWAP_WITH_CURSOR;
+            return ItemUtils.isEmpty(cursor) ? InventoryAction.PICKUP_FROM_BUNDLE : InventoryAction.SWAP_WITH_CURSOR;
         }
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             return InventoryAction.PICKUP_HALF;
         }
         return current == null || ItemUtils.isSimilar(current, cursor)
@@ -66,7 +66,7 @@ public final class ClickActions {
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
             return InventoryAction.UNKNOWN;
         }
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             return InventoryAction.NOTHING;
         }
         return switch (clickType) {

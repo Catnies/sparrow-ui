@@ -19,7 +19,7 @@ public final class ClickSlotRules {
             ItemStack cursor,
             int slotLimit
     ) {
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             return current == null ? null : new ClickOutcome(null, current);
         }
         if (current != null && ClickBundleRules.isBundle(cursor)) {
@@ -59,13 +59,13 @@ public final class ClickSlotRules {
             return ClickBundleRules.computeExtractionFromCursorBundle(cursor, slotLimit);
         }
         if (ClickBundleRules.isBundle(current)) {
-            if (!cursor.isEmpty()) {
+            if (!ItemUtils.isEmpty(cursor)) {
                 return ItemUtils.isContentEqual(current, cursor) ? null : computeSwap(current, cursor, slotLimit);
             }
             assert current != null;
             return ClickBundleRules.computeBundleTake(current, observedBundle, selectedIndex);
         }
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             if (current == null) {
                 return null;
             }

@@ -118,10 +118,10 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         for (int index = 0; index < buttons.length; index++) {
             ItemStack current = this.recipeButtons.get(index);
             ItemStack incoming = buttons[index];
-            if (current.isEmpty() != incoming.isEmpty()) {
+            if (ItemUtils.isEmpty(current) != ItemUtils.isEmpty(incoming)) {
                 return false;
             }
-            if (!current.isEmpty() && !current.equals(incoming)) {
+            if (!ItemUtils.isEmpty(current) && !current.equals(incoming)) {
                 return false;
             }
         }
@@ -200,7 +200,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
     @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
         // 原版配方界面要求输入槽非空, 空输入使用不可见占位物.
-        Object clientItem = rawSlot == INPUT_SLOT && item.isEmpty()
+        Object clientItem = rawSlot == INPUT_SLOT && ItemUtils.isEmpty(item)
                 ? PLACEHOLDER
                 : super.toClientItem(rawSlot, item);
         if (rawSlot == INPUT_SLOT) {
@@ -221,7 +221,7 @@ final class StonecutterMenuHandleImpl extends ContainerMenuHandle implements Sto
         ArrayList<Object> entries = new ArrayList<>(buttons.size());
         for (int index = 0; index < buttons.size(); index++) {
             ItemStack button = buttons.get(index);
-            Object stack = button.isEmpty() ? PLACEHOLDER : ItemUtils.getItemStackHandle(button);
+            Object stack = ItemUtils.isEmpty(button) ? PLACEHOLDER : ItemUtils.getItemStackHandle(button);
             Object display;
             if (VersionHelper.isOrAbove26_1) {
                 Object template = ItemStackTemplateProxy.INSTANCE.fromNonEmptyStack(stack);

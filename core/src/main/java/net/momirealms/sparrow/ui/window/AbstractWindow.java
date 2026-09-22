@@ -737,10 +737,10 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     public ItemStack displayedAt(int windowSlot) {
         ItemStack[] localSlots = this.localSlots;
         if (localSlots == null || windowSlot < 0 || windowSlot >= localSlots.length) {
-            return ItemStack.empty();
+            return ItemUtils.empty();
         }
         ItemStack displayed = localSlots[windowSlot];
-        return displayed == null ? ItemStack.empty() : displayed.clone();
+        return displayed == null ? ItemUtils.empty() : displayed.clone();
     }
 
     @Nullable
@@ -1076,7 +1076,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
     // 把拖拽手势通知给途经的每个 Item. 空光标没有东西可分发,
     // 非创造模式的中键拖拽在原版语义里不存在. 两个条件与 ClickPlanner 判定拖拽候选时一致.
     private void dispatchItemDragClick(ClickInterpreter.Result.Drag drag, ItemStack cursor) {
-        if (cursor.isEmpty() || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
+        if (ItemUtils.isEmpty(cursor) || (drag.clickType() == ClickType.MIDDLE && this.viewer.getGameMode() != GameMode.CREATIVE)) {
             return;
         }
 
@@ -1911,7 +1911,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             }
             DisplayedSlotPath path = paths[windowSlot];
             try {
-                return path.render().isEmpty();
+                return ItemUtils.isEmpty(path.render());
             } catch (Throwable throwable) {
                 // 收集要求玩家看到空位, 无法确认显示内容时按非空处理.
                 SparrowUI.getInstance().handleException("Failed to render Window slot " + windowSlot, throwable);

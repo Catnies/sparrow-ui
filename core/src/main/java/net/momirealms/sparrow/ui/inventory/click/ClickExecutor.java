@@ -127,7 +127,7 @@ final class ClickExecutor {
             @NotNull ClickType clickType
     ) {
         ItemStack cursor = context.cursor();
-        if (cursor.isEmpty()) {
+        if (ItemUtils.isEmpty(cursor)) {
             return;
         }
         if (clickType == ClickType.WINDOW_BORDER_LEFT) {

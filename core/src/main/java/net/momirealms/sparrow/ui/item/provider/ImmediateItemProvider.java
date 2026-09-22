@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.item.provider;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -14,7 +15,7 @@ public interface ImmediateItemProvider extends ItemProvider {
      * 不得改动 Window, Pane, Inventory, 也不得额外请求刷新或同步.
      *
      * @param context 当前渲染上下文
-     * @return 本次要显示的物品, 空槽使用 {@link ItemStack#empty()}
+     * @return 本次要显示的物品, 空槽使用 {@link ItemUtils#empty()}
      */
     @NotNull
     ItemStack provideImmediately(@NotNull RenderContext context);

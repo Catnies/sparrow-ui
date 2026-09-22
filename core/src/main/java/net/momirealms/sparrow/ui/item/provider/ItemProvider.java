@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.item.provider;
 
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.SparrowUI;
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.ItemStack;
@@ -10,7 +11,7 @@ import java.util.function.Function;
 
 @FunctionalInterface
 public interface ItemProvider {
-    ImmediateItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemStack.empty());
+    ImmediateItemProvider EMPTY = ItemProvider.sync(ignoredContext -> ItemUtils.empty());
 
     /**
      * 发起本次要显示物品的计算.

@@ -289,7 +289,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
         // 随机标记写入协议展示副本, Trade Item 提供的服务端物品保持不变.
         MarkedStack markedFirstInput = this.mark(firstInput, true);
         Object firstCost = this.createCost(markedFirstInput);
-        Optional<Object> secondCost = secondInput.isEmpty()
+        Optional<Object> secondCost = ItemUtils.isEmpty(secondInput)
                 ? Optional.empty()
                 : Optional.of(this.createCost(this.mark(secondInput, false)));
         MarkedStack markedResult = this.mark(result, true);
@@ -329,7 +329,7 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
     // 复制展示物品并加入会话随机标记, 必需空位用不可见占位保持 offer 索引.
     private MarkedStack mark(ItemStack source, boolean required) {
         ItemStack display;
-        if (source.isEmpty()) {
+        if (ItemUtils.isEmpty(source)) {
             if (!required) {
                 throw new IllegalArgumentException("optional Merchant item must not be marked while empty");
             }

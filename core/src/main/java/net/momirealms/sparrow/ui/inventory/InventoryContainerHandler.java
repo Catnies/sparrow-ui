@@ -73,7 +73,7 @@ final class InventoryContainerHandler implements InvocationHandler {
     private boolean isEmpty() {
         ItemStack[] contents = this.inventory.unsafeSnapshot();
         for (int slot = 0; slot < contents.length; slot++) {
-            if (contents[slot] != null && !contents[slot].isEmpty()) {
+            if (!ItemUtils.isNullOrEmpty(contents[slot])) {
                 return false;
             }
         }

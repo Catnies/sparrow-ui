@@ -122,21 +122,21 @@ final class CartographyMenuHandleImpl extends ContainerMenuHandle implements Car
     @Override
     protected Object toClientItem(int rawSlot, ItemStack item) {
         if (rawSlot == MAP_SLOT) {
-            Object clientItem = item.isEmpty()
+            Object clientItem = ItemUtils.isEmpty(item)
                     ? ItemStackProxy.INSTANCE.newInstance(ItemsProxy.FILLED_MAP)
                     : ItemStackProxy.INSTANCE.copy(super.toClientItem(rawSlot, item)); // NMS ItemStack
             ItemStackProxy.INSTANCE.set(clientItem, DataComponentsProxy.MAP_ID, MapIdProxy.INSTANCE.newInstance(this.mapId));
-            if (item.isEmpty()) {
+            if (ItemUtils.isEmpty(item)) {
                 ItemUtils.hideTooltips(clientItem);
             }
             return clientItem;
         }
         if (rawSlot == VIEW_SLOT) {
             Object targetItem = this.viewItem(); // NMS Item
-            Object clientItem = item.isEmpty()
+            Object clientItem = ItemUtils.isEmpty(item)
                     ? ItemStackProxy.INSTANCE.newInstance(targetItem)
                     : ItemStackProxy.INSTANCE.transmuteCopy(super.toClientItem(rawSlot, item), targetItem);
-            if (item.isEmpty()) {
+            if (ItemUtils.isEmpty(item)) {
                 ItemUtils.hideTooltips(clientItem);
             }
             return clientItem;
