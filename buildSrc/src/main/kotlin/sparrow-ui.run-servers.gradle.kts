@@ -99,3 +99,25 @@ for (minecraftVersion in foliaVersions) {
         dependsOn(prepare)
     }
 }
+
+// Spigot 使用本地服务端 Jar 和独立的 Bukkit 插件目录.
+val spigotJar = rootProject.layout.projectDirectory.file("buildSrc/server-jars/spigot-26.2.jar")
+if (spigotJar.asFile.isFile) {
+    val directory = "run/spigot/26.2"
+    val prepare = tasks.register<InitializeRunDirectory>("prepareSpigot_26.2") {
+        templateDirectories.from(
+            runTemplatesDirectory.dir("backend/common"),
+            runTemplatesDirectory.dir("backend/spigot")
+        )
+        targetDirectory.set(layout.projectDirectory.dir(directory))
+    }
+    tasks.register<RunServer>("runSpigot_26.2") {
+        description = "Run a Spigot 26.2 server with the example plugin."
+        configureServer("Spigot 26.2", "26.2", directory)
+        pluginJars.from(rootProject.fileTree("buildSrc/bukkit-plugins") {
+            include("*.jar")
+        })
+        serverJar(spigotJar.asFile)
+        dependsOn(prepare)
+    }
+}

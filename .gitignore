@@ -47,3 +47,5 @@ bin/
 /docs/
 /.agent/
 /example/run/
+/buildSrc/server-jars/*.jar
+/buildSrc/bukkit-plugins/*.jar

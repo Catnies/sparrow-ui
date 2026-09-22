@@ -3,7 +3,7 @@ import net.minecrell.pluginyml.bukkit.BukkitPluginDescription
 plugins {
     `java-library`
     alias(libs.plugins.shadow)
-    id("de.eldoria.plugin-yml.paper") version "0.9.0"
+    id("de.eldoria.plugin-yml.bukkit") version "0.9.0"
     id("sparrow-ui.run-servers")
 }
 
@@ -36,7 +36,7 @@ tasks {
     }
 }
 
-paper {
+bukkit {
     name = "SparrowUIExample"
     main = "net.momirealms.sparrow.ui.example.SparrowExample"
     apiVersion = "1.21.4"
