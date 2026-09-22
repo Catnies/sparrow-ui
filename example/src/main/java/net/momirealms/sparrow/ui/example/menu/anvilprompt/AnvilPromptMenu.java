@@ -1,11 +1,10 @@
 package net.momirealms.sparrow.ui.example.menu.anvilprompt;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.util.Components;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -58,7 +57,7 @@ public final class AnvilPromptMenu {
      */
     private static final List<MaterialEntry> ALL_MATERIAL = Arrays.stream(Material.values())
             .filter(it -> !it.isLegacy() && it.isItem() && !it.isAir())
-            .map(it -> new MaterialEntry(it.getKey().asString(), Item.simple(new ItemStack(it))))
+            .map(it -> new MaterialEntry(it.getKey().toString(), Item.simple(ItemComponents.create(it))))
             .toList();
     private static final Item FILLER = Item.simple(filler()); // 第四行的空位背景
 
@@ -76,7 +75,7 @@ public final class AnvilPromptMenu {
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
         // 菜单对象, Pane 和 Window 都在异步线程构建, open 再把打开送进玩家的实体线程
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new AnvilPromptMenu(viewer).window.open())
+        return Scheduling.async(() -> new AnvilPromptMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -97,7 +96,7 @@ public final class AnvilPromptMenu {
                 .setUpperPane(this.buildBrowserPane())
                 // 本窗经 open() 直接打开, 因此下面三项根声明都会生效
                 .setSessionKind(WindowSession.Kind.STACK)
-                .addSessionEndHandler(reason -> viewer.sendMessage(endMessage(reason)))
+                .addSessionEndHandler(reason -> Components.sendMessage(viewer, endMessage(reason)))
                 .setData(this)
                 .build(viewer);
     }
@@ -154,8 +153,8 @@ public final class AnvilPromptMenu {
                         summary = enabled ? "浏览后一页的搜索结果。" : "已经是最后一页。";
                     }
 
-                    ItemStack itemStack = new ItemStack(enabled ? Material.ARROW : Material.GRAY_DYE);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+                    ItemStack itemStack = ItemComponents.create(enabled ? Material.ARROW : Material.GRAY_DYE);
+                    ItemComponents.name(itemStack, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
                     Component page = Component.text("当前页: ", NamedTextColor.GRAY)
                             .append(Component.text((pageIndex + 1) + " / " + pageCount, NamedTextColor.AQUA))
                             .decoration(TextDecoration.ITALIC, false);
@@ -172,7 +171,7 @@ public final class AnvilPromptMenu {
                                     Component.empty(),
                                     page
                             );
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+                    ItemComponents.lore(itemStack, lore);
                     return itemStack;
                 })
                 // 禁用状态负责视觉提示, Page.advance 会把越界页码夹在有效范围内
@@ -192,9 +191,9 @@ public final class AnvilPromptMenu {
                 .dependsOn(this.input, this.resultCount)
                 .setItemProvider(ignoredContext -> {
                     String query = this.input.get();
-                    ItemStack itemStack = new ItemStack(Material.NAME_TAG);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("搜索 Material", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.NAME_TAG);
+                    ItemComponents.name(itemStack, Component.text("搜索 Material", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("到铁砧界面输入 Material ID。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("筛选词: ", NamedTextColor.GRAY).append(Component.text(query.isEmpty() ? "未筛选" : query, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -202,7 +201,7 @@ public final class AnvilPromptMenu {
                             Component.empty(),
                             Component.text("左键打开输入界面", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false),
                             Component.text("右键清空筛选", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(click -> {
@@ -231,15 +230,15 @@ public final class AnvilPromptMenu {
                     int pageIndex = this.pages.page().get();
                     int pageCount = this.pages.count().get();
 
-                    ItemStack itemStack = new ItemStack(Material.COMPASS);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("搜索结果", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.COMPASS);
+                    ItemComponents.name(itemStack, Component.text("搜索结果", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("在铁砧界面确认之后筛选词才会变。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("筛选词: ", NamedTextColor.GRAY).append(Component.text(query.isEmpty() ? "未筛选" : query, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.text("结果数: ", NamedTextColor.GRAY).append(Component.text(Integer.toString(this.resultCount.get()), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.text("当前页: ", NamedTextColor.GRAY).append(Component.text((pageIndex + 1) + " / " + pageCount, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .build();
@@ -256,14 +255,14 @@ public final class AnvilPromptMenu {
     private Item buildCloseButton() {
         return Item.builder()
                 .setItemProvider(ignoredContext -> {
-                    ItemStack itemStack = new ItemStack(Material.BARRIER);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("关闭菜单", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.BARRIER);
+                    ItemComponents.name(itemStack, Component.text("关闭菜单", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("结束本次浏览。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("本菜单是这段会话的根窗，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.text("没有上一扇可回，因此这里等同关闭。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(click -> click.window().backOrClose())
@@ -358,8 +357,8 @@ public final class AnvilPromptMenu {
      */
     @NotNull
     private static ItemStack filler() {
-        ItemStack itemStack = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.empty());
+        ItemStack itemStack = ItemComponents.create(Material.GRAY_STAINED_GLASS_PANE);
+        ItemComponents.name(itemStack, Component.empty());
         return itemStack;
     }
 

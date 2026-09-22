@@ -1,11 +1,9 @@
 package net.momirealms.sparrow.ui.example.menu.livesearch;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.Element;
@@ -21,7 +19,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -47,7 +48,7 @@ public final class LiveSearchMenu {
      */
     private static final List<MaterialEntry> ALL_MATERIAL = Arrays.stream(Material.values())
             .filter(it -> !it.isLegacy() && it.isItem() && !it.isAir())
-            .map(it -> new MaterialEntry(it.getKey().asString(), Item.simple(new ItemStack(it))))
+            .map(it -> new MaterialEntry(it.getKey().toString(), Item.simple(ItemComponents.create(it))))
             .toList();
 
     private final MutableSignal<String> input; // 已去除首尾空白并转成小写的当前搜索词
@@ -66,7 +67,7 @@ public final class LiveSearchMenu {
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
         // Window.open 返回另一层 Future, thenCompose 会把异步构建和实际打开合并成一次等待
-        return Scheduling.async(SparrowExample.INSTANCE, () -> {
+        return Scheduling.async(() -> {
             LiveSearchMenu menu = new LiveSearchMenu();
             AnvilWindow anvilWindow = AnvilWindow.builder()
                     .setTitle(Component.text("实时搜索"))
@@ -157,8 +158,8 @@ public final class LiveSearchMenu {
                     }
 
                     // 使用 Paper 数据组件 API 设置名称和 Lore, 不经过旧式 ItemMeta
-                    ItemStack itemStack = new ItemStack(enabled ? Material.ARROW : Material.GRAY_DYE);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+                    ItemStack itemStack = ItemComponents.create(enabled ? Material.ARROW : Material.GRAY_DYE);
+                    ItemComponents.name(itemStack, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
                     Component page = Component.text("当前页: ", NamedTextColor.GRAY)
                             .append(Component.text((pageIndex + 1) + " / " + pageCount, NamedTextColor.AQUA))
                             .decoration(TextDecoration.ITALIC, false);
@@ -175,7 +176,7 @@ public final class LiveSearchMenu {
                                     Component.empty(),
                                     page
                             );
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+                    ItemComponents.lore(itemStack, lore);
                     return itemStack;
                 })
                 // 禁用状态负责视觉提示, Page.advance 会把越界页码夹在有效范围内
@@ -199,9 +200,9 @@ public final class LiveSearchMenu {
                     int pageCount = this.pages.count().get();
 
                     // 状态物品同样直接使用组件 API, 并保持名称、数据和操作提示的视觉层级
-                    ItemStack itemStack = new ItemStack(Material.COMPASS);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("搜索结果", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.COMPASS);
+                    ItemComponents.name(itemStack, Component.text("搜索结果", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("输入内容变化时立即筛选，无需确认。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("筛选词: ", NamedTextColor.GRAY).append(Component.text(queryText, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -209,7 +210,7 @@ public final class LiveSearchMenu {
                             Component.text("当前页: ", NamedTextColor.GRAY).append(Component.text((pageIndex + 1) + " / " + pageCount, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("在铁砧输入框中键入 Material ID", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .build();

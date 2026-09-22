@@ -1,10 +1,9 @@
 package net.momirealms.sparrow.ui.example.menu.skilltree;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemBuilder;
 import net.momirealms.sparrow.ui.pane.NormalPane;
@@ -112,9 +111,9 @@ final class SkillCategoryMenu {
                 .setItemProvider(ignoredContext -> {
                     int line = this.scroll.line().get();
                     int maxLine = this.scroll.maxLine().get();
-                    ItemStack itemStack = new ItemStack(Material.EXPERIENCE_BOTTLE);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(this.category.title() + " 进度", this.category.color()).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.EXPERIENCE_BOTTLE);
+                    ItemComponents.name(itemStack, Component.text(this.category.title() + " 进度", this.category.color()).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("节点只展示，不需要点亮。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("等级: ", NamedTextColor.GRAY).append(Component.text("Lv." + this.profile.level(), this.category.color())).decoration(TextDecoration.ITALIC, false),
@@ -123,7 +122,7 @@ final class SkillCategoryMenu {
                             Component.empty(),
                             Component.text("显示位置: ", NamedTextColor.GRAY).append(Component.text((line + 1) + " / " + (maxLine + 1), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.text("离开再回来时这个位置还在。", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .build();
@@ -155,13 +154,13 @@ final class SkillCategoryMenu {
                         summary = enabled ? "查看树的下一段。" : "已经在树底。";
                     }
 
-                    ItemStack itemStack = new ItemStack(enabled ? Material.ARROW : Material.GRAY_DYE);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(enabled ? Material.ARROW : Material.GRAY_DYE);
+                    ItemComponents.name(itemStack, Component.text(title, enabled ? NamedTextColor.YELLOW : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text(summary, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("显示位置: ", NamedTextColor.GRAY).append(Component.text((line + 1) + " / " + (maxLine + 1), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 // 禁用状态负责视觉提示, Scroll.advance 会把越界行号夹在有效范围内
@@ -179,18 +178,18 @@ final class SkillCategoryMenu {
     private Item buildTabButton(@NotNull SkillCategory target) {
         boolean current = target == this.category;
         SkillProfile targetProfile = this.root.profile(target);
-        ItemStack itemStack = new ItemStack(target.icon());
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(target.title(), target.color()).decoration(TextDecoration.ITALIC, false));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemStack itemStack = ItemComponents.create(target.icon());
+        ItemComponents.name(itemStack, Component.text(target.title(), target.color()).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
                 Component.text(current ? "正在查看这条技能线。" : "直接跳到这条技能线。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text("等级: ", NamedTextColor.GRAY).append(Component.text("Lv." + targetProfile.level(), target.color())).decoration(TextDecoration.ITALIC, false),
                 Component.text("已掌握: ", NamedTextColor.GRAY).append(Component.text(targetProfile.masteredCount() + " / " + target.nodes().size(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text(current ? "当前所在" : "点击切换", current ? NamedTextColor.DARK_GRAY : NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-        )));
+        ));
         if (current) {
-            itemStack.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+            ItemComponents.glint(itemStack, true);
         }
         ItemBuilder builder = Item.builder().setItemProvider(ignoredContext -> itemStack);
         if (!current) {
@@ -209,15 +208,15 @@ final class SkillCategoryMenu {
     private Item buildBackButton() {
         return Item.builder()
                 .setItemProvider(ignoredContext -> {
-                    ItemStack itemStack = new ItemStack(Material.SPECTRAL_ARROW);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("返回", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.SPECTRAL_ARROW);
+                    ItemComponents.name(itemStack, Component.text("返回", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("回到树上的上一层。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("第一次从哪一页进来，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.text("上一层就一直是那一页；", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.text("用下面的标签跨线跳转不会改变它。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(click -> click.window().backOrClose())
@@ -272,16 +271,16 @@ final class SkillCategoryMenu {
     @NotNull
     private static Item nodeItem(@NotNull SkillCategory category, @NotNull SkillProfile profile, @NotNull SkillCategory.Node node) {
         boolean mastered = profile.mastered(node);
-        ItemStack itemStack = new ItemStack(node.icon());
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(node.name(), mastered ? category.color() : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemStack itemStack = ItemComponents.create(node.icon());
+        ItemComponents.name(itemStack, Component.text(node.name(), mastered ? category.color() : NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
                 Component.text(node.description(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text("需要等级: ", NamedTextColor.GRAY).append(Component.text("Lv." + node.requiredLevel(), mastered ? NamedTextColor.AQUA : NamedTextColor.RED)).decoration(TextDecoration.ITALIC, false),
                 Component.text("状态: ", NamedTextColor.GRAY).append(Component.text(mastered ? "已掌握" : "未解锁", mastered ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY)).decoration(TextDecoration.ITALIC, false)
-        )));
+        ));
         if (mastered) {
-            itemStack.setData(DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
+            ItemComponents.glint(itemStack, true);
         }
         return Item.simple(itemStack);
     }
@@ -293,8 +292,8 @@ final class SkillCategoryMenu {
      */
     @NotNull
     private static ItemStack connector() {
-        ItemStack itemStack = new ItemStack(Material.LIME_STAINED_GLASS_PANE);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.empty());
+        ItemStack itemStack = ItemComponents.create(Material.LIME_STAINED_GLASS_PANE);
+        ItemComponents.name(itemStack, Component.empty());
         return itemStack;
     }
 
@@ -305,8 +304,8 @@ final class SkillCategoryMenu {
      */
     @NotNull
     private static ItemStack filler() {
-        ItemStack itemStack = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.empty());
+        ItemStack itemStack = ItemComponents.create(Material.GRAY_STAINED_GLASS_PANE);
+        ItemComponents.name(itemStack, Component.empty());
         return itemStack;
     }
 }

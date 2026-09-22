@@ -1,11 +1,10 @@
 package net.momirealms.sparrow.ui.example.menu.skilltree;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.NormalPane;
@@ -57,7 +56,7 @@ public final class SkillTreeMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new SkillTreeMenu(viewer).window.open())
+        return Scheduling.async(() -> new SkillTreeMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -124,9 +123,9 @@ public final class SkillTreeMenu {
                     .append(Component.text("Lv." + profile.level(), category.color()))
                     .decoration(TextDecoration.ITALIC, false));
         }
-        ItemStack itemStack = new ItemStack(Material.KNOWLEDGE_BOOK);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(this.viewer.getName() + " 的技能", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+        ItemStack itemStack = ItemComponents.create(Material.KNOWLEDGE_BOOK);
+        ItemComponents.name(itemStack, Component.text(this.viewer.getName() + " 的技能", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, lore);
         return Item.simple(itemStack);
     }
 
@@ -139,9 +138,9 @@ public final class SkillTreeMenu {
     @NotNull
     private Item buildCategoryButton(@NotNull SkillCategory category) {
         SkillProfile profile = this.profiles.get(category);
-        ItemStack itemStack = new ItemStack(category.icon());
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text(category.title(), category.color()).decoration(TextDecoration.ITALIC, false));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemStack itemStack = ItemComponents.create(category.icon());
+        ItemComponents.name(itemStack, Component.text(category.title(), category.color()).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
                 Component.text("查看这条技能线的技能树。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text("等级: ", NamedTextColor.GRAY).append(Component.text("Lv." + profile.level(), category.color())).decoration(TextDecoration.ITALIC, false),
@@ -149,7 +148,7 @@ public final class SkillTreeMenu {
                 Component.text("已掌握: ", NamedTextColor.GRAY).append(Component.text(profile.masteredCount() + " / " + category.nodes().size(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text("点击进入技能树", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-        )));
+        ));
         return Item.builder()
                 .setItemProvider(ignoredContext -> itemStack)
                 .addClickHandler(click -> this.openCategory(click.window(), category))
@@ -182,7 +181,7 @@ public final class SkillTreeMenu {
     private CompletableFuture<Window> buildCategoryWindow(@NotNull SkillCategory category) {
         SkillProfile profile = this.profiles.get(category);
         // 整棵树要铺 99 个格子, 每条线只在第一次进入时构建一次, 之后由会话留着
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new SkillCategoryMenu(this, this.viewer, profile).window());
+        return Scheduling.async(() -> new SkillCategoryMenu(this, this.viewer, profile).window());
     }
 
     /**
@@ -203,8 +202,8 @@ public final class SkillTreeMenu {
      */
     @NotNull
     private static ItemStack filler() {
-        ItemStack itemStack = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.empty());
+        ItemStack itemStack = ItemComponents.create(Material.GRAY_STAINED_GLASS_PANE);
+        ItemComponents.name(itemStack, Component.empty());
         return itemStack;
     }
 }

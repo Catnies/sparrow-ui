@@ -1,11 +1,9 @@
 package net.momirealms.sparrow.ui.example.menu.animationpresets;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.NormalPane;
@@ -157,7 +155,7 @@ public final class AnimationPresetsMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new AnimationPresetsMenu(viewer).window.open())
+        return Scheduling.async(() -> new AnimationPresetsMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -210,7 +208,7 @@ public final class AnimationPresetsMenu {
     @NotNull
     private Item buildGuideItem() {
         ItemStack itemStack = named(Material.BOOK, Component.text("动画轮播展示", NamedTextColor.AQUA));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemComponents.lore(itemStack, List.of(
                 gray("点击快捷栏上的物品切换动画效果。"),
                 Component.empty(),
                 gray("上方 6 行是动画的舞台, 每一格的内容"),
@@ -219,7 +217,7 @@ public final class AnimationPresetsMenu {
                 Component.empty(),
                 gray("动画播在共享的 Pane 上, 因此同时看着"),
                 gray("这块舞台的每个人看到的都是同一份。")
-        )));
+        ));
         return Item.simple(itemStack);
     }
 
@@ -254,7 +252,7 @@ public final class AnimationPresetsMenu {
                             : Component.text("点击播放", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
 
                     ItemStack itemStack = named(show.icon(), Component.text(show.title(), show.color()));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(lore));
+                    ItemComponents.lore(itemStack, lore);
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.play(index))
@@ -273,13 +271,13 @@ public final class AnimationPresetsMenu {
                 .setItemProvider(ignoredContext -> {
                     boolean playing = this.playingIndex.get() != NOTHING_PLAYING;
                     ItemStack itemStack = named(Material.BARRIER, Component.text("停止", NamedTextColor.RED));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemComponents.lore(itemStack, List.of(
                             gray("取消当前动画, 舞台立刻恢复原样。"),
                             Component.empty(),
                             playing
                                     ? Component.text("点击停止", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
                                     : gray("当前没有动画在播放。")
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.stopCurrent())
@@ -364,8 +362,8 @@ public final class AnimationPresetsMenu {
      */
     @NotNull
     private static ItemStack named(@NotNull Material material, @NotNull Component name) {
-        ItemStack itemStack = new ItemStack(material);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, name.decoration(TextDecoration.ITALIC, false));
+        ItemStack itemStack = ItemComponents.create(material);
+        ItemComponents.name(itemStack, name.decoration(TextDecoration.ITALIC, false));
         return itemStack;
     }
 

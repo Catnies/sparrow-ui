@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.example.menu.shulkerboxedit;
 
-import io.papermc.paper.adventure.PaperAdventure;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -9,10 +8,12 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
+import net.momirealms.sparrow.ui.example.util.Components;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -63,7 +64,7 @@ public final class ShulkerBoxEditMenu {
         // 创建 Window
         this.window = NormalWindow.builder()
                 .setUpperPane(pane)
-                .setTitle(PaperAdventure.asAdventure(this.shulker.getHoverName()))
+                .setTitle(Components.asAdventure(this.shulker.getHoverName()))
                 .build(viewer);
 
         // 冻结所持潜影盒
@@ -97,7 +98,7 @@ public final class ShulkerBoxEditMenu {
         // 如果校验失败, 那么发送失败消息然后关闭 Window.
         this.invalidated = true;
         this.contents.frozen(true);
-        this.viewer.sendMessage(INVALIDATED_MESSAGE);
+        Components.sendMessage(this.viewer, INVALIDATED_MESSAGE);
         this.window.close();
         return false;
     }
@@ -125,7 +126,7 @@ public final class ShulkerBoxEditMenu {
         for (int slot = 0; slot < contents.length; slot++) {
             org.bukkit.inventory.ItemStack item = contents[slot];
             if (item != null) {
-                items.set(slot, CraftItemStack.unwrap(item));
+                items.set(slot, (ItemStack) ItemUtils.getItemStackHandle(item));
             }
         }
         this.shulker.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(items));

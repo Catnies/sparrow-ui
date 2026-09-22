@@ -46,14 +46,12 @@ tasks.withType<RunServer>().configureEach {
 }
 
 // 服务端公共配置
-val pluginJar = tasks.named<Jar>("shadowJar").flatMap { it.archiveFile }
-
-fun RunServer.configureServer(display: String, minecraftVersion: String, directory: String) {
+fun RunServer.configureServer(display: String, minecraftVersion: String, directory: String, jarTask: String = "shadowJar") {
     group = "run paper"
     displayName.set(display)
     minecraftVersion(minecraftVersion)
     runDirectory.set(layout.projectDirectory.dir(directory))
-    pluginJars.from(pluginJar)
+    pluginJars.from(tasks.named<Jar>(jarTask).flatMap { it.archiveFile })
     // 启动前复制到各自的运行目录, 服务端因此不必一直握着共享的 shadowJar
     legacyPluginLoading()
     javaLauncher.set(javaLauncherFor(minecraftVersion))
@@ -113,7 +111,7 @@ if (spigotJar.asFile.isFile) {
     }
     tasks.register<RunServer>("runSpigot_26.2") {
         description = "Run a Spigot 26.2 server with the example plugin."
-        configureServer("Spigot 26.2", "26.2", directory)
+        configureServer("Spigot 26.2", "26.2", directory, "bukkitJar")
         pluginJars.from(rootProject.fileTree("buildSrc/bukkit-plugins") {
             include("*.jar")
         })

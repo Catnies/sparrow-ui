@@ -1,11 +1,13 @@
 package net.momirealms.sparrow.ui.example.menu.cartographygallery;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
+import javax.imageio.ImageIO;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
+import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
@@ -18,7 +20,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -128,9 +129,9 @@ public final class CartographyGalleryMenu {
                     Slide target = this.slides.get(targetIndex);
 
                     // raw slot 0 会附加虚拟地图编号, Filled Map 因而能直接展示当前画布
-                    ItemStack itemStack = new ItemStack(Material.FILLED_MAP);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("上一张图片", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.FILLED_MAP);
+                    ItemComponents.name(itemStack, Component.text("上一张图片", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("向前浏览轮播图中的图片。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("当前图片: ", NamedTextColor.GRAY).append(Component.text(current.title(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -138,7 +139,7 @@ public final class CartographyGalleryMenu {
                             Component.text("轮播进度: ", NamedTextColor.GRAY).append(Component.text((currentIndex + 1) + " / " + this.slides.size(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("点击切换到上一张", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.changeSlide(-1))
@@ -162,9 +163,9 @@ public final class CartographyGalleryMenu {
                     Slide target = this.slides.get(targetIndex);
 
                     // raw slot 1 的客户端材质由当前 View 接管, 按钮名称和 Lore 仍来自这里
-                    ItemStack itemStack = new ItemStack(Material.PAPER);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("下一张图片", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.PAPER);
+                    ItemComponents.name(itemStack, Component.text("下一张图片", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("向后浏览轮播图中的图片。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("当前图片: ", NamedTextColor.GRAY).append(Component.text(current.title(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -172,7 +173,7 @@ public final class CartographyGalleryMenu {
                             Component.text("轮播进度: ", NamedTextColor.GRAY).append(Component.text((currentIndex + 1) + " / " + this.slides.size(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("点击切换到下一张", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.changeSlide(1))
@@ -195,9 +196,9 @@ public final class CartographyGalleryMenu {
                     ViewOption nextView = VIEW_OPTIONS.get((currentViewIndex + 1) % VIEW_OPTIONS.size());
                     Slide currentSlide = this.slides.get(this.slideIndex.get());
 
-                    ItemStack itemStack = new ItemStack(currentView.material());
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("展示形态 · " + currentView.title(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(currentView.material());
+                    ItemComponents.name(itemStack, Component.text("展示形态 · " + currentView.title(), NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text(currentView.description(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("当前图片: ", NamedTextColor.GRAY).append(Component.text(currentSlide.title(), NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -206,7 +207,7 @@ public final class CartographyGalleryMenu {
                             Component.empty(),
                             Component.text("左键切换下一种形态", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false),
                             Component.text("右键返回上一种形态", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(click -> this.changeView(click.clickType().isRightClick() ? -1 : 1))
@@ -246,9 +247,7 @@ public final class CartographyGalleryMenu {
     private static CompletableFuture<Window.OpenResult> openOnViewerThread(@NotNull Player viewer, @NotNull List<Slide> slides) {
         CompletableFuture<Window.OpenResult> result = new CompletableFuture<>();
         Runnable retired = () -> result.complete(Window.OpenResult.VIEWER_UNAVAILABLE);
-        if (viewer.getScheduler().run(
-                SparrowExample.INSTANCE,
-                ignoredTask -> {
+        if (SparrowUI.getInstance().scheduler().platform().runLater(() -> {
                     try {
                         CartographyGalleryMenu menu = new CartographyGalleryMenu(viewer, slides);
                         menu.window.open().whenComplete((openResult, throwable) -> {
@@ -262,7 +261,7 @@ public final class CartographyGalleryMenu {
                         result.completeExceptionally(throwable);
                     }
                 },
-                retired
+                retired, 0, viewer
         ) == null) {
             retired.run();
         }
@@ -277,7 +276,7 @@ public final class CartographyGalleryMenu {
     @NotNull
     private static synchronized CompletableFuture<List<Slide>> loadSlides() {
         if (slideCache == null || slideCache.isCompletedExceptionally()) {
-            slideCache = CompletableFuture.supplyAsync(CartographyGalleryMenu::readSlides);
+            slideCache = Scheduling.async(CartographyGalleryMenu::readSlides);
         }
         return slideCache;
     }

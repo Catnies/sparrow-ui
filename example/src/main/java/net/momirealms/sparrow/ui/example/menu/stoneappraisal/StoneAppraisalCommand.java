@@ -1,18 +1,14 @@
 package net.momirealms.sparrow.ui.example.menu.stoneappraisal;
 
-import com.mojang.brigadier.Command;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import io.papermc.paper.command.brigadier.CommandSourceStack;
-import io.papermc.paper.command.brigadier.Commands;
-import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
-import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver;
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.command.PlayerTargets;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.incendo.cloud.CommandManager;
+import org.incendo.cloud.bukkit.data.SinglePlayerSelector;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
 import java.util.logging.Level;
 
 public final class StoneAppraisalCommand {
@@ -23,27 +19,37 @@ public final class StoneAppraisalCommand {
     private StoneAppraisalCommand() {
     }
 
-    @NotNull
-    public static List<LiteralArgumentBuilder<CommandSourceStack>> nodes() {
-        return List.of(node(NAME), node(CHINESE_NAME));
+    /**
+     * 注册本菜单的中英文入口和单玩家选择器.
+     */
+    public static void register(@NotNull CommandManager<CommandSender> manager) {
+        register(manager, NAME);
+        register(manager, CHINESE_NAME);
     }
 
-    @NotNull
-    private static LiteralArgumentBuilder<CommandSourceStack> node(@NotNull String name) {
-        return Commands.literal(name)
-                .then(Commands.argument(TARGET_ARGUMENT, ArgumentTypes.player())
-                        .executes(StoneAppraisalCommand::open));
+    private static void register(@NotNull CommandManager<CommandSender> manager, @NotNull String name) {
+        manager.command(manager.commandBuilder("sparrowui")
+                .permission("sparrowui.example")
+                .literal("open")
+                .literal(name)
+                .required(TARGET_ARGUMENT, PlayerTargets.parser())
+                .handler(context -> {
+                    SinglePlayerSelector selector = context.get(TARGET_ARGUMENT);
+                    if (selector.inputString().startsWith("@") && !context.sender().hasPermission("minecraft.command.selector")) {
+                        context.sender().sendMessage("使用选择器需要 minecraft.command.selector 权限。");
+                        return;
+                    }
+                    Player target = selector.single();
+                    SparrowUI.getInstance().scheduler().platform().run(() -> open(target), () -> { }, target);
+                }));
     }
 
-    private static int open(@NotNull CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        PlayerSelectorArgumentResolver resolver = context.getArgument(TARGET_ARGUMENT, PlayerSelectorArgumentResolver.class);
-        Player target = resolver.resolve(context.getSource()).getFirst();
+    private static void open(@NotNull Player target) {
         String targetName = target.getName();
         StoneAppraisalMenu.open(target).whenComplete((ignoredResult, throwable) -> {
             if (throwable != null) {
                 SparrowExample.INSTANCE.getLogger().log(Level.SEVERE, "Failed to open the stone appraisal menu for " + targetName, throwable);
             }
         });
-        return Command.SINGLE_SUCCESS;
     }
 }

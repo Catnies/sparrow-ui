@@ -1,12 +1,11 @@
 package net.momirealms.sparrow.ui.example.menu.customframes;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
-import net.kyori.adventure.sound.Sound;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.example.util.Components;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
@@ -16,6 +15,7 @@ import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import net.momirealms.sparrow.ui.window.NormalWindow;
@@ -69,7 +69,7 @@ public final class CustomFramesMenu {
     private static final int RIPPLE_RINGS = WIDTH + HEIGHT;  // 够波纹走出舞台最远的那个角
     private static final ImmediateItemProvider RIPPLE_FRAME = frame(Material.BLUE_STAINED_GLASS_PANE, "波纹", NamedTextColor.BLUE);
     private static final ItemStack WATER_SURFACE = named(Material.LIGHT_BLUE_STAINED_GLASS_PANE, Component.text("水面", NamedTextColor.AQUA));
-    private static final ItemStack BLANK = ItemStack.empty();
+    private static final ItemStack BLANK = ItemUtils.empty();
     // 中心是固定的 54 个格子, 描述因此可以全部预建; 点击时直接取用
     private static final List<AnimationDefinition> RIPPLES = buildRipples();
 
@@ -88,7 +88,7 @@ public final class CustomFramesMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new CustomFramesMenu(viewer).window.open())
+        return Scheduling.async(() -> new CustomFramesMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -159,7 +159,7 @@ public final class CustomFramesMenu {
     @NotNull
     private Item buildGuideItem() {
         ItemStack itemStack = named(Material.BOOK, Component.text("高级动画展示", NamedTextColor.AQUA));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemComponents.lore(itemStack, List.of(
                 gray("这两个效果都不是预设糖能表达的,"),
                 gray("它们直接写帧函数: 每一格显示什么由"),
                 gray("它自己的坐标算出来。"),
@@ -170,7 +170,7 @@ public final class CustomFramesMenu {
                 gray("水波的叠加是动画通道自带的: 后点的"),
                 gray("盖住先点的, 而它在自己那圈之外放行,"),
                 gray("先点的波纹就从下面透上来。")
-        )));
+        ));
         return Item.simple(itemStack);
     }
 
@@ -185,7 +185,7 @@ public final class CustomFramesMenu {
                 .dependsOn(this.mode)
                 .setItemProvider(ignoredContext -> {
                     ItemStack itemStack = named(Material.SLIME_BALL, Component.text("贪吃蛇", NamedTextColor.GREEN));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemComponents.lore(itemStack, List.of(
                             gray("随机撒 5 份食物, 一条长度 3 的蛇"),
                             gray("用 BFS 逐个规划出绕开自己的路,"),
                             gray("吃完后从最近的一侧离场。"),
@@ -193,7 +193,7 @@ public final class CustomFramesMenu {
                             this.mode.get() == MODE_SNAKE
                                     ? Component.text("点击重新跑一遍", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
                                     : Component.text("点击播放", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.playSnake())
@@ -212,7 +212,7 @@ public final class CustomFramesMenu {
                 .setItemProvider(ignoredContext -> {
                     boolean active = this.mode.get() == MODE_RIPPLE;
                     ItemStack itemStack = named(Material.WATER_BUCKET, Component.text("水波", NamedTextColor.AQUA));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemComponents.lore(itemStack, List.of(
                             gray("舞台变成一片水面, 点哪里哪里起波纹。"),
                             gray("连点几下就是几个动画叠在一起,"),
                             gray("互相透着显示, 不做干涉计算。"),
@@ -220,7 +220,7 @@ public final class CustomFramesMenu {
                             active
                                     ? Component.text("▶ 点击上方水面试试", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false)
                                     : Component.text("点击进入", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.enterRipple())
@@ -238,13 +238,13 @@ public final class CustomFramesMenu {
                 .dependsOn(this.mode)
                 .setItemProvider(ignoredContext -> {
                     ItemStack itemStack = named(Material.BARRIER, Component.text("停止", NamedTextColor.RED));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemComponents.lore(itemStack, List.of(
                             gray("取消全部动画并清空舞台。"),
                             Component.empty(),
                             this.mode.get() == MODE_IDLE
                                     ? gray("舞台已经是空的。")
                                     : Component.text("点击停止", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(ignoredClick -> this.stopAll())
@@ -325,7 +325,7 @@ public final class CustomFramesMenu {
      * @param pitch 音高
      */
     private void playSound(@NotNull org.bukkit.Sound type, float pitch) {
-        this.viewer.playSound(Sound.sound(type, Sound.Source.MASTER, 0.7f, pitch));
+        Components.playSound(this.viewer, type, 0.7f, pitch);
     }
 
     /**
@@ -340,15 +340,12 @@ public final class CustomFramesMenu {
      * @param pitch 音高
      */
     private void playLater(@NotNull AnimationHandle handle, long delayTicks, @NotNull org.bukkit.Sound type, float pitch) {
-        this.viewer.getScheduler().runDelayed(
-                SparrowExample.INSTANCE,
-                ignoredTask -> {
+        SparrowUI.getInstance().scheduler().platform().runLater(() -> {
                     if (this.playing.contains(handle)) {
                         this.playSound(type, pitch);
                     }
                 },
-                null,
-                Math.max(1, delayTicks)
+                () -> { }, Math.max(1, delayTicks), this.viewer
         );
     }
 
@@ -434,8 +431,8 @@ public final class CustomFramesMenu {
      */
     @NotNull
     private static ItemStack named(@NotNull Material material, @NotNull Component name) {
-        ItemStack itemStack = new ItemStack(material);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, name.decoration(TextDecoration.ITALIC, false));
+        ItemStack itemStack = ItemComponents.create(material);
+        ItemComponents.name(itemStack, name.decoration(TextDecoration.ITALIC, false));
         return itemStack;
     }
 

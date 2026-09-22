@@ -1,11 +1,11 @@
 package net.momirealms.sparrow.ui.example.menu.stoneappraisal;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.example.util.Components;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -14,6 +14,7 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.visual.animation.AnimationDefinition;
 import net.momirealms.sparrow.ui.visual.animation.AnimationHandle;
 import net.momirealms.sparrow.ui.window.NormalWindow;
@@ -93,7 +94,7 @@ public final class StoneAppraisalMenu {
      */
     @NotNull
     public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(SparrowExample.INSTANCE, () -> new StoneAppraisalMenu(viewer).window.open())
+        return Scheduling.async(() -> new StoneAppraisalMenu(viewer).window.open())
                 .thenCompose(opening -> opening);
     }
 
@@ -137,7 +138,7 @@ public final class StoneAppraisalMenu {
         if (this.spinning != null) {
             return;
         }
-        this.viewer.getScheduler().run(SparrowExample.INSTANCE, ignoredTask -> this.startSpin(), null);
+        SparrowUI.getInstance().scheduler().platform().runLater(this::startSpin, () -> { }, 0, this.viewer);
     }
 
     /**
@@ -154,7 +155,7 @@ public final class StoneAppraisalMenu {
 
         // 先写数据: 石头当场换成奖励. 之后无论怎么收场, 容器里躺着的都已经是结果
         Ore reward = rollReward();
-        this.input.setItem(UpdateReason.Program.INSTANCE, 0, new ItemStack(reward.material()));
+        this.input.setItem(UpdateReason.Program.INSTANCE, 0, ItemComponents.create(reward.material()));
         // 遮罩跟着动画走: 动画盖住这一格, 就把这一格所在的 Inventory 对玩家侧关掉, 免得结果被提前拿走
         this.input.frozen(true);
 
@@ -178,7 +179,7 @@ public final class StoneAppraisalMenu {
         this.spinning = null;
         this.input.frozen(false);
         // 发消息只是往连接上写一个包, 不碰实体状态, 因此可以就地发
-        this.viewer.sendMessage(Component.text("你砸开石头获得了 ", NamedTextColor.GRAY)
+        Components.sendMessage(this.viewer, Component.text("你砸开石头获得了 ", NamedTextColor.GRAY)
                 .append(Component.text(reward.title(), reward.color())));
     }
 
@@ -194,7 +195,7 @@ public final class StoneAppraisalMenu {
             handle.cancel();
         }
         ItemStack left = this.input.itemAt(0);
-        if (left == null || left.isEmpty()) {
+        if (ItemUtils.isNullOrEmpty(left)) {
             return;
         }
         this.input.setItem(UpdateReason.Program.INSTANCE, 0, null);
@@ -203,7 +204,7 @@ public final class StoneAppraisalMenu {
         for (ItemStack dropped : leftover.values()) {
             this.viewer.getWorld().dropItemNaturally(this.viewer.getLocation(), dropped);
         }
-        this.viewer.sendMessage(leftover.isEmpty()
+        Components.sendMessage(this.viewer, leftover.isEmpty()
                 ? Component.text("鉴定结果已放入你的背包。", NamedTextColor.GRAY)
                 : Component.text("背包已满, 鉴定结果掉在了你的脚下。", NamedTextColor.GRAY));
     }
@@ -283,8 +284,8 @@ public final class StoneAppraisalMenu {
      */
     @NotNull
     private static ItemStack fillerItem() {
-        ItemStack itemStack = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.empty());
+        ItemStack itemStack = ItemComponents.create(Material.BLACK_STAINED_GLASS_PANE);
+        ItemComponents.name(itemStack, Component.empty());
         return itemStack;
     }
 
@@ -295,15 +296,15 @@ public final class StoneAppraisalMenu {
      */
     @NotNull
     private static ItemStack hintItem() {
-        ItemStack itemStack = new ItemStack(Material.LIGHT);
-        itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("放入 1 个石头", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-        itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+        ItemStack itemStack = ItemComponents.create(Material.LIGHT);
+        ItemComponents.name(itemStack, Component.text("放入 1 个石头", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
                 Component.text("把一块石头放进这一格, 就会开始鉴定。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.text("一次只收一块, 其它物品放不进来。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.empty(),
                 Component.text("鉴定期间这一格会被锁住,", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.text("结果要等动画结束才能取走。", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false)
-        )));
+        ));
         return itemStack;
     }
 
@@ -337,8 +338,8 @@ public final class StoneAppraisalMenu {
          */
         @NotNull
         private static ImmediateItemProvider spinFrame(@NotNull Material material, @NotNull NamedTextColor color) {
-            ItemStack itemStack = new ItemStack(material);
-            itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("鉴定中...", color).decoration(TextDecoration.ITALIC, false));
+            ItemStack itemStack = ItemComponents.create(material);
+            ItemComponents.name(itemStack, Component.text("鉴定中...", color).decoration(TextDecoration.ITALIC, false));
             return ItemProvider.constant(itemStack);
         }
     }

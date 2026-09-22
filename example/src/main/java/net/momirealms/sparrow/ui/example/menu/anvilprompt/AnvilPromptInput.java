@@ -1,10 +1,9 @@
 package net.momirealms.sparrow.ui.example.menu.anvilprompt;
 
-import io.papermc.paper.datacomponent.DataComponentTypes;
-import io.papermc.paper.datacomponent.item.ItemLore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.momirealms.sparrow.ui.example.util.ItemComponents;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.state.MutableSignal;
@@ -97,9 +96,9 @@ final class AnvilPromptInput {
                 .dependsOn(this.draft)
                 .setItemProvider(ignoredContext -> {
                     String draft = this.draft.get().strip();
-                    ItemStack itemStack = new ItemStack(Material.LIME_DYE);
-                    itemStack.setData(DataComponentTypes.CUSTOM_NAME, Component.text("确认搜索", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
-                    itemStack.setData(DataComponentTypes.LORE, ItemLore.lore(List.of(
+                    ItemStack itemStack = ItemComponents.create(Material.LIME_DYE);
+                    ItemComponents.name(itemStack, Component.text("确认搜索", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+                    ItemComponents.lore(itemStack, List.of(
                             Component.text("确认之后才真正筛选一次。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                             Component.empty(),
                             Component.text("将要搜索: ", NamedTextColor.GRAY).append(Component.text(draft.isEmpty() ? "全部" : draft, NamedTextColor.AQUA)).decoration(TextDecoration.ITALIC, false),
@@ -107,7 +106,7 @@ final class AnvilPromptInput {
                             Component.empty(),
                             Component.text("点击应用并返回列表", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false),
                             Component.text("按 ESC 放弃本次输入", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
-                    )));
+                    ));
                     return itemStack;
                 })
                 .addClickHandler(click -> {

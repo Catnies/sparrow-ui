@@ -1,25 +1,22 @@
 package net.momirealms.sparrow.ui.example.menu.cartographygallery;
 
-import com.mojang.brigadier.Command;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import io.papermc.paper.command.brigadier.CommandSourceStack;
-import io.papermc.paper.command.brigadier.Commands;
-import io.papermc.paper.command.brigadier.argument.ArgumentTypes;
-import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.example.SparrowExample;
+import net.momirealms.sparrow.ui.example.command.PlayerTargets;
+import net.momirealms.sparrow.ui.example.util.Components;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.incendo.cloud.CommandManager;
+import org.incendo.cloud.bukkit.data.SinglePlayerSelector;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.List;
 import java.util.logging.Level;
 
 /**
- * 注册制图台画廊示例的 Paper Brigadier 子命令.
+ * 注册制图台画廊示例的 Cloud 子命令.
  */
 public final class CartographyGalleryCommand {
     private static final String NAME = "cartographygallery";
@@ -32,44 +29,38 @@ public final class CartographyGalleryCommand {
     }
 
     /**
-     * 创建 {@code /sparrowui open cartographygallery <target>} 命令节点.
-     *
-     * @return 可挂载到 open 节点下的命令
+     * 注册制图台画廊的中英文命令入口和单玩家选择器.
      */
-    @NotNull
-    public static List<LiteralArgumentBuilder<CommandSourceStack>> nodes() {
-        return List.of(node(NAME), node(CHINESE_NAME));
+    public static void register(@NotNull CommandManager<CommandSender> manager) {
+        register(manager, NAME);
+        register(manager, CHINESE_NAME);
     }
 
-    @NotNull
-    private static LiteralArgumentBuilder<CommandSourceStack> node(@NotNull String name) {
-        return Commands.literal(name)
-                .then(Commands.argument(TARGET_ARGUMENT, ArgumentTypes.player())
-                        .executes(CartographyGalleryCommand::open));
+    private static void register(@NotNull CommandManager<CommandSender> manager, @NotNull String name) {
+        manager.command(manager.commandBuilder("sparrowui")
+                .permission("sparrowui.example")
+                .literal("open")
+                .literal(name)
+                .required(TARGET_ARGUMENT, PlayerTargets.parser())
+                .handler(context -> {
+                    SinglePlayerSelector selector = context.get(TARGET_ARGUMENT);
+                    if (selector.inputString().startsWith("@") && !context.sender().hasPermission("minecraft.command.selector")) {
+                        context.sender().sendMessage("使用选择器需要 minecraft.command.selector 权限。");
+                        return;
+                    }
+                    Player target = selector.single();
+                    SparrowUI.getInstance().scheduler().platform().run(() -> open(target), () -> { }, target);
+                }));
     }
 
-    /**
-     * 解析单个目标玩家并异步打开菜单. 打开失败时记录完整异常, 再回到目标玩家的实体线程发送提示.
-     *
-     * @param context Paper 命令上下文
-     * @return Brigadier 单次执行成功值
-     * @throws CommandSyntaxException 目标选择器无法解析时抛出
-     */
-    private static int open(@NotNull CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        PlayerSelectorArgumentResolver resolver = context.getArgument(TARGET_ARGUMENT, PlayerSelectorArgumentResolver.class);
-        Player target = resolver.resolve(context.getSource()).getFirst();
+    private static void open(@NotNull Player target) {
         String targetName = target.getName();
         CartographyGalleryMenu.open(target).whenComplete((ignoredResult, throwable) -> {
             if (throwable == null) {
                 return;
             }
             SparrowExample.INSTANCE.getLogger().log(Level.SEVERE, "Failed to open the cartography carousel menu for " + targetName, throwable);
-            target.getScheduler().run(
-                    SparrowExample.INSTANCE,
-                    ignoredTask -> target.sendMessage(OPEN_FAILED_MESSAGE),
-                    () -> { }
-            );
+            SparrowUI.getInstance().scheduler().platform().run(() -> Components.sendMessage(target, OPEN_FAILED_MESSAGE), () -> { }, target);
         });
-        return Command.SINGLE_SUCCESS;
     }
 }
