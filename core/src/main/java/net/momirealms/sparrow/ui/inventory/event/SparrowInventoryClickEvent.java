@@ -4,7 +4,6 @@ import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,7 +16,7 @@ public final class SparrowInventoryClickEvent {
     private final Player player;               // 点击的玩家
     private final ClickType clickType;         // 点击类型
     private final int hotbarButton;            // 数字键点击对应的快捷栏索引, 其余点击为 -1
-    private final InventoryAction action;      // 点击的 InventoryAction
+    private final InventoryClickAction action;      // 点击的 InventoryClickAction
     private final InteractionEdits edits;      // 把本次点击的写入合并进候选草稿的句柄
     private volatile boolean cancelled;        // 是否被取消
 
@@ -28,7 +27,7 @@ public final class SparrowInventoryClickEvent {
             @NotNull Player player,
             @NotNull ClickType clickType,
             int hotbarButton,
-            @NotNull InventoryAction action,
+            @NotNull InventoryClickAction action,
             @NotNull InteractionEdits edits
     ) {
         this.inventory = inventory;
@@ -64,7 +63,7 @@ public final class SparrowInventoryClickEvent {
     }
 
     @NotNull
-    public InventoryAction action() {
+    public InventoryClickAction action() {
         return this.action;
     }
 

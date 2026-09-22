@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.inventory.InventoryPlanner;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.click.rules.ClickActions;
@@ -16,7 +17,6 @@ import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -49,19 +49,19 @@ final class ClickPlanner {
         }
         // 认不出来的点击类型原样报 UNKNOWN, 交给上层决定. 冻结与否只影响后面要不要发事件, 不改这个结论.
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
-            return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryAction.UNKNOWN, null);
+            return new PreparedClick(context.frozenAt(windowSlot) || context.linkAt(windowSlot) != null, InventoryClickAction.UNKNOWN, null);
         }
         // 冻结槽归引擎管, 但什么都不改, 只把客户端猜出来的画面纠回去.
         if (context.frozenAt(windowSlot)) {
-            return new PreparedClick(true, InventoryAction.NOTHING, null);
+            return new PreparedClick(true, InventoryClickAction.NOTHING, null);
         }
 
         ClickSemantics.LinkedSlot link = context.linkAt(windowSlot);
         if (link == null) {
-            return new PreparedClick(false, InventoryAction.NOTHING, null);
+            return new PreparedClick(false, InventoryClickAction.NOTHING, null);
         }
         if (link.inventory().frozen()) {
-            return new PreparedClick(true, InventoryAction.NOTHING, null);
+            return new PreparedClick(true, InventoryClickAction.NOTHING, null);
         }
 
         ClickCandidate candidate = switch (clickType) {
@@ -83,8 +83,8 @@ final class ClickPlanner {
             case MIDDLE -> prepareCreativeClone(context, link, write, overlay);
             default -> null;
         };
-        InventoryAction action = clickType == ClickType.NUMBER_KEY && (hotbarButton < 0 || hotbarButton > 8)
-                ? InventoryAction.UNKNOWN
+        InventoryClickAction action = clickType == ClickType.NUMBER_KEY && (hotbarButton < 0 || hotbarButton > 8)
+                ? InventoryClickAction.UNKNOWN
                 : actionOf(candidate);
         return new PreparedClick(true, action, candidate == null ? null : candidate.withRealBefore(overlay));
     }
@@ -127,7 +127,7 @@ final class ClickPlanner {
             return null;
         }
 
-        InventoryAction action = clickType == ClickType.LEFT
+        InventoryClickAction action = clickType == ClickType.LEFT
                 ? ClickActions.leftAction(current, cursor, outcome)
                 : ClickActions.rightAction(current, cursor);
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(delta)));
@@ -190,7 +190,7 @@ final class ClickPlanner {
                     new TransactionScope(targetPlan, List.of(new SlotChange(target.slot(), targetItem, sourceItem)))
             );
         }
-        return ClickCandidate.plan(InventoryAction.HOTBAR_SWAP, reason)
+        return ClickCandidate.plan(InventoryClickAction.HOTBAR_SWAP, reason)
                 .eventTarget(source)
                 .scopes(scopes)
                 .reads(sourcePlan == targetPlan ? List.of(sourcePlan) : List.of(sourcePlan, targetPlan))
@@ -218,7 +218,7 @@ final class ClickPlanner {
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(
                 new SlotChange(source.slot(), current, offhand)
         )));
-        return ClickCandidate.plan(InventoryAction.HOTBAR_SWAP, reason)
+        return ClickCandidate.plan(InventoryClickAction.HOTBAR_SWAP, reason)
                 .eventTarget(source)
                 .scopes(scopes)
                 .reads(List.of(plan))
@@ -265,7 +265,7 @@ final class ClickPlanner {
             return null;
         }
         List<TransactionScope> scopes = List.of(new TransactionScope(plan, List.of(delta)));
-        return ClickCandidate.plan(fullStack ? InventoryAction.DROP_ALL_SLOT : InventoryAction.DROP_ONE_SLOT, reason)
+        return ClickCandidate.plan(fullStack ? InventoryClickAction.DROP_ALL_SLOT : InventoryClickAction.DROP_ONE_SLOT, reason)
                 .eventTarget(link)
                 .scopes(scopes)
                 .reads(List.of(plan))
@@ -294,7 +294,7 @@ final class ClickPlanner {
         if (!link.inventory().allowsAccess(reason, context.window(), new SlotChange(link.slot(), current, current))) {
             return null;
         }
-        return ClickCandidate.plan(InventoryAction.CLONE_STACK, reason)
+        return ClickCandidate.plan(InventoryClickAction.CLONE_STACK, reason)
                 .eventTarget(link)
                 .reads(List.of(plan))
                 .checkCursor(actualCursor)
@@ -375,7 +375,7 @@ final class ClickPlanner {
             return null;
         }
 
-        return ClickCandidate.plan(InventoryAction.COLLECT_TO_CURSOR, reason)
+        return ClickCandidate.plan(InventoryClickAction.COLLECT_TO_CURSOR, reason)
                 .eventTarget(clicked)
                 .scopes(scopes)
                 .reads(new ArrayList<>(plans.values()))
@@ -439,7 +439,7 @@ final class ClickPlanner {
         List<TransactionScope> scopes = new ArrayList<>(targetScopes.size() + 1);
         scopes.add(new TransactionScope(sourcePlan, List.of(sourceChange)));
         scopes.addAll(targetScopes);
-        return ClickCandidate.plan(InventoryAction.MOVE_TO_OTHER_INVENTORY, reason)
+        return ClickCandidate.plan(InventoryClickAction.MOVE_TO_OTHER_INVENTORY, reason)
                 .eventTarget(source)
                 .scopes(scopes)
                 .reads(readPlans)
@@ -472,15 +472,15 @@ final class ClickPlanner {
     }
 
     @NotNull
-    private static InventoryAction actionOf(@Nullable ClickCandidate candidate) {
-        return candidate == null ? InventoryAction.NOTHING : candidate.action();
+    private static InventoryClickAction actionOf(@Nullable ClickCandidate candidate) {
+        return candidate == null ? InventoryClickAction.NOTHING : candidate.action();
     }
 
     // handled 说的是这一格归不归点击语义管, 和算不算得出候选无关.
     // 冻结槽就是个现成例子, 它归引擎管, 但永远算不出候选.
     record PreparedClick(
             boolean handled,
-            @NotNull InventoryAction action,
+            @NotNull InventoryClickAction action,
             @Nullable ClickCandidate candidate
     ) {
     }

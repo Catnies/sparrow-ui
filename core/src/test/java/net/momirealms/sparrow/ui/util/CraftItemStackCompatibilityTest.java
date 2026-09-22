@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.util;
 
 import net.momirealms.sparrow.ui.proxy.BukkitProxy;
+import net.momirealms.sparrow.ui.PlayerConnectionTestSupport;
 import net.momirealms.sparrow.ui.proxy.MinecraftPredicate;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import org.bukkit.Material;
@@ -13,10 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.mockbukkit.mockbukkit.MockBukkit;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.concurrent.atomic.AtomicReference;
+import org.bukkit.entity.Player;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -118,6 +122,42 @@ class CraftItemStackCompatibilityTest {
         });
     }
 
+    @Test
+    void paperDropOwnsACopyAndKeepsTheSourceUntouched() throws Throwable {
+        assertDropCopy(List.of("paper"), 0);
+    }
+
+    @Test
+    void spigotDropConvertsAnOrdinaryStackOnce() throws Throwable {
+        assertDropCopy(List.of("spigot"), 1);
+    }
+
+    private static void assertDropCopy(List<String> patches, int conversions) throws Throwable {
+        PlayerConnectionTestSupport.install();
+        withPlatform(patches, items -> {
+            AtomicReference<ItemStack> dropped = new AtomicReference<>();
+            Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[]{Player.class}, (proxy, method, arguments) -> {
+                if (!method.getName().equals("dropItem")) {
+                    throw new AssertionError(method.getName());
+                }
+                dropped.set((ItemStack) arguments[0]);
+                return null;
+            });
+            ItemStack source = new ItemStack(Material.DIAMOND, 3);
+            ItemMeta meta = source.getItemMeta();
+            meta.setDisplayName("drop-source");
+            source.setItemMeta(meta);
+            Class<?> players = items.getClassLoader().loadClass(PlayerUtils.class.getName());
+            players.getMethod("dropItem", Player.class, ItemStack.class).invoke(null, player, source);
+            assertNotSame(source, dropped.get());
+            assertEquals(source, dropped.get());
+            source.setAmount(1);
+            assertEquals(3, dropped.get().getAmount());
+            assertEquals("drop-source", dropped.get().getItemMeta().getDisplayName());
+            assertEquals(conversions, CraftItemStack.copyCalls);
+        });
+    }
+
     private static void withPlatform(List<String> patches, PlatformCheck action) throws Throwable {
         CraftItemStackProxy previousProxy = CraftItemStackProxy.INSTANCE;
         var proxySetter = ReflectionUtils.unreflectSetter(CraftItemStackProxy.class.getField("INSTANCE"));
@@ -125,7 +165,7 @@ class CraftItemStackCompatibilityTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[]{ItemUtils.class.getProtectionDomain().getCodeSource().getLocation()}, ItemUtils.class.getClassLoader()) {
             @Override
             protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-                if (!name.equals(ItemUtils.class.getName()) && !name.equals(VersionHelper.class.getName())) {
+                if (!name.equals(ItemUtils.class.getName()) && !name.equals(VersionHelper.class.getName()) && !name.equals(PlayerUtils.class.getName())) {
                     return super.loadClass(name, resolve);
                 }
                 Class<?> loaded = this.findLoadedClass(name);

@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.transaction.InteractionDraft;
@@ -7,7 +8,6 @@ import net.momirealms.sparrow.ui.inventory.transaction.PlannedRoot;
 import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,7 +19,7 @@ import java.util.Objects;
 // 一次点击算出来的完整结论, 包括要改哪些槽位, 以及提交之前必须仍然成立的那些前提.
 // 中间每跑过一轮别人的代码, 这些前提都要重新验一遍, 光标被换掉、基准状态被别的写操作顶掉, 这一笔就不能提交了.
 record ClickCandidate(
-        @NotNull InventoryAction action,                    // 候选对应的 Bukkit 操作
+        @NotNull InventoryClickAction action,                    // 候选对应的库存操作
         @Nullable ClickSemantics.LinkedSlot eventTarget,    // Sparrow 点击事件发给哪一格; 拖拽没有单一落点, 是 null
         @NotNull UpdateReason reason,                       // 提交时使用的变更原因
         @NotNull List<TransactionScope> scopes,             // 要改的槽位; 空的表示这一下只动光标之类的 Window 侧状态
@@ -34,7 +34,7 @@ record ClickCandidate(
 ) {
 
     @NotNull
-    static Builder plan(@NotNull InventoryAction action, @NotNull UpdateReason reason) {
+    static Builder plan(@NotNull InventoryClickAction action, @NotNull UpdateReason reason) {
         return new Builder(action, reason);
     }
 
@@ -119,8 +119,8 @@ record ClickCandidate(
 
     // 候选的建造器. 什么都不设就表示这一笔没有任何提交前提, 算出来就能交.
     static final class Builder {
-        // Bukkit 操作与事件目标
-        private final InventoryAction action;
+        // 库存操作与事件目标
+        private final InventoryClickAction action;
         private final UpdateReason reason;
         @Nullable private ClickSemantics.LinkedSlot eventTarget;
         // 事务写集与读集
@@ -135,7 +135,7 @@ record ClickCandidate(
         @Nullable private InteractionDraft draft;
         private Runnable afterCommit = () -> {};
 
-        private Builder(InventoryAction action, UpdateReason reason) {
+        private Builder(InventoryClickAction action, UpdateReason reason) {
             this.action = action;
             this.reason = reason;
         }

@@ -1,8 +1,8 @@
 package net.momirealms.sparrow.ui.inventory.click.rules;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -15,64 +15,64 @@ public final class ClickActions {
     }
 
     @NotNull
-    public static InventoryAction leftAction(@Nullable ItemStack current, ItemStack cursor, ClickOutcome outcome) {
+    public static InventoryClickAction leftAction(@Nullable ItemStack current, ItemStack cursor, ClickOutcome outcome) {
         if (ItemUtils.isEmpty(cursor)) {
-            return InventoryAction.PICKUP_ALL;
+            return InventoryClickAction.PICKUP_ALL;
         }
         // Bundle 的操作名取决于袋子位于光标还是槽位.
         if (current != null && ClickBundleRules.isBundle(cursor)) {
             return outcome.slotAfter() == null
-                    ? InventoryAction.PICKUP_ALL_INTO_BUNDLE
-                    : InventoryAction.PICKUP_SOME_INTO_BUNDLE;
+                    ? InventoryClickAction.PICKUP_ALL_INTO_BUNDLE
+                    : InventoryClickAction.PICKUP_SOME_INTO_BUNDLE;
         }
         if (ClickBundleRules.isBundle(current)) {
             return ItemUtils.isEmpty(outcome.cursorAfter())
-                    ? InventoryAction.PLACE_ALL_INTO_BUNDLE
-                    : InventoryAction.PLACE_SOME_INTO_BUNDLE;
+                    ? InventoryClickAction.PLACE_ALL_INTO_BUNDLE
+                    : InventoryClickAction.PLACE_SOME_INTO_BUNDLE;
         }
         if (current == null) {
-            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
+            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryClickAction.PLACE_ALL : InventoryClickAction.PLACE_SOME;
         }
         // 同种物品是合并, 只挤进去一个时原版单独报 PLACE_ONE, 其余按光标是否清空区分全放和部分放.
         if (ItemUtils.isSimilar(current, cursor)) {
             int placed = cursor.getAmount() - outcome.cursorAfter().getAmount();
             if (placed == 1) {
-                return InventoryAction.PLACE_ONE;
+                return InventoryClickAction.PLACE_ONE;
             }
-            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryAction.PLACE_ALL : InventoryAction.PLACE_SOME;
+            return ItemUtils.isEmpty(outcome.cursorAfter()) ? InventoryClickAction.PLACE_ALL : InventoryClickAction.PLACE_SOME;
         }
-        return InventoryAction.SWAP_WITH_CURSOR;
+        return InventoryClickAction.SWAP_WITH_CURSOR;
     }
 
     @NotNull
-    public static InventoryAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
+    public static InventoryClickAction rightAction(@Nullable ItemStack current, ItemStack cursor) {
         // Bundle 右键使用逐件进出操作名.
         if (current == null && ClickBundleRules.isBundle(cursor)) {
-            return InventoryAction.PLACE_FROM_BUNDLE;
+            return InventoryClickAction.PLACE_FROM_BUNDLE;
         }
         if (ClickBundleRules.isBundle(current)) {
-            return ItemUtils.isEmpty(cursor) ? InventoryAction.PICKUP_FROM_BUNDLE : InventoryAction.SWAP_WITH_CURSOR;
+            return ItemUtils.isEmpty(cursor) ? InventoryClickAction.PICKUP_FROM_BUNDLE : InventoryClickAction.SWAP_WITH_CURSOR;
         }
         if (ItemUtils.isEmpty(cursor)) {
-            return InventoryAction.PICKUP_HALF;
+            return InventoryClickAction.PICKUP_HALF;
         }
         return current == null || ItemUtils.isSimilar(current, cursor)
-                ? InventoryAction.PLACE_ONE
-                : InventoryAction.SWAP_WITH_CURSOR;
+                ? InventoryClickAction.PLACE_ONE
+                : InventoryClickAction.SWAP_WITH_CURSOR;
     }
 
     @NotNull
-    public static InventoryAction outsideAction(ItemStack cursor, ClickType clickType) {
+    public static InventoryClickAction outsideAction(ItemStack cursor, ClickType clickType) {
         if (clickType == ClickType.UNKNOWN || clickType == ClickType.CREATIVE) {
-            return InventoryAction.UNKNOWN;
+            return InventoryClickAction.UNKNOWN;
         }
         if (ItemUtils.isEmpty(cursor)) {
-            return InventoryAction.NOTHING;
+            return InventoryClickAction.NOTHING;
         }
         return switch (clickType) {
-            case LEFT, WINDOW_BORDER_LEFT -> InventoryAction.DROP_ALL_CURSOR;
-            case RIGHT, WINDOW_BORDER_RIGHT -> InventoryAction.DROP_ONE_CURSOR;
-            default -> InventoryAction.NOTHING;
+            case LEFT, WINDOW_BORDER_LEFT -> InventoryClickAction.DROP_ALL_CURSOR;
+            case RIGHT, WINDOW_BORDER_RIGHT -> InventoryClickAction.DROP_ONE_CURSOR;
+            default -> InventoryClickAction.NOTHING;
         };
     }
 }

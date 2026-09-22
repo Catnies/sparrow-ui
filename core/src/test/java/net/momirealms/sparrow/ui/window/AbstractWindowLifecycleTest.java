@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import io.papermc.paper.threadedregions.scheduler.EntityScheduler;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.kyori.adventure.key.Key;
@@ -385,7 +386,7 @@ class AbstractWindowLifecycleTest {
         );
         SparrowUI.getInstance().fireBukkitInventoryEvents(false);
 
-        assertFalse(manager.bukkitBridge().allowClick(window, click, InventoryAction.NOTHING));
+        assertFalse(manager.bukkitBridge().allowClick(window, click, InventoryClickAction.NOTHING));
         assertFalse(manager.bukkitBridge().allowDrag(
                 window,
                 ClickType.LEFT,
@@ -1750,7 +1751,7 @@ class AbstractWindowLifecycleTest {
         assertSame(inventory, events.getFirst().inventory());
         assertEquals(0, events.getFirst().slot());
         assertEquals(ClickType.SHIFT_LEFT, events.getFirst().clickType());
-        assertEquals(InventoryAction.NOTHING, events.getFirst().action());
+        assertEquals(InventoryClickAction.NOTHING, events.getFirst().action());
         subscription.close();
 
         assertEquals(Window.CloseResult.CLOSED, window.close().toCompletableFuture().join());
@@ -1847,7 +1848,7 @@ class AbstractWindowLifecycleTest {
         );
         window.tick();
 
-        assertEquals(InventoryAction.NOTHING, clickEvent.get().action());
+        assertEquals(InventoryClickAction.NOTHING, clickEvent.get().action());
         assertSame(inventory, clickEvent.get().inventory());
         assertEquals(1, bukkitClicks.get());
         assertEquals(0, preCalls.get());
@@ -1968,7 +1969,7 @@ class AbstractWindowLifecycleTest {
         bundleMeta.setItems(List.of(new ItemStack(Material.DIAMOND), new ItemStack(Material.EMERALD, 4)));
         bundle.setItemMeta(bundleMeta);
         VirtualInventory inventory = new VirtualInventory(new ItemStack[]{bundle, null});
-        AtomicReference<InventoryAction> clickAction = new AtomicReference<>();
+        AtomicReference<InventoryClickAction> clickAction = new AtomicReference<>();
         AtomicReference<UpdateReason> postReason = new AtomicReference<>();
         inventory.subscribeClick(event -> clickAction.set(event.action()));
         inventory.subscribePostUpdate(event -> postReason.set(event.reason()));
@@ -1995,7 +1996,7 @@ class AbstractWindowLifecycleTest {
         );
         window.tick();
 
-        assertEquals(InventoryAction.PICKUP_FROM_BUNDLE, clickAction.get());
+        assertEquals(InventoryClickAction.PICKUP_FROM_BUNDLE, clickAction.get());
         assertEquals(new ItemStack(Material.EMERALD, 4), menus.currentHandle.cursor());
         assertEquals(List.of(new ItemStack(Material.DIAMOND)), ((BundleMeta) inventory.itemAt(0).getItemMeta()).getItems());
         PlayerUpdateReason.Click reason = assertInstanceOf(PlayerUpdateReason.Click.class, postReason.get());
@@ -2088,6 +2089,54 @@ class AbstractWindowLifecycleTest {
 
         assertSame(second, setHandlerWindow.get());
         assertSame(second, addedHandlerWindow.get());
+    }
+
+    @Test
+    void slotDropsUseTheNmsPathOnlyAfterClickApproval() {
+        List<ItemStack> drops = new ArrayList<>();
+        Player player = dropTrackingPlayer(this.server.addPlayer(), drops);
+        VirtualInventory inventory = new VirtualInventory(1);
+        inventory.setItem(0, new ItemStack(Material.DIAMOND, 3));
+        Pane pane = Pane.empty(9, 1);
+        pane.setElement(0, Element.inventory(inventory, 0));
+        TrackingMenuFactory menus = new TrackingMenuFactory();
+        AbstractWindow<?> window = window(manager(new OwnedDispatcher(this.plugin), menus), player, pane, "nms-slot-drop");
+        Subscription cancellation = inventory.subscribeClick(SparrowInventoryClickEvent::cancel);
+        assertEquals(Window.OpenResult.OPENED, window.open().toCompletableFuture().join());
+        menus.offerInput(menus.lastGeneration, new MenuInput.Common.Click(menus.lastContainerId, menus.currentHandle.stateId(), 0, ClickType.DROP, -1));
+        window.tick();
+        assertEquals(3, inventory.itemAmount(0));
+        assertTrue(drops.isEmpty());
+        cancellation.close();
+
+        menus.offerInput(menus.lastGeneration, new MenuInput.Common.Click(menus.lastContainerId, menus.currentHandle.stateId(), 0, ClickType.DROP, -1));
+        window.tick();
+        assertEquals(2, inventory.itemAmount(0));
+        assertEquals(List.of(new ItemStack(Material.DIAMOND, 1)), drops);
+        menus.offerInput(menus.lastGeneration, new MenuInput.Common.Click(menus.lastContainerId, menus.currentHandle.stateId(), 0, ClickType.CONTROL_DROP, -1));
+        window.tick();
+        assertNull(inventory.itemAt(0));
+        assertEquals(List.of(new ItemStack(Material.DIAMOND, 1), new ItemStack(Material.DIAMOND, 2)), drops);
+        assertEquals(Window.CloseResult.CLOSED, window.close().toCompletableFuture().join());
+    }
+
+    @Test
+    void outsideDropsUseTheNmsPathAndPreserveTheTotalAmount() {
+        List<ItemStack> drops = new ArrayList<>();
+        Player player = dropTrackingPlayer(this.server.addPlayer(), drops);
+        player.setItemOnCursor(new ItemStack(Material.DIAMOND, 7));
+        TrackingMenuFactory menus = new TrackingMenuFactory();
+        AbstractWindow<?> window = window(manager(new OwnedDispatcher(this.plugin), menus), player, Pane.empty(9, 1), "nms-cursor-drop");
+        assertEquals(Window.OpenResult.OPENED, window.open().toCompletableFuture().join());
+        menus.offerInput(menus.lastGeneration, new MenuInput.Common.Click(menus.lastContainerId, menus.currentHandle.stateId(), -999, ClickType.WINDOW_BORDER_RIGHT, -1));
+        window.tick();
+        assertEquals(6, menus.currentHandle.cursor().getAmount());
+        assertEquals(List.of(new ItemStack(Material.DIAMOND, 1)), drops);
+        menus.offerInput(menus.lastGeneration, new MenuInput.Common.Click(menus.lastContainerId, menus.currentHandle.stateId(), -999, ClickType.WINDOW_BORDER_LEFT, -1));
+        window.tick();
+        assertTrue(menus.currentHandle.cursor().isEmpty());
+        assertEquals(List.of(new ItemStack(Material.DIAMOND, 1), new ItemStack(Material.DIAMOND, 6)), drops);
+        assertEquals(Window.CloseResult.CLOSED, window.close().toCompletableFuture().join());
     }
 
     @Test

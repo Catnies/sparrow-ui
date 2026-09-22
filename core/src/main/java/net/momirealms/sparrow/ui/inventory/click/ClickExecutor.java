@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
@@ -9,7 +10,6 @@ import net.momirealms.sparrow.ui.inventory.transaction.TransactionDraft;
 import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -163,7 +163,7 @@ final class ClickExecutor {
             InteractionEdits settled = this.settled(null);
             ClickSemantics.LinkedSlot eventTarget = candidate.eventTarget();
             if (eventTarget != null
-                    && !this.passGate(() -> this.gate.allowInventoryClick(eventTarget, InventoryAction.NOTHING, settled))) {
+                    && !this.passGate(() -> this.gate.allowInventoryClick(eventTarget, InventoryClickAction.NOTHING, settled))) {
                 return;
             }
             this.commitEdits(candidate.reason(), settled);
@@ -211,7 +211,7 @@ final class ClickExecutor {
     }
 
     // 这一下算不出候选, 但事件还是得发. 草稿等监听器真写了东西再建, 最后也只提交它们写的那些.
-    private void executeUnplanned(ClickType clickType, int hotbarButton, int windowSlot, InventoryAction action) {
+    private void executeUnplanned(ClickType clickType, int hotbarButton, int windowSlot, InventoryClickAction action) {
         InteractionEdits edits = new InteractionEdits(this.context, null, null, this.overlay);
         ItemStack plannedCursor = this.context.cursor();
         boolean fireBukkitInventoryEvent = requestsBukkitInventoryEvent(this.context.linkAt(windowSlot), List.of());

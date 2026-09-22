@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.InventoryBundleSelectEvent;
 import net.momirealms.sparrow.ui.inventory.event.SparrowInventoryClickEvent;
@@ -9,7 +10,6 @@ import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
@@ -45,17 +45,17 @@ public final class ClickSemantics {
     }
 
     /**
-     * 根据当前点击 Context 推导出正确的 Paper InventoryAction.
-     * 已识别但没有效果的操作返回 {@link InventoryAction#NOTHING}.
+     * 根据当前点击 Context 推导出正确的 Paper InventoryClickAction.
+     * 已识别但没有效果的操作返回 {@link InventoryClickAction#NOTHING}.
      *
      * @param context 当前 Window 交互上下文
      * @param clickType 已解析的点击类型
      * @param hotbarButton NUMBER_KEY 的热键编号, 其他点击传 {@code -1}
      * @param windowSlot 协议槽位(raw slot), 或 {@link InventoryView#OUTSIDE}
-     * @return 按当前只读状态预估的 Bukkit 操作
+     * @return 按当前只读状态预估的库存操作
      */
     @NotNull
-    public static InventoryAction estimateInventoryAction(
+    public static InventoryClickAction estimateInventoryAction(
             @NotNull Context context,
             @NotNull ClickType clickType,
             int hotbarButton,
@@ -120,7 +120,7 @@ public final class ClickSemantics {
             @NotNull Player player,
             @NotNull ClickType clickType,
             int hotbarButton,
-            @NotNull InventoryAction action,
+            @NotNull InventoryClickAction action,
             @NotNull InteractionEdits edits
     ) {
         if (!inventory.hasClickObservers()) {
@@ -297,11 +297,11 @@ public final class ClickSemantics {
          * <p>没有候选时这次调用没有事务可以取消, 返回 {@code false} 只会让 Window 走一次全量恢复.
          * 通过 {@code edits} 写入的内容仍会组成一笔事务提交.
          *
-         * @param action 本次点击对应的 Bukkit 操作, 没有候选时为实际估算出的操作
+         * @param action 本次点击对应的库存操作, 没有候选时为实际估算出的操作
          * @param edits 把事件写入合并进本次交互草稿的句柄
          * @return 事件没有被取消时返回 {@code true}
          */
-        default boolean allowClick(@NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+        default boolean allowClick(@NotNull InventoryClickAction action, @NotNull InteractionEdits edits) {
             return true;
         }
 
@@ -310,11 +310,11 @@ public final class ClickSemantics {
          * 拖拽候选没有单一事件目标, 不会调用本方法.
          *
          * @param link 候选的事件目标槽位
-         * @param action 候选对应的 Bukkit 操作
+         * @param action 候选对应的库存操作
          * @param edits 把事件写入合并进本次候选草稿的句柄, 与 Bukkit 事件用的是同一份
          * @return 事件没有被取消时返回 {@code true}
          */
-        default boolean allowInventoryClick(@NotNull LinkedSlot link, @NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+        default boolean allowInventoryClick(@NotNull LinkedSlot link, @NotNull InventoryClickAction action, @NotNull InteractionEdits edits) {
             return true;
         }
 

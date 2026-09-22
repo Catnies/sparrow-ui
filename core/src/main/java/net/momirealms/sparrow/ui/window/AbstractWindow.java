@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Bindings;
@@ -29,6 +30,7 @@ import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.util.HandlerList;
 import net.momirealms.sparrow.ui.util.ItemUtils;
+import net.momirealms.sparrow.ui.util.PlayerUtils;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
 import net.momirealms.sparrow.ui.visual.CursorVisual;
 import net.momirealms.sparrow.ui.visual.CursorVisualImpl;
@@ -43,7 +45,6 @@ import net.momirealms.sparrow.ui.window.click.WindowOutsideClick;
 import org.bukkit.GameMode;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.InventoryView;
@@ -1017,7 +1018,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             );
             if (handled) return;
 
-            InventoryAction action = ClickSemantics.estimateInventoryAction(
+            InventoryClickAction action = ClickSemantics.estimateInventoryAction(
                     this.semanticsContext,
                     click.clickType(),
                     click.hotbarButton(),
@@ -1030,7 +1031,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return;
         }
 
-        InventoryAction action = ClickSemantics.estimateInventoryAction(
+        InventoryClickAction action = ClickSemantics.estimateInventoryAction(
                 this.semanticsContext,
                 click.clickType(),
                 click.hotbarButton(),
@@ -1973,7 +1974,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
 
         @Override
         public void drop(@NotNull ItemStack item) {
-            AbstractWindow.this.viewer.dropItem(item);
+            PlayerUtils.dropItem(AbstractWindow.this.viewer, item);
         }
 
         @Override
@@ -2021,7 +2022,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
             return this.stillValid();
         }
 
-        boolean allowBukkitClick(@NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
+        boolean allowBukkitClick(@NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryClickAction action) {
             return !this.fireBukkitEvents || AbstractWindow.this.manager.bukkitBridge().allowClick(AbstractWindow.this, click, action);
         }
 
@@ -2062,7 +2063,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         @Override
-        public boolean allowClick(@NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+        public boolean allowClick(@NotNull InventoryClickAction action, @NotNull InteractionEdits edits) {
             if (!this.refreshEventView()) {
                 return false;
             }
@@ -2078,7 +2079,7 @@ abstract class AbstractWindow<M extends MenuHandle> implements Window {
         }
 
         @Override
-        public boolean allowInventoryClick(@NotNull ClickSemantics.LinkedSlot link, @NotNull InventoryAction action, @NotNull InteractionEdits edits) {
+        public boolean allowInventoryClick(@NotNull ClickSemantics.LinkedSlot link, @NotNull InventoryClickAction action, @NotNull InteractionEdits edits) {
             boolean allowed = ClickSemantics.dispatchClickEvent(
                     link.inventory(),
                     link.slot(),

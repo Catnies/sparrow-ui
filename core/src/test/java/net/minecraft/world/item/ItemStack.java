@@ -24,7 +24,7 @@ public final class ItemStack {
     }
 
     private ItemStack(ItemStack source) {
-        this.bukkit = source.bukkit;
+        this.bukkit = source.bukkit == null ? null : source.bukkit.clone();
         this.components = new java.util.IdentityHashMap<>(source.components);
     }
 

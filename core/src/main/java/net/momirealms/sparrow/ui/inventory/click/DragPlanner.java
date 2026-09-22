@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory.click;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.inventory.SparrowInventory;
 import net.momirealms.sparrow.ui.inventory.event.PlayerUpdateReason;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
@@ -11,7 +12,6 @@ import net.momirealms.sparrow.ui.inventory.transaction.TransactionScope;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.GameMode;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -137,7 +137,7 @@ final class DragPlanner {
             int left = cursor.getAmount() - placedTotal;
             newCursor = left > 0 ? ItemUtils.copyWithAmount(cursor, left) : ItemUtils.EMPTY;
         }
-        ClickCandidate candidate = ClickCandidate.plan(InventoryAction.NOTHING, reason)
+        ClickCandidate candidate = ClickCandidate.plan(InventoryClickAction.NOTHING, reason)
                 .scopes(scopes)
                 .reads(new ArrayList<>(plans.values()))
                 .checkCursor(actualCursor)

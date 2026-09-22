@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.click.ClickSemantics;
 import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
@@ -12,7 +13,6 @@ import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BundleMeta;
 import org.jetbrains.annotations.NotNull;
@@ -139,7 +139,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         context.cursor = diamonds(8);
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0);
 
         assertEquals(1, seenAmount.get());
@@ -190,7 +190,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         context.cursor = bundle(diamonds(4));
 
-        assertEquals(InventoryAction.PLACE_FROM_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.PLACE_FROM_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0));
         assertEquals(diamonds(2), inventory.itemAt(0));
         assertEquals(Material.BUNDLE, context.cursor.getType());
@@ -206,13 +206,13 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0).link(1, inventory, 1);
         context.cursor = bundle();
 
-        assertEquals(InventoryAction.PICKUP_ALL_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_ALL_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0));
         assertNull(inventory.itemAt(0));
         assertEquals(List.of(diamonds(4)), ((BundleMeta) context.cursor.getItemMeta()).getItems());
         context.cursor = bundle(diamonds(62));
 
-        assertEquals(InventoryAction.PICKUP_SOME_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 1));
+        assertEquals(InventoryClickAction.PICKUP_SOME_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 1));
         assertTrue(ClickSemantics.handleClick(context, ClickType.LEFT, -1, 1));
         assertEquals(diamonds(2), inventory.itemAt(1));
         assertEquals(List.of(diamonds(64)), ((BundleMeta) context.cursor.getItemMeta()).getItems());
@@ -227,14 +227,14 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         context.cursor = cursorBundle.clone();
 
-        assertEquals(InventoryAction.PICKUP_ALL_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_ALL_INTO_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0));
         assertNull(inventory.itemAt(0));
         assertEquals(List.of(slotBundle, new ItemStack(Material.EMERALD)), ((BundleMeta) context.cursor.getItemMeta()).getItems());
         inventory.setItem(reason(), 0, slotBundle);
         context.cursor = cursorBundle.clone();
 
-        assertEquals(InventoryAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0));
         assertEquals(cursorBundle, inventory.itemAt(0));
         assertEquals(slotBundle, context.cursor);
@@ -248,7 +248,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         AtomicInteger committed = new AtomicInteger();
 
-        assertEquals(InventoryAction.PICKUP_FROM_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_FROM_BUNDLE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0, bundle, 1, committed::incrementAndGet, ClickSemantics.InteractionGate.ALLOW_ALL));
         assertEquals(1, committed.get());
         assertEquals(new ItemStack(Material.EMERALD, 4), context.cursor);
@@ -256,7 +256,7 @@ class ClickSemanticsTest {
         context.cursor = ItemStack.empty();
         inventory.setItem(reason(), 0, bundle());
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0, null, -1, committed::incrementAndGet, ClickSemantics.InteractionGate.ALLOW_ALL));
         assertTrue(context.cursor.isEmpty());
         assertEquals(Material.BUNDLE, inventory.itemAt(0).getType());
@@ -272,7 +272,7 @@ class ClickSemanticsTest {
         context.cursor = new ItemStack(Material.STONE, 32);
         AtomicInteger committed = new AtomicInteger();
 
-        assertEquals(InventoryAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         assertTrue(ClickSemantics.handleClick(context, ClickType.RIGHT, -1, 0, bundle, 0, committed::incrementAndGet, ClickSemantics.InteractionGate.ALLOW_ALL));
         assertEquals(new ItemStack(Material.STONE, 32), inventory.itemAt(0));
         assertEquals(bundle, context.cursor);
@@ -357,52 +357,52 @@ class ClickSemanticsTest {
                 .link(1, inventory, 1)
                 .link(2, inventory, 2);
 
-        assertEquals(InventoryAction.PICKUP_ALL, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_ALL, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         assertEquals(5, ItemUtils.amountOf(inventory.itemAt(0)));
         assertTrue(context.cursor.isEmpty());
         context.cursor = diamonds(7);
 
-        assertEquals(InventoryAction.PLACE_SOME, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PLACE_SOME, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         context.cursor = diamonds(12);
 
-        assertEquals(InventoryAction.PLACE_SOME, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 2));
+        assertEquals(InventoryClickAction.PLACE_SOME, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 2));
         context.cursor = diamonds(1);
 
-        assertEquals(InventoryAction.PLACE_ONE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PLACE_ONE, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         context.cursor = new ItemStack(Material.EMERALD, 3);
 
-        assertEquals(InventoryAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.SWAP_WITH_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         context.cursor = ItemStack.empty();
 
-        assertEquals(InventoryAction.PICKUP_HALF, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_HALF, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
         context.cursor = diamonds(2);
 
-        assertEquals(InventoryAction.PLACE_ONE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.SHIFT_LEFT, -1, 0));
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.DOUBLE_CLICK, -1, 0));
+        assertEquals(InventoryClickAction.PLACE_ONE, ClickSemantics.estimateInventoryAction(context, ClickType.RIGHT, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.SHIFT_LEFT, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.DOUBLE_CLICK, -1, 0));
         VirtualInventory hotbar = new VirtualInventory(1);
         hotbar.setItem(reason(), 0, new ItemStack(Material.GOLD_INGOT, 1));
         context.hotbar(0, hotbar, 0);
 
-        assertEquals(InventoryAction.HOTBAR_SWAP, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
-        assertEquals(InventoryAction.HOTBAR_SWAP, ClickSemantics.estimateInventoryAction(context, ClickType.SWAP_OFFHAND, -1, 0));
+        assertEquals(InventoryClickAction.HOTBAR_SWAP, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
+        assertEquals(InventoryClickAction.HOTBAR_SWAP, ClickSemantics.estimateInventoryAction(context, ClickType.SWAP_OFFHAND, -1, 0));
         context.cursor = ItemStack.empty();
 
-        assertEquals(InventoryAction.DROP_ONE_SLOT, ClickSemantics.estimateInventoryAction(context, ClickType.DROP, -1, 0));
-        assertEquals(InventoryAction.DROP_ALL_SLOT, ClickSemantics.estimateInventoryAction(context, ClickType.CONTROL_DROP, -1, 0));
+        assertEquals(InventoryClickAction.DROP_ONE_SLOT, ClickSemantics.estimateInventoryAction(context, ClickType.DROP, -1, 0));
+        assertEquals(InventoryClickAction.DROP_ALL_SLOT, ClickSemantics.estimateInventoryAction(context, ClickType.CONTROL_DROP, -1, 0));
         this.player.setGameMode(GameMode.CREATIVE);
 
-        assertEquals(InventoryAction.CLONE_STACK, ClickSemantics.estimateInventoryAction(context, ClickType.MIDDLE, -1, 0));
+        assertEquals(InventoryClickAction.CLONE_STACK, ClickSemantics.estimateInventoryAction(context, ClickType.MIDDLE, -1, 0));
         context.cursor = diamonds(1);
 
-        assertEquals(InventoryAction.COLLECT_TO_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.DOUBLE_CLICK, -1, 2));
-        assertEquals(InventoryAction.DROP_ALL_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.WINDOW_BORDER_LEFT, -1, -999));
-        assertEquals(InventoryAction.DROP_ONE_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.WINDOW_BORDER_RIGHT, -1, -999));
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.MIDDLE, -1, -999));
+        assertEquals(InventoryClickAction.COLLECT_TO_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.DOUBLE_CLICK, -1, 2));
+        assertEquals(InventoryClickAction.DROP_ALL_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.WINDOW_BORDER_LEFT, -1, -999));
+        assertEquals(InventoryClickAction.DROP_ONE_CURSOR, ClickSemantics.estimateInventoryAction(context, ClickType.WINDOW_BORDER_RIGHT, -1, -999));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.MIDDLE, -1, -999));
         context.freeze(0);
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
-        assertEquals(InventoryAction.UNKNOWN, ClickSemantics.estimateInventoryAction(context, ClickType.UNKNOWN, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.UNKNOWN, ClickSemantics.estimateInventoryAction(context, ClickType.UNKNOWN, -1, 0));
     }
 
     @Test
@@ -425,7 +425,7 @@ class ClickSemanticsTest {
         contentsReads.set(0);
         FakeContext context = new FakeContext(this.player).link(0, referencing, 0);
 
-        assertEquals(InventoryAction.PICKUP_ALL, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
+        assertEquals(InventoryClickAction.PICKUP_ALL, ClickSemantics.estimateInventoryAction(context, ClickType.LEFT, -1, 0));
         assertEquals(1, contentsReads.get());
         assertEquals(0, externalEvents.get());
         assertEquals(5, ItemUtils.amountOf(referencing.itemAt(0)));
@@ -510,7 +510,7 @@ class ClickSemanticsTest {
                 .link(0, clicked, 0)
                 .hotbar(0, hotbar, 0);
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
         ClickSemantics.handleClick(context, ClickType.NUMBER_KEY, 0, 0);
 
         assertEquals(2, clickedRules.get());
@@ -545,22 +545,22 @@ class ClickSemanticsTest {
                 .hotbar(0, hotbar, 0);
         context.offhandItem = diamonds(4);
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.NUMBER_KEY, 0, 0));
         ClickSemantics.InteractionGate gate = new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 sparrowCalls.incrementAndGet();
                 return true;
             }
         };
         ClickSemantics.handleClick(context, ClickType.NUMBER_KEY, 0, 0, null, -1, () -> {}, gate);
 
-        assertEquals(InventoryAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.SWAP_OFFHAND, -1, 0));
+        assertEquals(InventoryClickAction.NOTHING, ClickSemantics.estimateInventoryAction(context, ClickType.SWAP_OFFHAND, -1, 0));
         ClickSemantics.handleClick(context, ClickType.SWAP_OFFHAND, -1, 0, null, -1, () -> {}, gate);
 
         assertEquals(0, ruleCalls.get());
@@ -706,7 +706,7 @@ class ClickSemanticsTest {
         this.player.setGameMode(GameMode.CREATIVE);
         ClickSemantics.handleClick(context, ClickType.MIDDLE, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 ClickSemanticsTest.this.player.setGameMode(GameMode.SURVIVAL);
                 return true;
             }
@@ -797,12 +797,12 @@ class ClickSemanticsTest {
                 .link(2, fallback, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 full.setItem(reason(), 0, null);
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 sparrowCalls.incrementAndGet();
                 return true;
             }
@@ -864,12 +864,12 @@ class ClickSemanticsTest {
         context.cursor = diamonds(5);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 chest.setItem(1, new ItemStack(Material.EMERALD, 2));
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 sparrowCalls.incrementAndGet();
                 return true;
             }
@@ -1450,12 +1450,12 @@ class ClickSemanticsTest {
         source.subscribePostUpdate(event -> postCalls.incrementAndGet());
         ClickSemantics.InteractionGate gate = new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 sparrowCalls.incrementAndGet();
                 return true;
             }
@@ -1477,7 +1477,7 @@ class ClickSemanticsTest {
         AtomicInteger bukkitCalls = new AtomicInteger();
         ClickSemantics.InteractionGate gate = new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
@@ -1523,7 +1523,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, upper, 0).hotbar(0, hotbar, 0);
         ClickSemantics.handleClick(context, ClickType.NUMBER_KEY, 0, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
@@ -1551,7 +1551,7 @@ class ClickSemanticsTest {
         AtomicInteger bukkitCalls = new AtomicInteger();
         ClickSemantics.handleClick(context, ClickType.DOUBLE_CLICK, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
@@ -1619,7 +1619,7 @@ class ClickSemanticsTest {
                 .link(2, initialTarget, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 initialTarget.fireBukkitInventoryEvents(false);
                 fullHighPriority.fireBukkitInventoryEvents(true);
@@ -1648,7 +1648,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, direct, 0).link(1, alias, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 bukkitCalls.incrementAndGet();
                 return true;
             }
@@ -1670,7 +1670,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         ClickSemantics.InteractionGate gate = new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 gateCalls.incrementAndGet();
                 return true;
             }
@@ -1698,7 +1698,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, clicked, 0).link(1, frozenInventory, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertFalse(edits.slot(1, diamonds(9)));
                 return true;
             }
@@ -1897,7 +1897,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertTrue(edits.cursor(diamonds(2)));
                 return true;
             }
@@ -1953,7 +1953,7 @@ class ClickSemanticsTest {
 
         assertTrue(ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 dispatched.set(true);
                 return true;
             }
@@ -1974,7 +1974,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 edits.cursor(diamonds(2));
                 context.cursor = diamonds(9);
                 return true;
@@ -1996,7 +1996,7 @@ class ClickSemanticsTest {
         SparrowUI.getInstance().warningsEnabled(false);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 edits.cursor(diamonds(2));
                 context.cursor = diamonds(9);
                 return true;
@@ -2017,7 +2017,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertTrue(edits.slot(0, diamonds(3)));
                 return true;
             }
@@ -2041,7 +2041,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0).link(2, bonus, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertTrue(edits.slot(2, diamonds(4)));
                 return true;
             }
@@ -2071,12 +2071,12 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, diamonds(3));
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 return ClickSemantics.dispatchClickEvent(link.inventory(), link.slot(), context.viewer(), ClickType.SHIFT_LEFT, -1, action, edits);
             }
         });
@@ -2095,7 +2095,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0).link(2, bonus, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, diamonds(3));
                 edits.slot(2, diamonds(4));
                 return false;
@@ -2117,7 +2117,7 @@ class ClickSemanticsTest {
         AtomicBoolean frozenSlot = new AtomicBoolean(true);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 itemSlot.set(edits.slot(9, diamonds(4)));
                 frozenSlot.set(edits.slot(2, diamonds(4)));
                 return true;
@@ -2139,7 +2139,7 @@ class ClickSemanticsTest {
 
         assertTrue(ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 accepted.set(edits.slot(1, diamonds(4)));
                 return true;
             }
@@ -2157,7 +2157,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         ClickSemantics.handleClick(context, ClickType.DROP, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertTrue(edits.slot(0, diamonds(4)));
                 return true;
             }
@@ -2176,7 +2176,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.cursor(diamonds(3));
                 return true;
             }
@@ -2193,7 +2193,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, diamonds(4));
                 context.cursor = diamonds(1);
                 return true;
@@ -2210,16 +2210,16 @@ class ClickSemanticsTest {
         VirtualInventory inventory = new VirtualInventory(1);
         inventory.setItem(reason(), 0, diamonds(5));
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
-        AtomicReference<InventoryAction> sparrowAction = new AtomicReference<>();
+        AtomicReference<InventoryClickAction> sparrowAction = new AtomicReference<>();
         AtomicInteger sparrowCalls = new AtomicInteger();
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, null);
                 return true;
             }
             @Override
-            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryAction action, InteractionEdits edits) {
+            public boolean allowInventoryClick(ClickSemantics.LinkedSlot link, InventoryClickAction action, InteractionEdits edits) {
                 sparrowCalls.incrementAndGet();
                 sparrowAction.set(action);
                 return true;
@@ -2227,7 +2227,7 @@ class ClickSemanticsTest {
         });
 
         assertEquals(1, sparrowCalls.get());
-        assertEquals(InventoryAction.NOTHING, sparrowAction.get());
+        assertEquals(InventoryClickAction.NOTHING, sparrowAction.get());
         assertNull(inventory.itemAt(0));
         assertTrue(context.cursor.isEmpty());
         assertTrue(this.reportedWarnings.isEmpty());
@@ -2241,7 +2241,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 context.cursor = diamonds(1);
                 return true;
             }
@@ -2260,7 +2260,7 @@ class ClickSemanticsTest {
         context.cursor = diamonds(5);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.cursor(diamonds(2));
                 context.cursor = diamonds(9);
                 return true;
@@ -2280,7 +2280,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 target.setItem(reason(), 0, new ItemStack(Material.EMERALD));
                 return true;
             }
@@ -2299,7 +2299,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, pageOne, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 pageTwo.setItem(reason(), 0, new ItemStack(Material.EMERALD, 3));
                 return true;
             }
@@ -2318,7 +2318,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, page, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 page.setItem(reason(), 0, new ItemStack(Material.EMERALD, 3));
                 return true;
             }
@@ -2337,7 +2337,7 @@ class ClickSemanticsTest {
         context.cursor = diamonds(5);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 context.cursor = new ItemStack(Material.DIRT, 1);
                 return true;
             }
@@ -2358,7 +2358,7 @@ class ClickSemanticsTest {
         context.cursor = diamonds(5);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(1, diamonds(3));
                 context.cursor = new ItemStack(Material.DIRT, 2);
                 return true;
@@ -2382,7 +2382,7 @@ class ClickSemanticsTest {
         context.cursor = new ItemStack(Material.DIRT, 1);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(1, diamonds(2));
                 context.cursor = new ItemStack(Material.NETHERITE_SCRAP, 1);
                 return true;
@@ -2402,7 +2402,7 @@ class ClickSemanticsTest {
         context.cursor = diamonds(5);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, diamonds(4));
                 context.cursor = new ItemStack(Material.DIRT, 1);
                 return true;
@@ -2424,7 +2424,7 @@ class ClickSemanticsTest {
         context.cursor = diamonds(2);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.slot(0, diamonds(3));
                 edits.cursor(diamonds(9));
                 return false;
@@ -2446,7 +2446,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, source, 0).link(1, target, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 assertTrue(edits.slot(0, diamonds(3)));
                 return true;
             }
@@ -2472,7 +2472,7 @@ class ClickSemanticsTest {
                 .link(2, fallback, 0);
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 edits.cursor(diamonds(2));
                 full.setItem(reason(), 0, null);
                 return true;
@@ -2512,7 +2512,7 @@ class ClickSemanticsTest {
         FakeContext context = new FakeContext(this.player).link(0, inventory, 0);
         ClickSemantics.handleClick(context, ClickType.LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 context.cursor = diamonds(5);
                 return true;
             }
@@ -2537,7 +2537,7 @@ class ClickSemanticsTest {
         }
         ClickSemantics.handleClick(context, ClickType.SHIFT_LEFT, -1, 0, null, -1, () -> {}, new ClickSemantics.InteractionGate() {
             @Override
-            public boolean allowClick(InventoryAction action, InteractionEdits edits) {
+            public boolean allowClick(InventoryClickAction action, InteractionEdits edits) {
                 for (int i = 0; i < extras.size(); i++) {
                     assertTrue(edits.slot(2 + i, diamonds(1)));
                 }

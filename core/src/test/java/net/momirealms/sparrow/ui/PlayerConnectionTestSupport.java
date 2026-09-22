@@ -42,6 +42,12 @@ public final class PlayerConnectionTestSupport {
                     new Class<?>[]{ServerPlayerProxy.class},
                     (proxy, method, arguments) -> {
                         if (method.getName().equals("hasDisconnected")) return !((Player) arguments[0]).isConnected();
+                        if (method.getName().equals("drop") || method.getName().equals("drop$0")) {
+                            if ((boolean) arguments[2] || !(boolean) arguments[3] || (boolean) arguments[4]) {
+                                throw new AssertionError("Unexpected NMS drop flags");
+                            }
+                            return ((Player) arguments[0]).dropItem(((net.minecraft.world.item.ItemStack) arguments[1]).getBukkitStack());
+                        }
                         throw new UnsupportedOperationException(method.getName());
                     }
             );

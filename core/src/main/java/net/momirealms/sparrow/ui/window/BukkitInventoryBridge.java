@@ -1,10 +1,10 @@
 package net.momirealms.sparrow.ui.window;
 
+import net.momirealms.sparrow.ui.inventory.event.InventoryClickAction;
 import net.momirealms.sparrow.ui.inventory.click.InteractionEdits;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.Bukkit;
 import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -31,13 +31,13 @@ final class BukkitInventoryBridge {
      * @param action 按当前 Window 只读状态估出来的操作
      * @return 事件没被取消, 桥接也没出事时为 true
      */
-    boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryAction action) {
+    boolean allowClick(@NotNull AbstractWindow<?> window, @NotNull ClickInterpreter.Result.SingleClick click, @NotNull InventoryClickAction action) {
         int rawSlot = click.rawSlot();
         InventoryView view = window.inventoryView();
         InventoryType.SlotType slotType = rawSlot == InventoryView.OUTSIDE
                 ? InventoryType.SlotType.OUTSIDE
                 : view.getSlotType(rawSlot);
-        InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), action, click.hotbarButton());
+        InventoryClickEvent event = new InventoryClickEvent(view, slotType, rawSlot, click.clickType(), InventoryClickActionAdapter.toBukkit(action), click.hotbarButton());
         try {
             Bukkit.getPluginManager().callEvent(event);
             return !event.isCancelled();
