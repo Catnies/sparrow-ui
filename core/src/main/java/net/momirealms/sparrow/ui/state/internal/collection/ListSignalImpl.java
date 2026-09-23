@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.state.MutableListSignal;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -51,6 +52,7 @@ public final class ListSignalImpl<E> extends CollectionSignal<List<E>> implement
         return this.removing.register(hook);
     }
 
+    @NotNull
     @Override
     public List<E> get() {
         return this;

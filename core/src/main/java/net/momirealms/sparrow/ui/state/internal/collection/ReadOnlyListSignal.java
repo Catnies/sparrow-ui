@@ -3,7 +3,9 @@ package net.momirealms.sparrow.ui.state.internal.collection;
 import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.ListSignal;
 import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -18,14 +20,25 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 
-final class ReadOnlyListSignal<E> extends AbstractSignal<List<E>> implements ListSignal<E> {
-    private final ListSignalImpl<E> source;
-    private final List<E> view;
+@ApiStatus.Internal
+public final class ReadOnlyListSignal<E> extends AbstractSignal<List<E>> implements ListSignal<E> {
+    private final AbstractSignal<List<E>> source;
+    @Nullable private final List<E> liveView;
     private Subscription upstream;
 
     ReadOnlyListSignal(ListSignalImpl<E> source) {
         this.source = source;
-        this.view = Collections.unmodifiableList(source);
+        this.liveView = Collections.unmodifiableList(source);
+    }
+
+    // 来源的 get() 必须返回不可修改的列表, 每次读取允许切换到新的快照
+    public ReadOnlyListSignal(AbstractSignal<List<E>> source) {
+        this.source = source;
+        this.liveView = null;
+    }
+
+    private List<E> view() {
+        return this.liveView == null ? this.source.get() : this.liveView;
     }
 
     @Override
@@ -45,8 +58,9 @@ final class ReadOnlyListSignal<E> extends AbstractSignal<List<E>> implements Lis
     }
 
     @Override
+    @NotNull
     public List<E> get() {
-        return this;
+        return this.liveView == null ? this.source.get() : this;
     }
 
     @Override
@@ -57,203 +71,203 @@ final class ReadOnlyListSignal<E> extends AbstractSignal<List<E>> implements Lis
 
     @Override
     public int size() {
-        return this.view.size();
+        return this.view().size();
     }
 
     @Override
     public boolean isEmpty() {
-        return this.view.isEmpty();
+        return this.view().isEmpty();
     }
 
     @Override
     public boolean contains(Object o) {
-        return this.view.contains(o);
+        return this.view().contains(o);
     }
 
     @Override
     public boolean containsAll(@NotNull Collection<?> c) {
-        return this.view.containsAll(c);
+        return this.view().containsAll(c);
     }
 
     @Override
     public E get(int index) {
-        return this.view.get(index);
+        return this.view().get(index);
     }
 
     @Override
     public E getFirst() {
-        return this.view.getFirst();
+        return this.view().getFirst();
     }
 
     @Override
     public E getLast() {
-        return this.view.getLast();
+        return this.view().getLast();
     }
 
     @Override
     public int indexOf(Object o) {
-        return this.view.indexOf(o);
+        return this.view().indexOf(o);
     }
 
     @Override
     public int lastIndexOf(Object o) {
-        return this.view.lastIndexOf(o);
+        return this.view().lastIndexOf(o);
     }
 
     @Override
     @NotNull
     public Object[] toArray() {
-        return this.view.toArray();
+        return this.view().toArray();
     }
 
     @Override
     @NotNull
     public <T> T[] toArray(@NotNull T[] a) {
-        return this.view.toArray(a);
+        return this.view().toArray(a);
     }
 
     @Override
     public <T> T[] toArray(IntFunction<T[]> generator) {
-        return this.view.toArray(generator);
+        return this.view().toArray(generator);
     }
 
     @Override
     public void forEach(Consumer<? super E> action) {
-        this.view.forEach(action);
+        this.view().forEach(action);
     }
 
     @Override
     public Spliterator<E> spliterator() {
-        return this.view.spliterator();
+        return this.view().spliterator();
     }
 
     @Override
     public Stream<E> stream() {
-        return this.view.stream();
+        return this.view().stream();
     }
 
     @Override
     public Stream<E> parallelStream() {
-        return this.view.parallelStream();
+        return this.view().parallelStream();
     }
 
     @Override
     public boolean add(E e) {
-        return this.view.add(e);
+        return this.view().add(e);
     }
 
     @Override
     public void add(int index, E element) {
-        this.view.add(index, element);
+        this.view().add(index, element);
     }
 
     @Override
     public void addFirst(E e) {
-        this.view.addFirst(e);
+        this.view().addFirst(e);
     }
 
     @Override
     public void addLast(E e) {
-        this.view.addLast(e);
+        this.view().addLast(e);
     }
 
     @Override
     public boolean addAll(@NotNull Collection<? extends E> c) {
-        return this.view.addAll(c);
+        return this.view().addAll(c);
     }
 
     @Override
     public boolean addAll(int index, @NotNull Collection<? extends E> c) {
-        return this.view.addAll(index, c);
+        return this.view().addAll(index, c);
     }
 
     @Override
     public E set(int index, E element) {
-        return this.view.set(index, element);
+        return this.view().set(index, element);
     }
 
     @Override
     public void replaceAll(@NotNull UnaryOperator<E> operator) {
-        this.view.replaceAll(operator);
+        this.view().replaceAll(operator);
     }
 
     @Override
     public void sort(Comparator<? super E> c) {
-        this.view.sort(c);
+        this.view().sort(c);
     }
 
     @Override
     public boolean remove(Object o) {
-        return this.view.remove(o);
+        return this.view().remove(o);
     }
 
     @Override
     public E remove(int index) {
-        return this.view.remove(index);
+        return this.view().remove(index);
     }
 
     @Override
     public E removeFirst() {
-        return this.view.removeFirst();
+        return this.view().removeFirst();
     }
 
     @Override
     public E removeLast() {
-        return this.view.removeLast();
+        return this.view().removeLast();
     }
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        return this.view.removeAll(c);
+        return this.view().removeAll(c);
     }
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        return this.view.retainAll(c);
+        return this.view().retainAll(c);
     }
 
     @Override
     public boolean removeIf(Predicate<? super E> filter) {
-        return this.view.removeIf(filter);
+        return this.view().removeIf(filter);
     }
 
     @Override
     public void clear() {
-        this.view.clear();
+        this.view().clear();
     }
 
     @Override
     @NotNull
     public List<E> subList(int fromIndex, int toIndex) {
-        return this.view.subList(fromIndex, toIndex);
+        return this.view().subList(fromIndex, toIndex);
     }
 
     @Override
     public List<E> reversed() {
-        return this.view.reversed();
+        return this.view().reversed();
     }
 
     @Override
     @NotNull
     public Iterator<E> iterator() {
-        return this.view.iterator();
+        return this.view().iterator();
     }
 
     @Override
     @NotNull
     public ListIterator<E> listIterator() {
-        return this.view.listIterator();
+        return this.view().listIterator();
     }
 
     @Override
     @NotNull
     public ListIterator<E> listIterator(int index) {
-        return this.view.listIterator(index);
+        return this.view().listIterator(index);
     }
 
     @Override
     public String toString() {
-        return this.view.toString();
+        return this.view().toString();
     }
 
 }

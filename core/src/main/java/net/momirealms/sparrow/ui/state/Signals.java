@@ -9,6 +9,7 @@ import net.momirealms.sparrow.ui.state.internal.time.Delayer;
 import net.momirealms.sparrow.ui.state.internal.time.TickingSignal;
 import net.momirealms.sparrow.ui.state.internal.time.WeakPeriodCache;
 import net.momirealms.sparrow.ui.util.TriFunction;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
@@ -28,6 +29,18 @@ public final class Signals {
     private static volatile Delayer millisDelayer = Delayer.millis();    // 毫秒基入口用的调度器
 
     private Signals() {
+    }
+
+    /**
+     * 返回当前 UI 运行时共享的<strong>只读在线玩家名单</strong>, 上下线事件处理后立即可读到变化,
+     * 失效通知合并到下一 tick, 由 Bukkit 主线程或 Folia 全局区域线程发出.
+     * {@code get()} 按需生成并复用不可修改快照, 已取得的快照和迭代器保留取得时的名单.
+     *
+     * @return 共享的只读列表 signal
+     */
+    @NotNull
+    public static ListSignal<Player> onlinePlayers() {
+        return SparrowUI.getInstance().playerSignals().onlinePlayers();
     }
 
     /**

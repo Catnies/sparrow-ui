@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.state.internal.player;
 
 import net.momirealms.sparrow.ui.SparrowUI;
+import net.momirealms.sparrow.ui.state.internal.time.ManualDelayer;
 import org.bukkit.plugin.Plugin;
 import org.mockbukkit.mockbukkit.MockBukkit;
 
@@ -10,6 +11,7 @@ public final class PlayerSignalTestRuntime {
     private static Plugin previousPlugin;
     private static PlayerSignalRuntime previousRuntime;
     private static PlayerSignalRuntime runtime;
+    private static ManualDelayer delayer;
     private PlayerSignalTestRuntime() {
     }
 
@@ -17,7 +19,8 @@ public final class PlayerSignalTestRuntime {
         MockBukkit.mock();
         Plugin plugin = MockBukkit.createMockPlugin();
         previousPlugin = swap("plugin", plugin);
-        runtime = new PlayerSignalRuntime(plugin);
+        delayer = new ManualDelayer();
+        runtime = new PlayerSignalRuntime(plugin, delayer);
         runtime.initialize();
         previousRuntime = swap("playerSignals", runtime);
     }
@@ -29,11 +32,16 @@ public final class PlayerSignalTestRuntime {
         previousRuntime = null;
         previousPlugin = null;
         runtime = null;
+        delayer = null;
         MockBukkit.unmock();
     }
 
     static PlayerSignalRuntime runtime() {
         return runtime;
+    }
+
+    static ManualDelayer delayer() {
+        return delayer;
     }
 
     @SuppressWarnings("unchecked")

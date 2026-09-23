@@ -7,6 +7,7 @@ import net.momirealms.sparrow.ui.state.MutableListSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
 import net.momirealms.sparrow.ui.state.internal.SignalTestAccess;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,6 +15,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.ListIterator;
@@ -119,6 +121,17 @@ class ReadOnlyListSignalTest {
         assertEquals(List.of("b", "a"), view.reversed());
         assertEquals(2, size.get());
         assertEquals(0, SignalTestAccess.entryCount(source));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("mutations")
+    void snapshotSourcesRejectAllMutationPaths(String name, Consumer<List<String>> action) {
+        List<String> snapshot = Collections.unmodifiableList(List.of("a", "b", "c"));
+        ListSignal<String> view = new ReadOnlyListSignal<>(AbstractSignal.require(Signal.of(snapshot)));
+        assertThrows(UnsupportedOperationException.class, () -> action.accept(view));
+        assertThrows(UnsupportedOperationException.class, () -> action.accept(view.get()));
+        assertSame(snapshot, view.get());
+        assertEquals(List.of("a", "b", "c"), view);
     }
 
     @Test

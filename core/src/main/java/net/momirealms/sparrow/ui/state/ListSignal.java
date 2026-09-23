@@ -9,14 +9,24 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 可订阅变化的列表, {@link #get()} 返回自身的活视图. 写入能力由具体实现决定, 工厂返回 {@link MutableListSignal}.
+ * 可订阅变化的列表. 写入能力由具体实现决定, 工厂返回 {@link MutableListSignal}.
  * <p>{@link #asReadOnly()} 返回不可修改视图, 源列表变化后仍会更新内容并发送失效; 元素对象本身可以是可变的.
- * <p>判等使用包装器身份, 派生函数应返回不可变结果. <strong>禁止长期存放 {@code Player}、{@code Entity}、{@code World}.</strong>
+ * <p>判等使用包装器身份, 派生函数应返回不可变结果. 自建列表应及时清理 {@code Player}、{@code Entity}、{@code World} 引用.
  *
  * @param <E> 元素类型
  */
 @ApiStatus.NonExtendable
 public interface ListSignal<E> extends Signal<List<E>>, List<E> {
+
+    /**
+     * 读取当前列表. {@link #of()}、{@link #wrap(List)} 及其只读视图返回自身的活视图;
+     * {@link Signals#onlinePlayers()} 返回本次读取时的不可修改快照, 名单未变化时复用同一份.
+     *
+     * @return 当前列表内容
+     */
+    @NotNull
+    @Override
+    List<E> get();
 
     /**
      * 返回复用的不可修改活视图, 源列表的修改仍会向该视图发送失效.
