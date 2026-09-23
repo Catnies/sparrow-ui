@@ -88,11 +88,12 @@ tasks.shadowJar {
 </p>
 
 <p align="center">
-  <a href="./assets/readme/skill-tree.gif"><img src="./assets/readme/skill-tree.gif" width="420" alt="Skill tree"></a>
-  <a href="./assets/readme/custom-frame-animation.gif"><img src="./assets/readme/custom-frame-animation.gif" width="420" alt="Custom frame animations"></a>
+  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="420" alt="Preset animations"></a>
+  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="420" alt="Custom animations"></a>
 </p>
 
 <p align="center">
+  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="420" alt="Ruins mechanism puzzle"></a>
   <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="420" alt="Stone appraisal"></a>
 </p>
 

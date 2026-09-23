@@ -88,11 +88,12 @@ tasks.shadowJar {
 </p>
 
 <p align="center">
-  <a href="./assets/readme/skill-tree.gif"><img src="./assets/readme/skill-tree.gif" width="420" alt="技能树"></a>
-  <a href="./assets/readme/custom-frame-animation.gif"><img src="./assets/readme/custom-frame-animation.gif" width="420" alt="自定义帧动画"></a>
+  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="420" alt="预设动画"></a>
+  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="420" alt="自定义动画"></a>
 </p>
 
 <p align="center">
+  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="420" alt="遗迹机关盘"></a>
   <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="420" alt="石头鉴定"></a>
 </p>
 
