@@ -2,9 +2,10 @@ package net.momirealms.sparrow.ui.state.internal.player;
 
 import net.kyori.adventure.text.Component;
 import net.momirealms.sparrow.ui.Subscription;
-import net.momirealms.sparrow.ui.state.MutablePlayerKeyedSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
+import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -43,14 +44,20 @@ class PlayerSignalRuntimeTest {
     @Test
     void quitEvictsUuidPartitionsImmediatelyAndHandlesCanReload() {
         AtomicInteger loads = new AtomicInteger();
-        MutablePlayerKeyedSignal<Integer> keyed = PlayerKeyedSignal.of(uuid -> loads.incrementAndGet());
-        PlayerKeyedSignal<Integer> async = PlayerKeyedSignal.async(-1, Runnable::run, uuid -> 42);
+        MutableKeyedSignal<UUID, Integer> keyed = KeyedSignal.of(uuid -> loads.incrementAndGet());
+        KeyedSignal<UUID, Integer> async = KeyedSignal.async(-1, Runnable::run, uuid -> 42);
+        MutableKeyedSignal<UUID, Integer> retained = KeyedSignal.of(uuid -> 0);
+        Signals.evictOnQuit(keyed);
+        Signals.evictOnQuit(keyed);
+        Signals.evictOnQuit(async);
         Player player = MockBukkit.getMock().addPlayer();
+        UUID uuid = player.getUniqueId();
         assertEquals(0, loads.get());
         assertTrue(keyed.keys().get().isEmpty());
-        Signal<Integer> handle = keyed.at(player);
+        Signal<Integer> handle = keyed.at(uuid);
         assertEquals(1, handle.get());
-        async.get(player);
+        async.get(uuid);
+        retained.set(uuid, 7);
         assertEquals(Set.of(player.getUniqueId()), async.keys().get());
         UUID offline = UUID.randomUUID();
         assertEquals(2, keyed.get(offline));
@@ -58,13 +65,14 @@ class PlayerSignalRuntimeTest {
         this.quit(player);
         assertEquals(Set.of(offline), keyed.keys().get());
         assertTrue(async.keys().get().isEmpty());
+        assertEquals(7, retained.get(uuid));
         assertEquals(3, handle.get());
         assertSame(handle, keyed.at(player.getUniqueId()));
     }
 
     @Test
     void registryDoesNotRetainUnusedKeyedSignals() {
-        WeakReference<PlayerKeyedSignal<Integer>> probe = new WeakReference<>(PlayerKeyedSignal.of(uuid -> 1));
+        WeakReference<KeyedSignal<UUID, Integer>> probe = this.registerWeakSignal();
         GcSupport.awaitCollected(probe);
         this.quit(MockBukkit.getMock().addPlayer());
     }
@@ -72,13 +80,14 @@ class PlayerSignalRuntimeTest {
     @Test
     void evictionCallbacksCanRegisterSignalsOnAnotherThread() {
         Player player = MockBukkit.getMock().addPlayer();
-        MutablePlayerKeyedSignal<Integer> keyed = PlayerKeyedSignal.of(uuid -> 1);
-        keyed.get(player);
+        MutableKeyedSignal<UUID, Integer> keyed = KeyedSignal.of(uuid -> 1);
+        Signals.evictOnQuit(keyed);
+        keyed.get(player.getUniqueId());
         AtomicInteger notifications = new AtomicInteger();
         try (var worker = Executors.newSingleThreadExecutor();
              Subscription ignored = keyed.keys().onDirty(() -> {
                  try {
-                     worker.submit(() -> PlayerKeyedSignal.of(uuid -> 2)).get(5, TimeUnit.SECONDS);
+                     worker.submit(() -> Signals.evictOnQuit(KeyedSignal.of(uuid -> 2))).get(5, TimeUnit.SECONDS);
                      notifications.incrementAndGet();
                  } catch (Exception exception) {
                      throw new AssertionError(exception);
@@ -92,8 +101,9 @@ class PlayerSignalRuntimeTest {
     @Test
     void closeUnregistersListenerAndLeavesExistingPartitionsUsable() {
         Player player = MockBukkit.getMock().addPlayer();
-        MutablePlayerKeyedSignal<Integer> keyed = PlayerKeyedSignal.of(uuid -> 1);
-        keyed.set(player, 7);
+        MutableKeyedSignal<UUID, Integer> keyed = KeyedSignal.of(uuid -> 1);
+        Signals.evictOnQuit(keyed);
+        keyed.set(player.getUniqueId(), 7);
         assertEquals(1, Arrays.stream(PlayerQuitEvent.getHandlerList().getRegisteredListeners())
                 .filter(listener -> listener.getListener() == this.runtime).count());
         this.runtime.close();
@@ -101,7 +111,13 @@ class PlayerSignalRuntimeTest {
         assertEquals(0, Arrays.stream(PlayerQuitEvent.getHandlerList().getRegisteredListeners())
                 .filter(listener -> listener.getListener() == this.runtime).count());
         this.quit(player);
-        assertEquals(7, keyed.get(player));
+        assertEquals(7, keyed.get(player.getUniqueId()));
+    }
+
+    private WeakReference<KeyedSignal<UUID, Integer>> registerWeakSignal() {
+        KeyedSignal<UUID, Integer> signal = KeyedSignal.of(uuid -> 1);
+        Signals.evictOnQuit(signal);
+        return new WeakReference<>(signal);
     }
 
     @SuppressWarnings("removal")

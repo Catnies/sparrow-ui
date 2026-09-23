@@ -14,7 +14,8 @@ import java.util.function.Function;
 
 /**
  * 按 key 保存互相独立的值, 每个分区单独读取、失效和订阅.
- * <p><strong>{@code K} 禁止使用 {@code Player} 一类与在线会话绑定的重对象</strong>. 玩家维度请使用 {@link PlayerKeyedSignal}.
+ * <p><strong>{@code K} 禁止使用 {@code Player} 一类与在线会话绑定的重对象</strong>. 玩家维度使用 UUID,
+ * 需要在玩家退出时清理分区可调用 {@link Signals#evictOnQuit(KeyedSignal)}.
  *
  * @param <K> 分区 key 类型
  * @param <T> 值类型, 允许为 {@code null}

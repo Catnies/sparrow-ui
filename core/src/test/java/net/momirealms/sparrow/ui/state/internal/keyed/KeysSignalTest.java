@@ -8,8 +8,7 @@ import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.pane.SlotSequence;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
-import net.momirealms.sparrow.ui.state.MutablePlayerKeyedSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
+import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
 import net.momirealms.sparrow.ui.state.internal.ExceptionHandlerProbe;
@@ -303,9 +302,10 @@ class KeysSignalTest {
             PlayerSignalTestRuntime.restore();
         }
         @Test
-        void playerSignalOwnsItsKeysView() {
+        void quitEvictingSignalOwnsItsKeysView() {
             UUID uuid = UUID.randomUUID();
-            MutablePlayerKeyedSignal<Integer> signal = PlayerKeyedSignal.of(key -> 0);
+            MutableKeyedSignal<UUID, Integer> signal = KeyedSignal.of(key -> 0);
+            Signals.evictOnQuit(signal);
             Signal<Set<UUID>> keys = signal.keys();
 
             assertSame(keys, signal.keys());

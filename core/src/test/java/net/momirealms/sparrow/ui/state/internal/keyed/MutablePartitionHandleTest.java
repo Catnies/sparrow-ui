@@ -3,12 +3,9 @@ package net.momirealms.sparrow.ui.state.internal.keyed;
 import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
-import net.momirealms.sparrow.ui.state.MutablePlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.internal.ManualExecutor;
-import org.bukkit.entity.Player;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -180,10 +177,8 @@ class MutablePartitionHandleTest {
     }
 
     @Test
-    void playerKeyedHandlesFollowTheSameSplit() throws NoSuchMethodException {
+    void keyedHandlesPreserveMutability() throws NoSuchMethodException {
         assertEquals(MutableSignal.class, MutableKeyedSignal.class.getMethod("at", Object.class).getReturnType());
         assertEquals(Signal.class, KeyedSignal.class.getMethod("at", Object.class).getReturnType());
-        assertEquals(MutableSignal.class, MutablePlayerKeyedSignal.class.getDeclaredMethod("at", Player.class).getReturnType());
-        assertEquals(Signal.class, PlayerKeyedSignal.class.getDeclaredMethod("at", Player.class).getReturnType());
     }
 }

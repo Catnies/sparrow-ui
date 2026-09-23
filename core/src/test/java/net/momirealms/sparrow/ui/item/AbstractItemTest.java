@@ -93,7 +93,7 @@ class AbstractItemTest {
     @Test
     void keyedDependencyOnlyInvalidatesTheMatchingViewer() {
         MutableKeyedSignal<UUID, Integer> coins = KeyedSignal.of(key -> 0);
-        AbstractItem item = new DependentItem(dependent -> dependent.dependsOn(coins, Player::getUniqueId));
+        AbstractItem item = new DependentItem(dependent -> dependent.dependsOn(coins));
         Player alice = AttachSupport.player();
         Player bob = AttachSupport.player();
         AtomicInteger aliceInvalidations = new AtomicInteger();

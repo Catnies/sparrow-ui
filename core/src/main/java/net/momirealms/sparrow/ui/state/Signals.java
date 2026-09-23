@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
 import net.momirealms.sparrow.ui.state.internal.derive.CombinedSignal;
 import net.momirealms.sparrow.ui.state.internal.derive.MergingSignal;
@@ -14,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -26,6 +28,17 @@ public final class Signals {
     private static volatile Delayer millisDelayer = Delayer.millis();    // 毫秒基入口用的调度器
 
     private Signals() {
+    }
+
+    /**
+     * 将 UUID 分区数据源登记为玩家退出时自动清理, 退出事件中调用 {@link KeyedSignal#remove(Object)}.
+     * <p>注册表弱持有数据源, 重复登记同一实例只保留一份. 登记在 UI 运行时关闭时解除.
+     * 现有分区句柄仍可在后续访问时重新装载, 离线 UUID 也可正常读写.
+     *
+     * @param signal 需要随玩家退出清理的 UUID 分区数据源, 支持同步、异步和轮询来源
+     */
+    public static void evictOnQuit(@NotNull KeyedSignal<UUID, ?> signal) {
+        SparrowUI.getInstance().playerSignals().track(signal);
     }
 
     @NotNull

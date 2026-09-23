@@ -5,7 +5,6 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.state.AsyncSignal;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
@@ -483,14 +482,10 @@ class PollingSignalTest {
         assertEquals(AsyncSignal.class, factory(Signal.class, "polling", Object.class, Executor.class, Supplier.class, long.class, BiPredicate.class).getReturnType());
         assertEquals(KeyedSignal.class, factory(KeyedSignal.class, "polling", Object.class, Executor.class, Function.class, long.class).getReturnType());
         assertEquals(KeyedSignal.class, factory(KeyedSignal.class, "polling", Object.class, Executor.class, Function.class, long.class, BiPredicate.class).getReturnType());
-        assertEquals(PlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "polling", Object.class, Executor.class, Function.class, long.class).getReturnType());
-        assertEquals(PlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "polling", Object.class, Executor.class, Function.class, long.class, BiPredicate.class).getReturnType());
         assertEquals(AsyncSignal.class, factory(Signal.class, "pollingMillis", Object.class, Executor.class, Supplier.class, long.class).getReturnType());
         assertEquals(AsyncSignal.class, factory(Signal.class, "pollingMillis", Object.class, Executor.class, Supplier.class, long.class, BiPredicate.class).getReturnType());
         assertEquals(KeyedSignal.class, factory(KeyedSignal.class, "pollingMillis", Object.class, Executor.class, Function.class, long.class).getReturnType());
         assertEquals(KeyedSignal.class, factory(KeyedSignal.class, "pollingMillis", Object.class, Executor.class, Function.class, long.class, BiPredicate.class).getReturnType());
-        assertEquals(PlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "pollingMillis", Object.class, Executor.class, Function.class, long.class).getReturnType());
-        assertEquals(PlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "pollingMillis", Object.class, Executor.class, Function.class, long.class, BiPredicate.class).getReturnType());
     }
 
     private static Method factory(Class<?> owner, String name, Class<?>... parameterTypes) throws NoSuchMethodException {

@@ -10,7 +10,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 @ApiStatus.Internal
-public sealed class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSignalImpl<T>> permits PlayerKeyedSignalImpl {
+public final class AsyncKeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, AsyncSignalImpl<T>> {
     private final T placeholder;
     private final Executor executor;
     private final Function<? super K, ? extends T> loader;

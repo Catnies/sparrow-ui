@@ -4,9 +4,7 @@ import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.state.AsyncSignal;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
-import net.momirealms.sparrow.ui.state.MutablePlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.junit.jupiter.api.Test;
 
@@ -269,8 +267,6 @@ class SignalEqualityTest {
         assertEquals(Signal.class, factory(Signal.class, "mapDistinct", Function.class, BiPredicate.class).getReturnType());
         assertEquals(MutableKeyedSignal.class, factory(KeyedSignal.class, "of", Function.class, BiPredicate.class).getReturnType());
         assertEquals(KeyedSignal.class, factory(KeyedSignal.class, "async", Object.class, Executor.class, Function.class, BiPredicate.class).getReturnType());
-        assertEquals(MutablePlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "of", Function.class, BiPredicate.class).getReturnType());
-        assertEquals(PlayerKeyedSignal.class, factory(PlayerKeyedSignal.class, "async", Object.class, Executor.class, Function.class, BiPredicate.class).getReturnType());
     }
 
     private static Method factory(Class<?> owner, String name, Class<?>... parameterTypes) throws NoSuchMethodException {

@@ -8,7 +8,6 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.Signal;
 import org.bukkit.entity.Player;
@@ -18,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -126,10 +126,10 @@ public final class ItemBuilder {
     /**
      * 声明按查看者 UUID 取值的渲染依赖.
      *
-     * @param signal 按玩家分区的数据源
+     * @param signal 按 UUID 分区的数据源
      * @return 此构建器
      */
-    public ItemBuilder dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
+    public ItemBuilder dependsOn(@NotNull KeyedSignal<UUID, ?> signal) {
         this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
         return this;
     }

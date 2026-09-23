@@ -7,13 +7,13 @@ import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
-import net.momirealms.sparrow.ui.state.PlayerKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
@@ -46,9 +46,9 @@ public abstract class AbstractItem implements ObservableItem {
      * 声明按查看者 UUID 取值的渲染依赖.
      * <p><strong>只应在子类构造器里调用.</strong>
      *
-     * @param signal 按玩家分区的数据源
+     * @param signal 按 UUID 分区的数据源
      */
-    protected final void dependsOn(@NotNull PlayerKeyedSignal<?> signal) {
+    protected final void dependsOn(@NotNull KeyedSignal<UUID, ?> signal) {
         this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
     }
 

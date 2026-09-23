@@ -12,7 +12,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 @ApiStatus.Internal
-public sealed class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> permits MutablePlayerKeyedSignalImpl {
+public final class KeyedSignalImpl<K, T> extends AbstractKeyedSignal<K, T, KeyedSignalImpl.SyncPartition<K, T>> implements MutableKeyedSignal<K, T> {
     private final Function<? super K, ? extends T> initial;
     private final BiPredicate<? super T, ? super T> sameValue;
 

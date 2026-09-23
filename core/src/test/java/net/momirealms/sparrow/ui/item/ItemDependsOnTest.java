@@ -115,7 +115,7 @@ class ItemDependsOnTest {
         MutableKeyedSignal<UUID, Integer> coins = KeyedSignal.of(key -> 0);
         Item item = Item.builder()
                 .setItemProviderAsync(ItemProvider.EMPTY)
-                .dependsOn(coins, Player::getUniqueId)
+                .dependsOn(coins)
                 .build();
         Player alice = AttachSupport.player();
         Player bob = AttachSupport.player();
