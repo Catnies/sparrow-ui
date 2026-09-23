@@ -4,9 +4,9 @@ import net.momirealms.sparrow.ui.state.internal.collection.ListSignalImpl;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 可订阅变化的列表, {@link #get()} 返回自身的活视图. 写入能力由具体实现决定, 工厂返回 {@link MutableListSignal}.
@@ -41,14 +41,14 @@ public interface ListSignal<E> extends Signal<List<E>>, List<E> {
     }
 
     /**
-     * 新建一个包着 {@link CopyOnWriteArrayList} 的装饰器, 支持写入期间的并发迭代.
-     * <p>写时复制每次写都复制整个数组, 热路径或大集合要按自己的访问模式另选 delegate 用 {@link #wrap}.
+     * 新建一个底层为 {@link ArrayList} 的空列表 signal.
+     * <p><strong>不保证线程安全, 跨线程访问需要调用方同步.</strong> 需要其他列表实现时使用 {@link #wrap}.
      *
      * @param <E> 元素类型
      * @return 包装器
      */
     @NotNull
     static <E> MutableListSignal<E> of() {
-        return wrap(new CopyOnWriteArrayList<>());
+        return wrap(new ArrayList<>());
     }
 }

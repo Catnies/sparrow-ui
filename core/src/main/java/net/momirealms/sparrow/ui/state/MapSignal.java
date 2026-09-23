@@ -4,9 +4,9 @@ import net.momirealms.sparrow.ui.state.internal.collection.MapSignalImpl;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 可订阅变化的映射表, {@link #get()} 返回自身的活视图. 写入能力由具体实现决定, 工厂返回 {@link MutableMapSignal}.
@@ -43,8 +43,8 @@ public interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> {
     }
 
     /**
-     * 新建一个包着 {@link ConcurrentHashMap} 的装饰器, 任何线程都能安全读写.
-     * <p><strong>它不保迭代顺序</strong>, 也不接受 {@code null} key 或值. 需要顺序时可 {@code wrap(new LinkedHashMap<>())} 并自行管理线程安全.
+     * 新建一个底层为 {@link LinkedHashMap} 的空映射表 signal, 按插入顺序迭代, 允许 {@code null} key 和值.
+     * <p><strong>不保证线程安全, 跨线程访问需要调用方同步.</strong> 需要其他映射表实现时使用 {@link #wrap}.
      *
      * @param <K> key 类型
      * @param <V> 值类型
@@ -52,6 +52,6 @@ public interface MapSignal<K, V> extends Signal<Map<K, V>>, Map<K, V> {
      */
     @NotNull
     static <K, V> MutableMapSignal<K, V> of() {
-        return wrap(new ConcurrentHashMap<>());
+        return wrap(new LinkedHashMap<>());
     }
 }

@@ -4,9 +4,9 @@ import net.momirealms.sparrow.ui.state.internal.collection.SetSignalImpl;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * 可订阅变化的集合, {@link #get()} 返回自身的活视图. 写入能力由具体实现决定, 工厂返回 {@link MutableSetSignal}.
@@ -41,14 +41,14 @@ public interface SetSignal<E> extends Signal<Set<E>>, Set<E> {
     }
 
     /**
-     * 新建一个包着 {@link CopyOnWriteArraySet} 的装饰器, 支持写入期间的并发迭代.
-     * <p>写时复制每次写都复制整个数组, 且 {@code contains} 是线性的, 热路径或大集合要按自己的访问模式另选 delegate 用 {@link #wrap}.
+     * 新建一个底层为 {@link LinkedHashSet} 的空集合 signal, 按插入顺序迭代.
+     * <p><strong>不保证线程安全, 跨线程访问需要调用方同步.</strong> 需要其他集合实现时使用 {@link #wrap}.
      *
      * @param <E> 元素类型
      * @return 包装器
      */
     @NotNull
     static <E> MutableSetSignal<E> of() {
-        return wrap(new CopyOnWriteArraySet<>());
+        return wrap(new LinkedHashSet<>());
     }
 }
