@@ -1,12 +1,9 @@
 package net.momirealms.sparrow.ui.example.command;
 
 import net.momirealms.sparrow.ui.example.SparrowExample;
-import net.momirealms.sparrow.ui.example.menu.animationpresets.AnimationPresetsCommand;
-import net.momirealms.sparrow.ui.example.menu.anvilprompt.AnvilPromptCommand;
+import net.momirealms.sparrow.ui.example.menu.animation.AnimationCommand;
 import net.momirealms.sparrow.ui.example.menu.cartographygallery.CartographyGalleryCommand;
-import net.momirealms.sparrow.ui.example.menu.customframes.CustomFramesCommand;
 import net.momirealms.sparrow.ui.example.menu.livesearch.LiveSearchCommand;
-import net.momirealms.sparrow.ui.example.menu.skilltree.SkillTreeCommand;
 import net.momirealms.sparrow.ui.example.menu.stoneappraisal.StoneAppraisalCommand;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.SenderMapper;
@@ -33,11 +30,8 @@ public final class SparrowCommand {
             manager.registerAsynchronousCompletions();
         }
         LiveSearchCommand.register(manager);
-        AnvilPromptCommand.register(manager);
-        SkillTreeCommand.register(manager);
         CartographyGalleryCommand.register(manager);
-        AnimationPresetsCommand.register(manager);
+        AnimationCommand.register(manager);
         StoneAppraisalCommand.register(manager);
-        CustomFramesCommand.register(manager);
     }
 }

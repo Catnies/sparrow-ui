@@ -25,8 +25,13 @@ repositories {
 }
 
 sourceSets.main {
-    java.srcDir("src/paper/java")
+    java.setSrcDirs(emptyList<String>())
 }
+val paperExample = sourceSets.create("paper") {
+    java.setSrcDirs(listOf("src/main/java", "src/paper/java"))
+}
+configurations[paperExample.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[paperExample.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
 val bukkitExample = sourceSets.create("bukkit") {
     java.setSrcDirs(listOf("src/main/java", "src/bukkit/java"))
     resources.srcDir("src/main/resources")
@@ -83,6 +88,8 @@ val bukkitJar = tasks.register<ShadowJar>("bukkitJar") {
 }
 tasks.named<ShadowJar>("shadowJar") {
     archiveClassifier.set("paper")
+    from(paperExample.output)
+    configurations = listOf(project.configurations[paperExample.runtimeClasspathConfigurationName])
 }
 tasks.register("paperJar") {
     group = "build"

@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.skilltree;
+package net.momirealms.sparrow.ui.example.menu.animation;
 
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.example.SparrowExample;
@@ -11,12 +11,12 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.logging.Level;
 
-public final class SkillTreeCommand {
-    private static final String NAME = "skilltree";
-    private static final String CHINESE_NAME = "技能树";
+public final class AnimationCommand {
+    private static final String NAME = "animation";
+    private static final String CHINESE_NAME = "动画展示";
     private static final String TARGET_ARGUMENT = "target";
 
-    private SkillTreeCommand() {
+    private AnimationCommand() {
     }
 
     /**
@@ -46,9 +46,9 @@ public final class SkillTreeCommand {
 
     private static void open(@NotNull Player target) {
         String targetName = target.getName();
-        SkillTreeMenu.open(target).whenComplete((ignoredResult, throwable) -> {
+        new AnimationMenu().open(target).whenComplete((ignoredResult, throwable) -> {
             if (throwable != null) {
-                SparrowExample.INSTANCE.getLogger().log(Level.SEVERE, "Failed to open the skill tree menu for " + targetName, throwable);
+                SparrowExample.INSTANCE.getLogger().log(Level.SEVERE, "Failed to open the animation carousel menu for " + targetName, throwable);
             }
         });
     }

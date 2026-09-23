@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.customframes;
+package net.momirealms.sparrow.ui.example.menu.animation;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -6,13 +6,15 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.example.util.Components;
 import net.momirealms.sparrow.ui.example.util.ItemComponents;
-import net.momirealms.sparrow.ui.example.util.Scheduling;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.PaneSize;
+import net.momirealms.sparrow.ui.pane.SlotPatterns;
+import net.momirealms.sparrow.ui.pane.SlotSequence;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -24,37 +26,103 @@ import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * 两个不靠预设糖的动画: 一条会自己找路的贪吃蛇, 和一片可以叠加的水波.
- *
- * <p>两个都走 {@link AnimationDefinition#of} 帧函数底座, 因为预设糖只能表达"整片按同一节奏换帧"
- * 或"按顺序错峰", 而这里每一格显示什么取决于它和某个中心的几何关系, 或取决于一份提前排好的走位表.
- *
- * <p><strong>贪吃蛇</strong>: 开播前先随机撒 5 份食物, 用 BFS 逐个规划出绕开自己身子的路,
- * 吃完后从最近的一侧离场; 整条路线在 {@link SnakePlan} 里一次算完, 帧函数只是按 tick 翻页.
- * 这不是偷懒 —— 帧函数必须是参数的纯函数, 同一 tick 可能被求值零次或多次, 所以它不能自己推进蛇的位置.
- *
- * <p><strong>水波</strong>: 每点一下舞台就<strong>新起一个动画</strong>, 波纹是"到点击点的曼哈顿距离
- * 恰好等于当前半径"的那一圈, 其余格子放行. 多点几下就是通道里叠了好几个动画:
- * 后点的盖在先点的上面, 而它在自己那一圈之外全部放行, 于是先点的波纹从下面透上来 ——
- * <strong>叠加是动画通道自带的, 不需要这个示例做任何合成</strong>. 54 个中心各有一份常量描述,
- * 点击时直接取用, 不在点击现场拼描述.
- */
-public final class CustomFramesMenu {
+public final class AnimationMenu {
+    private static final PaneSize STAGE_SIZE = new PaneSize(9, 6); // 舞台就是上方那个 6 行大箱子
+    private static final List<ItemStack> RAINBOW = List.of(
+            plain(Material.RED_STAINED_GLASS_PANE),
+            plain(Material.ORANGE_STAINED_GLASS_PANE),
+            plain(Material.YELLOW_STAINED_GLASS_PANE),
+            plain(Material.LIME_STAINED_GLASS_PANE),
+            plain(Material.LIGHT_BLUE_STAINED_GLASS_PANE),
+            plain(Material.BLUE_STAINED_GLASS_PANE),
+            plain(Material.PURPLE_STAINED_GLASS_PANE)
+    ); // 彩虹七色, 同步与循环两种预设都用它
+
+    // 描述不可变且可以反复播放, 因此全部提成常量: 帧物品只在这里拷贝一次
+    private static final AnimationDefinition RAINBOW_SWEEP =
+            AnimationDefinition.frames(SlotSequence.all(STAGE_SIZE), 4, RAINBOW);
+    private static final AnimationDefinition CHECKERBOARD_REVEAL =
+            AnimationDefinition.reveal(checkerboardOrder(), 1, plain(Material.GRAY_STAINED_GLASS_PANE));
+    private static final AnimationDefinition COLUMN_LIGHT_UP = AnimationDefinition.staggeredFrames(
+            SlotSequence.all(STAGE_SIZE).transform(SlotPatterns.COLUMN_MAJOR),
+            1,
+            1,
+            List.of(
+                    plain(Material.WHITE_STAINED_GLASS_PANE),
+                    plain(Material.YELLOW_STAINED_GLASS_PANE),
+                    plain(Material.ORANGE_STAINED_GLASS_PANE),
+                    plain(Material.RED_STAINED_GLASS_PANE)
+            ),
+            plain(Material.BLACK_STAINED_GLASS_PANE)
+    );
+    private static final AnimationDefinition BORDER_LOOP =
+            AnimationDefinition.loop(SlotSequence.borders(STAGE_SIZE), 6, RAINBOW);
+    private static final AnimationDefinition STAGE_BLINK = AnimationDefinition.loop(
+            SlotSequence.all(STAGE_SIZE),
+            5,
+            List.of(plain(Material.LIME_STAINED_GLASS_PANE), plain(Material.GREEN_STAINED_GLASS_PANE))
+    );
+
+    // 控制栏选项
+    private static final List<Show> SHOWS = List.of(
+            new Show(
+                    "同步帧序列",
+                    Material.FIREWORK_ROCKET,
+                    NamedTextColor.YELLOW,
+                    List.of("全部 54 格同时换色, 走完七色自动结束。", "这一族适合单格的爆炸、开箱一类过场。"),
+                    List.of(RAINBOW_SWEEP)
+            ),
+            new Show(
+                    "逐格出现",
+                    Material.SPYGLASS,
+                    NamedTextColor.WHITE,
+                    List.of("先用灰玻璃盖满舞台, 再一格格放行。", "顺序是先偶数棋盘格再奇数棋盘格。"),
+                    List.of(CHECKERBOARD_REVEAL)
+            ),
+            new Show(
+                    "逐列点亮",
+                    Material.TORCH,
+                    NamedTextColor.GOLD,
+                    List.of("每格轮到之前是暗的, 轮到后闪一小段再放行。", "闪光从左到右经过舞台, 然后露出底色。"),
+                    List.of(COLUMN_LIGHT_UP)
+            ),
+            new Show(
+                    "边框循环",
+                    Material.CLOCK,
+                    NamedTextColor.LIGHT_PURPLE,
+                    List.of("只盖住边框, 中间的舞台原样露着。", "它不会自然结束, 只能点停止或换一种。"),
+                    List.of(BORDER_LOOP)
+            ),
+            new Show(
+                    "双层叠加",
+                    Material.BEACON,
+                    NamedTextColor.AQUA,
+                    List.of(
+                            "同一块舞台上同时播两个动画。",
+                            "先起的全窗闪烁在下, 后起的逐列点亮在上;",
+                            "上层走完的格子放行, 就露出下面还在闪的那层。",
+                            "逐列走完后整块舞台都在闪, 要点停止才停。"
+                    ),
+                    List.of(STAGE_BLINK, COLUMN_LIGHT_UP)
+            )
+    );
+
     // 舞台与展示模式
     private static final int WIDTH = 9;
     private static final int HEIGHT = 6;
     private static final int AREA = WIDTH * HEIGHT;
     private static final int[] ALL_SLOTS = allSlots();
     private static final int MODE_IDLE = -1;
-    private static final int MODE_SNAKE = 0;
-    private static final int MODE_RIPPLE = 1;
+    private static final int MODE_SNAKE = SHOWS.size();
+    private static final int MODE_RIPPLE = MODE_SNAKE + 1;
 
     // 贪吃蛇
     private static final long SNAKE_PERIOD = 2;
@@ -69,72 +137,55 @@ public final class CustomFramesMenu {
     private static final int RIPPLE_RINGS = WIDTH + HEIGHT;  // 够波纹走出舞台最远的那个角
     private static final ImmediateItemProvider RIPPLE_FRAME = frame(Material.BLUE_STAINED_GLASS_PANE, "波纹", NamedTextColor.BLUE);
     private static final ItemStack WATER_SURFACE = named(Material.LIGHT_BLUE_STAINED_GLASS_PANE, Component.text("水面", NamedTextColor.AQUA));
+    private static final ItemStack STAGE_BACKGROUND = named(Material.LIGHT_BLUE_STAINED_GLASS_PANE, Component.text("舞台", NamedTextColor.AQUA));
     private static final ItemStack BLANK = ItemUtils.empty();
     // 中心是固定的 54 个格子, 描述因此可以全部预建; 点击时直接取用
     private static final List<AnimationDefinition> RIPPLES = buildRipples();
 
     // 当前菜单状态
-    private final Player viewer;
+    private Player viewer;
     private final MutableSignal<Integer> mode;                         // 当前选中的展示
     private final NormalPane stage;                                    // 动画宿主, 也是上方 6 行
-    private final NormalWindow window;
+    @Nullable private volatile List<AnimationHandle> currentPreset;
     private final CopyOnWriteArrayList<AnimationHandle> playing = new CopyOnWriteArrayList<>(); // 在播的全部动画, 水波会同时有好几个
 
-    /**
-     * 为指定玩家异步构建并打开一次展示.
-     *
-     * @param viewer 要查看菜单的在线玩家
-     * @return 菜单实际打开完成后的结果
-     */
-    @NotNull
-    public static CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
-        return Scheduling.async(() -> new CustomFramesMenu(viewer).window.open())
-                .thenCompose(opening -> opening);
-    }
-
-    /**
-     * 创建舞台与控制栏, 并把关窗收尾接上.
-     *
-     * @param viewer 要查看菜单的玩家
-     */
-    private CustomFramesMenu(@NotNull Player viewer) {
-        this.viewer = viewer;
+    public AnimationMenu() {
         this.mode = Signal.of(MODE_IDLE);
         this.stage = Pane.empty(WIDTH, HEIGHT);
         // 每格一个自己知道坐标的 Item: 水波要靠它接住点击, 底色也由它按当前展示切换
         for (int slot = 0; slot < AREA; slot++) {
             this.stage.setElement(slot, new Element.Item(this.buildStageItem(slot)));
         }
-        this.window = NormalWindow.builder()
-                .setTitle(Component.text("自定义帧动画"))
+    }
+
+    /**
+     * 为本次菜单实例打开动画舞台, 每次打开应创建新的实例.
+     *
+     * @param viewer 查看菜单的玩家
+     * @return 窗口打开结果
+     */
+    @NotNull
+    public CompletableFuture<Window.OpenResult> open(@NotNull Player viewer) {
+        this.viewer = viewer;
+        return NormalWindow.builder()
+                .setTitle(Component.text("动画展示"))
                 .setUpperPane(this.stage)
                 .setLowerPane(this.buildControlPane())
                 // 动画播在 Pane 上, 共享宿主不随窗口关闭而终结, 收尾得自己做
                 .addCloseHandler((ignoredWindow, ignoredReason) -> this.stopAll())
-                .build(viewer);
+                .build(viewer).open();
     }
 
-    /**
-     * 创建舞台上的一格.
-     *
-     * @param slot 这一格在舞台上的槽位
-     * @return 会跟着展示切换底色, 并把点击交给水波的 Item
-     */
     @NotNull
     private Item buildStageItem(int slot) {
         return Item.builder()
                 .dependsOn(this.mode)
                 // 贪吃蛇要空白背景, 水波要一片水面; 动画盖上来时这一层看不见
-                .setItemProvider(ignoredContext -> this.mode.get() == MODE_RIPPLE ? WATER_SURFACE : BLANK)
+                .setItemProvider(ignoredContext -> this.mode.get() == MODE_SNAKE ? BLANK : this.mode.get() == MODE_RIPPLE ? WATER_SURFACE : STAGE_BACKGROUND)
                 .addClickHandler(ignoredClick -> this.onStageClick(slot))
                 .build();
     }
 
-    /**
-     * 创建下方控制栏. 除按钮外一律留空.
-     *
-     * @return 窗口的下部 Pane
-     */
     @NotNull
     private NormalPane buildControlPane() {
         // '#' 没有绑定任何配料, 因此是空槽位
@@ -142,52 +193,86 @@ public final class CustomFramesMenu {
                 "#########",
                 "####I####",
                 "#########",
-                "AB######X"
+                "ABCDE#FGX"
         );
         builder.addIngredient('I', this.buildGuideItem());
-        builder.addIngredient('A', this.buildSnakeButton());
-        builder.addIngredient('B', this.buildRippleButton());
+        for (int index = 0; index < SHOWS.size(); index++) {
+            builder.addIngredient((char) ('A' + index), this.buildShowButton(index));
+        }
+        builder.addIngredient('F', this.buildSnakeButton());
+        builder.addIngredient('G', this.buildRippleButton());
         builder.addIngredient('X', this.buildStopButton());
         return builder.build();
     }
 
-    /**
-     * 创建说明物品.
-     *
-     * @return 静态的说明 Item
-     */
     @NotNull
     private Item buildGuideItem() {
-        ItemStack itemStack = named(Material.BOOK, Component.text("高级动画展示", NamedTextColor.AQUA));
+        ItemStack itemStack = named(Material.BOOK, Component.text("动画展示", NamedTextColor.AQUA));
         ItemComponents.lore(itemStack, List.of(
-                gray("这两个效果都不是预设糖能表达的,"),
-                gray("它们直接写帧函数: 每一格显示什么由"),
-                gray("它自己的坐标算出来。"),
-                Component.empty(),
-                gray("贪吃蛇的走位在开播前一次算完, 因为"),
-                gray("帧函数必须是纯的, 不能自己往前走。"),
-                Component.empty(),
-                gray("水波的叠加是动画通道自带的: 后点的"),
-                gray("盖住先点的, 而它在自己那圈之外放行,"),
-                gray("先点的波纹就从下面透上来。")
+                gray("左侧五个按钮展示预设动画, 右侧两个展示自定义帧。"),
+                gray("选择贪吃蛇可以观看自动寻路, 选择水波后点击舞台。"),
+                gray("切换效果会停止之前的播放, 红色按钮恢复舞台。")
         ));
         return Item.simple(itemStack);
     }
 
-    /**
-     * 创建贪吃蛇按钮.
-     *
-     * @return 随展示状态自动更新的按钮
-     */
+    @NotNull
+    private Item buildShowButton(int index) {
+        Show show = SHOWS.get(index);
+        return Item.builder()
+                .dependsOn(this.mode)
+                .setItemProvider(ignoredContext -> {
+                    boolean playing = this.mode.get() == index;
+                    List<Component> lore = new ArrayList<>();
+                    List<String> description = show.description();
+                    for (int line = 0; line < description.size(); line++) {
+                        lore.add(gray(description.get(line)));
+                    }
+                    lore.add(Component.empty());
+                    lore.add(playing
+                            ? Component.text("▶ 正在播放", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false)
+                            : Component.text("点击播放", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+
+                    ItemStack itemStack = named(show.icon(), Component.text("预设 · " + show.title(), show.color()));
+                    ItemComponents.lore(itemStack, lore);
+                    return itemStack;
+                })
+                .addClickHandler(ignoredClick -> this.playPreset(index))
+                .build();
+    }
+
+    private void playPreset(int index) {
+        this.stopAll();
+        List<AnimationDefinition> definitions = SHOWS.get(index).definitions();
+        List<AnimationHandle> handles = new ArrayList<>(definitions.size());
+        for (int layer = 0; layer < definitions.size(); layer++) {
+            handles.add(this.play(definitions.get(layer)));
+        }
+        List<AnimationHandle> batch = List.copyOf(handles);
+        this.currentPreset = batch;
+        this.mode.set(index);
+
+        // 整批都结束了才把按钮状态复位; 已经换成别的效果时旧批次不再作数.
+        // 回调可能落在时钟线程, 信号写入本身是线程安全的
+        AtomicInteger remaining = new AtomicInteger(batch.size());
+        for (int layer = 0; layer < batch.size(); layer++) {
+            batch.get(layer).whenFinished(ignoredReason -> {
+                if (remaining.decrementAndGet() == 0 && this.currentPreset == batch) {
+                    this.mode.set(MODE_IDLE);
+                }
+            });
+        }
+    }
+
     @NotNull
     private Item buildSnakeButton() {
         return Item.builder()
                 .dependsOn(this.mode)
                 .setItemProvider(ignoredContext -> {
-                    ItemStack itemStack = named(Material.SLIME_BALL, Component.text("贪吃蛇", NamedTextColor.GREEN));
+                    ItemStack itemStack = named(Material.SLIME_BALL, Component.text("自定义帧 · 贪吃蛇", NamedTextColor.GREEN));
                     ItemComponents.lore(itemStack, List.of(
                             gray("随机撒 5 份食物, 一条长度 3 的蛇"),
-                            gray("用 BFS 逐个规划出绕开自己的路,"),
+                            gray("它会绕开自己的身体, 逐个吃掉食物,"),
                             gray("吃完后从最近的一侧离场。"),
                             Component.empty(),
                             this.mode.get() == MODE_SNAKE
@@ -200,18 +285,13 @@ public final class CustomFramesMenu {
                 .build();
     }
 
-    /**
-     * 创建水波按钮.
-     *
-     * @return 随展示状态自动更新的按钮
-     */
     @NotNull
     private Item buildRippleButton() {
         return Item.builder()
                 .dependsOn(this.mode)
                 .setItemProvider(ignoredContext -> {
                     boolean active = this.mode.get() == MODE_RIPPLE;
-                    ItemStack itemStack = named(Material.WATER_BUCKET, Component.text("水波", NamedTextColor.AQUA));
+                    ItemStack itemStack = named(Material.WATER_BUCKET, Component.text("自定义帧 · 水波", NamedTextColor.AQUA));
                     ItemComponents.lore(itemStack, List.of(
                             gray("舞台变成一片水面, 点哪里哪里起波纹。"),
                             gray("连点几下就是几个动画叠在一起,"),
@@ -227,11 +307,6 @@ public final class CustomFramesMenu {
                 .build();
     }
 
-    /**
-     * 创建停止按钮.
-     *
-     * @return 随展示状态自动更新的按钮
-     */
     @NotNull
     private Item buildStopButton() {
         return Item.builder()
@@ -239,10 +314,10 @@ public final class CustomFramesMenu {
                 .setItemProvider(ignoredContext -> {
                     ItemStack itemStack = named(Material.BARRIER, Component.text("停止", NamedTextColor.RED));
                     ItemComponents.lore(itemStack, List.of(
-                            gray("取消全部动画并清空舞台。"),
+                            gray("取消全部动画并恢复舞台。"),
                             Component.empty(),
                             this.mode.get() == MODE_IDLE
-                                    ? gray("舞台已经是空的。")
+                                    ? gray("当前没有动画在播放。")
                                     : Component.text("点击停止", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
                     ));
                     return itemStack;
@@ -251,9 +326,6 @@ public final class CustomFramesMenu {
                 .build();
     }
 
-    /**
-     * 跑一遍贪吃蛇. 走位每次重新排, 因此描述也只能这一次用.
-     */
     private void playSnake() {
         this.stopAll();
         this.mode.set(MODE_SNAKE);
@@ -280,19 +352,11 @@ public final class CustomFramesMenu {
         });
     }
 
-    /**
-     * 切到水波: 铺一片水面, 等玩家点。
-     */
     private void enterRipple() {
         this.stopAll();
         this.mode.set(MODE_RIPPLE);
     }
 
-    /**
-     * 玩家点了舞台上的一格.
-     *
-     * @param slot 被点的舞台槽位
-     */
     private void onStageClick(int slot) {
         if (this.mode.get() != MODE_RIPPLE) {
             return;
@@ -302,12 +366,6 @@ public final class CustomFramesMenu {
         this.playSound(org.bukkit.Sound.ENTITY_FISHING_BOBBER_SPLASH, 1.4f - slot / WIDTH * 0.12f);
     }
 
-    /**
-     * 起一个动画并记下句柄, 播完自己从在播清单里退出去.
-     *
-     * @param definition 要播放的描述
-     * @return 这次播放的句柄
-     */
     @NotNull
     private AnimationHandle play(@NotNull AnimationDefinition definition) {
         AnimationHandle handle = this.stage.visual().play(definition);
@@ -316,29 +374,10 @@ public final class CustomFramesMenu {
         return handle;
     }
 
-    /**
-     * 给玩家放一个音效.
-     *
-     * <p>放音只是往连接上写一个包, 不碰实体状态, 因此哪个线程都可以就地放.
-     *
-     * @param type 音效
-     * @param pitch 音高
-     */
     private void playSound(@NotNull org.bukkit.Sound type, float pitch) {
         Components.playSound(this.viewer, type, 0.7f, pitch);
     }
 
-    /**
-     * 排一个到点才响的音效.
-     *
-     * <p>动画本身不产生副作用, 帧函数更不能放音(它可能被求值零次或多次),
-     * 所以按走位表另排一条时间轴; 到点时先确认这次播放还在, 被提前停掉就不响了.
-     *
-     * @param handle 这个音效属于哪一次播放
-     * @param delayTicks 延迟多少 tick
-     * @param type 音效
-     * @param pitch 音高
-     */
     private void playLater(@NotNull AnimationHandle handle, long delayTicks, @NotNull org.bukkit.Sound type, float pitch) {
         SparrowUI.getInstance().scheduler().platform().runLater(() -> {
                     if (this.playing.contains(handle)) {
@@ -349,10 +388,8 @@ public final class CustomFramesMenu {
         );
     }
 
-    /**
-     * 取消全部在播动画并把舞台清空.
-     */
     private void stopAll() {
+        this.currentPreset = null;
         List<AnimationHandle> snapshot = new ArrayList<>(this.playing);
         this.playing.clear();
         for (int index = 0; index < snapshot.size(); index++) {
@@ -361,11 +398,6 @@ public final class CustomFramesMenu {
         this.mode.set(MODE_IDLE);
     }
 
-    /**
-     * 预建 54 份水波描述, 一个中心一份.
-     *
-     * @return 按中心槽位排列的描述
-     */
     @NotNull
     private static List<AnimationDefinition> buildRipples() {
         List<AnimationDefinition> ripples = new ArrayList<>(AREA);
@@ -375,15 +407,6 @@ public final class CustomFramesMenu {
         return List.copyOf(ripples);
     }
 
-    /**
-     * 组一份以某一格为中心的水波.
-     *
-     * <p>波纹是"到中心的曼哈顿距离恰好等于当前半径"的那一圈, 别的格子放行.
-     * 放行正是叠加得以成立的原因: 一圈之外什么都不画, 先点的波纹于是从下面透上来.
-     *
-     * @param center 中心槽位
-     * @return 常量描述
-     */
     @NotNull
     private static AnimationDefinition ripple(int center) {
         int centerX = center % WIDTH;
@@ -396,11 +419,6 @@ public final class CustomFramesMenu {
                 });
     }
 
-    /**
-     * 舞台的全部槽位.
-     *
-     * @return 0 到 53
-     */
     private static int @NotNull [] allSlots() {
         int[] slots = new int[AREA];
         for (int slot = 0; slot < AREA; slot++) {
@@ -409,26 +427,11 @@ public final class CustomFramesMenu {
         return slots;
     }
 
-    /**
-     * 创建一个带名称的常量帧.
-     *
-     * @param material 帧材质
-     * @param title 帧名称
-     * @param color 名称颜色
-     * @return 常量帧
-     */
     @NotNull
     private static ImmediateItemProvider frame(@NotNull Material material, @NotNull String title, @NotNull NamedTextColor color) {
         return ItemProvider.constant(named(material, Component.text(title, color)));
     }
 
-    /**
-     * 创建一个带名称的物品.
-     *
-     * @param material 物品材质
-     * @param name 物品名称
-     * @return 设置好名称的物品
-     */
     @NotNull
     private static ItemStack named(@NotNull Material material, @NotNull Component name) {
         ItemStack itemStack = ItemComponents.create(material);
@@ -436,14 +439,31 @@ public final class CustomFramesMenu {
         return itemStack;
     }
 
-    /**
-     * 创建一行不倾斜的灰色说明文本.
-     *
-     * @param text 文本内容
-     * @return 说明用的组件
-     */
     @NotNull
     private static Component gray(@NotNull String text) {
         return Component.text(text, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false);
+    }
+
+    @NotNull
+    private static SlotSequence checkerboardOrder() {
+        SlotSequence all = SlotSequence.all(STAGE_SIZE);
+        return SlotSequence.concat(
+                all.transform(SlotPatterns.CHECKERBOARD_EVEN),
+                all.transform(SlotPatterns.CHECKERBOARD_ODD)
+        );
+    }
+
+    @NotNull
+    private static ItemStack plain(@NotNull Material material) {
+        return named(material, Component.empty());
+    }
+
+    private record Show(
+            @NotNull String title,
+            @NotNull Material icon,
+            @NotNull NamedTextColor color,
+            @NotNull List<String> description,
+            @NotNull List<AnimationDefinition> definitions
+    ) {
     }
 }

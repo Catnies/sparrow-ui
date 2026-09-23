@@ -1,4 +1,4 @@
-package net.momirealms.sparrow.ui.example.menu.customframes;
+package net.momirealms.sparrow.ui.example.menu.animation;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
