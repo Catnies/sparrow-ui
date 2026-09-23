@@ -1,0 +1,16 @@
+Flower Dance — DJ OKAWARI
+
+Source: https://github.com/BoatGames/NBS-Songs/blob/master/Flower%20Dance.nbs
+Downloaded: 2026-09-24
+
+This is a community-made Note Block Studio arrangement, not an official score.
+The upstream file has empty author and description fields. Its repository does
+not specify a redistribution license. This resource is not covered by the
+Sparrow UI source-code license; no ownership or relicensing is claimed here.
+
+The original NBS file is retained unchanged. The example reads its five active
+piano layers (2116 notes), preserves note positions and pitch, and plays at
+6.25 steps per second. Each editor cell represents one sixteenth note, so the
+displayed tempo is 93.75 BPM. The final page is padded to eight cells.
+
+NBS format reference: https://noteblock.studio/nbs
