@@ -83,18 +83,18 @@ tasks.shadowJar {
 ## Showcase
 
 <p align="center">
-  <a href="./assets/readme/live-search.gif"><img src="./assets/readme/live-search.gif" width="420" alt="Live search"></a>
-  <a href="./assets/readme/cartography-gallery.gif"><img src="./assets/readme/cartography-gallery.gif" width="420" alt="Cartography gallery"></a>
+  <a href="./assets/readme/live-search.gif"><img src="./assets/readme/live-search.gif" width="48%" alt="Live search"></a>
+  <a href="./assets/readme/cartography-gallery.gif"><img src="./assets/readme/cartography-gallery.gif" width="48%" alt="Cartography gallery"></a>
 </p>
 
 <p align="center">
-  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="420" alt="Preset animations"></a>
-  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="420" alt="Custom animations"></a>
+  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="48%" alt="Preset animations"></a>
+  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="48%" alt="Custom animations"></a>
 </p>
 
 <p align="center">
-  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="420" alt="Ruins mechanism puzzle"></a>
-  <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="420" alt="Stone appraisal"></a>
+  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="48%" alt="Ruins mechanism puzzle"></a>
+  <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="48%" alt="Stone appraisal"></a>
 </p>
 
 ## Acknowledgements

@@ -83,18 +83,18 @@ tasks.shadowJar {
 ## 示例展示
 
 <p align="center">
-  <a href="./assets/readme/live-search.gif"><img src="./assets/readme/live-search.gif" width="420" alt="实时搜索"></a>
-  <a href="./assets/readme/cartography-gallery.gif"><img src="./assets/readme/cartography-gallery.gif" width="420" alt="制图台画廊"></a>
+  <a href="./assets/readme/live-search.gif"><img src="./assets/readme/live-search.gif" width="48%" alt="实时搜索"></a>
+  <a href="./assets/readme/cartography-gallery.gif"><img src="./assets/readme/cartography-gallery.gif" width="48%" alt="制图台画廊"></a>
 </p>
 
 <p align="center">
-  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="420" alt="预设动画"></a>
-  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="420" alt="自定义动画"></a>
+  <a href="./assets/readme/preset-animation.gif"><img src="./assets/readme/preset-animation.gif" width="48%" alt="预设动画"></a>
+  <a href="./assets/readme/custom-animation.gif"><img src="./assets/readme/custom-animation.gif" width="48%" alt="自定义动画"></a>
 </p>
 
 <p align="center">
-  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="420" alt="遗迹机关盘"></a>
-  <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="420" alt="石头鉴定"></a>
+  <a href="./assets/readme/ruins-mechanism.gif"><img src="./assets/readme/ruins-mechanism.gif" width="48%" alt="遗迹机关盘"></a>
+  <a href="./assets/readme/stone-appraisal.gif"><img src="./assets/readme/stone-appraisal.gif" width="48%" alt="石头鉴定"></a>
 </p>
 
 ## 后记
