@@ -19,8 +19,7 @@ import java.util.logging.Level;
  * 注册制图台画廊示例的 Cloud 子命令.
  */
 public final class CartographyGalleryCommand {
-    private static final String NAME = "cartographygallery";
-    private static final String CHINESE_NAME = "制图台画廊";
+    private static final String NAME = "制图台画廊";
     private static final String TARGET_ARGUMENT = "target"; // 单玩家选择器参数名
     private static final Component OPEN_FAILED_MESSAGE = Component.text("制图台画廊菜单打开失败，请查看服务端日志。", NamedTextColor.RED)
             .decoration(TextDecoration.ITALIC, false); // 异步打开失败后发送给仍在线的目标玩家
@@ -29,18 +28,13 @@ public final class CartographyGalleryCommand {
     }
 
     /**
-     * 注册制图台画廊的中英文命令入口和单玩家选择器.
+     * 注册制图台画廊的中文命令入口和单玩家选择器.
      */
     public static void register(@NotNull CommandManager<CommandSender> manager) {
-        register(manager, NAME);
-        register(manager, CHINESE_NAME);
-    }
-
-    private static void register(@NotNull CommandManager<CommandSender> manager, @NotNull String name) {
         manager.command(manager.commandBuilder("sparrowui")
                 .permission("sparrowui.example")
                 .literal("open")
-                .literal(name)
+                .literal(NAME)
                 .required(TARGET_ARGUMENT, PlayerTargets.parser())
                 .handler(context -> {
                     SinglePlayerSelector selector = context.get(TARGET_ARGUMENT);

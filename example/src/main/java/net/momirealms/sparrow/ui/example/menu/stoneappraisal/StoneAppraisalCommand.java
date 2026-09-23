@@ -12,26 +12,20 @@ import org.jetbrains.annotations.NotNull;
 import java.util.logging.Level;
 
 public final class StoneAppraisalCommand {
-    private static final String NAME = "stoneappraisal";
-    private static final String CHINESE_NAME = "石头鉴定";
+    private static final String NAME = "石头鉴定";
     private static final String TARGET_ARGUMENT = "target";
 
     private StoneAppraisalCommand() {
     }
 
     /**
-     * 注册本菜单的中英文入口和单玩家选择器.
+     * 注册本菜单的中文入口和单玩家选择器.
      */
     public static void register(@NotNull CommandManager<CommandSender> manager) {
-        register(manager, NAME);
-        register(manager, CHINESE_NAME);
-    }
-
-    private static void register(@NotNull CommandManager<CommandSender> manager, @NotNull String name) {
         manager.command(manager.commandBuilder("sparrowui")
                 .permission("sparrowui.example")
                 .literal("open")
-                .literal(name)
+                .literal(NAME)
                 .required(TARGET_ARGUMENT, PlayerTargets.parser())
                 .handler(context -> {
                     SinglePlayerSelector selector = context.get(TARGET_ARGUMENT);
