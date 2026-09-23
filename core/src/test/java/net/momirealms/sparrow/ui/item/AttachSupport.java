@@ -2,6 +2,7 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.WindowStub;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;
 import java.lang.reflect.Proxy;
@@ -14,7 +15,7 @@ public final class AttachSupport {
 
     public static ItemAttachment attach(Item item, Observer<? super Item> observer) {
         Player viewer = player();
-        return item.attach(window(viewer), observer);
+        return item.attach(RenderContext.offSlot(window(viewer)), observer);
     }
 
     public static Window window(Player viewer) {

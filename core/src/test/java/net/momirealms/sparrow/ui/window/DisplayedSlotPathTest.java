@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
+import net.momirealms.sparrow.ui.item.AbstractItem;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.ObservableItem;
@@ -22,6 +23,8 @@ import net.momirealms.sparrow.ui.pane.PaneSlotAttachment;
 import net.momirealms.sparrow.ui.pane.SlotSequence;
 import net.momirealms.sparrow.ui.pane.Structure;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
@@ -35,11 +38,14 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockbukkit.mockbukkit.MockBukkit;
 import org.mockbukkit.mockbukkit.ServerMock;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -47,6 +53,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -75,6 +82,59 @@ class DisplayedSlotPathTest {
         SparrowUiTestRuntime.restorePlugin();
         SparrowUiTestRuntime.restoreOwnership();
         MockBukkit.unmock();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void keyedDependenciesUseTheActualRenderContextForEachSlot(boolean subclass) {
+        MutableKeyedSignal<Integer, Integer> slots = KeyedSignal.of(key -> 0);
+        List<RenderContext> attached = new ArrayList<>();
+        List<RenderContext> rendered = new ArrayList<>();
+        Function<RenderContext, Integer> keyOf = context -> {
+            attached.add(context);
+            return context.windowSlot;
+        };
+        Function<RenderContext, ItemStack> renderer = context -> {
+            rendered.add(context);
+            return new ItemStack(Material.DIAMOND);
+        };
+        Item item = subclass ? new AbstractItem() {
+            {
+                this.dependsOn(slots, keyOf);
+            }
+
+            @Override
+            @NonNull
+            protected CompletableFuture<ItemStack> render(RenderContext context) {
+                return CompletableFuture.completedFuture(renderer.apply(context));
+            }
+        } : Item.builder().setItemProvider(renderer).dependsOn(slots, keyOf).build();
+        NormalPane pane = paneWith(Element.item(item));
+        TestWindow window = new TestWindow(this.player);
+        try (DisplayedSlotPath first = new DisplayedSlotPath(window, 2, pane, 0);
+             DisplayedSlotPath second = new DisplayedSlotPath(window, 8, pane, 0)) {
+            first.render();
+            second.render();
+            assertEquals(2, attached.size());
+            assertSame(attached.get(0), rendered.get(0));
+            assertSame(attached.get(1), rendered.get(1));
+            assertSame(window, attached.get(0).window);
+            assertSame(this.player, attached.get(0).player());
+            assertEquals(RenderContext.Kind.WINDOW_SLOT, attached.get(0).kind);
+            assertEquals(List.of(2, 8), attached.stream().map(context -> context.windowSlot).toList());
+
+            window.clearDirtySlots();
+            slots.set(2, 1);
+            assertEquals(Set.of(2), window.dirtySlots());
+            first.render();
+            assertEquals(2, attached.size());
+            first.close();
+            window.clearDirtySlots();
+            slots.set(2, 2);
+            assertTrue(window.dirtySlots().isEmpty());
+            slots.set(8, 1);
+            assertEquals(Set.of(8), window.dirtySlots());
+        }
     }
 
     @Test
@@ -1573,7 +1633,7 @@ class DisplayedSlotPathTest {
             this.clickCount.incrementAndGet();
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             this.attachCount.incrementAndGet();
             return new ItemAttachment() {
                 @Override
@@ -1609,7 +1669,7 @@ class DisplayedSlotPathTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             this.attachCount.incrementAndGet();
             return new ItemAttachment() {
                 @Override
@@ -1632,7 +1692,7 @@ class DisplayedSlotPathTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             throw new IllegalStateException("attach failed");
         }
     }
@@ -1644,7 +1704,7 @@ class DisplayedSlotPathTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             this.observer = observer;
             return new ItemAttachment() {
                 @Override
@@ -1663,7 +1723,7 @@ class DisplayedSlotPathTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             runOnAnotherThread(() -> observer.onUpdate(this));
             return ItemAttachment.PASSIVE;
         }

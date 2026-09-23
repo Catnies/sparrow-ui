@@ -4582,7 +4582,7 @@ class AbstractWindowLifecycleTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NonNull Window window, @NonNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NonNull RenderContext context, @NonNull Observer<? super Item> observer) {
             this.liveAttachments.incrementAndGet();
             this.totalAttachments.incrementAndGet();
             AtomicBoolean closed = new AtomicBoolean();

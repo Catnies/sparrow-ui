@@ -308,7 +308,7 @@ final class DisplayedSlotPath implements AutoCloseable {
         switch (leaf) {
             case Element.Item(var item) -> {
                 next.item = item;
-                next.itemAttachment = item.attach(this.window, ignore -> {
+                next.itemAttachment = item.attach(this.renderContext, ignore -> {
                     if (!next.resourcesClosed) {
                         this.onDirty(Invalidation.RENDER);
                     }

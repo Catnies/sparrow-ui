@@ -2,9 +2,9 @@ package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.util.ThrowableUtils;
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -37,7 +37,7 @@ public interface ItemAttachment extends AutoCloseable {
 
     /**
      * 持有本次挂载取得的全部订阅, 并把依赖失效转成对这一条显示路径的标脏.
-     * <p>依赖订阅按挂载建立, 按查看者分区的依赖失效只影响对应玩家的槽位.
+     * <p>依赖订阅按挂载建立, 分区依赖失效只影响订阅该分区的显示位置.
      */
     final class Tracking implements ItemAttachment {
         private final Item item;
@@ -55,11 +55,11 @@ public interface ItemAttachment extends AutoCloseable {
         }
 
         void subscribeDependencies(
-                @NotNull List<Function<Player, Signal<?>>> dependencies,
-                @NotNull Player viewer
+                @NotNull List<Function<RenderContext, Signal<?>>> dependencies,
+                @NotNull RenderContext context
         ) {
             for (int index = 0; index < dependencies.size(); index++) {
-                Signal<?> signal = dependencies.get(index).apply(viewer);
+                Signal<?> signal = dependencies.get(index).apply(context);
                 this.track(signal.onDirty(this::dirty));
             }
         }

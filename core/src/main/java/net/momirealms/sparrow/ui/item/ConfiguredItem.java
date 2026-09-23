@@ -7,10 +7,9 @@ import net.momirealms.sparrow.ui.Observer;
 import net.momirealms.sparrow.ui.ObservableDispatcher;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.state.Signal;
-import net.momirealms.sparrow.ui.window.Window;
-import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,7 +21,7 @@ final class ConfiguredItem implements ObservableItem {
     // 显示与失效
     private final ItemProvider itemProvider;               // 显示内容来源
     private final ImmediateItemProvider placeholder;       // 首次成功结果前使用的占位提供器
-    private final List<Function<Player, Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按查看者解析
+    private final List<Function<RenderContext, Signal<?>>> dependencies; // 构建器声明的依赖, 每次挂载按渲染上下文解析
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 挂载观察者注册表, 负责广播失效
     // 交互守卫
     @Nullable private final ItemGuard<ItemClick> clickGuard; // 点击前置处理器链
@@ -37,7 +36,7 @@ final class ConfiguredItem implements ObservableItem {
     ConfiguredItem(
             @NotNull ItemProvider itemProvider,
             @NotNull ImmediateItemProvider placeholder,
-            @NotNull List<Function<Player, Signal<?>>> dependencies,
+            @NotNull List<Function<RenderContext, Signal<?>>> dependencies,
             @Nullable ItemGuard<ItemClick> clickGuard,
             @Nullable ItemGuard<ItemDrag> dragGuard,
             @Nullable ItemGuard<BundleSelectClick> bundleSelectGuard,
@@ -98,12 +97,12 @@ final class ConfiguredItem implements ObservableItem {
     }
 
     @Override
-    public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+    public ItemAttachment attach(@NotNull RenderContext context, @NotNull Observer<? super Item> observer) {
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
         // 观察者和依赖必须一同生效, 任一订阅失败都撤销本次挂载.
         try {
             attachment.track(this.observers.subscribe(observer));
-            attachment.subscribeDependencies(this.dependencies, window.viewer());
+            attachment.subscribeDependencies(this.dependencies, context);
             return attachment;
         } catch (RuntimeException | Error throwable) {
             // 保留原始挂载异常, 清理异常作为补充信息.

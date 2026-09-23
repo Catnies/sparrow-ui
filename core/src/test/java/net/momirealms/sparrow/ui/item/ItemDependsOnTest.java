@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.item;
 
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
 import net.momirealms.sparrow.ui.state.MutableSignal;
@@ -115,14 +116,14 @@ class ItemDependsOnTest {
         MutableKeyedSignal<UUID, Integer> coins = KeyedSignal.of(key -> 0);
         Item item = Item.builder()
                 .setItemProviderAsync(ItemProvider.EMPTY)
-                .dependsOn(coins)
+                .dependsOn(coins, context -> context.player().getUniqueId())
                 .build();
         Player alice = AttachSupport.player();
         Player bob = AttachSupport.player();
         AtomicInteger aliceInvalidations = new AtomicInteger();
         AtomicInteger bobInvalidations = new AtomicInteger();
-        item.attach(AttachSupport.window(alice), ignoredItem -> aliceInvalidations.incrementAndGet());
-        item.attach(AttachSupport.window(bob), ignoredItem -> bobInvalidations.incrementAndGet());
+        item.attach(RenderContext.offSlot(AttachSupport.window(alice)), ignoredItem -> aliceInvalidations.incrementAndGet());
+        item.attach(RenderContext.offSlot(AttachSupport.window(bob)), ignoredItem -> bobInvalidations.incrementAndGet());
         coins.set(alice.getUniqueId(), 100);
 
         assertEquals(1, aliceInvalidations.get());
@@ -134,11 +135,11 @@ class ItemDependsOnTest {
         MutableKeyedSignal<UUID, Integer> coins = KeyedSignal.of(key -> 0);
         Item item = Item.builder()
                 .setItemProviderAsync(ItemProvider.EMPTY)
-                .dependsOn(coins, Player::getUniqueId)
+                .dependsOn(coins, context -> context.player().getUniqueId())
                 .build();
         Player viewer = AttachSupport.player();
         AtomicInteger invalidations = new AtomicInteger();
-        item.attach(AttachSupport.window(viewer), ignoredItem -> invalidations.incrementAndGet());
+        item.attach(RenderContext.offSlot(AttachSupport.window(viewer)), ignoredItem -> invalidations.incrementAndGet());
         coins.remove(viewer.getUniqueId());
 
         assertEquals(0, invalidations.get(), "驱逐不通知");
@@ -197,17 +198,17 @@ class ItemDependsOnTest {
         Item item = Item.builder()
                 .setItemProviderAsync(ItemProvider.EMPTY)
                 .dependsOn(season)
-                .dependsOn(coins, viewer -> {
+                .dependsOn(coins, context -> {
                     if (attempts.incrementAndGet() == 1) {
                         throw new IllegalStateException("no guild");
                     }
-                    return viewer.getUniqueId();
+                    return context.player().getUniqueId();
                 })
                 .build();
         Player failing = AttachSupport.player();
         Window failingWindow = AttachSupport.window(failing);
 
-        assertThrows(IllegalStateException.class, () -> item.attach(failingWindow, ignoredItem -> {
+        assertThrows(IllegalStateException.class, () -> item.attach(RenderContext.offSlot(failingWindow), ignoredItem -> {
         }));
         AtomicInteger invalidations = new AtomicInteger();
         AttachSupport.attach(item, ignoredItem -> invalidations.incrementAndGet());

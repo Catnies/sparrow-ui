@@ -6,7 +6,7 @@ import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.item.click.ItemDrag;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.window.Window;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
@@ -100,15 +100,15 @@ public interface Item {
     }
 
     /**
-     * 将此 Item 挂载到一个最终显示槽位.
+     * 将此 Item 挂载到上下文指定的显示位置, 包括窗口槽位和商人交易展示位.
      * <p>挂载是按显示路径的, 同一个 Item 显示给多名玩家就有多次挂载.
      * <p><strong>返回的附件在显示路径被替换或关闭时必须关闭.</strong>
      *
-     * @param window 本次挂载所属的窗口
+     * @param context 本次显示位置使用的渲染上下文
      * @param observer Item 主动失效时接收通知的观察者
      * @return 本次显示关系的附件
      */
-    default ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+    default ItemAttachment attach(@NotNull RenderContext context, @NotNull Observer<? super Item> observer) {
         return ItemAttachment.PASSIVE;
     }
 }

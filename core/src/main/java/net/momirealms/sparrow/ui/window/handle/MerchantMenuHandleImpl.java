@@ -557,9 +557,9 @@ final class MerchantMenuHandleImpl extends ContainerMenuHandle implements Mercha
             // 三个位置各自挂载, 相同 Item 引用也拥有独立显示生命周期.
             try {
                 tradeSubscription = trade.subscribe(ignoredChange -> this.dirtyAll());
-                firstInputAttachment = trade.getFirstInput().attach(window, ignoredItem -> this.dirty(this.firstInputRenderCell));
-                secondInputAttachment = trade.getSecondInput().attach(window, ignoredItem -> this.dirty(this.secondInputRenderCell));
-                resultAttachment = trade.getResult().attach(window, ignoredItem -> this.dirty(this.resultRenderCell));
+                firstInputAttachment = trade.getFirstInput().attach(renderContext, ignoredItem -> this.dirty(this.firstInputRenderCell));
+                secondInputAttachment = trade.getSecondInput().attach(renderContext, ignoredItem -> this.dirty(this.secondInputRenderCell));
+                resultAttachment = trade.getResult().attach(renderContext, ignoredItem -> this.dirty(this.resultRenderCell));
             } catch (RuntimeException | Error throwable) {
                 this.closeRenderCells();
                 // 构造中途失败时关闭已经取得的资源.

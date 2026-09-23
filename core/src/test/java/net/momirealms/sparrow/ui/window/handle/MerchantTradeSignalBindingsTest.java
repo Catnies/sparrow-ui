@@ -5,6 +5,9 @@ import net.momirealms.sparrow.ui.item.AttachSupport;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
+import net.momirealms.sparrow.ui.item.provider.RenderContext;
+import net.momirealms.sparrow.ui.state.KeyedSignal;
+import net.momirealms.sparrow.ui.state.MutableKeyedSignal;
 import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
 import net.momirealms.sparrow.ui.window.Window;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +40,41 @@ class MerchantTradeSignalBindingsTest {
     @AfterEach
     void tearDown() {
         MockBukkit.unmock();
+    }
+
+    @Test
+    void tradeDependenciesReceiveTheOffSlotRenderContext() {
+        MutableKeyedSignal<RenderContext.Kind, Integer> values = KeyedSignal.of(kind -> 0);
+        List<RenderContext> contexts = new ArrayList<>();
+        Item item = Item.builder().dependsOn(values, context -> {
+            contexts.add(context);
+            return context.kind;
+        }).build();
+        MerchantWindow.Trade trade = MerchantWindow.Trade.builder()
+                .setFirstInput(item).setSecondInput(item).setResult(item).build();
+        AtomicInteger invalidations = new AtomicInteger();
+        MerchantMenuHandleImpl.TradeBindings bindings = new MerchantMenuHandleImpl.TradeBindings(
+                List.of(trade), VIEWER_WINDOW, invalidations::incrementAndGet
+        );
+        try {
+            bindings.activate();
+            assertEquals(3, contexts.size());
+            RenderContext context = contexts.getFirst();
+            assertSame(context, contexts.get(1));
+            assertSame(context, contexts.get(2));
+            assertSame(VIEWER_WINDOW, context.window);
+            assertSame(VIEWER, context.player());
+            assertEquals(RenderContext.Kind.OFF_SLOT, context.kind);
+            assertEquals(-1, context.windowSlot);
+            values.set(RenderContext.Kind.WINDOW_SLOT, 1);
+            assertEquals(0, invalidations.get());
+            values.set(RenderContext.Kind.OFF_SLOT, 1);
+            assertEquals(3, invalidations.get());
+        } finally {
+            bindings.close();
+        }
+        values.set(RenderContext.Kind.OFF_SLOT, 2);
+        assertEquals(3, invalidations.get());
     }
 
     @Test
@@ -258,7 +297,7 @@ class MerchantTradeSignalBindingsTest {
             return ItemProvider.EMPTY;
         }
         @Override
-        public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+        public ItemAttachment attach(@NotNull RenderContext context, @NotNull Observer<? super Item> observer) {
             if (this.failNextAttach.compareAndSet(true, false)) {
                 throw new IllegalStateException("injected Merchant Item attachment failure");
             }

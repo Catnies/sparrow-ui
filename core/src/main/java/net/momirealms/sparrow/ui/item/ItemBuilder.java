@@ -10,14 +10,12 @@ import net.momirealms.sparrow.ui.item.guard.ItemGuard;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.Signals;
 import net.momirealms.sparrow.ui.state.Signal;
-import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -27,7 +25,7 @@ public final class ItemBuilder {
     private ItemProvider provider = ItemProvider.EMPTY;                // 显示来源, 只能配置一次
     private ImmediateItemProvider placeholder = ItemProvider.EMPTY;    // 首次成功结果前使用的占位提供器
     private boolean sourceConfigured; // 显示来源是否已完成配置
-    private final List<Function<Player, Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
+    private final List<Function<RenderContext, Signal<?>>> dependencies = new ArrayList<>(); // 渲染依赖声明的 signal
     private boolean updateOnClick; // 点击成功后是否主动失效
     // 交互守卫
     @Nullable private ItemGuard<ItemClick> clickGuard;                  // 点击前置处理器链
@@ -118,32 +116,21 @@ public final class ItemBuilder {
     public ItemBuilder dependsOn(@NotNull Signal<?>... signals) {
         for (int index = 0; index < signals.length; index++) {
             Signal<?> signal = signals[index];
-            this.dependencies.add(ignoredViewer -> signal);
+            this.dependencies.add(ignoredContext -> signal);
         }
         return this;
     }
 
     /**
-     * 声明按查看者 UUID 取值的渲染依赖.
-     *
-     * @param signal 按 UUID 分区的数据源
-     * @return 此构建器
-     */
-    public ItemBuilder dependsOn(@NotNull KeyedSignal<UUID, ?> signal) {
-        this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
-        return this;
-    }
-
-    /**
-     * 声明通过查看者计算分区键的渲染依赖.
+     * 声明通过当前显示位置的渲染上下文计算分区键的依赖.
      *
      * @param <K> 分区键类型
      * @param signal 分区数据源
-     * @param keyOf 从查看者导出分区 key, 在挂载时执行
+     * @param keyOf 从渲染上下文取得分区键的函数, 每次挂载时执行一次, 返回值不得为 null
      * @return 此构建器
      */
-    public <K> ItemBuilder dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<Player, K> keyOf) {
-        this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
+    public <K> ItemBuilder dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<RenderContext, K> keyOf) {
+        this.dependencies.add(context -> signal.at(keyOf.apply(context)));
         return this;
     }
 

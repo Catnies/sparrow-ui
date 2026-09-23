@@ -8,12 +8,9 @@ import net.momirealms.sparrow.ui.item.provider.RenderContext;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.state.KeyedSignal;
 import net.momirealms.sparrow.ui.state.Signal;
-import net.momirealms.sparrow.ui.window.Window;
-import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
@@ -22,7 +19,7 @@ public abstract class AbstractItem implements ObservableItem {
     private final ItemProvider itemProvider;
     private final ImmediateItemProvider placeholder;
     private final ObservableDispatcher<Item> observers = new ObservableDispatcher<>(); // 失效广播派发器, notifyWindows 经它送达所有观察者
-    private final CopyOnWriteArrayList<Function<Player, Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
+    private final CopyOnWriteArrayList<Function<RenderContext, Signal<?>>> dependencies = new CopyOnWriteArrayList<>(); // 渲染依赖声明.
 
     protected AbstractItem() {
         this.itemProvider = this::render;
@@ -38,30 +35,20 @@ public abstract class AbstractItem implements ObservableItem {
     protected final void dependsOn(@NotNull Signal<?>... signals) {
         for (int index = 0; index < signals.length; index++) {
             Signal<?> signal = signals[index];
-            this.dependencies.add(ignoredViewer -> signal);
+            this.dependencies.add(ignoredContext -> signal);
         }
     }
 
     /**
-     * 声明按查看者 UUID 取值的渲染依赖.
-     * <p><strong>只应在子类构造器里调用.</strong>
-     *
-     * @param signal 按 UUID 分区的数据源
-     */
-    protected final void dependsOn(@NotNull KeyedSignal<UUID, ?> signal) {
-        this.dependencies.add(viewer -> signal.at(viewer.getUniqueId()));
-    }
-
-    /**
-     * 声明通过查看者计算分区键的渲染依赖.
+     * 声明通过当前显示位置的渲染上下文计算分区键的依赖.
      * <p><strong>只应在子类构造器里调用.</strong>
      *
      * @param <K> 分区键类型
      * @param signal 分区数据源
-     * @param keyOf 从查看者取得分区键的函数, 每次挂载时调用
+     * @param keyOf 从渲染上下文取得分区键的函数, 每次挂载时执行一次, 返回值不得为 null
      */
-    protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<Player, K> keyOf) {
-        this.dependencies.add(viewer -> signal.at(keyOf.apply(viewer)));
+    protected final <K> void dependsOn(@NotNull KeyedSignal<K, ?> signal, @NotNull Function<RenderContext, K> keyOf) {
+        this.dependencies.add(context -> signal.at(keyOf.apply(context)));
     }
 
     /**
@@ -99,12 +86,12 @@ public abstract class AbstractItem implements ObservableItem {
     }
 
     @Override
-    public ItemAttachment attach(@NotNull Window window, @NotNull Observer<? super Item> observer) {
+    public ItemAttachment attach(@NotNull RenderContext context, @NotNull Observer<? super Item> observer) {
         ItemAttachment.Tracking attachment = ItemAttachment.tracking(this, observer);
         // 观察者和依赖必须一同生效, 任一订阅失败都撤销本次挂载.
         try {
             attachment.track(this.observers.subscribe(observer));
-            attachment.subscribeDependencies(this.dependencies, window.viewer());
+            attachment.subscribeDependencies(this.dependencies, context);
             return attachment;
         } catch (RuntimeException | Error throwable) {
             // 保留原始挂载异常, 清理异常作为补充信息.
