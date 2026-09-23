@@ -4,6 +4,7 @@ import net.momirealms.sparrow.ui.example.SparrowExample;
 import net.momirealms.sparrow.ui.example.menu.animation.AnimationCommand;
 import net.momirealms.sparrow.ui.example.menu.cartographygallery.CartographyGalleryCommand;
 import net.momirealms.sparrow.ui.example.menu.livesearch.LiveSearchCommand;
+import net.momirealms.sparrow.ui.example.menu.ruins.RuinsCommand;
 import net.momirealms.sparrow.ui.example.menu.stoneappraisal.StoneAppraisalCommand;
 import org.bukkit.command.CommandSender;
 import org.incendo.cloud.SenderMapper;
@@ -32,6 +33,7 @@ public final class SparrowCommand {
         LiveSearchCommand.register(manager);
         CartographyGalleryCommand.register(manager);
         AnimationCommand.register(manager);
+        RuinsCommand.register(manager);
         StoneAppraisalCommand.register(manager);
     }
 }
