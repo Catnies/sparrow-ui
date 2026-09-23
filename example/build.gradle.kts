@@ -24,18 +24,14 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
 }
 
-sourceSets.main {
-    java.setSrcDirs(emptyList<String>())
-}
-val paperExample = sourceSets.create("paper") {
-    java.setSrcDirs(listOf("src/main/java", "src/paper/java"))
-}
+val paperExample = sourceSets.create("paper")
 configurations[paperExample.implementationConfigurationName].extendsFrom(configurations.implementation.get())
 configurations[paperExample.compileOnlyConfigurationName].extendsFrom(configurations.compileOnly.get())
-val bukkitExample = sourceSets.create("bukkit") {
-    java.setSrcDirs(listOf("src/main/java", "src/bukkit/java"))
-    resources.srcDir("src/main/resources")
+sourceSets.main {
+    compileClasspath += paperExample.output
+    runtimeClasspath += paperExample.output
 }
+val bukkitExample = sourceSets.create("bukkit")
 configurations[bukkitExample.implementationConfigurationName].extendsFrom(configurations.implementation.get())
 
 val spigotClasspathDirectory = layout.buildDirectory.dir("spigot-classpath")
@@ -66,9 +62,11 @@ dependencies {
 }
 
 tasks.named<JavaCompile>(bukkitExample.compileJavaTaskName) {
+    source("src/main/java")
     javaCompiler.set(javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(25) })
 }
 tasks.named<ProcessResources>(bukkitExample.processResourcesTaskName) {
+    from("src/main/resources")
     from(tasks.named("generateBukkitPluginDescription"))
 }
 
@@ -89,7 +87,6 @@ val bukkitJar = tasks.register<ShadowJar>("bukkitJar") {
 tasks.named<ShadowJar>("shadowJar") {
     archiveClassifier.set("paper")
     from(paperExample.output)
-    configurations = listOf(project.configurations[paperExample.runtimeClasspathConfigurationName])
 }
 tasks.register("paperJar") {
     group = "build"

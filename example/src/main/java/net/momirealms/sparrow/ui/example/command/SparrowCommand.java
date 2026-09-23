@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.example.command;
 import net.momirealms.sparrow.ui.example.SparrowExample;
 import net.momirealms.sparrow.ui.example.menu.animation.AnimationCommand;
 import net.momirealms.sparrow.ui.example.menu.cartographygallery.CartographyGalleryCommand;
+import net.momirealms.sparrow.ui.example.menu.expedition.ExpeditionCommand;
 import net.momirealms.sparrow.ui.example.menu.livesearch.LiveSearchCommand;
 import net.momirealms.sparrow.ui.example.menu.music.MusicCommand;
 import net.momirealms.sparrow.ui.example.menu.ruins.RuinsCommand;
@@ -36,6 +37,7 @@ public final class SparrowCommand {
         AnimationCommand.register(manager);
         RuinsCommand.register(manager);
         MusicCommand.register(manager);
+        ExpeditionCommand.register(manager);
         StoneAppraisalCommand.register(manager);
     }
 }

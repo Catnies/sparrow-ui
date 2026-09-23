@@ -360,7 +360,7 @@ public final class MusicMenu {
 
     private Item buildTempoItem() {
         return Item.builder().dependsOn(this.tempo)
-                .setItemProvider(_ -> item(Material.CLOCK, "速度 · " + tempoText(this.tempo.get()) + " BPM", NamedTextColor.GOLD, "左侧羽毛减速, 右侧糖加速。", "每四格为一拍, 按服务器 20 TPS 计算。")).build();
+                .setItemProvider(ignoredContext -> item(Material.CLOCK, "速度 · " + tempoText(this.tempo.get()) + " BPM", NamedTextColor.GOLD, "左侧羽毛减速, 右侧糖加速。", "每四格为一拍, 按服务器 20 TPS 计算。")).build();
     }
 
     private Item buildTempoButton(int direction) {
