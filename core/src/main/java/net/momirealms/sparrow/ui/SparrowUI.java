@@ -1,13 +1,11 @@
 package net.momirealms.sparrow.ui;
 
-import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.momirealms.sparrow.ui.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
 import net.momirealms.sparrow.ui.state.internal.player.PlayerSignalRuntime;
 import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
-import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.window.WindowManager;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -19,13 +17,13 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public class SparrowUI implements Listener {
     private static final String WARNINGS_PROPERTY = "sparrow.ui.warnings";
+    private static final String NOT_INITIALIZED_MESSAGE = "SparrowUI is not initialized. Call SparrowUI.getInstance().setUp(plugin) first.";
     private static final SparrowUI INSTANCE = new SparrowUI();
 
     private Plugin plugin;
@@ -80,32 +78,17 @@ public class SparrowUI implements Listener {
 
     /**
      * 获取UI运行时所属的插件实例.
-     * Paper 环境下可从类加载器推断插件实例; 其他环境必须事先使用 {@link #setUp(Plugin)} 设置.
+     * 使用前必须调用 {@link #setUp(Plugin)} 初始化.
      *
      * @return 插件实例
-     * @throws IllegalStateException 如果插件实例未设置且无法推断
+     * @throws IllegalStateException 如果尚未初始化
      */
     @NotNull
     public Plugin getPlugin() {
         if (this.plugin == null) {
-            Plugin discovered = tryFindPlugin().orElseThrow(() -> new IllegalStateException(
-                    "Plugin is not set. Set it using SparrowUI.getInstance().setUp(plugin);"
-            ));
-            this.setUp(discovered);
+            throw new IllegalStateException(NOT_INITIALIZED_MESSAGE);
         }
         return this.plugin;
-    }
-
-    @SuppressWarnings("UnstableApiUsage")
-    private Optional<Plugin> tryFindPlugin() {
-        if (!VersionHelper.hasPaperPatch) {
-            throw new IllegalStateException("Plugin is not set. Set it using SparrowUI.getInstance().setUp(plugin);");
-        }
-        ClassLoader classLoader = this.getClass().getClassLoader();
-        if (classLoader instanceof ConfiguredPluginClassLoader pluginClassLoader) {
-            return Optional.ofNullable(pluginClassLoader.getPlugin());
-        }
-        return Optional.empty();
     }
 
     /**
@@ -235,11 +218,12 @@ public class SparrowUI implements Listener {
      * 获取当前共享的平台调度器.
      *
      * @return 平台调度器
+     * @throws IllegalStateException 如果调度器尚未初始化
      */
     @NotNull
     public SchedulerAdapter scheduler() {
         if (this.scheduler == null) {
-            this.getPlugin();
+            throw new IllegalStateException(NOT_INITIALIZED_MESSAGE);
         }
         return this.scheduler;
     }
@@ -248,7 +232,7 @@ public class SparrowUI implements Listener {
     @ApiStatus.Internal
     public PlayerSignalRuntime playerSignals() {
         if (this.playerSignals == null) {
-            this.getPlugin();
+            throw new IllegalStateException(NOT_INITIALIZED_MESSAGE);
         }
         return this.playerSignals;
     }
@@ -257,11 +241,12 @@ public class SparrowUI implements Listener {
      * 获取当前持有的 Window 管理器.
      *
      * @return Window 管理器
+     * @throws IllegalStateException 如果 Window 管理器尚未初始化
      */
     @NotNull
     public WindowManager windowManager() {
         if (this.windowManager == null) {
-            this.getPlugin();
+            throw new IllegalStateException(NOT_INITIALIZED_MESSAGE);
         }
         return this.windowManager;
     }
@@ -270,11 +255,12 @@ public class SparrowUI implements Listener {
      * 获取当前共享的数据包网络管理器.
      *
      * @return 数据包网络管理器
+     * @throws IllegalStateException 如果网络管理器尚未初始化
      */
     @NotNull
     public NetworkManager networkManager() {
         if (this.networkManager == null) {
-            this.getPlugin();
+            throw new IllegalStateException(NOT_INITIALIZED_MESSAGE);
         }
         return this.networkManager;
     }

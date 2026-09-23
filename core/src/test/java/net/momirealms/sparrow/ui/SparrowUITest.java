@@ -36,20 +36,21 @@ class SparrowUITest {
     }
 
     @Test
-    void missingPluginOnSpigotFailsBeforeResolvingThePaperClassLoader() throws Exception {
+    void uninitializedAccessorsRequireExplicitSetupWithoutResolvingThePaperClassLoader() throws Exception {
         WithoutPaperLoader loader = new WithoutPaperLoader();
         Class<?> type = loader.loadClass(SparrowUI.class.getName());
         Object ui = type.getMethod("getInstance").invoke(null);
 
-        InvocationTargetException failure = assertThrows(InvocationTargetException.class, () -> type.getMethod("getPlugin").invoke(ui));
-
-        assertInstanceOf(IllegalStateException.class, failure.getCause());
-        assertEquals("Plugin is not set. Set it using SparrowUI.getInstance().setUp(plugin);", failure.getCause().getMessage());
+        for (String accessor : List.of("getPlugin", "scheduler", "playerSignals", "windowManager", "networkManager")) {
+            InvocationTargetException failure = assertThrows(InvocationTargetException.class, () -> type.getMethod(accessor).invoke(ui));
+            assertInstanceOf(IllegalStateException.class, failure.getCause());
+            assertEquals("SparrowUI is not initialized. Call SparrowUI.getInstance().setUp(plugin) first.", failure.getCause().getMessage());
+        }
         assertEquals(0, loader.paperClassRequests);
     }
 
     @Test
-    void configuredPluginOnSpigotSkipsAutomaticDiscovery() throws Exception {
+    void configuredPluginIsReturnedWithoutResolvingThePaperClassLoader() throws Exception {
         WithoutPaperLoader loader = new WithoutPaperLoader();
         Class<?> type = loader.loadClass(SparrowUI.class.getName());
         Object ui = type.getMethod("getInstance").invoke(null);
