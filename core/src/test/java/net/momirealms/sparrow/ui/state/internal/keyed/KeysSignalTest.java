@@ -15,6 +15,7 @@ import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
 import net.momirealms.sparrow.ui.state.internal.ExceptionHandlerProbe;
 import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import net.momirealms.sparrow.ui.state.internal.SignalTestAccess;
+import net.momirealms.sparrow.ui.state.internal.player.PlayerSignalTestRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;

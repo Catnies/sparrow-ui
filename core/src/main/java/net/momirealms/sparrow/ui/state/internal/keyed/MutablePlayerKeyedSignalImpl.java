@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state.internal.keyed;
 
+import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.state.MutablePlayerKeyedSignal;
 import org.jetbrains.annotations.ApiStatus;
 
@@ -13,6 +14,6 @@ public final class MutablePlayerKeyedSignalImpl<T> extends KeyedSignalImpl<UUID,
     public MutablePlayerKeyedSignalImpl(Function<? super UUID, ? extends T> initial, BiPredicate<? super T, ? super T> sameValue) {
         super(initial, sameValue);
         // 通用基类已经完成构造且本类没有额外状态, 注册表可以在这里发布 this.
-        PlayerSignalRegistry.track(this);
+        SparrowUI.getInstance().playerSignals().track(this);
     }
 }

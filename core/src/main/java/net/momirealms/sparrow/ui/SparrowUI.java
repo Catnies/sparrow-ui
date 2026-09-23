@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui;
 import io.papermc.paper.plugin.provider.classloader.ConfiguredPluginClassLoader;
 import net.momirealms.sparrow.ui.scheduler.BukkitSchedulerAdapter;
 import net.momirealms.sparrow.ui.scheduler.SchedulerAdapter;
+import net.momirealms.sparrow.ui.state.internal.player.PlayerSignalRuntime;
 import net.momirealms.sparrow.ui.window.map.MapColorPalette;
 import net.momirealms.sparrow.ui.network.NetworkManager;
 import net.momirealms.sparrow.ui.util.HandlerList;
@@ -13,6 +14,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.plugin.Plugin;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -28,6 +30,7 @@ public class SparrowUI implements Listener {
 
     private Plugin plugin;
     private SchedulerAdapter scheduler;
+    private volatile PlayerSignalRuntime playerSignals;
     private NetworkManager networkManager;
     private WindowManager windowManager;
     private volatile boolean fireBukkitInventoryEvents = true;
@@ -62,10 +65,17 @@ public class SparrowUI implements Listener {
         this.plugin = plugin;
         this.scheduler = scheduler;
         Bukkit.getPluginManager().registerEvents(this, plugin);
+        // PlayerSignalRuntime
+        PlayerSignalRuntime playerSignals = new PlayerSignalRuntime(plugin);
+        playerSignals.initialize();
+        this.playerSignals = playerSignals;
+        this.addDisableHandler(playerSignals::close);
+        // NetworkManager
         this.networkManager = new NetworkManager();
+        this.addDisableHandler(this.networkManager::close);
+        // WindowManager
         this.windowManager = WindowManager.create(plugin, scheduler.platform());
         this.addDisableHandler(this.windowManager::shutdown);
-        this.addDisableHandler(this.networkManager::close);
     }
 
     /**
@@ -232,6 +242,15 @@ public class SparrowUI implements Listener {
             this.getPlugin();
         }
         return this.scheduler;
+    }
+
+    @NotNull
+    @ApiStatus.Internal
+    public PlayerSignalRuntime playerSignals() {
+        if (this.playerSignals == null) {
+            this.getPlugin();
+        }
+        return this.playerSignals;
     }
 
     /**
