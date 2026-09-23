@@ -2,7 +2,7 @@ package net.momirealms.sparrow.ui;
 
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
-import net.momirealms.sparrow.ui.state.TickingTestSupport;
+import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
 import org.junit.jupiter.api.Test;
 import java.lang.ref.Reference;
 import java.util.concurrent.atomic.AtomicInteger;

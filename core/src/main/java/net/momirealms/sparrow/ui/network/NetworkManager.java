@@ -32,6 +32,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.network.protocol.game.Clientbou
 import net.momirealms.sparrow.ui.proxy.minecraft.server.MinecraftServerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerConnectionListenerProxy;
 import net.momirealms.sparrow.ui.state.ListSignal;
+import net.momirealms.sparrow.ui.state.MutableListSignal;
 import net.momirealms.sparrow.ui.util.VersionHelper;
 import net.momirealms.sparrow.ui.util.PlayerUtils;
 import org.bukkit.Bukkit;
@@ -117,7 +118,7 @@ public final class NetworkManager implements Listener, AutoCloseable {
     private void installServerInjection(Object server) {
         Object serverConnection = MinecraftServerProxy.INSTANCE.getConnection(server);
         List<ChannelFuture> channels = ServerConnectionListenerProxy.INSTANCE.channels(serverConnection);
-        ListSignal<ChannelFuture> listener = ListSignal.wrap(channels);
+        MutableListSignal<ChannelFuture> listener = ListSignal.wrap(channels);
         // 凭证是这个钩子的唯一强引用. close() 关掉它之后, NMS 手里那份包装器就退回普通 List, 不会再吊着本管理器.
         this.acceptorHook = listener.beforeAdd(future -> {
             this.injectAcceptorChannel(future);

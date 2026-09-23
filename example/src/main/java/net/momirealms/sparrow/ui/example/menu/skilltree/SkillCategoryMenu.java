@@ -191,7 +191,7 @@ final class SkillCategoryMenu {
         if (current) {
             ItemComponents.glint(itemStack, true);
         }
-        ItemBuilder builder = Item.builder().setItemProvider(ignoredContext -> itemStack);
+        ItemBuilder builder = Item.builder().setItemProviderConstant(itemStack);
         if (!current) {
             builder.addClickHandler(click -> this.root.openCategory(click.window(), target));
         }
@@ -206,19 +206,17 @@ final class SkillCategoryMenu {
      */
     @NotNull
     private Item buildBackButton() {
+        ItemStack itemStack = ItemComponents.create(Material.SPECTRAL_ARROW);
+        ItemComponents.name(itemStack, Component.text("返回", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
+                Component.text("回到树上的上一层。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.empty(),
+                Component.text("第一次从哪一页进来，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("上一层就一直是那一页；", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("用下面的标签跨线跳转不会改变它。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
         return Item.builder()
-                .setItemProvider(ignoredContext -> {
-                    ItemStack itemStack = ItemComponents.create(Material.SPECTRAL_ARROW);
-                    ItemComponents.name(itemStack, Component.text("返回", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-                    ItemComponents.lore(itemStack, List.of(
-                            Component.text("回到树上的上一层。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                            Component.empty(),
-                            Component.text("第一次从哪一页进来，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                            Component.text("上一层就一直是那一页；", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                            Component.text("用下面的标签跨线跳转不会改变它。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
-                    ));
-                    return itemStack;
-                })
+                .setItemProviderConstant(itemStack)
                 .addClickHandler(click -> click.window().backOrClose())
                 .build();
     }

@@ -253,18 +253,16 @@ public final class AnvilPromptMenu {
      */
     @NotNull
     private Item buildCloseButton() {
+        ItemStack itemStack = ItemComponents.create(Material.BARRIER);
+        ItemComponents.name(itemStack, Component.text("关闭菜单", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+        ItemComponents.lore(itemStack, List.of(
+                Component.text("结束本次浏览。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.empty(),
+                Component.text("本菜单是这段会话的根窗，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("没有上一扇可回，因此这里等同关闭。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
         return Item.builder()
-                .setItemProvider(ignoredContext -> {
-                    ItemStack itemStack = ItemComponents.create(Material.BARRIER);
-                    ItemComponents.name(itemStack, Component.text("关闭菜单", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
-                    ItemComponents.lore(itemStack, List.of(
-                            Component.text("结束本次浏览。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                            Component.empty(),
-                            Component.text("本菜单是这段会话的根窗，", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                            Component.text("没有上一扇可回，因此这里等同关闭。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
-                    ));
-                    return itemStack;
-                })
+                .setItemProviderConstant(itemStack)
                 .addClickHandler(click -> click.window().backOrClose())
                 .build();
     }

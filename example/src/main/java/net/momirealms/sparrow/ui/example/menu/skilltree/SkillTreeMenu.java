@@ -150,7 +150,7 @@ public final class SkillTreeMenu {
                 Component.text("点击进入技能树", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false)
         ));
         return Item.builder()
-                .setItemProvider(ignoredContext -> itemStack)
+                .setItemProviderConstant(itemStack)
                 .addClickHandler(click -> this.openCategory(click.window(), category))
                 .build();
     }

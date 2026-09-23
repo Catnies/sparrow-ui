@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
-import net.momirealms.sparrow.ui.state.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.AfterEach;

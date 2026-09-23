@@ -1,5 +1,8 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import net.momirealms.sparrow.ui.state.internal.derive.LensSignal;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -13,7 +16,8 @@ import java.util.function.UnaryOperator;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface MutableSignal<T> extends Signal<T> permits MutableSignalImpl, MutablePartitionHandle, LensSignal {
+@ApiStatus.NonExtendable
+public interface MutableSignal<T> extends Signal<T> {
 
     /**
      * 写入新值, 若与旧值相同则静默跳过, 不产生失效.

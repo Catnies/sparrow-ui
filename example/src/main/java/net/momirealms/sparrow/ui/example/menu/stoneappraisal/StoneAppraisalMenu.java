@@ -11,7 +11,6 @@ import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -118,7 +117,7 @@ public final class StoneAppraisalMenu {
                         "####X####",
                         "#########"
                 )
-                .addIngredient('X', Element.inventory(this.input, 0))
+                .addIngredient('X', this.input)
                 .build();
         // Pane 背景只管空槽位元素, 也就是 X 以外那一圈
         this.pane.setBackgroundItem(fillerItem());

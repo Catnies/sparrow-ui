@@ -1,6 +1,7 @@
 package net.momirealms.sparrow.ui.state;
 
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -11,7 +12,8 @@ import java.util.function.UnaryOperator;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface MutablePlayerKeyedSignal<T> extends PlayerKeyedSignal<T>, MutableKeyedSignal<UUID, T> permits MutablePlayerKeyedSignalImpl {
+@ApiStatus.NonExtendable
+public interface MutablePlayerKeyedSignal<T> extends PlayerKeyedSignal<T>, MutableKeyedSignal<UUID, T> {
 
     /**
      * 返回指定玩家分区的可写稳定句柄.

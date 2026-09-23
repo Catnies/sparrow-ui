@@ -1,6 +1,14 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import net.momirealms.sparrow.ui.state.internal.derive.CombinedSignal;
+import net.momirealms.sparrow.ui.state.internal.derive.MergingSignal;
+import net.momirealms.sparrow.ui.state.internal.derive.SwitchingSignal;
+import net.momirealms.sparrow.ui.state.internal.time.Delayer;
+import net.momirealms.sparrow.ui.state.internal.time.TickingSignal;
+import net.momirealms.sparrow.ui.state.internal.time.WeakPeriodCache;
 import net.momirealms.sparrow.ui.util.TriFunction;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
@@ -21,12 +29,14 @@ public final class Signals {
     }
 
     @NotNull
-    static Delayer tickDelayer() {
+    @ApiStatus.Internal
+    public static Delayer tickDelayer() {
         return tickDelayer;
     }
 
     @NotNull
-    static Delayer millisDelayer() {
+    @ApiStatus.Internal
+    public static Delayer millisDelayer() {
         return millisDelayer;
     }
 

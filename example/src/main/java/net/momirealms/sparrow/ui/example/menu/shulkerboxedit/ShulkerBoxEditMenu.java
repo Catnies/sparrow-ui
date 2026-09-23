@@ -10,7 +10,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
 import net.momirealms.sparrow.ui.example.util.Components;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
-import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
 import net.momirealms.sparrow.ui.util.ItemUtils;
@@ -56,10 +55,13 @@ public final class ShulkerBoxEditMenu {
         this.contents.setAccessRule(context -> context.player() == this.viewer);
 
         // 创建 Pane
-        NormalPane pane = Pane.empty(9, 3);
-        for (int slot = 0; slot < this.contents.size(); slot++) {
-            pane.setElement(slot, Element.inventory(this.contents, slot));
-        }
+        NormalPane pane = Pane.builder(
+                        "SSSSSSSSS",
+                        "SSSSSSSSS",
+                        "SSSSSSSSS"
+                )
+                .addIngredient('S', this.contents)
+                .build();
 
         // 创建 Window
         this.window = NormalWindow.builder()

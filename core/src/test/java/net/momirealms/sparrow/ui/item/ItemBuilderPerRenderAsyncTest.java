@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.WindowStub;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.item.provider.RenderContext;
-import net.momirealms.sparrow.ui.state.TickingTestSupport;
+import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
 import net.momirealms.sparrow.ui.window.RenderCell;
 import net.momirealms.sparrow.ui.window.SparrowUiTestRuntime;
 import org.bukkit.Material;

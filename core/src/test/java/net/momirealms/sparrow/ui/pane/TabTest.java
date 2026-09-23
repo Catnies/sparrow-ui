@@ -5,7 +5,7 @@ import net.momirealms.sparrow.ui.item.AttachSupport;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.click.ItemClick;
 import net.momirealms.sparrow.ui.pane.page.Tab;
-import net.momirealms.sparrow.ui.state.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.inventory.ItemStack;

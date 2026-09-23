@@ -5,7 +5,7 @@ import net.momirealms.sparrow.ui.item.AttachSupport;
 import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.ItemAttachment;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
-import net.momirealms.sparrow.ui.state.TickingTestSupport;
+import net.momirealms.sparrow.ui.state.internal.time.TickingTestSupport;
 import net.momirealms.sparrow.ui.window.MerchantWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.entity.Player;

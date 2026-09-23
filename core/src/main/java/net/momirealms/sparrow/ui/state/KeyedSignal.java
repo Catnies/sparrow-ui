@@ -1,5 +1,10 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import net.momirealms.sparrow.ui.state.internal.AsyncSignalImpl;
+import net.momirealms.sparrow.ui.state.internal.keyed.AsyncKeyedSignalImpl;
+import net.momirealms.sparrow.ui.state.internal.keyed.KeyedSignalImpl;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Set;
@@ -14,7 +19,8 @@ import java.util.function.Function;
  * @param <K> 分区 key 类型
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface KeyedSignal<K, T> permits MutableKeyedSignal, PlayerKeyedSignal, AbstractKeyedSignal {
+@ApiStatus.NonExtendable
+public interface KeyedSignal<K, T> {
 
     /**
      * 读取指定分区的当前值.

@@ -7,7 +7,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
-import net.momirealms.sparrow.ui.state.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.craftbukkit.inventory.CraftInventory;

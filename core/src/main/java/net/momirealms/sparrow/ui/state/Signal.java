@@ -1,6 +1,10 @@
 package net.momirealms.sparrow.ui.state;
 
 import net.momirealms.sparrow.ui.Subscription;
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import net.momirealms.sparrow.ui.state.internal.AsyncSignalImpl;
+import net.momirealms.sparrow.ui.state.internal.MutableSignalImpl;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -16,7 +20,8 @@ import java.util.function.Supplier;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface Signal<T> permits MutableSignal, AsyncSignal, AbstractSignal, ListSignal, SetSignal, MapSignal {
+@ApiStatus.NonExtendable
+public interface Signal<T> {
 
     /**
      * 读取当前值. 具体类型可能返回缓存结果、占位值或集合装饰器的活视图.

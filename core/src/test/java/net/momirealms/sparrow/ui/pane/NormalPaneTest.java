@@ -4,7 +4,7 @@ import net.momirealms.sparrow.ui.item.Item;
 import net.momirealms.sparrow.ui.item.provider.ImmediateItemProvider;
 import net.momirealms.sparrow.ui.item.provider.ItemProvider;
 import net.momirealms.sparrow.ui.pane.Pane;
-import net.momirealms.sparrow.ui.state.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.inventory.ItemStack;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;

@@ -2,10 +2,10 @@ package net.momirealms.sparrow.ui.pane;
 
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
-import net.momirealms.sparrow.ui.state.GcSupport;
-import net.momirealms.sparrow.ui.state.ManualExecutor;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.ManualExecutor;
 import net.momirealms.sparrow.ui.window.SparrowUiTestRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

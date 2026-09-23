@@ -7,7 +7,7 @@ import net.momirealms.sparrow.ui.Subscription;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
 import net.momirealms.sparrow.ui.inventory.storage.SlotKey;
-import net.momirealms.sparrow.ui.state.GcSupport;
+import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import org.bukkit.Material;
 import org.bukkit.craftbukkit.inventory.CraftInventory;

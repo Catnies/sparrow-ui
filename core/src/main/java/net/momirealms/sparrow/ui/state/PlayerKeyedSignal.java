@@ -1,6 +1,11 @@
 package net.momirealms.sparrow.ui.state;
 
+import net.momirealms.sparrow.ui.state.internal.AbstractSignal;
+import net.momirealms.sparrow.ui.state.internal.AsyncSignalImpl;
+import net.momirealms.sparrow.ui.state.internal.keyed.MutablePlayerKeyedSignalImpl;
+import net.momirealms.sparrow.ui.state.internal.keyed.PlayerKeyedSignalImpl;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.UUID;
@@ -14,7 +19,8 @@ import java.util.function.Function;
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> permits MutablePlayerKeyedSignal, PlayerKeyedSignalImpl {
+@ApiStatus.NonExtendable
+public interface PlayerKeyedSignal<T> extends KeyedSignal<UUID, T> {
 
     /**
      * 读取指定玩家分区的当前值.

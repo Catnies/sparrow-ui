@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.state;
 
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.UnaryOperator;
@@ -10,7 +11,8 @@ import java.util.function.UnaryOperator;
  * @param <K> 分区 key 类型
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface MutableKeyedSignal<K, T> extends KeyedSignal<K, T> permits MutablePlayerKeyedSignal, KeyedSignalImpl {
+@ApiStatus.NonExtendable
+public interface MutableKeyedSignal<K, T> extends KeyedSignal<K, T> {
 
     /**
      * 返回指定分区的可写稳定句柄, 生命周期与装载语义见 {@link KeyedSignal#at}.

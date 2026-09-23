@@ -1,11 +1,14 @@
 package net.momirealms.sparrow.ui.state;
 
+import org.jetbrains.annotations.ApiStatus;
+
 /**
  * 由后台执行器重算的异步 Signal, 读取始终立即返回.
  *
  * @param <T> 值类型, 允许为 {@code null}
  */
-public sealed interface AsyncSignal<T> extends Signal<T> permits AsyncSignalImpl {
+@ApiStatus.NonExtendable
+public interface AsyncSignal<T> extends Signal<T> {
 
     /**
      * 声明当前值已过期, 调度一次后台重载.
