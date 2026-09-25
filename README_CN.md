@@ -70,7 +70,7 @@ repositories {
 }
 
 dependencies {
-    implementation("net.momirealms:sparrow-ui:beta.36")
+    implementation("net.momirealms:sparrow-ui:beta.37")
 }
 
 tasks.shadowJar {
