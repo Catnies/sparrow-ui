@@ -6,6 +6,7 @@ import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemSta
 import net.momirealms.sparrow.ui.proxy.minecraft.network.ConnectionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.level.ServerPlayerProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.server.network.ServerCommonPacketListenerImplProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.util.PredictionProxy;
 import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -56,7 +57,11 @@ public final class PlayerUtils {
         }
         Object entity = CraftEntityProxy.INSTANCE.entity(player);
         if (VersionHelper.hasPaperPatch) {
-            ServerPlayerProxy.INSTANCE.drop(entity, handle, false, true, false, null);
+            if (VersionHelper.isOrAbove26_3) {
+                ServerPlayerProxy.INSTANCE.drop$1(entity, handle, true, PredictionProxy.INSTANCE.getPredicted(), false, null);
+            } else {
+                ServerPlayerProxy.INSTANCE.drop(entity, handle, false, true, false, null);
+            }
         } else {
             ServerPlayerProxy.INSTANCE.drop$0(entity, handle, false, true, false);
         }

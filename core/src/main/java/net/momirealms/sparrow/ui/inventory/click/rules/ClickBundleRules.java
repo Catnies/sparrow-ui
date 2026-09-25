@@ -42,7 +42,9 @@ public final class ClickBundleRules {
         if (contents == null) {
             return null;
         }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        Object mutableContents = VersionHelper.isOrAbove26_3
+                ? BundleContentsProxy.INSTANCE.asMutable(contents)
+                : BundleContentsMutableProxy.INSTANCE.newInstance(contents);
         int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, CraftItemStackProxy.INSTANCE.unwrap(slotAfter));
         if (inserted == 0) {
             return null;
@@ -67,7 +69,9 @@ public final class ClickBundleRules {
         if (contents == null || BundleContentsProxy.INSTANCE.isEmpty(contents)) {
             return null;
         }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        Object mutableContents = VersionHelper.isOrAbove26_3
+                ? BundleContentsProxy.INSTANCE.asMutable(contents)
+                : BundleContentsMutableProxy.INSTANCE.newInstance(contents);
         Object takenHandle = BundleContentsMutableProxy.INSTANCE.removeOne(mutableContents);
         if (takenHandle == null) {
             return null;
@@ -111,7 +115,9 @@ public final class ClickBundleRules {
         if (contents == null) {
             return null;
         }
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        Object mutableContents = VersionHelper.isOrAbove26_3
+                ? BundleContentsProxy.INSTANCE.asMutable(contents)
+                : BundleContentsMutableProxy.INSTANCE.newInstance(contents);
         int inserted = BundleContentsMutableProxy.INSTANCE.tryInsert(mutableContents, CraftItemStackProxy.INSTANCE.unwrap(cursorAfter));
         if (inserted == 0) {
             return null;
@@ -143,7 +149,9 @@ public final class ClickBundleRules {
                 && selectedIndex < BundleContentsProxy.INSTANCE.size(contents)
                 ? selectedIndex
                 : 0;
-        Object mutableContents = BundleContentsMutableProxy.INSTANCE.newInstance(contents);
+        Object mutableContents = VersionHelper.isOrAbove26_3
+                ? BundleContentsProxy.INSTANCE.asMutable(contents)
+                : BundleContentsMutableProxy.INSTANCE.newInstance(contents);
         // 26.1 起字段名改为 selectedItemIndex.
         int previousSelection = VersionHelper.isOrAbove26_1
                 ? BundleContentsProxy.INSTANCE.selectedItemIndex(contents)

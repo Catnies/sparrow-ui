@@ -30,7 +30,7 @@ public interface ItemStackProxy {
     @FieldGetter(name = "CODEC", isStatic = true, activeIf = "min_version=1.20.5")
     Codec<Object> getCODEC();
 
-    @MethodInvoker(name = "getBukkitStack", activeIf = "min_version=1.20.1 && has_patch=paper")
+    @MethodInvoker(name = "getBukkitStack", activeIf = "min_version=1.20.1 && max_version=26.2 && has_patch=paper")
     ItemStack getBukkitStack(Object target);
 
     @MethodInvoker(name = "copy", activeIf = "min_version=1.20.1")

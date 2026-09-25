@@ -11,7 +11,7 @@ import net.momirealms.sparrow.ui.proxy.minecraft.world.item.ItemStackProxy;
 public interface BundleContentsMutableProxy {
     BundleContentsMutableProxy INSTANCE = ASMProxyFactory.create(BundleContentsMutableProxy.class);
 
-    @ConstructorInvoker(activeIf = "min_version=1.20.5")
+    @ConstructorInvoker(activeIf = "min_version=1.20.5 && max_version=26.2")
     Object newInstance(@Type(name = "net.minecraft.world.item.component.BundleContents") Object contents);
 
     @MethodInvoker(name = "tryInsert", activeIf = "min_version=1.20.5")

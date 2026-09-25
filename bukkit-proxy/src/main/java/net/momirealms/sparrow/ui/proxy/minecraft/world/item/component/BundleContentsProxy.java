@@ -8,6 +8,9 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 public interface BundleContentsProxy {
     BundleContentsProxy INSTANCE = ASMProxyFactory.create(BundleContentsProxy.class);
 
+    @MethodInvoker(name = "asMutable", activeIf = "min_version=26.3")
+    Object asMutable(Object target);
+
     @MethodInvoker(name = "size", activeIf = "min_version=1.20.5")
     int size(Object target);
 

@@ -30,6 +30,6 @@ public interface CraftItemStackProxy {
     @MethodInvoker(name = "asNMSCopy", isStatic = true, activeIf = "min_version=1.20.1 && !has_patch=paper")
     Object asNMSCopy(ItemStack item);
 
-    @MethodInvoker(name = "asCraftMirror", isStatic = true, activeIf = "min_version=1.20.1")
+    @MethodInvoker(name = {"asCraftMirror", "asBukkitMirror"}, isStatic = true, activeIf = "min_version=1.20.1")
     ItemStack asCraftMirror(@Type(clazz = ItemStackProxy.class) Object item);
 }

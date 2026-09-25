@@ -43,10 +43,11 @@ val extractSpigotClasspath = tasks.register<Sync>("extractSpigotClasspath") {
 }
 val spigotClasspath = files(fileTree(spigotClasspathDirectory) { include("**/*.jar") }).builtBy(extractSpigotClasspath)
 val adventureVersion = "5.2.0"
-val cloudVersion = "2.0.0-beta.15"
+val cloudVersion = "2.0.1"
 
 dependencies {
     implementation(project(":core"))
+    compileOnly(project(":bukkit-proxy"))
     implementation("org.incendo:cloud-paper:$cloudVersion")
     paperweight.paperDevBundle(libs.versions.paper.api.get())
     compileOnly(libs.jetbrains.annotations)

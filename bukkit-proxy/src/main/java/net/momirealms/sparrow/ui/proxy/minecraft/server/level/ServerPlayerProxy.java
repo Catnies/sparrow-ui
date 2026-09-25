@@ -25,11 +25,14 @@ public interface ServerPlayerProxy extends PlayerProxy {
     @MethodInvoker(name = "hasDisconnected", activeIf = "min_version=1.20.1")
     boolean hasDisconnected(Object target);
 
-    @MethodInvoker(name = "drop", activeIf = "min_version=1.21.4 && has_patch=paper")
+    @MethodInvoker(name = "drop", activeIf = "min_version=1.21.4 && max_version=26.2 && has_patch=paper")
     Object drop(Object target, @Type(clazz = ItemStackProxy.class) Object item, boolean randomly, boolean thrownFromHand, boolean callEvent, Consumer<?> entityOperation);
 
     @MethodInvoker(name = "drop", activeIf = "min_version=26.2 && !has_patch=paper")
     Object drop$0(Object target, @Type(clazz = ItemStackProxy.class) Object item, boolean randomly, boolean thrownFromHand, boolean callEvent);
+
+    @MethodInvoker(name = "drop", activeIf = "min_version=26.3 && has_patch=paper")
+    Object drop$1(Object target, @Type(clazz = ItemStackProxy.class) Object item, boolean thrownFromHand, @Type(name = "net.minecraft.util.Prediction") Object prediction, boolean callEvent, Consumer<?> entityOperation);
 
     @FieldGetter(name = "containerSynchronizer", activeIf = "min_version=1.20.1")
     Object containerSynchronizer(Object target);

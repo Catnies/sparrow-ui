@@ -3,6 +3,7 @@ package net.momirealms.sparrow.ui.util;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -77,8 +78,7 @@ public final class VersionHelper {
             int major = Integer.parseInt(split[1]);
             int minor = split.length == 3 ? Integer.parseInt(split[2]) : 0;
 
-            // 12001 = 1.20.1
-            // 12104 = 1.21.4
+            // 1.21.4 -> 12104, 26.3 -> 260300.
             version = parseVersionToInteger(versionString);
 
             isOrAbove1_21_4 = version >= 12104;
@@ -111,6 +111,7 @@ public final class VersionHelper {
             throw new RuntimeException("Failed to init VersionHelper", e);
         }
     }
+
     /**
      * 将一至三段点分数字编码为可直接比较的整数.
      * <p>编码公式为 {@code first * 10000 + second * 100 + third}, 缺少的段按 0 处理.
@@ -118,7 +119,7 @@ public final class VersionHelper {
      * @param versionString 点分数字版本, 例如 {@code 1.21.10} 或 {@code 26.1}
      * @return 编码后的版本整数
      */
-    public static int parseVersionToInteger(String versionString) {
+    public static int parseVersionToInteger(@NotNull String versionString) {
         // 按字符累计当前数字段.
         int v1 = 0;
         int v2 = 0;
@@ -154,42 +155,6 @@ public final class VersionHelper {
         return 10000 * v1 + v2 * 100 + v3;
     }
 
-    private static boolean checkMojMap() {
-        return ReflectionUtils.classExists("net.neoforged.art.internal.RenamerImpl");
-    }
-
-    private static boolean checkFolia() {
-        return ReflectionUtils.classExists("io.papermc.paper.threadedregions.RegionizedServer");
-    }
-
-    private static boolean checkPaper() {
-        return ReflectionUtils.classExists("io.papermc.paper.adventure.PaperAdventure");
-    }
-
-    private static boolean checkLeaves() {
-        return ReflectionUtils.classExists("org.leavesmc.leaves.bot.BotList");
-    }
-
-    private static boolean checkCanvas() {
-        return ReflectionUtils.classExists("io.canvasmc.canvas.Config");
-    }
-
-    private static boolean checkSpigot() {
-        return ReflectionUtils.classExists("org.spigotmc.SpigotConfig");
-    }
-
-    private static boolean checkLeaf() {
-        return ReflectionUtils.classExists("org.dreeam.leaf.config.LeafConfig");
-    }
-
-    private static boolean checkLithium() {
-        return ReflectionUtils.classExists("net.caffeinemc.mods.lithium.common.world.chunk.LithiumHashPalette");
-    }
-
-    private static boolean checkUniverseSpigot() {
-        return ReflectionUtils.classExists("com.universeprojects.util.palette.CompactHashPalette");
-    }
-
     /**
      * 返回代理层用于选择发行版兼容逻辑的补丁标识.
      *
@@ -204,5 +169,52 @@ public final class VersionHelper {
         if (hasCanvasPatch) patches.add("canvas");
         if (hasLithiumPatch) patches.add("lithium");
         return patches;
+    }
+
+    private static boolean checkMojMap() {
+        return exists("net.neoforged.art.internal.RenamerImpl");
+    }
+
+    private static boolean checkFolia() {
+        return exists("io.papermc.paper.threadedregions.RegionizedServer");
+    }
+
+    private static boolean checkPaper() {
+        return exists("io.papermc.paper.adventure.PaperAdventure");
+    }
+
+    private static boolean checkLeaves() {
+        return exists("org.leavesmc.leaves.bot.BotList");
+    }
+
+    private static boolean checkCanvas() {
+        return exists("io.canvasmc.canvas.Config", "io.canvasmc.canvas.GlobalConfiguration");
+    }
+
+    private static boolean checkSpigot() {
+        return exists("org.spigotmc.SpigotConfig");
+    }
+
+    private static boolean checkLeaf() {
+        return exists("org.dreeam.leaf.config.LeafConfig", "org.dreeam.leaf.async.chunk.AsyncChunkSender");
+    }
+
+    private static boolean checkLithium() {
+        return exists("net.caffeinemc.mods.lithium.common.world.chunk.LithiumHashPalette");
+    }
+
+    private static boolean checkUniverseSpigot() {
+        return exists("com.universeprojects.util.palette.CompactHashPalette");
+    }
+
+    private static boolean exists(@NotNull String... classNames) {
+        for (String className : classNames) {
+            try {
+                Class.forName(className, false, VersionHelper.class.getClassLoader());
+                return true;
+            } catch (ClassNotFoundException ignored) {
+            }
+        }
+        return false;
     }
 }

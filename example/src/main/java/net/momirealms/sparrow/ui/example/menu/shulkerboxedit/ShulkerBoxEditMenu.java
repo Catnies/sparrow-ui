@@ -12,11 +12,11 @@ import net.momirealms.sparrow.ui.example.util.Components;
 import net.momirealms.sparrow.ui.inventory.VirtualInventory;
 import net.momirealms.sparrow.ui.pane.NormalPane;
 import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftItemStackProxy;
 import net.momirealms.sparrow.ui.util.ItemUtils;
 import net.momirealms.sparrow.ui.window.NormalWindow;
 import net.momirealms.sparrow.ui.window.Window;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -115,7 +115,7 @@ public final class ShulkerBoxEditMenu {
         org.bukkit.inventory.ItemStack[] contents = new org.bukkit.inventory.ItemStack[items.size()];
         for (int slot = 0; slot < items.size(); slot++) {
             ItemStack item = items.get(slot);
-            contents[slot] = item.isEmpty() ? null : CraftItemStack.asCraftMirror(item);
+            contents[slot] = item.isEmpty() ? null : CraftItemStackProxy.INSTANCE.asCraftMirror(item);
         }
         return contents;
     }
