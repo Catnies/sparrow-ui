@@ -14,6 +14,7 @@ import java.util.List;
 public final class VersionHelper {
     private VersionHelper() {}
 
+    public static final boolean IS_RUNNING_IN_DEV = Boolean.getBoolean("net.momirealms.plugin.dev");
     public static final String MINECRAFT_VERSION; // 服务端版本号, 例如 1.21.10
     public static final int WORLD_VERSION;        // 服务端数据版本, 用于存档数据升级
     public static final int version;             // 版本号编码后的整数, 例如 1.21.10 -> 12110

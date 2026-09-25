@@ -15,6 +15,9 @@ import java.util.UUID;
 
 // Spigot 的坐骑装备独立于储物容器, 这里按鞍和身体装备的顺序暴露两个槽位.
 final class MountEquipmentStorage implements ExternalStorage {
+    private static final Object SADDLE = EquipmentSlotProxy.INSTANCE.saddle();
+    private static final Object BODY = EquipmentSlotProxy.INSTANCE.body();
+
     private final WeakReference<Object> equipment;
     private final WeakReference<AbstractHorse> owner;
     private final UUID identity;
@@ -55,7 +58,7 @@ final class MountEquipmentStorage implements ExternalStorage {
     }
 
     private static Object equipmentSlot(int slot) {
-        return slot == 0 ? EquipmentSlotProxy.SADDLE : EquipmentSlotProxy.BODY;
+        return slot == 0 ? SADDLE : BODY;
     }
 
     @Override

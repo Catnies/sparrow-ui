@@ -20,6 +20,7 @@ import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,9 +48,39 @@ public final class BukkitProxyInstaller {
             // 版本条件和映射必须在 Proxy 接口的静态 INSTANCE 初始化前配置完成.
             Class<?> bootstrapClass = Class.forName(runtimePackage + ".proxy.BukkitProxy", true, minecraftClassLoader);
             bootstrapClass.getMethod("init", String.class, List.class).invoke(null, VersionHelper.MINECRAFT_VERSION, VersionHelper.getPatches());
+            if (VersionHelper.IS_RUNNING_IN_DEV) {
+                Bukkit.getLogger().info("[SparrowUI] Initializing ASM proxies...");
+                BukkitProxyInstaller.initASMProxies(archive, runtimePackage, minecraftClassLoader);
+            }
         } catch (Throwable e) {
             throw new IllegalStateException("Failed to initialize the SparrowUI reflection proxy", e);
         }
+    }
+
+    private static void initASMProxies(byte[] archive, String runtimePackage, ClassLoader minecraftClassLoader) throws IOException {
+        String proxyPath = runtimePackage.replace('.', '/') + "/proxy/";
+        ArrayList<Throwable> failures = new ArrayList<>();
+        int initialized = 0;
+        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = input.getNextEntry()) != null) {
+                String entryName = entry.getName();
+                if (!entryName.startsWith(proxyPath) || !entryName.endsWith("Proxy.class")) continue;
+                String className = entryName.substring(0, entryName.length() - 6).replace('/', '.');
+                try {
+                    Class.forName(className, true, minecraftClassLoader);
+                    initialized++;
+                } catch (Throwable failure) {
+                    failures.add(new IllegalStateException("Failed to initialize " + className, failure));
+                }
+            }
+        }
+        if (!failures.isEmpty()) {
+            IllegalStateException exception = new IllegalStateException("Failed to initialize " + failures.size() + " SparrowUI ASM proxies");
+            failures.forEach(exception::addSuppressed);
+            throw exception;
+        }
+        Bukkit.getLogger().info("[SparrowUI] Initialized " + initialized + " ASM proxies.");
     }
 
     // 读取内嵌的代理 Jar 字节.

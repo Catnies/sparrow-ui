@@ -62,6 +62,8 @@ public final class PlayerUtils {
             } else {
                 ServerPlayerProxy.INSTANCE.drop(entity, handle, false, true, false, null);
             }
+        } else if (VersionHelper.isOrAbove26_3) {
+            ServerPlayerProxy.INSTANCE.drop$2(entity, handle, true, PredictionProxy.INSTANCE.getPredicted(), false);
         } else {
             ServerPlayerProxy.INSTANCE.drop$0(entity, handle, false, true, false);
         }

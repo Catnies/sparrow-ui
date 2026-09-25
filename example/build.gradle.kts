@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.shadow)
     id("de.eldoria.plugin-yml.bukkit") version "0.9.0"
     id("sparrow-ui.run-servers")
+    id("sparrow-ui.run-spigot")
 }
 
 group = "net.momirealms"
@@ -35,8 +36,9 @@ val bukkitExample = sourceSets.create("bukkit")
 configurations[bukkitExample.implementationConfigurationName].extendsFrom(configurations.implementation.get())
 
 val spigotClasspathDirectory = layout.buildDirectory.dir("spigot-classpath")
+val spigotCompileVersion = providers.gradleProperty("spigotCompileVersion").orElse("26.2")
 val extractSpigotClasspath = tasks.register<Sync>("extractSpigotClasspath") {
-    from(zipTree(rootProject.file("buildSrc/server-jars/spigot-26.2.jar"))) {
+    from(zipTree(rootProject.file("buildSrc/server-jars/spigot-${spigotCompileVersion.get()}.jar"))) {
         include("META-INF/versions/*.jar", "META-INF/libraries/*.jar")
     }
     into(spigotClasspathDirectory)
@@ -78,7 +80,7 @@ tasks.withType<ShadowJar>().configureEach {
 }
 val bukkitJar = tasks.register<ShadowJar>("bukkitJar") {
     group = "build"
-    description = "Builds the Spigot 26.2 example plugin with Adventure 5.2.0."
+    description = "Builds the Spigot ${spigotCompileVersion.get()} example plugin with Adventure 5.2.0."
     archiveClassifier.set("bukkit")
     from(bukkitExample.output)
     configurations = listOf(project.configurations[bukkitExample.runtimeClasspathConfigurationName])

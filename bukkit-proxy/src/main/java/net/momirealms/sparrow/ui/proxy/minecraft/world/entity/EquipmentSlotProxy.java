@@ -7,8 +7,6 @@ import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 @ReflectionProxy(name = "net.minecraft.world.entity.EquipmentSlot")
 public interface EquipmentSlotProxy {
     EquipmentSlotProxy INSTANCE = ASMProxyFactory.create(EquipmentSlotProxy.class);
-    Object SADDLE = INSTANCE.saddle();
-    Object BODY = INSTANCE.body();
 
     @FieldGetter(name = "SADDLE", isStatic = true, activeIf = "min_version=1.21.5")
     Object saddle();

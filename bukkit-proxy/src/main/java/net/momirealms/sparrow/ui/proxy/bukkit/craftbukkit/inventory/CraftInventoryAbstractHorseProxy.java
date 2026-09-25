@@ -5,7 +5,7 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "org.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorse")
+@ReflectionProxy(name = "org.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorse", activeIf = "!has_patch=paper")
 public interface CraftInventoryAbstractHorseProxy {
     CraftInventoryAbstractHorseProxy INSTANCE = ASMProxyFactory.create(CraftInventoryAbstractHorseProxy.class);
     Class<?> CLASS = SparrowClass.find("org.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorse");

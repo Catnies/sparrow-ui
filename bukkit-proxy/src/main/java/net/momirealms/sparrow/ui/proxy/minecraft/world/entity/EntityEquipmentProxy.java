@@ -5,7 +5,7 @@ import net.momirealms.sparrow.reflection.proxy.annotation.MethodInvoker;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 import net.momirealms.sparrow.reflection.proxy.annotation.Type;
 
-@ReflectionProxy(name = "net.minecraft.world.entity.EntityEquipment")
+@ReflectionProxy(name = "net.minecraft.world.entity.EntityEquipment", activeIf = "min_version=26.2")
 public interface EntityEquipmentProxy {
     EntityEquipmentProxy INSTANCE = ASMProxyFactory.create(EntityEquipmentProxy.class);
 

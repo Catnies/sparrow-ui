@@ -4,7 +4,7 @@ import net.momirealms.sparrow.reflection.proxy.ASMProxyFactory;
 import net.momirealms.sparrow.reflection.proxy.annotation.FieldGetter;
 import net.momirealms.sparrow.reflection.proxy.annotation.ReflectionProxy;
 
-@ReflectionProxy(name = "net.minecraft.util.Prediction")
+@ReflectionProxy(name = "net.minecraft.util.Prediction", activeIf = "min_version=26.3")
 public interface PredictionProxy {
     PredictionProxy INSTANCE = ASMProxyFactory.create(PredictionProxy.class);
 
