@@ -1,8 +1,13 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.util.PlayerUtils;
+import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.entity.CraftEntityProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryAbstractHorseProxy;
 import net.momirealms.sparrow.ui.proxy.bukkit.craftbukkit.inventory.CraftInventoryProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.EquipmentSlotProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.MobProxy;
+import net.momirealms.sparrow.ui.proxy.minecraft.world.entity.animal.horse.AbstractHorseProxy;
+import net.momirealms.sparrow.ui.util.VersionHelper;
 import org.bukkit.entity.AbstractHorse;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
@@ -13,6 +18,7 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.UUID;
 import java.util.function.Function;
 
 @ApiStatus.Internal
@@ -48,6 +54,25 @@ public final class BukkitStorage implements ExternalStorage {
         Object equipment = CraftInventoryAbstractHorseProxy.INSTANCE.equipment(inventory);
         Object main = CraftInventoryProxy.INSTANCE.getInventory(inventory);
         return new SplicedStorage(new MountEquipmentStorage(equipment, mount), new MountContainerStorage(main, mount.getUniqueId(), 2));
+    }
+
+    // 从 NMS 实体上取出组成 Paper 坐骑背包的容器, 任意线程都能调用.
+    @NotNull
+    public static ExternalStorage ofMount(@NotNull AbstractHorse mount) {
+        Object handle = CraftEntityProxy.INSTANCE.entity(mount);
+        Object main = AbstractHorseProxy.INSTANCE.inventory(handle);
+        UUID id = mount.getUniqueId();
+        // 1.21.4 的鞍住在主仓首格, 身体装备另有一个容器
+        if (!VersionHelper.isOrAbove1_21_5) {
+            return new HorseContainerStorage(main, AbstractHorseProxy.INSTANCE.getBodyArmorAccess(handle), id);
+        }
+        Object saddle = MobProxy.INSTANCE.createEquipmentSlotContainer(handle, EquipmentSlotProxy.INSTANCE.saddle());
+        Object body = MobProxy.INSTANCE.createEquipmentSlotContainer(handle, EquipmentSlotProxy.INSTANCE.body());
+        return new SplicedStorage(
+                new MountContainerStorage(saddle, id, 0),
+                new MountContainerStorage(body, id, 1),
+                new MountContainerStorage(main, id, 2)
+        );
     }
 
     @Override

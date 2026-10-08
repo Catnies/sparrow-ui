@@ -56,7 +56,7 @@ import java.util.function.UnaryOperator;
  * 存储落地或通知抛出异常时, 已生效的修改不会回滚.
  * <p>写权限在两个实现上是两回事, 无 try 方法的原子性也跟着分开.
  * {@link VirtualInventory} 用一把写锁串行化, 同一个槽位连续两次 {@code changeAmount(slot, 1)} 一定各记一次.
- * {@link ReferencingInventory} 不加锁, 串行完全依赖<strong>调用方只从存储所属线程进来</strong>;
+ * {@link ReferencingInventory} 不加锁, <strong>串行由调用方自己保证</strong>;
  * 两个线程同时进来会读到同一个旧值并各写一遍, 丢掉的那次增量不体现在返回值里, 也不会报错.
  */
 public abstract class SparrowInventory {
@@ -1385,7 +1385,7 @@ public abstract class SparrowInventory {
 
     /**
      * 让 ReferencingInventory 同步最新内容.
-     * <p>其他实现调用无效果. <strong>调用 ReferencingInventory 时必须处于外部存储所属线程</strong>.
+     * <p>其他实现调用无效果. ReferencingInventory 在调用线程上直接读外部存储, 发现的变更也在这个线程上派发.
      */
     public void refresh() {
     }
@@ -1557,7 +1557,7 @@ public abstract class SparrowInventory {
     }
 
     // 请求和权威命令抢的是同一把写锁, 这样两条路径互相看得见彼此的写入.
-    // ReferencingInventory 覆盖它返回 null, 那边的串行靠调用方守住所属线程.
+    // ReferencingInventory 覆盖它返回 null, 那边的串行由调用方自己保证.
     @Nullable
     @ApiStatus.Internal
     public PlannedRoot.StateLock stateLock() {

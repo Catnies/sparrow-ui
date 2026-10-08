@@ -4,6 +4,10 @@ import net.momirealms.sparrow.ui.Bindings;
 import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.UpdateReason;
 import net.momirealms.sparrow.ui.inventory.storage.ExternalStorage;
+import net.momirealms.sparrow.ui.pane.Element;
+import net.momirealms.sparrow.ui.pane.NormalPane;
+import net.momirealms.sparrow.ui.pane.Pane;
+import net.momirealms.sparrow.ui.pane.page.Page;
 import net.momirealms.sparrow.ui.state.internal.GcSupport;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
@@ -14,6 +18,7 @@ import org.mockbukkit.mockbukkit.MockBukkit;
 import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -120,6 +125,61 @@ class InventorySequenceTest {
         GcSupport.awaitCollected(probe);
 
         assertFalse(sequence.inventories().isEmpty());
+    }
+
+    @Test
+    void retiredMemberLeavesTheLinksAndLaterMembersMoveUp() {
+        VirtualInventory first = new VirtualInventory(2);
+        ReferencingInventory dying = ReferencingInventory.of(new ArrayStorage(3));
+        VirtualInventory last = new VirtualInventory(2);
+        InventorySequence sequence = InventorySequence.of(first, dying, last);
+
+        assertEquals(7, sequence.links().get().size());
+        dying.retire();
+
+        assertEquals(
+                List.of(Element.inventory(first, 0), Element.inventory(first, 1), Element.inventory(last, 0), Element.inventory(last, 1)),
+                sequence.links().get()
+        );
+    }
+
+    @Test
+    void linksOnlyInvalidateWhenTheAliveMembersChange() {
+        VirtualInventory chest = new VirtualInventory(9);
+        ReferencingInventory dying = ReferencingInventory.of(new ArrayStorage(9));
+        InventorySequence sequence = InventorySequence.of(chest, dying);
+        AtomicInteger invalidations = new AtomicInteger();
+        this.bindings.bind(() -> sequence.links().onDirty(invalidations::incrementAndGet));
+        chest.setItem(reason(), 0, diamonds(3));
+
+        assertEquals(0, invalidations.get());
+        dying.retire();
+
+        assertEquals(1, invalidations.get());
+        sequence.add(new VirtualInventory(9));
+
+        assertEquals(2, invalidations.get());
+    }
+
+    @Test
+    void pagedLinksCloseTheGapLeftByARetiredMember() {
+        VirtualInventory first = new VirtualInventory(2);
+        ReferencingInventory dying = ReferencingInventory.of(new ArrayStorage(2));
+        VirtualInventory last = new VirtualInventory(2);
+        InventorySequence sequence = InventorySequence.of(first, dying, last);
+        Page<Element.InventoryLink> pages = Page.of(sequence.links(), 4);
+        NormalPane pane = Pane.builder("VVVV")
+                .addIngredient('V', pages, Function.identity(), Runnable::run)
+                .build();
+        pages.setPage(1);
+
+        assertEquals(Element.inventory(last, 0), pane.element(0));
+        dying.retire();
+
+        assertEquals(0, pages.page().get());
+        assertEquals(Element.inventory(first, 0), pane.element(0));
+        assertEquals(Element.inventory(last, 0), pane.element(2));
+        assertEquals(Element.inventory(last, 1), pane.element(3));
     }
 
     @Test

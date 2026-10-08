@@ -1009,7 +1009,7 @@ public interface Window {
         /**
          * 拿设置好的查看者建一扇 Window.
          * <p>没显式设过 lower Pane 时, 这个调用会同步读查看者的 Bukkit 背包来建
-         * {@link ReferencingInventory}; 调用方得保证当前线程能合法访问那个背包.
+         * {@link ReferencingInventory}, 可以在任意线程调用.
          *
          * @return 新的未打开 Window
          * @throws IllegalStateException 没设查看者时
@@ -1019,7 +1019,7 @@ public interface Window {
         /**
          * 给指定查看者建一扇 Window.
          * <p>没显式设过 lower Pane 时, 这个调用会同步读查看者的 Bukkit 背包来建
-         * {@link ReferencingInventory}; 调用方得保证当前线程能合法访问那个背包.
+         * {@link ReferencingInventory}, 可以在任意线程调用.
          *
          * @param viewer 查看者
          * @return 新的未打开 Window

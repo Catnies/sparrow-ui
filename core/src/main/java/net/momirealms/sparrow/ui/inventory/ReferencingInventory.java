@@ -1,6 +1,5 @@
 package net.momirealms.sparrow.ui.inventory;
 
-import net.momirealms.sparrow.ui.SparrowUI;
 import net.momirealms.sparrow.ui.inventory.event.SlotChange;
 import net.momirealms.sparrow.ui.inventory.operation.OperationCategory;
 import net.momirealms.sparrow.ui.inventory.operation.SlotOrder;
@@ -29,9 +28,12 @@ import java.util.function.UnaryOperator;
 
 /**
  * 将逻辑槽位映射到 {@link ExternalStorage}, 存储保有权威内容, 本对象只留一份外部变更比对基准.
- * <p><strong>调用方必须在存储所属线程串行访问</strong>. {@link #refresh()} 会吸收外部变更, 存储失效后本 Inventory 退役.
- * <p>无 try 的修改方法在这里不加锁, 读到旧值和写回新值之间没有任何保护, 所属线程这条约束就是它全部的串行来源.
- * 请求路径还有 modCount 乐观校验兜一层, 撞上并发会返回 {@link TransactionResult.Conflicted}; 权威路径连这层也没有.
+ * {@link #refresh()} 会吸收外部变更, 存储失效后本 Inventory 退役.
+ * <p>可以从任意线程访问, 读写都在调用线程上直接落到存储, 本对象不加锁.
+ * 和存储所属线程或别的调用线程同时读写时, 物品可能被复制或丢失, 外部变更通知可能重复或缺失.
+ * <strong>线程安全和串行由调用方自己保证</strong>, 服务端自身的线程检查抛出的异常原样传播.
+ * <p>请求路径有 modCount 乐观校验, 撞上本对象的另一次写入会返回 {@link TransactionResult.Conflicted};
+ * 无 try 的修改方法没有这层校验, 读到旧值和写回新值之间没有保护.
  */
 public final class ReferencingInventory extends SparrowInventory {
     private static final ExternalStorage RETIRED_STORAGE = new ExternalStorage() {
@@ -102,16 +104,17 @@ public final class ReferencingInventory extends SparrowInventory {
     /**
      * 引用坐骑的完整背包, 0 为鞍位, 1 为身体装备位, 从 2 开始为储物格.
      * <p>Spigot 的装备独立于 Bukkit 内容数组, 本入口将两部分组合为与 Paper 相同的槽位布局.
+     * <p>Paper 上直接引用坐骑的 NMS 容器, 可以在任意线程创建, {@link #referencedInventory()} 返回 {@code null}.
      *
      * @param mount 被引用的坐骑
      * @return 包含装备和储物格的引用背包
      */
     @NotNull
     public static ReferencingInventory fromMountContents(@NotNull AbstractHorse mount) {
-        Inventory inventory = mount.getInventory();
         if (VersionHelper.hasPaperPatch) {
-            return fromContents(inventory);
+            return of(BukkitStorage.ofMount(mount));
         }
+        Inventory inventory = mount.getInventory();
         ExternalStorage storage = BukkitStorage.ofMount(mount, inventory);
         ItemStack[] contents = storage.readAll();
         SlotOrder slots = SlotOrder.of(identitySlots(contents.length));
@@ -181,7 +184,9 @@ public final class ReferencingInventory extends SparrowInventory {
      */
     @Nullable
     public Inventory referencedInventory() {
-        return this.referenced == null ? null : this.referenced.get();
+        // 退役会清掉这个字段, 只读一次, 判空和取值用的是同一个引用
+        @Nullable WeakReference<Inventory> referenced = this.referenced;
+        return referenced == null ? null : referenced.get();
     }
 
     /**
@@ -308,7 +313,7 @@ public final class ReferencingInventory extends SparrowInventory {
         this.refresh();
     }
 
-    // 这里不交锁. 外部存储靠调用方在所属线程里串行访问来保证安全, 拿一把自己的锁只会给出虚假的安全感.
+    // 这里不交锁. 存储所属线程随时可能直接改内容, 本对象的锁拦不住它, 串行由调用方自己保证.
     @Override
     @Nullable
     @ApiStatus.Internal
@@ -365,24 +370,17 @@ public final class ReferencingInventory extends SparrowInventory {
             this.lastKnown[delta.slot()] = delta.unsafeAfter();
         }
         this.modCount++;
-        TransactionResult result = InventoryTransactions.commitExternalSync(
-                new TransactionScope(new Live(this, this.readView(), this.modCount), deltas)
-        );
-        // 只要所属线程串行访问这条契约还成立, External 同步就不可能撞上并发, 这里的结果一定是成功.
-        if (!(result instanceof TransactionResult.Committed)) {
-            SparrowUI.getInstance().handleException(
-                    "Failed to dispatch external changes of a ReferencingInventory",
-                    new IllegalStateException("external dispatch was rejected: " + result)
-            );
-        }
+        // 这次同步撞上别的线程的写入或退役会被判为冲突, 通知就此放弃.
+        InventoryTransactions.commitExternalSync(new TransactionScope(new Live(this, this.readView(), this.modCount), deltas));
     }
 
-    // 退役之后一律不碰存储, 直接给一份固定尺寸的空视图.
+    // 退役会把存储换成零尺寸的占位. 这里只读一次存储字段, 读到占位就给一份固定尺寸的空视图.
     private @Nullable ItemStack @NotNull [] readView() {
-        if (this.retired) {
+        ExternalStorage storage = this.storage;
+        if (storage == RETIRED_STORAGE) {
             return new ItemStack[this.storageSlots.length];
         }
-        return this.mapView(this.storage.readAll());
+        return this.mapView(storage.readAll());
     }
 
     // 按逻辑槽位的顺序重排存储内容. 只搬引用不复制物品, 读路径上这一层要尽量便宜.

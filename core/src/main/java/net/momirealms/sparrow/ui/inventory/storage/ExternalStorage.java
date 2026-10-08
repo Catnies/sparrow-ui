@@ -1,16 +1,11 @@
 package net.momirealms.sparrow.ui.inventory.storage;
 
 import net.momirealms.sparrow.ui.util.ItemUtils;
-import net.momirealms.sparrow.ui.inventory.ReferencingInventory;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * {@link ReferencingInventory} 的权威内容存储, 槽位使用存储自身坐标.
- * <p><strong>同一 Inventory 的所有访问必须由调用方串行执行</strong>.
- */
 @ApiStatus.Experimental
 public interface ExternalStorage {
 

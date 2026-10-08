@@ -89,7 +89,7 @@ public final class InventoryTransactions {
     }
 
     // 权威命令先取得写权限再规划; 回调只计算本次变更, 重入库存写入会被 AUTHORITY_SCOPE 拦住.
-    // ReferencingInventory 这里压根没有锁, 串行全靠调用方只从存储所属线程进来.
+    // ReferencingInventory 这里压根没有锁, 串行由调用方自己保证.
     // 写前刷新放在临界区外面做, 它可能派发一笔 External 事务, 不能带进临界区.
     public static <P> P mutate(
             @NotNull UpdateReason reason,

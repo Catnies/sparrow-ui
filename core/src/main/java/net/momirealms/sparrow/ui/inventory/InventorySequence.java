@@ -1,5 +1,6 @@
 package net.momirealms.sparrow.ui.inventory;
 
+import net.momirealms.sparrow.ui.pane.Element;
 import net.momirealms.sparrow.ui.state.MutableSignal;
 import net.momirealms.sparrow.ui.state.Signal;
 import net.momirealms.sparrow.ui.state.Signals;
@@ -16,6 +17,7 @@ import java.util.List;
 public final class InventorySequence {
     private final MutableSignal<List<SparrowInventory>> members = Signal.of(List.of());
     @Nullable private volatile Signal<Long> signal; // 第一次调用 signal() 时创建
+    @Nullable private volatile Signal<List<Element.InventoryLink>> links; // 第一次调用 links() 时创建
 
     /**
      * 创建包含给定成员的序列, 重复成员只保留第一次出现.
@@ -109,6 +111,24 @@ public final class InventorySequence {
         return current;
     }
 
+    @NotNull
+    public Signal<List<Element.InventoryLink>> links() {
+        Signal<List<Element.InventoryLink>> current = this.links;
+        if (current == null) {
+            synchronized (this) {
+                current = this.links;
+                if (current == null) {
+                    // 成员内容变化和退役走的是同一路通知, 这里按存活名单截断, 名单没变就到此为止.
+                    current = this.signal()
+                            .mapDistinct(ignoredVersion -> this.inventories())
+                            .map(InventorySequence::linksOf);
+                    this.links = current;
+                }
+            }
+        }
+        return current;
+    }
+
     // 一个退役的都没有就返回原实例. update 看到同一个引用就不会推失效, 这份静默是刻意的.
     private static List<SparrowInventory> withoutRetired(List<SparrowInventory> members) {
         @Nullable ArrayList<SparrowInventory> kept = null;
@@ -126,5 +146,18 @@ public final class InventorySequence {
             }
         }
         return kept == null ? members : List.copyOf(kept);
+    }
+
+    private static List<Element.InventoryLink> linksOf(List<SparrowInventory> members) {
+        ArrayList<Element.InventoryLink> links = new ArrayList<>();
+        int memberCount = members.size();
+        for (int index = 0; index < memberCount; index++) {
+            SparrowInventory member = members.get(index);
+            int size = member.size();
+            for (int slot = 0; slot < size; slot++) {
+                links.add(Element.inventory(member, slot));
+            }
+        }
+        return List.copyOf(links);
     }
 }

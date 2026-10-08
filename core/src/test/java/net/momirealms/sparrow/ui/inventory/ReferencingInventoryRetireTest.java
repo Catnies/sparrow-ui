@@ -134,6 +134,25 @@ class ReferencingInventoryRetireTest {
     }
 
     @Test
+    void externalSyncThatCollidesWithRetirementIsDroppedSilently() {
+        AtomicInteger reported = new AtomicInteger();
+        SparrowUI.getInstance().setExceptionHandler((message, throwable) -> reported.incrementAndGet());
+        MortalStorage storage = new MortalStorage(9);
+        ReferencingInventory inventory = ReferencingInventory.of(storage);
+        AtomicInteger postEvents = new AtomicInteger();
+        Subscription post = inventory.subscribePostUpdate(event -> postEvents.incrementAndGet());
+        storage.contents[0] = diamonds(4);
+        // 刷新比对出差异之后才退役, 等同于另一个线程在这中间插进来
+        storage.onSecondRead = inventory::retire;
+        inventory.refresh();
+
+        assertTrue(inventory.retired());
+        assertEquals(0, postEvents.get());
+        assertEquals(0, reported.get());
+        post.close();
+    }
+
+    @Test
     void retiredInventoryIsCollectedOnceDropped() {
         ReferencingInventory inventory = ReferencingInventory.of(new MortalStorage(9));
         inventory.contentSignal();
@@ -187,6 +206,8 @@ class ReferencingInventoryRetireTest {
     private static final class MortalStorage implements ExternalStorage {
         private final @org.jetbrains.annotations.Nullable ItemStack[] contents;
         private boolean alive = true;
+        private @org.jetbrains.annotations.Nullable Runnable onSecondRead; // 设置后的第二次读取时执行一次
+        private int reads;
         private MortalStorage(int size) {
             this.contents = new ItemStack[size];
         }
@@ -196,6 +217,11 @@ class ReferencingInventoryRetireTest {
         }
         @Override
         public ItemStack read(int slot) {
+            if (this.onSecondRead != null && ++this.reads == 2) {
+                Runnable hook = this.onSecondRead;
+                this.onSecondRead = null;
+                hook.run();
+            }
             return this.contents[slot];
         }
         @Override
